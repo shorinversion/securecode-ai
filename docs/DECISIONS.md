@@ -365,6 +365,31 @@
   isolation и held-out governance создают leakage, overfitting и
   self-modification risks.
 
+## D-029 — Единый uv workspace и locked Python supply chain для P1
+
+- Статус: accepted
+- Решение: repository — один `uv` workspace с единственным корневым
+  `uv.lock`. Contracts, Core и adapters являются отдельными private pre-alpha
+  distributions в общем implicit namespace `securecode_ai`; зависимость
+  направлена только внутрь: adapters → Core → contracts.
+- Python: поддерживаются CPython `3.12–3.14`, development default — `3.13`;
+  prerelease `3.15` исключён до отдельной compatibility-проверки. Семантика
+  project commands фиксируется `uv==0.12.0`.
+- Dependencies: P1.2 вводит только уже принятый Pydantic v2 и `uv_build`;
+  точные runtime/transitive/build versions и registry hashes находятся в
+  `uv.lock`. Resolution ограничен явным PyPI index и upload-time cutoff
+  `2026-08-13T00:00:00Z`; изменение dependency metadata и lockfile проходит
+  review вместе.
+- Clean install: `uv sync --locked --no-dev --no-editable` обязан из новой
+  среды собрать и установить все first-party packages; drift не может молча
+  обновить lock. Package markers не содержат domain behavior.
+- Границы: P1.3 добавляет quality/test dependencies в тот же lock; P8.11
+  добавляет SBOM, provenance/signatures и artifact verification. Сам lockfile
+  не считается доказательством полной supply-chain security.
+- Причина: workspace сохраняет ownership boundaries и единый dependency graph,
+  а exact tool/lock + clean-room oracle дают воспроизводимость без второго
+  requirements/lock source of truth.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1

@@ -5,9 +5,8 @@
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
-- Последняя завершённая задача: `P1.1 — ownership-aware repository layout`.
-- Следующая последовательная задача: `P1.2 — packaging and locked dependencies`;
-  после P1.1 также разблокирована `P1.3 — quality tooling`.
+- Последняя завершённая задача: `P1.2 — packaging and locked dependencies`.
+- Следующая последовательная задача: `P1.3 — quality tooling`.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -18,6 +17,9 @@
 - P1.1 verification: required inventory present, no executable code/imports/
   dependencies, protected diff empty, strict G0 `PASS`, independent
   architecture review `PASS`.
+- P1.2 verification: one `uv.lock`; clean non-editable install/imports on
+  Python 3.12/3.13/3.14; Python 3.11 and lock drift rejected; six distributions
+  built; protected diff empty; strict G0 and independent review `PASS`.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -103,10 +105,8 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Принять решение о старте `P1.2`: packaging authority, Python compatibility
-   и locked dependencies с clean-install oracle.
-2. После P1.2 выполнить `P1.3`: единая format/lint/type/unit-test команда.
-3. Не закрывать G1 до versioned contracts, fake provider, runtime/CLI skeleton,
+1. Выполнить `P1.3`: единая format/lint/type/unit-test команда.
+2. Не закрывать G1 до versioned contracts, fake provider, runtime/CLI skeleton,
    fixture factory, redaction и spec-drift checks по `P1.4–P1.13`.
 
 ## Критические запреты

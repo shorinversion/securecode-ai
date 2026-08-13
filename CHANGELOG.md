@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-13 — реализован `P1.2`: один private `uv` workspace и корневой
+  `uv.lock` для contracts → Core → adapters, CPython `3.12–3.14` с default
+  `3.13`, exact `uv 0.12.0`, Pydantic v2 и hashed build/runtime artifacts;
+  non-editable clean install и imports подтверждены на всех трёх Python minor,
+  Python 3.11 и metadata/lock drift отклоняются fail-closed (`D-029`).
 - 2026-08-13 — завершён `P1.1`: создан ownership-aware repository skeleton
   для contracts/Core/adapters, CLI/server/worker, GitHub/GitLab integrations,
   deployment, tests, demo repositories, notebooks и report; executable code и

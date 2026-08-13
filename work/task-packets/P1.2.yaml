@@ -1,0 +1,188 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.2"
+  type: "implementation"
+  objective: "Create a reproducible Python workspace with one dependency authority, an exact lockfile and a clean-install oracle."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "1d963b6163f14c5b26f56ab4fbeef2c1166dc70f"
+  spec_refs: [SC-SYS-001, SC-SYS-006, SC-SYS-008, SC-PROD-020]
+  decision_refs: [D-017, D-026, D-029]
+  preconditions:
+    - "P1.1 is committed and its post-commit independent review passed"
+    - "G0 strict validator exits 0 against the committed effective attestation"
+    - "specs/baseline.yaml lifecycle is frozen"
+  non_goals:
+    - "scanner, agent, workflow, backend, SCM, sandbox or provider behavior"
+    - "domain contracts or public API implementation owned by P1.5"
+    - "formatter, linter, type-checker or test-runner configuration owned by P1.3"
+    - "CLI entry point owned by P1.10"
+    - "production container image owned by P6.12"
+    - "SBOM, signing and release provenance owned by P8.11"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "packaging-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "pyproject.toml"
+    - ".python-version"
+    - "uv.lock"
+    - "packages/contracts/pyproject.toml"
+    - "packages/contracts/src/**"
+    - "packages/core/pyproject.toml"
+    - "packages/core/src/**"
+    - "packages/adapters/pyproject.toml"
+    - "packages/adapters/src/**"
+    - "README.md"
+    - "docs/DECISIONS.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "CHANGELOG.md"
+    - "work/task-packets/P1.2.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "pyproject.toml"
+    - ".python-version"
+    - "uv.lock"
+    - "packages/contracts/pyproject.toml"
+    - "packages/contracts/src/**"
+    - "packages/core/pyproject.toml"
+    - "packages/core/src/**"
+    - "packages/adapters/pyproject.toml"
+    - "packages/adapters/src/**"
+    - "README.md"
+    - "docs/DECISIONS.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "CHANGELOG.md"
+    - "work/task-packets/P1.2.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/**"
+    - "Dockerfile"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+    - "tests/**"
+  max_changed_files: 20
+  max_diff_lines: 650
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, web_primary_sources, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/log"
+    - "rg"
+    - "uv or uvx version/help/lock/sync/run/tree/build"
+    - "isolated package import smoke checks"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "allow_only_https_package_metadata_and_artifacts_from_pypi_pythonhosted_and_python_runtime_from_astral"
+  secrets: "deny"
+  dependency_changes: "allow_only_pydantic_v2_uv_build_and_their_transitive_dependencies"
+
+inputs:
+  artifacts:
+    - "pyproject.toml P1.1 ownership marker"
+    - "packages/{contracts,core,adapters}/README.md ownership boundaries"
+    - "README.md development handoff"
+    - "docs/DECISIONS.md D-017 and D-026"
+    - "docs/SPEC_DRIVEN_DEVELOPMENT.md section 12"
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "root uv workspace metadata with exactly one dependency authority"
+    - "separately installable contracts, core and adapters distributions"
+    - "one universal uv.lock with registry artifact hashes"
+    - "documented supported Python range and default development minor"
+    - "single-command locked clean install instruction"
+    - "isolated non-editable import proof"
+    - "packaging decision record and durable project status"
+  structured_result_schema: null
+  handoff_required_fields:
+    - "task_id_and_role"
+    - "scope_completed"
+    - "files_read_and_changed"
+    - "commands_and_exact_results"
+    - "resolved_versions_and_hash_authority"
+    - "clean_install_evidence"
+    - "assumptions"
+    - "risks_and_unresolved"
+    - "integration_order"
+
+constraints:
+  invariants:
+    - "one root uv.lock is the only resolved Python dependency authority"
+    - "contracts is independent; core depends only on contracts; adapters depends inward on core/contracts"
+    - "domain packages do not import runtime, SCM, database, container, graph or provider SDKs"
+    - "package markers contain no domain or product behavior"
+    - "the default install does not include P1.3 quality tooling"
+  compatibility:
+    - "supported CPython minors are 3.12, 3.13 and 3.14; 3.15 prerelease is excluded"
+    - "default developer runtime is CPython 3.13 without a patch pin"
+    - "Pydantic remains within accepted major version 2"
+    - "workspace package versions remain pre-alpha until a release decision"
+  security:
+    - "no VCS, URL or mutable local dependency outside declared workspace members"
+    - "registry artifacts are represented by hashes in uv.lock"
+    - "dependency resolution has a declared upload-time cutoff"
+    - "packages are marked Private :: Do Not Upload"
+    - "no repository lifecycle script is executed"
+  privacy:
+    - "no source, credential or environment value is sent to a model or external service"
+  performance:
+    - "locked sync and import smoke test complete within the task timeout"
+
+budgets:
+  max_iterations: 8
+  max_tool_calls: 30
+  timeout_seconds: 1800
+  max_output_bytes: 200000
+
+verification:
+  acceptance_commands:
+    - "uv lock --check"
+    - "uv sync --locked --no-dev --no-editable in a fresh external environment"
+    - "isolated Python import of securecode_ai.contracts, securecode_ai.core and securecode_ai.adapters"
+    - "uv tree --frozen"
+    - "uv build --package for all three workspace distributions"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check"
+    - "protected-path diff is empty"
+  negative_cases:
+    - "pyproject dependency drift causes uv lock --check failure"
+    - "unsupported Python 3.11 is rejected by requires-python"
+    - "a missing workspace package or reversed dependency edge fails install/import inspection"
+    - "accepted spec, G0 evaluator or G0 evidence changes"
+    - "an undeclared direct, URL or VCS dependency appears"
+  required_evidence:
+    - "exact installed Python, uv and locked package versions"
+    - "clean temporary environment path and successful import output"
+    - "build artifact inventory for each first-party distribution"
+    - "independent packaging/architecture PASS"
+    - "post-commit clean worktree and strict G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "new_dependency_outside_pydantic_v2_or_uv_build"
+  - "security_boundary_change_required"
+  - "clean_install_requires_undeclared_manual_step"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.2, SC-SYS-006, SC-SYS-008, SC-PROD-020]
+  changelog_required: true
+  adr_required: true

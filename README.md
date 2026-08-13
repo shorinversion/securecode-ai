@@ -4,9 +4,46 @@ SecureCode AI is a security-oriented code-audit platform under staged,
 evidence-gated development. The frozen definition baseline is `0.2.0`; the
 current implementation phase is `P1 — Engineering Foundation`.
 
-This repository currently contains the completed specification baseline and
-the `P1.1` ownership skeleton. It does **not** yet contain a working scanner,
-agent workflow, backend, SCM bot, sandbox or installable Python distribution.
+This repository contains the completed specification baseline, the `P1.1`
+ownership skeleton and the reproducible `P1.2` Python workspace. It does
+**not** yet contain a working scanner, agent workflow, backend, SCM bot or
+sandbox.
+
+## Reproducible Python environment
+
+The workspace supports CPython `>=3.12,<3.15`; `.python-version` selects the
+mature `3.13` line for local development. The project command is pinned to
+`uv 0.12.0`. From a fresh clone, after installing that uv release, the complete
+non-editable runtime environment is created in one instruction:
+
+```powershell
+uv sync --locked --no-dev --no-editable
+```
+
+`--locked` rejects metadata/lock drift instead of silently resolving new
+versions. `--no-editable` builds and installs all first-party distributions,
+so the clean-install path does not depend on source-tree import behavior.
+
+The root `uv.lock` is the only resolved Python dependency authority. It covers
+all workspace members, exact transitive versions, registry artifact hashes and
+the build-backend dependency. Do not add a second `requirements.txt`, nested
+lockfile, VCS dependency or mutable URL dependency. A dependency update is an
+explicit reviewed change: update the relevant package metadata, regenerate
+with pinned uv, inspect `uv.lock`, then require `uv lock --check` and the clean
+install oracle to pass.
+
+Current first-party package graph:
+
+```text
+securecode-ai-adapters
+  -> securecode-ai-core
+       -> securecode-ai-contracts
+            -> pydantic v2
+```
+
+All three distributions are private pre-alpha packages under the shared
+implicit namespace `securecode_ai`. Their `__init__.py` files are packaging
+markers only; P1.5 owns the first domain models and behavior.
 
 ## Repository ownership
 
@@ -47,15 +84,16 @@ packages/adapters/
 
 ## Development handoff
 
-- `P1.2` owns the installable `pyproject.toml`, Python version decision within
-  the accepted baseline, dependency authority and lock file.
+- `P1.2` completed the uv workspace, Python compatibility decision, private
+  installable package boundaries and the single locked dependency authority.
 - `P1.3` owns formatter, linter, type-checker and unit-test configuration.
 - `P1.5` owns the first domain/contract Python modules.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 
-Until those tasks are completed, do not interpret the placeholder
-`pyproject.toml` or `Dockerfile` as build/install support.
+The current `Dockerfile` remains a non-buildable ownership marker until P6.12;
+the clean Python install above is supported, but no product entry point exists
+yet.
 
 ## Durable project documentation
 
