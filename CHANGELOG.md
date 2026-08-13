@@ -24,7 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-13 — подготовлен кандидат `P1.6`: versioned `AuditEvent`, stable IDs
+- 2026-08-13 — завершён `P1.6`: versioned `AuditEvent`, stable IDs
   из hashed semantic material, immutable hash-linked `EventStream` и
   deterministic replay projection с fail-closed tenant/run/revision/identity,
   data-class, idempotency, gap/reorder/tamper и exact coverage-snapshot гейтами;

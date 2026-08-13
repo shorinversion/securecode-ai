@@ -7,7 +7,7 @@ current implementation phase is `P1 — Engineering Foundation`.
 This repository contains the completed specification baseline, the `P1.1`
 ownership skeleton, the reproducible `P1.2` Python workspace, the `P1.3`
 quality gate, versioned domain contracts and the current `P1.6` append-only
-event-stream candidate. It does
+event-stream increment. It does
 **not** yet contain a working scanner, agent workflow, backend, SCM bot or
 sandbox.
 
@@ -169,8 +169,8 @@ packages/adapters/
   dependency policy jobs; external GitHub ruleset and failing-PR evidence are
   still required before completion.
 - `P1.5` completed the versioned domain contracts and independent acceptance.
-- `P1.6` has a locally verified append-only event/stable-ID candidate awaiting
-  independent product, architecture and security/evaluation acceptance.
+- `P1.6` completed append-only events/stable IDs after independent product,
+  architecture and security/evaluation acceptance.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 
