@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-13 — завершён `P1.1`: создан ownership-aware repository skeleton
+  для contracts/Core/adapters, CLI/server/worker, GitHub/GitLab integrations,
+  deployment, tests, demo repositories, notebooks и report; executable code и
+  зависимости не добавлялись, packaging/lockfile переданы `P1.2`, а buildable
+  Docker image — `P6.12`.
 - 2026-08-13 — добавлено единое понятное описание operating model разработки с
   ИИ: Spec-Driven/contract-first, task packets, Primary Integrator и bounded
   subagents, test/evidence gates, durable memory и controlled optimization.

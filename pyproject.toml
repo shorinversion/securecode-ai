@@ -1,0 +1,7 @@
+# P1.1 ownership marker only. P1.2 owns packaging and dependency selection.
+[tool.securecode_ai.repository]
+baseline = "securecode-definition-0.2.0"
+stage = "P1.1-layout-only"
+installable = false
+packaging_owner = "P1.2"
+dependency_lock_owner = "P1.2"

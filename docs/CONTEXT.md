@@ -4,8 +4,10 @@
 
 ## Текущая позиция
 
-- Фаза: `P1 — Engineering foundation` разрешена, но не начата.
-- Следующая задача: `P1.1 — ownership-aware repository layout`.
+- Фаза: `P1 — Engineering foundation` выполняется.
+- Последняя завершённая задача: `P1.1 — ownership-aware repository layout`.
+- Следующая последовательная задача: `P1.2 — packaging and locked dependencies`;
+  после P1.1 также разблокирована `P1.3 — quality tooling`.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -13,8 +15,11 @@
   `dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9`.
 - Final independent reviews baseline `0.2.0`: `PASS/PASS/PASS` на exact
   normative hash; отдельная successor attestation закоммичена.
-- Решение `GO FOR P1 ONLY` не разрешает автоматически начинать P2+ или
-  ослаблять frozen contracts; пользователь принимает решение о старте P1.1.
+- P1.1 verification: required inventory present, no executable code/imports/
+  dependencies, protected diff empty, strict G0 `PASS`, independent
+  architecture review `PASS`.
+- Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
+  contracts; `G1 Foundation Ready` остаётся открытым.
 
 ## Принятые последние изменения
 
@@ -98,11 +103,11 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Получить решение пользователя о старте `P1.1`.
-2. Выполнить constrained packet `work/task-packets/P1.1.yaml` и независимо
-   проверить repository ownership boundaries.
-3. После G1 последовательно реализовать packaging, quality CI, versioned
-   contracts, fake provider, `RepositoryView`, LocalRuntime и CLI skeleton.
+1. Принять решение о старте `P1.2`: packaging authority, Python compatibility
+   и locked dependencies с clean-install oracle.
+2. После P1.2 выполнить `P1.3`: единая format/lint/type/unit-test команда.
+3. Не закрывать G1 до versioned contracts, fake provider, runtime/CLI skeleton,
+   fixture factory, redaction и spec-drift checks по `P1.4–P1.13`.
 
 ## Критические запреты
 

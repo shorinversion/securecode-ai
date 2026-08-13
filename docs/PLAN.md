@@ -3,7 +3,7 @@
 Версия плана: `0.7`  
 Статус: `active`  
 Последнее обновление: 13 августа 2026 года  
-Текущая фаза: `P1 — Engineering foundation` — разрешена, не начата  
+Текущая фаза: `P1 — Engineering foundation` — выполняется
 Текущий gate: `G0 — Definition Ready` — пройден
 
 Этот файл является каноническим планом проекта от исходной постановки до
@@ -188,7 +188,7 @@ Gate пройден, если:
 
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
-| `P1.1` | Создать repository/monorepo layout | G0 | отдельные Core, CLI, server, integrations, tests, fixtures | `TODO` |
+| `P1.1` | Создать repository/monorepo layout | G0 | отдельные Core, CLI, server, integrations, tests, fixtures | `DONE` |
 | `P1.2` | Настроить packaging и locked dependencies | P1.1 | clean install в новой среде по одной инструкции | `TODO` |
 | `P1.3` | Настроить lint, format, type-check, unit tests | P1.1 | единая quality-команда локально и в CI | `TODO` |
 | `P1.4` | Настроить pre-commit и базовый CI | P1.3 | PR с ошибкой гарантированно блокируется | `TODO` |
@@ -517,10 +517,11 @@ security boundary, набора обязательных языков, blocking 
 
 ## 18. Текущий фокус
 
-G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation;
-`P1 Engineering foundation` разрешена, но реализация ещё не начата. Следующее
-решение — запуск constrained packet `P1.1` для ownership-aware repository
-layout. Затем идут packaging, quality CI, versioned contracts, fake provider,
-`RepositoryView`, LocalRuntime и CLI skeleton; узкий Python CWE-89 vertical
-slice начинается после G1. Enterprise adapters не строятся до стабилизации
-Core contracts и deterministic evidence layer.
+G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation.
+`P1.1` завершена: ownership-aware skeleton прошёл strict G0 regression,
+protected-path проверку и независимый architecture review. Следующий
+последовательный шаг — `P1.2` packaging/locked dependencies; `P1.3` quality
+tooling может начаться после того же layout foundation. Затем идут versioned
+contracts, fake provider, `RepositoryView`, LocalRuntime и CLI skeleton; узкий
+Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
+строятся до стабилизации Core contracts и deterministic evidence layer.
