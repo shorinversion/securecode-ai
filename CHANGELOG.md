@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-13 — подготовлен кандидат `P1.6`: versioned `AuditEvent`, stable IDs
+  из hashed semantic material, immutable hash-linked `EventStream` и
+  deterministic replay projection с fail-closed tenant/run/revision/identity,
+  data-class, idempotency, gap/reorder/tamper и exact coverage-snapshot гейтами;
+  persistence, transports и workflow runtime не добавлялись.
 - 2026-08-13 — подготовлен кандидат `P1.5`: пять closed immutable Pydantic v2
   public roots и deterministic Draft 2020-12 schemas с canonical identity,
   tenant/lineage/coverage/outcome invariants и resolvable semantic validator;

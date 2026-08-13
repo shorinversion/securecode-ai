@@ -1,0 +1,161 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.6"
+  type: "implementation"
+  objective: "Implement the frozen 0.2.0 immutable AuditEvent contract, deterministic stable IDs, canonical hash-chain verification, idempotent append semantics and deterministic in-memory replay projection."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "df0afc21823ee5d120d9ff398bf2877ebfee799b"
+  spec_refs: [SC-DOM-009, SC-DOM-014, SC-EVENT-001, SC-EVENT-002, SC-EVENT-003, SC-EVENT-004, SC-EVENT-005, SC-EVENT-006, SC-EVENT-007, SC-EVENT-008, SC-EVENT-009, SC-EVENT-010, SC-EVENT-011, SC-EVENT-012, SC-EVENT-013]
+  decision_refs: [D-004, D-006, D-015, D-016, D-017, D-020, D-027]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.5 contracts and completion attestation are committed"
+  non_goals:
+    - "database/RunRepository persistence and transactional inbox/outbox owned by P6.2-P6.4"
+    - "WorkflowRuntime state-transition execution owned by P1.9"
+    - "SC-WF-002/003 node/attempt transition metadata, legal-order and stale-transition enforcement owned by P1.9"
+    - "worker/backend event transport and authorization owned by P6.1/P6.3"
+    - "BlobStore bytes, retention and signed URLs owned by P6.4/P8.6"
+    - "scanner, model-provider, SCM publication side effects or P2+ analysis"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "event-contract-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/contracts/**"
+    - "packages/core/**"
+    - "tests/unit/test_event_contracts.py"
+    - "tests/unit/test_event_stream.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.6.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/contracts/**"
+    - "packages/core/**"
+    - "tests/unit/test_event_contracts.py"
+    - "tests/unit/test_event_stream.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.6.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "scripts/ci_policy.py"
+    - "artifacts/gates/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 18
+  max_diff_lines: 3200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "pytest targeted event suites"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny"
+
+inputs:
+  artifacts:
+    - "specs/contracts/events.md 0.2.0"
+    - "specs/contracts/domain.md SC-DOM-009/014"
+    - "specs/behavior/workflows.md as downstream P1.9 boundary context only"
+    - "P1.5 versioned domain contracts"
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "closed immutable AuditEvent envelope and typed safe payload contract"
+    - "deterministic stable ID and event-ID derivation from hashed semantic material"
+    - "canonical event content hash and per-run previous-hash chain"
+    - "immutable idempotent EventStream with replay/conflict results and no update/delete API"
+    - "deterministic projection rebuild for coverage, receipts and terminal AuditRun"
+    - "checked-in Draft 2020-12 AuditEvent schema included in the contracts wheel"
+    - "round-trip, duplicate, tamper, gap, reorder, identity, version, classification and replay tests"
+  structured_result_schema: null
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "event order derives only from sequence/causation, never timestamps"
+    - "genesis sequence is one with no previous hash; every successor binds canonical prior hash"
+    - "exact event/idempotency replay is accepted once; either-key divergent replay conflicts"
+    - "every event binds tenant, run and exact execution_identity_hash"
+    - "all payloads are typed metadata or ArtifactRef; no free-form raw code/prompt/model output/log field"
+    - "CandidateInterpretationRecorded reconstructs exactly one receipt per current candidate version"
+  security:
+    - "DC3/DC4 event payload uses same-tenant same-class ArtifactRef, never safe inline payload"
+    - "nested extensions remain tenant-bound"
+    - "event hash and stable IDs use canonical bounded JSON without raw semantic content inputs"
+    - "event store exposes append/replay only; no mutation or deletion method"
+    - "protected frozen paths remain unchanged"
+  compatibility:
+    - "envelope and event payload versions are independent semantic versions"
+    - "unsupported envelope major/old baseline and unsupported event major are rejected"
+    - "schema bytes are deterministic and ECMAScript regex compatible"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 70
+  timeout_seconds: 3600
+  max_output_bytes: 350000
+
+verification:
+  acceptance_commands:
+    - "targeted event contract/stream tests with branch coverage >=80%"
+    - "canonical quality command on CPython 3.12, 3.13 and 3.14"
+    - "AuditEvent schema exact-byte check and wheel inclusion"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check and protected-path diff empty"
+  negative_cases:
+    - "gap, reorder, previous-hash substitution and event content tamper reject"
+    - "same event ID or idempotency key with divergent content conflicts"
+    - "cross-tenant/run/execution-identity append rejects"
+    - "timestamp skew does not change replay order"
+    - "DC3/DC4 inline payload, cross-tenant ArtifactRef and cross-tenant extension reject"
+    - "missing/stale/duplicate candidate interpretation receipt rejects projection"
+    - "raw source/prompt/model-output/log field absent from AuditEvent schema"
+    - "all stable ID material mutations change the derived ID"
+  required_evidence:
+    - "golden stable ID/event hash/projection hash"
+    - "fault and mutation matrices"
+    - "schema hash/drift and wheel inclusion"
+    - "independent product, architecture and security/evaluation PASS"
+    - "post-commit clean worktree and strict G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "persistence/runtime/API behavior required beyond P1.6"
+  - "dependency_change_required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.6, SC-DOM-009, SC-EVENT-001, SC-EVENT-013]
+  changelog_required: true
+  adr_required: false

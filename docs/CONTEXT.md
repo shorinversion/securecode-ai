@@ -7,8 +7,8 @@
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.5 — versioned domain contracts`, commit
   `cb7fdb6d3efdc6feb4417d3483bb75ede0a3a98f`.
-- Текущая внешняя задача: `P1.4` ожидает GitHub ruleset/failing-PR receipt;
-  следующий независимый increment — `P1.6 — append-only events/stable IDs`.
+- Текущие задачи: `P1.4` ожидает внешний GitHub ruleset/failing-PR receipt;
+  `P1.6 — append-only events/stable IDs` выполняется по constrained task packet.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -42,6 +42,14 @@
   fail-closed semantics and recursive extension tenant binding. Independent
   product/architecture/security-evaluation reviews are `PASS/PASS/PASS`;
   clean post-commit schema/contract/quality/strict-G0 verification PASS.
+- P1.6 local candidate verification: versioned `AuditEvent`, stable IDs and
+  immutable `EventStream` bind the revalidated complete execution identity and
+  admitted HEAD while enforcing data-class/tenant/run, canonical previous-hash,
+  idempotency and replay invariants; 58 targeted tests pass at 92.83% Core
+  branch coverage, and 201 repository tests pass at the same coverage on fresh
+  non-editable CPython 3.12/3.14 and the canonical 3.13 environment. Schema
+  drift, six-schema wheel inventory, 317 ECMAScript regex compilations and
+  strict G0 pass. Independent re-reviews remain required before completion.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -127,8 +135,9 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Начать `P1.6` append-only events/stable IDs и затем независимый от него
-   `P1.7` secret-safe config только через отдельные constrained task packets.
+1. Провести три независимых review кандидата `P1.6`, исправить найденное,
+   повторно валидировать и зафиксировать increment; затем открыть отдельный
+   constrained task packet для `P1.7` secret-safe config.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.

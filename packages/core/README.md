@@ -1,6 +1,6 @@
 # Core package boundary
 
-Core will own framework-independent domain behavior, policy-selected state
+Core owns framework-independent domain behavior, policy-selected state
 transitions and port definitions. It may depend on `packages/contracts`, while
 adapters and applications depend inward on Core.
 
@@ -8,4 +8,9 @@ Core must not import a graph runtime, SCM SDK, database driver, object-store
 SDK, container runtime or model-provider SDK. `WorkflowGraph` orchestration and
 `EvidenceGraph` security evidence remain separate typed concepts.
 
-No business logic is implemented by `P1.1`.
+`P1.6` adds only the immutable in-memory `EventStream` and deterministic
+`RunProjection`: trust-boundary revalidation, tenant/run/execution-identity
+plus admitted-HEAD binding, sequence and canonical previous-hash verification,
+exact idempotent replay and current-coverage reconstruction. Persistence,
+workflow execution, transport and side effects remain outside Core and are
+owned by later tasks.

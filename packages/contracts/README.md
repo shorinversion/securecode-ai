@@ -5,10 +5,11 @@ backend and integration adapters. Pydantic v2 models are the Python validation
 source of truth. They do not import model-provider, SCM, database,
 object-store, container or workflow-runtime SDKs.
 
-The `0.2.x` contract exposes five closed, immutable public roots: `AuditRun`
+The `0.2.x` contract exposes six closed, immutable public roots: `AuditRun`
 with canonical `RunExecutionIdentity`; `FindingCase` with discovery lineage and
 model receipts; `Evidence` with metadata-only `ArtifactRef`; `PatchCandidate`
-without embedded diff bytes; and ordered-gate `ValidationResult`.
+without embedded diff bytes; ordered-gate `ValidationResult`; and `AuditEvent`
+with an independently versioned typed payload envelope.
 
 Every wire object requires `schema_version`, rejects unknown fields and uses
 specific outcome fields rather than a generic `status`. Same-major additive
@@ -23,7 +24,7 @@ cannot satisfy model coverage or create a clean run.
 
 ## Checked-in JSON Schemas
 
-Five Draft 2020-12 artifacts live under
+Six Draft 2020-12 artifacts live under
 `src/securecode_ai/contracts/schemas/v0.2.0/` and are included in the wheel.
 They are generated deterministically from the Pydantic roots. JSON Schema
 closes the structural surface; cross-field rules such as canonical hash,
@@ -38,5 +39,6 @@ artifacts, as required by the frozen domain contract:
 
 Omit `--check` only when intentionally regenerating artifacts during an
 accepted contract change. Repository-wide compatibility and protected-drift
-enforcement remain owned by `P1.13`; event append/replay and stable ID
-generation remain owned by `P1.6`.
+enforcement remain owned by `P1.13`. Stable IDs accept only validated hashed
+semantic material. Event append/replay behavior lives in framework-independent
+Core and is intentionally not claimed by the single-document schema validator.

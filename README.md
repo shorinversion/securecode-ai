@@ -6,7 +6,8 @@ current implementation phase is `P1 — Engineering Foundation`.
 
 This repository contains the completed specification baseline, the `P1.1`
 ownership skeleton, the reproducible `P1.2` Python workspace, the `P1.3`
-quality gate and the current `P1.5` versioned-contract candidate. It does
+quality gate, versioned domain contracts and the current `P1.6` append-only
+event-stream candidate. It does
 **not** yet contain a working scanner, agent workflow, backend, SCM bot or
 sandbox.
 
@@ -110,15 +111,16 @@ securecode-ai-adapters
 ```
 
 All three distributions are private pre-alpha packages under the shared
-implicit namespace `securecode_ai`. Core and adapters remain packaging
-markers. The contracts package now owns closed Pydantic v2 models and five
-checked-in Draft 2020-12 JSON Schemas for `AuditRun`, `FindingCase`,
-`Evidence`, `PatchCandidate` and `ValidationResult`; it deliberately imports
-no provider, SCM, database or graph-runtime SDK.
+implicit namespace `securecode_ai`. Adapters remains a packaging marker. The
+contracts package now owns stable-ID derivation, closed Pydantic v2 models and
+six checked-in Draft 2020-12 JSON Schemas for `AuditRun`, `FindingCase`,
+`Evidence`, `PatchCandidate`, `ValidationResult` and `AuditEvent`; it
+deliberately imports no provider, SCM, database or graph-runtime SDK.
 Conformance requires both structural JSON Schema validation and its resolvable
-`x-securecode-semantic-validator`; provider execution, events/stable IDs and
-runtime behavior remain owned by later P1 tasks. The exact drift command is in
-the contracts package README.
+`x-securecode-semantic-validator`. Core owns the immutable, hash-linked
+in-memory `EventStream` and `RunProjection`; provider
+execution, persistence and workflow runtime remain owned by later P1 tasks.
+The exact schema drift command is in the contracts package README.
 
 ## Repository ownership
 
@@ -166,8 +168,9 @@ packages/adapters/
 - `P1.4` has a locally verified pre-commit/CI candidate, including secret and
   dependency policy jobs; external GitHub ruleset and failing-PR evidence are
   still required before completion.
-- `P1.5` has a locally verified domain-contract candidate awaiting independent
-  product, architecture and security/evaluation acceptance.
+- `P1.5` completed the versioned domain contracts and independent acceptance.
+- `P1.6` has a locally verified append-only event/stable-ID candidate awaiting
+  independent product, architecture and security/evaluation acceptance.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

@@ -42,11 +42,16 @@ from .domain import (
     ValidationOutcome,
     ValidationResult,
 )
+from .events import ActorRef, ActorType, AuditEvent, EventSafePayload, EventType
+from .ids import StableIdKind, derive_event_id, derive_idempotency_key, derive_stable_id
 
 __all__ = [
     "CONTRACT_SCHEMA_VERSION",
+    "ActorRef",
+    "ActorType",
     "AnalysisHealth",
     "ArtifactRef",
+    "AuditEvent",
     "AuditRun",
     "AuditRunOutcome",
     "CandidateInterpretationReceipt",
@@ -62,6 +67,8 @@ __all__ = [
     "DecisionOutcome",
     "DiscoveryCandidate",
     "DiscoveryLane",
+    "EventSafePayload",
+    "EventType",
     "Evidence",
     "EvidenceKind",
     "ExtensionDataClass",
@@ -81,9 +88,13 @@ __all__ = [
     "RunExecutionIdentity",
     "SourceLocation",
     "SourcePosition",
+    "StableIdKind",
     "TrustLabel",
     "ValidationGateOutcome",
     "ValidationGateResult",
     "ValidationOutcome",
     "ValidationResult",
+    "derive_event_id",
+    "derive_idempotency_key",
+    "derive_stable_id",
 ]

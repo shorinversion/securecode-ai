@@ -8,12 +8,23 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
-from .base import CONTRACT_SCHEMA_VERSION
-from .domain import PUBLIC_ROOT_MODELS
+from .base import CONTRACT_SCHEMA_VERSION, WireModel
+from .domain import PUBLIC_ROOT_MODELS as DOMAIN_PUBLIC_ROOT_MODELS
+from .events import AuditEvent
+
+PUBLIC_ROOT_MODELS: dict[str, type[WireModel]] = {
+    **DOMAIN_PUBLIC_ROOT_MODELS,
+    "audit-event": AuditEvent,
+}
 
 JSON_SCHEMA_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
 SEMANTIC_VALIDATOR: Final = "securecode_ai.contracts.schema_export:validate_public_document"
 SEMANTIC_RULES: Final = {
+    "audit-event": (
+        "SC-EVENT-004",
+        "SC-EVENT-009",
+        "SC-EVENT-011",
+    ),
     "audit-run": (
         "SC-DOM-002",
         "SC-DOM-003",
@@ -115,7 +126,7 @@ def _parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=DEFAULT_SCHEMA_DIRECTORY,
-        help="target directory for the five public JSON Schema files",
+        help="target directory for the public JSON Schema files",
     )
     parser.add_argument(
         "--check",

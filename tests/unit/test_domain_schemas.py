@@ -1,4 +1,4 @@
-"""Determinism and closed-surface checks for generated P1.5 JSON Schemas."""
+"""Determinism and closed-surface checks for generated public JSON Schemas."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from securecode_ai.contracts.schema_export import (
 )
 
 EXPECTED_SCHEMA_FILES = {
+    "audit-event.schema.json",
     "audit-run.schema.json",
     "evidence.schema.json",
     "finding-case.schema.json",
