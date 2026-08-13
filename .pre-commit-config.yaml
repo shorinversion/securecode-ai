@@ -1,0 +1,30 @@
+minimum_pre_commit_version: "4.6.0"
+default_install_hook_types: [pre-commit, pre-push]
+fail_fast: true
+
+repos:
+  - repo: local
+    hooks:
+      - id: securecode-ci-policy
+        name: SecureCode CI policy
+        language: system
+        entry: python -I scripts/precommit_entry.py policy
+        pass_filenames: false
+        always_run: true
+      - id: securecode-secrets
+        name: SecureCode staged secret scan
+        language: system
+        entry: python -I scripts/precommit_entry.py secrets
+        types: [text]
+      - id: securecode-workflow-security
+        name: SecureCode workflow security audit
+        language: system
+        entry: python -I scripts/precommit_entry.py workflow
+        pass_filenames: false
+        always_run: true
+      - id: securecode-quality
+        name: SecureCode canonical quality gate
+        language: system
+        entry: python -I scripts/precommit_entry.py quality
+        pass_filenames: false
+        always_run: true

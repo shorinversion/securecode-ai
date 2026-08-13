@@ -6,7 +6,9 @@
 
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.3 — quality tooling`.
-- Следующая последовательная задача: `P1.4 — pre-commit and base CI`.
+- Текущая задача: `P1.4 — pre-commit and base CI`, локальный кандидат проходит
+  hooks/policy/tests; acceptance заблокирован внешним GitHub ruleset и
+  failing-PR merge-block receipt, потому что remote ещё не настроен.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -26,6 +28,12 @@
   import allow-lists; Core-only branch coverage floor; sanitized child env;
   static-preflight, low-coverage, zero-test and repository-mutation negatives;
   independent architecture and security/evaluation reviews `PASS/PASS`.
+- P1.4 local candidate verification: closed pre-commit/CI policy, staged and
+  reachable-history secret scanning, permanent vulnerable-dependency negative,
+  strict zizmor and Python 3.12–3.14 quality matrix pass; independent
+  product/architecture/security-evaluation reviews are `PASS/PASS/PASS` on the
+  staged candidate. This proves the local increment only, not the external
+  GitHub ruleset or failing-PR merge-block criterion.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -111,9 +119,12 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Выполнить `P1.4`: pre-commit и CI должны вызывать единый P1.3 runner и
-   блокировать ошибки quality, secret и dependency policy.
-2. Не закрывать G1 до versioned contracts, fake provider, runtime/CLI skeleton,
+1. Сохранить прошедший `PASS/PASS/PASS` локальный кандидат `P1.4` отдельным
+   integration commit без ложного статуса `DONE`.
+2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
+   и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`.
+3. Пока внешний blocker не мешает независимым задачам, начать `P1.5` versioned
+   domain contracts; не закрывать G1 до fake provider, runtime/CLI skeleton,
    fixture factory, redaction и spec-drift checks по `P1.4–P1.13`.
 
 ## Критические запреты

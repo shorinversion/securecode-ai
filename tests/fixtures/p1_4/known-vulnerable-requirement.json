@@ -1,0 +1,9 @@
+{
+  "name": "pip",
+  "version": "21.2.4",
+  "sha256_chunks": [
+    ["fa9ebb85", "d3fd6076", "17c0c44a", "ca302b1b", "45d87f9c", "2a1649b4", "6c26167c", "a4296323"],
+    ["0eb8a151", "6c3d138a", "e8689c0c", "1a60fde7", "14331083", "2f9dc77e", "11d8a4bc", "62de193b"]
+  ],
+  "minimum_vulnerabilities": 1
+}

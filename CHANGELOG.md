@@ -24,6 +24,12 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-13 — реализован локально проверенный кандидат `P1.4`: закрытый
+  pre-commit launcher на project-owned `uv 0.12.0`, full-SHA GitHub Actions,
+  read-only/fork-safe jobs, Python 3.12–3.14 quality matrix, secret-history,
+  dependency-integrity/vulnerability и strict zizmor checks. Задача остаётся
+  открытой до внешнего GitHub ruleset receipt и демонстрации реально
+  заблокированного failing PR; сильная product sandbox isolation не заявляется.
 - 2026-08-13 — реализован `P1.3`: exact-pinned Ruff/mypy/pytest/pytest-cov,
   единый offline/no-sync quality runner для format/lint/strict typing/tests,
   Core-only branch coverage `>=80%`, закрытые import allow-lists и fail-closed

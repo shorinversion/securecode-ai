@@ -1,0 +1,177 @@
+name: ci
+
+on:
+  pull_request: {}
+  push:
+    branches: [master]
+  merge_group: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    name: policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          lfs: false
+          submodules: false
+          set-safe-directory: false
+      - name: Select Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+          check-latest: false
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          checksum: eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9
+          enable-cache: false
+          add-problem-matchers: false
+      - name: Validate lock before installation
+        run: python -I scripts/ci_policy.py lock
+      - name: Provision exact policy tools
+        run: uv sync --locked --only-group quality --no-editable
+      - name: Validate repository CI policy
+        run: uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py validate
+      - name: Validate pre-commit configuration
+        run: uv run --locked --offline --no-sync --only-group quality pre-commit validate-config
+      - name: Audit workflow offline
+        run: uv run --locked --offline --no-sync --only-group quality zizmor --offline --strict-collection --persona=pedantic .
+
+  secrets:
+    name: secrets
+    needs: [policy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || github.sha }}
+    steps:
+      - name: Checkout candidate revision and history
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          lfs: false
+          submodules: false
+          set-safe-directory: false
+      - name: Select Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+          check-latest: false
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          checksum: eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9
+          enable-cache: false
+          add-problem-matchers: false
+      - name: Validate lock before installation
+        run: python -I scripts/ci_policy.py lock
+      - name: Provision exact secret scanner
+        run: uv sync --locked --only-group quality --no-editable
+      - name: Scan current tree and candidate history
+        run: uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py secrets --base "$BASE_SHA"
+
+  dependency:
+    name: dependency
+    needs: [policy]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout candidate revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          lfs: false
+          submodules: false
+          set-safe-directory: false
+      - name: Select Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.13"
+          check-latest: false
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          checksum: eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9
+          enable-cache: false
+          add-problem-matchers: false
+      - name: Validate lock before installation
+        run: python -I scripts/ci_policy.py lock
+      - name: Provision exact audit tool
+        run: uv sync --locked --only-group quality --no-editable
+      - name: Export the hash-complete third-party graph
+        run: uv export --locked --all-packages --all-groups --no-emit-workspace --format requirements-txt --output-file "$RUNNER_TEMP/locked-requirements.txt"
+      - name: Audit without resolving or installing packages
+        run: uv run --locked --offline --no-sync --only-group quality pip-audit --require-hashes --disable-pip --progress-spinner off --requirement "$RUNNER_TEMP/locked-requirements.txt"
+      - name: Prove a known-vulnerable fixture is blocking
+        run: uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py audit-negative
+
+  quality:
+    name: quality / python-${{ matrix.python-version }}
+    needs: [policy, secrets, dependency]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout candidate revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          lfs: false
+          submodules: false
+          set-safe-directory: false
+      - name: Select Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          check-latest: false
+      - name: Install verified uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.0"
+          checksum: eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9
+          enable-cache: false
+          add-problem-matchers: false
+      - name: Validate lock before installation
+        run: python -I scripts/ci_policy.py lock
+      - name: Build the locked non-editable workspace
+        run: uv sync --locked --no-editable --group quality
+      - name: Run the canonical quality gate offline
+        run: uv run --locked --offline --no-sync --group quality python -I scripts/quality.py
+
+  gate:
+    name: gate
+    if: ${{ always() }}
+    needs: [policy, secrets, dependency, quality]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    env:
+      POLICY_RESULT: ${{ needs.policy.result }}
+      SECRETS_RESULT: ${{ needs.secrets.result }}
+      DEPENDENCY_RESULT: ${{ needs.dependency.result }}
+      QUALITY_RESULT: ${{ needs.quality.result }}
+    steps:
+      - name: Require every mandatory job to succeed
+        run: python -c "import os,sys; names=('POLICY_RESULT','SECRETS_RESULT','DEPENDENCY_RESULT','QUALITY_RESULT'); failed=[name for name in names if os.environ.get(name) != 'success']; print('CI_GATE=' + ('PASS' if not failed else 'FAIL')); sys.exit(bool(failed))"

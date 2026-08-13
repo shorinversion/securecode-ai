@@ -1,0 +1,979 @@
+"""Fail-closed policy checks for SecureCode AI's P1 GitHub CI boundary."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import tomllib
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
+from typing import Any, Final
+from urllib.parse import urlparse
+
+REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
+WORKFLOW_PATH: Final = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
+PRECOMMIT_PATH: Final = REPOSITORY_ROOT / ".pre-commit-config.yaml"
+BASELINE_PATH: Final = REPOSITORY_ROOT / ".secrets.baseline"
+PYPROJECT_PATH: Final = REPOSITORY_ROOT / "pyproject.toml"
+LOCK_PATH: Final = REPOSITORY_ROOT / "uv.lock"
+VULNERABLE_FIXTURE_PATH: Final = (
+    REPOSITORY_ROOT / "tests" / "fixtures" / "p1_4" / "known-vulnerable-requirement.json"
+)
+WORKSPACE_PROJECTS: Final = {
+    "packages/contracts/pyproject.toml": (
+        "securecode-ai-contracts",
+        ["pydantic>=2.12,<3"],
+        {},
+        "securecode_ai.contracts",
+    ),
+    "packages/core/pyproject.toml": (
+        "securecode-ai-core",
+        ["securecode-ai-contracts==0.1.0a0"],
+        {"securecode-ai-contracts": {"workspace": True}},
+        "securecode_ai.core",
+    ),
+    "packages/adapters/pyproject.toml": (
+        "securecode-ai-adapters",
+        ["securecode-ai-core==0.1.0a0"],
+        {"securecode-ai-core": {"workspace": True}},
+        "securecode_ai.adapters",
+    ),
+}
+PYPI_INDEX: Final = "https://pypi.org/simple"
+PYPI_ARTIFACT_HOST: Final = "files.pythonhosted.org"
+ACTION_REFS: Final = {
+    "actions/checkout": "".join(
+        (
+            "de0fac2e45",
+            "00dabe0009",
+            "e67214ff5f",
+            "5447ce83dd",
+        )
+    ),
+    "actions/setup-python": "".join(
+        (
+            "a309ff8b42",
+            "6b58ec0e2a",
+            "45f0f869d4",
+            "6889d02405",
+        )
+    ),
+    "astral-sh/setup-uv": "".join(
+        (
+            "c771a70e62",
+            "77c0a99b61",
+            "7c7a806ffe",
+            "daca235ff9",
+        )
+    ),
+}
+EXPECTED_QUALITY_DEPENDENCIES: Final = {
+    "detect-secrets==1.5.0",
+    "mypy==2.3.0",
+    "pip-audit==2.10.1",
+    "pre-commit==4.6.0",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "pyyaml==6.0.3",
+    "ruff==0.15.22",
+    "uv==0.12.0",
+    "zizmor==1.28.0",
+}
+EXPECTED_ROOT_DEPENDENCIES: Final = [
+    "securecode-ai-adapters==0.1.0a0",
+    "securecode-ai-contracts==0.1.0a0",
+    "securecode-ai-core==0.1.0a0",
+]
+EXPECTED_VULNERABLE_HASHES: Final = [
+    "".join(
+        (
+            "fa9ebb85",
+            "d3fd6076",
+            "17c0c44a",
+            "ca302b1b",
+            "45d87f9c",
+            "2a1649b4",
+            "6c26167c",
+            "a4296323",
+        )
+    ),
+    "".join(
+        (
+            "0eb8a151",
+            "6c3d138a",
+            "e8689c0c",
+            "1a60fde7",
+            "14331083",
+            "2f9dc77e",
+            "11d8a4bc",
+            "62de193b",
+        )
+    ),
+]
+EXPECTED_BASELINE_DIGEST: Final = "".join(
+    ("47ac4bdd", "7cc21cd0", "64e18297", "a15d1424", "54af7e18", "d69b2aea", "bf21df23", "bbbdf911")
+)
+EXPECTED_BASELINE_FINDINGS: Final = 27
+UV_LINUX_SHA256: Final = "".join(
+    ("eaf84226", "2aa1c418", "d8ecc560", "5f02ee1e", "bfd36912", "4fa48548", "e85f9481", "a47831a9")
+)
+EXPECTED_JOBS: Final = {"policy", "secrets", "dependency", "quality", "gate"}
+SECRETS_JOB_NAME: Final = "".join(("sec", "rets"))
+EXPECTED_TIMEOUTS: Final = {
+    "policy": "15",
+    "secrets": "15",
+    "dependency": "15",
+    "quality": "20",
+    "gate": "2",
+}
+EXPECTED_JOB_NAMES: Final = {
+    "policy": "policy",
+    SECRETS_JOB_NAME: SECRETS_JOB_NAME,
+    "dependency": "dependency",
+    "quality": "quality / python-${{ matrix.python-version }}",
+    "gate": "gate",
+}
+EXPECTED_RUN_COMMANDS: Final = {
+    "policy": (
+        "python -I scripts/ci_policy.py lock",
+        "uv sync --locked --only-group quality --no-editable",
+        "uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py validate",
+        "uv run --locked --offline --no-sync --only-group quality pre-commit validate-config",
+        "uv run --locked --offline --no-sync --only-group quality zizmor --offline --strict-collection --persona=pedantic .",
+    ),
+    "secrets": (
+        "python -I scripts/ci_policy.py lock",
+        "uv sync --locked --only-group quality --no-editable",
+        'uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py secrets --base "$BASE_SHA"',
+    ),
+    "dependency": (
+        "python -I scripts/ci_policy.py lock",
+        "uv sync --locked --only-group quality --no-editable",
+        'uv export --locked --all-packages --all-groups --no-emit-workspace --format requirements-txt --output-file "$RUNNER_TEMP/locked-requirements.txt"',
+        'uv run --locked --offline --no-sync --only-group quality pip-audit --require-hashes --disable-pip --progress-spinner off --requirement "$RUNNER_TEMP/locked-requirements.txt"',
+        "uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py audit-negative",
+    ),
+    "quality": (
+        "python -I scripts/ci_policy.py lock",
+        "uv sync --locked --no-editable --group quality",
+        "uv run --locked --offline --no-sync --group quality python -I scripts/quality.py",
+    ),
+    "gate": (
+        "python -c \"import os,sys; names=('POLICY_RESULT','SECRETS_RESULT','DEPENDENCY_RESULT','QUALITY_RESULT'); failed=[name for name in names if os.environ.get(name) != 'success']; print('CI_GATE=' + ('PASS' if not failed else 'FAIL')); sys.exit(bool(failed))\"",
+    ),
+}
+FULL_SHA_PATTERN: Final = re.compile(r"[0-9a-f]{40}\Z")
+ARTIFACT_HASH_PATTERN: Final = re.compile(r"sha256:[0-9a-f]{64}\Z")
+SAFE_BASE_PATTERN: Final = re.compile(r"[0-9a-f]{40}\Z")
+
+
+class PolicyError(RuntimeError):
+    """Raised for malformed input that cannot be safely interpreted."""
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise PolicyError(f"{path.name} must contain a JSON object")
+    return value
+
+
+def _mapping(value: object, label: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise PolicyError(f"{label} must be a mapping")
+    return {str(key): item for key, item in value.items()}
+
+
+def _sequence(value: object, label: str) -> Sequence[Any]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise PolicyError(f"{label} must be a sequence")
+    return value
+
+
+def _walk(value: object) -> Iterable[object]:
+    yield value
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            yield from _walk(key)
+            yield from _walk(item)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for item in value:
+            yield from _walk(item)
+
+
+def _load_workflow(path: Path = WORKFLOW_PATH) -> dict[str, Any]:
+    # Deliberately lazy: `lock` must run before third-party dependencies are installed.
+    import yaml  # type: ignore[import-untyped]
+
+    value = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    if not isinstance(value, dict):
+        raise PolicyError("workflow must contain one YAML mapping")
+    return {str(key): item for key, item in value.items()}
+
+
+def _load_precommit(path: Path = PRECOMMIT_PATH) -> dict[str, Any]:
+    """Load pre-commit with string-preserving YAML semantics."""
+
+    import yaml
+
+    value = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    if not isinstance(value, dict):
+        raise PolicyError("pre-commit config must contain one YAML mapping")
+    return {str(key): item for key, item in value.items()}
+
+
+def precommit_errors(configuration: Mapping[str, Any]) -> list[str]:
+    """Reject local hook bypasses and alternate dependency bootstraps."""
+
+    expected = {
+        "minimum_pre_commit_version": "4.6.0",
+        "default_install_hook_types": ["pre-commit", "pre-push"],
+        "fail_fast": "true",
+        "repos": [
+            {
+                "repo": "local",
+                "hooks": [
+                    {
+                        "id": "securecode-ci-policy",
+                        "name": "SecureCode CI policy",
+                        "language": "system",
+                        "entry": "python -I scripts/precommit_entry.py policy",
+                        "pass_filenames": "false",
+                        "always_run": "true",
+                    },
+                    {
+                        "id": "securecode-secrets",
+                        "name": "SecureCode staged secret scan",
+                        "language": "system",
+                        "entry": "python -I scripts/precommit_entry.py secrets",
+                        "types": ["text"],
+                    },
+                    {
+                        "id": "securecode-workflow-security",
+                        "name": "SecureCode workflow security audit",
+                        "language": "system",
+                        "entry": "python -I scripts/precommit_entry.py workflow",
+                        "pass_filenames": "false",
+                        "always_run": "true",
+                    },
+                    {
+                        "id": "securecode-quality",
+                        "name": "SecureCode canonical quality gate",
+                        "language": "system",
+                        "entry": "python -I scripts/precommit_entry.py quality",
+                        "pass_filenames": "false",
+                        "always_run": "true",
+                    },
+                ],
+            }
+        ],
+    }
+    return [] if configuration == expected else ["pre-commit policy differs from the closed set"]
+
+
+def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
+    """Return deterministic violations for the single authoritative workflow."""
+
+    errors: list[str] = []
+    if set(workflow) != {"name", "on", "permissions", "concurrency", "jobs"}:
+        errors.append("workflow top-level keys differ from the closed set")
+    if workflow.get("name") != "ci":
+        errors.append("workflow name must be ci")
+    events = _mapping(workflow.get("on"), "workflow.on")
+    required_events = {"pull_request", "push", "merge_group", "workflow_dispatch"}
+    if set(events) != required_events:
+        errors.append(f"workflow events must be exactly {sorted(required_events)}")
+    push = _mapping(events.get("push"), "workflow.on.push")
+    if set(push) != {"branches"} or list(_sequence(push.get("branches"), "push.branches")) != [
+        "master"
+    ]:
+        errors.append("push must target only master")
+    for event_name in ("pull_request", "merge_group"):
+        event = _mapping(events.get(event_name), f"workflow.on.{event_name}")
+        if event:
+            errors.append(f"{event_name} must not use path/type filters")
+
+    permissions = _mapping(workflow.get("permissions"), "workflow.permissions")
+    if permissions != {"contents": "read"}:
+        errors.append("top-level permissions must be exactly contents: read")
+    concurrency = _mapping(workflow.get("concurrency"), "workflow.concurrency")
+    if concurrency != {
+        "group": "ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "cancel-in-progress": "true",
+    }:
+        errors.append("workflow concurrency policy differs from the reviewed value")
+
+    jobs = _mapping(workflow.get("jobs"), "workflow.jobs")
+    if set(jobs) != EXPECTED_JOBS:
+        errors.append(f"workflow jobs must be exactly {sorted(EXPECTED_JOBS)}")
+
+    uses_seen: set[str] = set()
+    for job_name, raw_job in jobs.items():
+        job = _mapping(raw_job, f"jobs.{job_name}")
+        expected_job_keys = {
+            "policy": {"name", "runs-on", "timeout-minutes", "steps"},
+            "secrets": {"name", "needs", "runs-on", "timeout-minutes", "env", "steps"},
+            "dependency": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
+            "quality": {"name", "needs", "runs-on", "timeout-minutes", "strategy", "steps"},
+            "gate": {
+                "name",
+                "if",
+                "needs",
+                "runs-on",
+                "timeout-minutes",
+                "permissions",
+                "env",
+                "steps",
+            },
+        }
+        if set(job) != expected_job_keys.get(job_name, set()):
+            errors.append(f"{job_name}: job keys differ from the closed set")
+        if job.get("name") != EXPECTED_JOB_NAMES.get(job_name):
+            errors.append(f"{job_name}: display name differs from the stable check contract")
+        runner = job.get("runs-on")
+        if runner != "ubuntu-24.04":
+            errors.append(f"{job_name}: runner must be ubuntu-24.04")
+        if job.get("timeout-minutes") != EXPECTED_TIMEOUTS.get(job_name):
+            errors.append(f"{job_name}: timeout-minutes differs from the bounded value")
+        if job.get("continue-on-error") == "true":
+            errors.append(f"{job_name}: continue-on-error is forbidden")
+        job_permissions = job.get("permissions")
+        if job_permissions is not None:
+            parsed_permissions = _mapping(job_permissions, f"jobs.{job_name}.permissions")
+            for permission, level in parsed_permissions.items():
+                if level != "read" and level != "none":
+                    errors.append(f"{job_name}: permission {permission}={level} is forbidden")
+
+        steps = _sequence(job.get("steps"), f"jobs.{job_name}.steps")
+        run_commands = tuple(
+            str(_mapping(step, f"jobs.{job_name}.step").get("run"))
+            for step in steps
+            if _mapping(step, f"jobs.{job_name}.step").get("run") is not None
+        )
+        if run_commands != EXPECTED_RUN_COMMANDS.get(job_name, ()):
+            errors.append(f"{job_name}: authoritative run command sequence changed")
+        action_sequence: list[str] = []
+        for index, raw_step in enumerate(steps):
+            step = _mapping(raw_step, f"jobs.{job_name}.steps[{index}]")
+            expected_step_keys = {"name", "uses", "with"} if "uses" in step else {"name", "run"}
+            if set(step) != expected_step_keys:
+                errors.append(f"{job_name}[{index}]: step keys differ from the closed set")
+            if step.get("continue-on-error") == "true":
+                errors.append(f"{job_name}[{index}]: continue-on-error is forbidden")
+            run = step.get("run")
+            if isinstance(run, str) and "${{" in run:
+                errors.append(f"{job_name}[{index}]: expressions are forbidden in run scripts")
+            uses = step.get("uses")
+            if not isinstance(uses, str):
+                continue
+            uses_seen.add(uses)
+            action, separator, revision = uses.partition("@")
+            action_sequence.append(action)
+            if separator != "@" or not FULL_SHA_PATTERN.fullmatch(revision):
+                errors.append(f"{job_name}[{index}]: action ref must be a full commit SHA")
+                continue
+            expected = ACTION_REFS.get(action)
+            if expected is None or revision != expected:
+                errors.append(
+                    f"{job_name}[{index}]: action {action} is not allowlisted at this SHA"
+                )
+            inputs = _mapping(step.get("with", {}), f"jobs.{job_name}.steps[{index}].with")
+            if action == "actions/checkout":
+                expected_checkout = {
+                    "persist-credentials": "false",
+                    "fetch-depth": "0" if job_name == "secrets" else "1",
+                    "lfs": "false",
+                    "submodules": "false",
+                    "set-safe-directory": "false",
+                }
+                if inputs != expected_checkout:
+                    errors.append(
+                        f"{job_name}[{index}]: checkout inputs differ from the closed set"
+                    )
+            elif action == "actions/setup-python":
+                expected_python = (
+                    "${{ matrix.python-version }}" if job_name == "quality" else "3.13"
+                )
+                if inputs != {"python-version": expected_python, "check-latest": "false"}:
+                    errors.append(
+                        f"{job_name}[{index}]: setup-python inputs differ from the closed set"
+                    )
+            elif action == "astral-sh/setup-uv":
+                if inputs != {
+                    "version": "0.12.0",
+                    "checksum": UV_LINUX_SHA256,
+                    "enable-cache": "false",
+                    "add-problem-matchers": "false",
+                }:
+                    errors.append(
+                        f"{job_name}[{index}]: setup-uv inputs differ from the closed set"
+                    )
+        if job_name != "gate" and action_sequence != [
+            "actions/checkout",
+            "actions/setup-python",
+            "astral-sh/setup-uv",
+        ]:
+            errors.append(f"{job_name}: action sequence differs from the closed bootstrap")
+
+    used_actions = {reference.partition("@")[0] for reference in uses_seen}
+    if used_actions != set(ACTION_REFS):
+        errors.append(f"workflow actions must be exactly {sorted(ACTION_REFS)}")
+
+    serialized = json.dumps(workflow, sort_keys=True)
+    forbidden_fragments = (
+        "pull_request_target",
+        "workflow_run",
+        "self-hosted",
+        "${{ secrets.",
+        "${{ github.token",
+        "id-token",
+        "actions/cache",
+        "restore-cache",
+        "save-cache",
+        "docker.sock",
+        "|| true",
+    )
+    for fragment in forbidden_fragments:
+        if fragment in serialized:
+            errors.append(f"workflow contains forbidden fragment: {fragment}")
+
+    quality = _mapping(jobs.get("quality"), "jobs.quality")
+    strategy = _mapping(quality.get("strategy"), "jobs.quality.strategy")
+    matrix = _mapping(strategy.get("matrix"), "jobs.quality.strategy.matrix")
+    versions = list(_sequence(matrix.get("python-version"), "quality python matrix"))
+    if strategy.get("fail-fast") != "false" or versions != ["3.12", "3.13", "3.14"]:
+        errors.append("quality matrix must be fail-fast:false over Python 3.12, 3.13 and 3.14")
+    quality_needs = set(_sequence(quality.get("needs"), "jobs.quality.needs"))
+    if quality_needs != {"policy", "secrets", "dependency"}:
+        errors.append("quality must require policy, secrets and dependency")
+
+    gate = _mapping(jobs.get("gate"), "jobs.gate")
+    if gate.get("if") != "${{ always() }}":
+        errors.append("gate must run under always()")
+    gate_needs = set(_sequence(gate.get("needs"), "jobs.gate.needs"))
+    if gate_needs != {"policy", "secrets", "dependency", "quality"}:
+        errors.append("gate must aggregate every mandatory job")
+    expected_gate_environment = {
+        "POLICY_RESULT": "${{ needs.policy.result }}",
+        "SECRETS_RESULT": "${{ needs.secrets.result }}",
+        "DEPENDENCY_RESULT": "${{ needs.dependency.result }}",
+        "QUALITY_RESULT": "${{ needs.quality.result }}",
+    }
+    if _mapping(gate.get("env"), "jobs.gate.env") != expected_gate_environment:
+        errors.append("gate result environment differs from the closed mandatory set")
+    expected_secret_environment = {
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || github.sha }}"
+    }
+    if _mapping(jobs.get("secrets"), "jobs.secrets").get("env") != expected_secret_environment:
+        errors.append("secret history base environment differs from the reviewed expression")
+    if _mapping(jobs.get("secrets"), "jobs.secrets").get("needs") != ["policy"]:
+        errors.append("secrets must require policy success")
+    if _mapping(jobs.get("dependency"), "jobs.dependency").get("needs") != ["policy"]:
+        errors.append("dependency must require policy success")
+    return sorted(set(errors))
+
+
+def baseline_errors(baseline: Mapping[str, Any]) -> list[str]:
+    """Reject baseline self-approval, detector weakening or manual truth labels."""
+
+    errors: list[str] = []
+    protected = {
+        key: baseline.get(key) for key in ("version", "plugins_used", "filters_used", "results")
+    }
+    canonical = json.dumps(protected, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(canonical.encode()).hexdigest()
+    if digest != EXPECTED_BASELINE_DIGEST:
+        errors.append("secret baseline differs from the independently reviewed policy")
+
+    results = _mapping(baseline.get("results"), "baseline.results")
+    count = 0
+    for path, raw_findings in results.items():
+        if Path(path).is_absolute() or ".." in Path(path).parts:
+            errors.append(f"baseline path is unsafe: {path}")
+        for raw_finding in _sequence(raw_findings, f"baseline.results.{path}"):
+            finding = _mapping(raw_finding, f"baseline finding in {path}")
+            count += 1
+            if finding.get("is_secret") is not None:
+                errors.append(f"baseline contains a manual truth label: {path}")
+            hashed = finding.get("hashed_secret")
+            if not isinstance(hashed, str) or not re.fullmatch(r"[0-9a-f]{40}", hashed):
+                errors.append(f"baseline contains a malformed secret hash: {path}")
+    if count != EXPECTED_BASELINE_FINDINGS:
+        errors.append(f"secret baseline must contain exactly {EXPECTED_BASELINE_FINDINGS} findings")
+    return sorted(set(errors))
+
+
+def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[str]:
+    """Validate all sources and integrity metadata before dependency installation."""
+
+    errors: list[str] = []
+    if set(pyproject) != {"project", "tool", "dependency-groups"}:
+        errors.append("root pyproject top-level keys differ from the closed set")
+    tool = _mapping(pyproject.get("tool"), "pyproject.tool")
+    if set(tool) != {"uv", "ruff", "mypy", "pytest", "coverage"}:
+        errors.append("root tool tables differ from the closed set")
+    uv = _mapping(tool.get("uv"), "pyproject.tool.uv")
+    if set(uv) != {
+        "package",
+        "required-version",
+        "default-groups",
+        "exclude-newer",
+        "build-constraint-dependencies",
+        "sources",
+        "workspace",
+        "index",
+    }:
+        errors.append("root uv keys differ from the closed set")
+    if uv.get("required-version") != "==0.12.0":
+        errors.append("uv required-version must be exactly 0.12.0")
+    if uv.get("default-groups") != [] or uv.get("package") is not False:
+        errors.append("root uv default-group/package policy differs from the reviewed values")
+    if uv.get("exclude-newer") != "2026-08-13T00:00:00Z":
+        errors.append("dependency upload-time cutoff differs from the reviewed value")
+    indexes = _sequence(uv.get("index"), "pyproject.tool.uv.index")
+    if len(indexes) != 1 or _mapping(indexes[0], "pyproject.tool.uv.index[0]") != {
+        "name": "pypi",
+        "url": PYPI_INDEX,
+        "default": True,
+    }:
+        errors.append("pyproject must define exactly one default PyPI index")
+    if set(_sequence(uv.get("build-constraint-dependencies"), "build constraints")) != {
+        "uv_build>=0.11.32,<0.13"
+    }:
+        errors.append("build backend constraint differs from the reviewed range")
+    workspace_sources = _mapping(uv.get("sources"), "pyproject.tool.uv.sources")
+    if workspace_sources != {
+        "securecode-ai-adapters": {"workspace": True},
+        "securecode-ai-contracts": {"workspace": True},
+        "securecode-ai-core": {"workspace": True},
+    }:
+        errors.append("workspace source declarations differ from the closed set")
+    workspace = _mapping(uv.get("workspace"), "pyproject.tool.uv.workspace")
+    if workspace != {"members": ["packages/adapters", "packages/contracts", "packages/core"]}:
+        errors.append("workspace member inventory differs from the closed set")
+
+    dependency_groups = _mapping(pyproject.get("dependency-groups"), "dependency-groups")
+    if set(dependency_groups) != {"build", "quality"}:
+        errors.append("dependency groups differ from the closed root set")
+    if set(_sequence(dependency_groups.get("build"), "dependency-groups.build")) != {
+        "uv-build>=0.11.32,<0.13"
+    }:
+        errors.append("build dependency group differs from the reviewed range")
+    quality = set(_sequence(dependency_groups.get("quality"), "dependency-groups.quality"))
+    if quality != EXPECTED_QUALITY_DEPENDENCIES:
+        errors.append("quality dependencies differ from the exact reviewed set")
+    project = _mapping(pyproject.get("project"), "project")
+    if set(project) != {
+        "name",
+        "version",
+        "description",
+        "readme",
+        "requires-python",
+        "dependencies",
+        "classifiers",
+    }:
+        errors.append("root project metadata keys differ from the closed set")
+    direct_dependencies = list(_sequence(project.get("dependencies"), "project.dependencies"))
+    if (
+        project.get("name") != "securecode-ai-workspace"
+        or project.get("version") != "0.1.0a0"
+        or project.get("description") != "Reproducible workspace authority for SecureCode AI"
+        or project.get("readme") != "README.md"
+        or project.get("requires-python") != ">=3.12,<3.15"
+        or project.get("classifiers") != ["Private :: Do Not Upload"]
+        or direct_dependencies != EXPECTED_ROOT_DEPENDENCIES
+    ):
+        errors.append("root project identity or dependencies differ from the closed set")
+    for dependency in [*direct_dependencies, *quality]:
+        if not isinstance(dependency, str) or any(
+            fragment in dependency.lower() for fragment in (" @ ", "git+", "http://", "https://")
+        ):
+            errors.append(f"direct dependency uses a forbidden source: {dependency!r}")
+
+    packages = _sequence(lock.get("package"), "uv.lock package")
+    expected_workspace_sources = {
+        "securecode-ai-adapters": {"editable": "packages/adapters"},
+        "securecode-ai-contracts": {"editable": "packages/contracts"},
+        "securecode-ai-core": {"editable": "packages/core"},
+        "securecode-ai-workspace": {"virtual": "."},
+    }
+    for raw_package in packages:
+        package = _mapping(raw_package, "uv.lock package entry")
+        name = package.get("name")
+        source = _mapping(package.get("source"), f"uv.lock source for {name}")
+        if name in expected_workspace_sources:
+            if source != expected_workspace_sources[name]:
+                errors.append(f"workspace source mismatch for {name}")
+            continue
+        if source != {"registry": PYPI_INDEX}:
+            errors.append(f"non-PyPI or unknown source for {name}")
+            continue
+        artifacts: list[Mapping[str, Any]] = []
+        sdist = package.get("sdist")
+        if sdist is not None:
+            artifacts.append(_mapping(sdist, f"sdist for {name}"))
+        artifacts.extend(
+            _mapping(wheel, f"wheel for {name}")
+            for wheel in _sequence(package.get("wheels", []), f"wheels for {name}")
+        )
+        if not artifacts:
+            errors.append(f"registry package has no locked artifacts: {name}")
+        for artifact in artifacts:
+            url = artifact.get("url")
+            digest = artifact.get("hash")
+            if not isinstance(url, str) or (
+                urlparse(url).scheme != "https" or urlparse(url).hostname != PYPI_ARTIFACT_HOST
+            ):
+                errors.append(f"artifact URL is not approved for {name}")
+            if not isinstance(digest, str) or not ARTIFACT_HASH_PATTERN.fullmatch(digest):
+                errors.append(f"artifact SHA-256 is missing for {name}")
+    return sorted(set(errors))
+
+
+def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """Reject build hooks, scripts or dependencies outside the reviewed workspace metadata."""
+
+    errors: list[str] = []
+    if set(documents) != set(WORKSPACE_PROJECTS):
+        errors.append("workspace pyproject inventory differs from the closed set")
+        return errors
+    for path, (name, dependencies, sources, module_name) in WORKSPACE_PROJECTS.items():
+        document = _mapping(documents[path], path)
+        if set(document) != {"build-system", "project", "tool"}:
+            errors.append(f"{path}: top-level metadata keys differ from the closed set")
+        build_system = _mapping(document.get("build-system"), f"{path}.build-system")
+        if build_system != {
+            "requires": ["uv_build>=0.11.32,<0.13"],
+            "build-backend": "uv_build",
+        }:
+            errors.append(f"{path}: build backend differs from the reviewed backend")
+        project = _mapping(document.get("project"), f"{path}.project")
+        expected_project_keys = {
+            "name",
+            "version",
+            "description",
+            "readme",
+            "requires-python",
+            "dependencies",
+            "classifiers",
+        }
+        if set(project) != expected_project_keys:
+            errors.append(f"{path}: project metadata keys differ from the closed set")
+        if (
+            project.get("name") != name
+            or project.get("version") != "0.1.0a0"
+            or project.get("requires-python") != ">=3.12,<3.15"
+            or project.get("dependencies") != dependencies
+        ):
+            errors.append(f"{path}: identity or dependencies differ from the reviewed values")
+        tool = _mapping(document.get("tool"), f"{path}.tool")
+        uv = _mapping(tool.get("uv"), f"{path}.tool.uv")
+        expected_uv_keys = {"build-backend"} | ({"sources"} if sources else set())
+        if set(uv) != expected_uv_keys:
+            errors.append(f"{path}: uv metadata keys differ from the closed set")
+        if _mapping(uv.get("build-backend"), f"{path}.tool.uv.build-backend") != {
+            "module-name": module_name
+        }:
+            errors.append(f"{path}: module ownership differs from the reviewed value")
+        if sources and _mapping(uv.get("sources"), f"{path}.tool.uv.sources") != sources:
+            errors.append(f"{path}: workspace dependency sources differ from the reviewed set")
+    return sorted(set(errors))
+
+
+def _approved_secret_keys(baseline: Mapping[str, Any]) -> set[tuple[str, str, str]]:
+    approved: set[tuple[str, str, str]] = set()
+    for path, raw_findings in _mapping(baseline.get("results"), "baseline.results").items():
+        for raw_finding in _sequence(raw_findings, f"baseline.results.{path}"):
+            finding = _mapping(raw_finding, f"baseline finding in {path}")
+            approved.add(
+                (path.replace("\\", "/"), str(finding["type"]), str(finding["hashed_secret"]))
+            )
+    return approved
+
+
+def scan_text(
+    path: str,
+    content: str,
+    baseline: Mapping[str, Any],
+) -> list[tuple[str, str]]:
+    """Scan one immutable blob and return only safe path/type diagnostics."""
+
+    from detect_secrets.core.scan import _process_line_based_plugins
+    from detect_secrets.settings import transient_settings
+
+    approved = _approved_secret_keys(baseline)
+    findings: set[tuple[str, str]] = set()
+    with transient_settings(dict(baseline)):
+        lines = list(enumerate(content.splitlines(), start=1))
+        for candidate in _process_line_based_plugins(lines, filename=path):
+            normalized_path = path.replace("\\", "/")
+            key = (normalized_path, candidate.type, candidate.secret_hash)
+            if key not in approved:
+                findings.add((normalized_path, candidate.type))
+    return sorted(findings)
+
+
+def _git(*arguments: str) -> str:
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    return completed.stdout
+
+
+def _git_bytes(*arguments: str) -> bytes:
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        timeout=60,
+    )
+    return completed.stdout
+
+
+def parse_git_blob_records(raw: bytes, *, index: bool) -> list[tuple[str, str]]:
+    """Parse NUL-safe index/tree records into path/object pairs."""
+
+    records: list[tuple[str, str]] = []
+    for raw_record in raw.split(b"\0"):
+        if not raw_record:
+            continue
+        try:
+            metadata, raw_path = raw_record.split(b"\t", 1)
+            fields = metadata.decode("ascii").split()
+        except (UnicodeDecodeError, ValueError) as error:
+            raise PolicyError("Git blob inventory is malformed") from error
+        if len(fields) != 3:
+            raise PolicyError("Git blob inventory field count is invalid")
+        mode = fields[0]
+        object_id = fields[1] if index else fields[2]
+        if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", object_id):
+            raise PolicyError("Git blob object ID is invalid")
+        if index:
+            if fields[2] != "0":
+                raise PolicyError("Git index contains an unresolved merge stage")
+        else:
+            if fields[1] != "blob":
+                continue
+            if mode not in {"100644", "100755", "120000"}:
+                continue
+        path = raw_path.decode("utf-8", "surrogateescape")
+        if not path:
+            raise PolicyError("Git blob path is empty")
+        records.append((path, object_id))
+    return records
+
+
+def _scan_git_blobs(
+    records: Sequence[tuple[str, str]],
+    baseline: Mapping[str, Any],
+    *,
+    prefix: str,
+) -> list[str]:
+    """Scan immutable object-database blobs and emit secret-safe diagnostics."""
+
+    errors: list[str] = []
+    for path, object_id in records:
+        if path.replace("\\", "/") == ".secrets.baseline":
+            continue
+        blob = _git_bytes("cat-file", "blob", object_id)
+        for found_path, finding_type in scan_text(path, blob.decode("utf-8", "replace"), baseline):
+            safe_path = json.dumps(found_path, ensure_ascii=True)[1:-1]
+            errors.append(f"{prefix}: {safe_path} ({finding_type})")
+    return errors
+
+
+def _index_blob_records() -> list[tuple[str, str]]:
+    return parse_git_blob_records(_git_bytes("ls-files", "--stage", "-z"), index=True)
+
+
+def _tree_blob_records(commit: str) -> list[tuple[str, str]]:
+    return parse_git_blob_records(
+        _git_bytes("ls-tree", "-r", "-z", commit),
+        index=False,
+    )
+
+
+def _candidate_commits(base_sha: str) -> list[str]:
+    head = _git("rev-parse", "HEAD").strip()
+    if base_sha in {"0" * 40, head}:
+        arguments: tuple[str, ...] = ("rev-list", "--reverse", "--topo-order", "HEAD")
+    else:
+        arguments = ("rev-list", "--reverse", "--topo-order", "HEAD", "--not", base_sha)
+    return [commit for commit in _git(*arguments).splitlines() if commit]
+
+
+def secret_errors(base_sha: str | None) -> list[str]:
+    """Scan index blobs and every candidate commit tree without following filesystem links."""
+
+    baseline_data = _read_json(BASELINE_PATH)
+    errors = baseline_errors(baseline_data)
+    errors.extend(
+        _scan_git_blobs(
+            _index_blob_records(),
+            baseline_data,
+            prefix="unapproved index secret candidate",
+        )
+    )
+
+    if base_sha:
+        if not SAFE_BASE_PATTERN.fullmatch(base_sha):
+            errors.append("base SHA is not a full lowercase commit SHA")
+        else:
+            try:
+                for commit in _candidate_commits(base_sha):
+                    errors.extend(
+                        _scan_git_blobs(
+                            _tree_blob_records(commit),
+                            baseline_data,
+                            prefix="candidate-history secret candidate",
+                        )
+                    )
+            except subprocess.SubprocessError:
+                errors.append("PR history could not be scanned")
+    return sorted(set(errors))
+
+
+def known_vulnerable_audit_errors(returncode: int, output: str) -> list[str]:
+    """Accept only a valid pip-audit finding receipt for the locked negative fixture."""
+
+    if returncode != 1:
+        return [f"known-vulnerable audit returned {returncode}, expected findings exit 1"]
+    try:
+        report = json.loads(output)
+        dependencies = _sequence(
+            _mapping(report, "pip-audit report").get("dependencies"), "dependencies"
+        )
+    except (json.JSONDecodeError, PolicyError):
+        return ["known-vulnerable audit did not return valid JSON"]
+    vulnerabilities: list[Any] = []
+    for raw_dependency in dependencies:
+        dependency = _mapping(raw_dependency, "pip-audit dependency")
+        if dependency.get("name") == "pip" and dependency.get("version") == "21.2.4":
+            vulnerabilities.extend(_sequence(dependency.get("vulns"), "pip vulnerabilities"))
+    if not vulnerabilities:
+        return ["known-vulnerable audit returned no pip 21.2.4 findings"]
+    return []
+
+
+def run_known_vulnerable_audit() -> list[str]:
+    """Run pip-audit against a hash-complete immutable negative fixture."""
+
+    fixture = _read_json(VULNERABLE_FIXTURE_PATH)
+    if set(fixture) != {"name", "version", "sha256_chunks", "minimum_vulnerabilities"}:
+        return ["known-vulnerable fixture keys differ from the closed set"]
+    if (
+        fixture.get("name") != "pip"
+        or fixture.get("version") != "21.2.4"
+        or fixture.get("minimum_vulnerabilities") != 1
+    ):
+        return ["known-vulnerable fixture identity differs from the reviewed value"]
+    hashes = [
+        "".join(str(chunk) for chunk in _sequence(raw_chunks, "fixture hash chunks"))
+        for raw_chunks in _sequence(fixture.get("sha256_chunks"), "fixture hashes")
+    ]
+    if hashes != EXPECTED_VULNERABLE_HASHES:
+        return ["known-vulnerable fixture hashes are malformed"]
+    requirement = "pip==21.2.4 " + " ".join(f"--hash=sha256:{digest}" for digest in hashes)
+    with tempfile.TemporaryDirectory(prefix="securecode-audit-negative-") as directory:
+        requirement_path = Path(directory) / "requirements.txt"
+        requirement_path.write_text(requirement + "\n", encoding="utf-8")
+        completed = subprocess.run(
+            (
+                sys.executable,
+                "-I",
+                "-m",
+                "pip_audit",
+                "--require-hashes",
+                "--disable-pip",
+                "--progress-spinner",
+                "off",
+                "--format",
+                "json",
+                "--requirement",
+                str(requirement_path),
+            ),
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    return known_vulnerable_audit_errors(completed.returncode, completed.stdout)
+
+
+def validate(selection: str, base_sha: str | None = None) -> list[str]:
+    """Run one policy family or the complete non-network policy suite."""
+
+    errors: list[str] = []
+    if selection in {"lock", "validate"}:
+        with PYPROJECT_PATH.open("rb") as handle:
+            pyproject = tomllib.load(handle)
+        with LOCK_PATH.open("rb") as handle:
+            lock = tomllib.load(handle)
+        errors.extend(lock_errors(pyproject, lock))
+        workspace_documents: dict[str, Mapping[str, Any]] = {}
+        for relative in WORKSPACE_PROJECTS:
+            with (REPOSITORY_ROOT / relative).open("rb") as handle:
+                workspace_documents[relative] = tomllib.load(handle)
+        errors.extend(workspace_metadata_errors(workspace_documents))
+        tracked_lockfiles = _git("ls-files", "*uv.lock").splitlines()
+        if tracked_lockfiles != ["uv.lock"]:
+            errors.append("repository must contain exactly one root uv.lock")
+    if selection in {"workflow", "validate"}:
+        errors.extend(workflow_errors(_load_workflow()))
+        errors.extend(precommit_errors(_load_precommit()))
+    if selection in {"baseline", "validate"}:
+        errors.extend(baseline_errors(_read_json(BASELINE_PATH)))
+    if selection == "secrets":
+        errors.extend(secret_errors(base_sha))
+    if selection == "audit-negative":
+        errors.extend(run_known_vulnerable_audit())
+    return sorted(set(errors))
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "selection",
+        choices=("validate", "lock", "workflow", "baseline", "secrets", "audit-negative"),
+    )
+    parser.add_argument("--base", help="trusted 40-hex base commit for PR history scanning")
+    arguments = parser.parse_args(argv)
+    try:
+        errors = validate(arguments.selection, arguments.base)
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+        PolicyError,
+        subprocess.SubprocessError,
+        tomllib.TOMLDecodeError,
+    ) as exception:
+        print(
+            f"CI_POLICY=FAIL (malformed policy input: {type(exception).__name__})", file=sys.stderr
+        )
+        return 2
+    if errors:
+        print("CI_POLICY=FAIL", file=sys.stderr)
+        for violation in errors:
+            print(f"- {violation}", file=sys.stderr)
+        return 1
+    print(f"CI_POLICY=PASS ({arguments.selection})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

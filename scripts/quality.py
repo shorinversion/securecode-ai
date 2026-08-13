@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Final
 
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
-PYTHON_ROOTS: Final = ("packages", "apps", "integrations", "tests")
+PYTHON_ROOTS: Final = ("packages", "apps", "integrations", "scripts", "tests")
+EXCLUDED_PYTHON_TARGETS: Final = frozenset({"scripts/validate_g0.py"})
 STAGE_TIMEOUT_SECONDS: Final = 240
 GIT_TIMEOUT_SECONDS: Final = 30
 SAFE_PARENT_VARIABLES: Final = (
@@ -39,14 +40,14 @@ class QualityStage:
 def _python_targets() -> tuple[str, ...]:
     """Return every first-party Python file in deterministic repository order."""
 
-    targets = {"scripts/quality.py"}
+    targets: set[str] = set()
     for root_name in PYTHON_ROOTS:
         root = REPOSITORY_ROOT / root_name
         if root.exists():
             targets.update(
                 path.relative_to(REPOSITORY_ROOT).as_posix() for path in root.rglob("*.py")
             )
-    return tuple(sorted(targets))
+    return tuple(sorted(targets - EXCLUDED_PYTHON_TARGETS))
 
 
 def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:

@@ -1,0 +1,202 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.4"
+  type: "implementation"
+  objective: "Make the P1.3 gate authoritative in GitHub CI and available as local pre-commit feedback, with fail-closed secret, dependency and untrusted-PR controls."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "6f556fec38a80adc7f57b41421b0bc05c70f1312"
+  spec_refs: [SC-SYS-001, SC-SYS-006, SC-SYS-008, SC-SCM-005]
+  decision_refs: [D-013, D-016, D-029]
+  preconditions:
+    - "P1.3 is committed and its post-commit quality, strict-G0 and independent reviews pass"
+    - "G0 strict validator exits 0 against the effective attestation"
+  non_goals:
+    - "domain contracts or behavior owned by P1.5 and later"
+    - "spec/contract compatibility and protected-path drift owned by P1.13"
+    - "release SBOM, provenance, signing and artifact verification owned by P8.11"
+    - "production scanner/agent sandbox and digest-pinned execution images owned by P4/P8"
+    - "GitLab pipeline owned by later integration work"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "ci-security-foundation-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - ".github/workflows/ci.yml"
+    - ".pre-commit-config.yaml"
+    - ".secrets.baseline"
+    - "pyproject.toml"
+    - "uv.lock"
+    - "scripts/ci_policy.py"
+    - "scripts/precommit_entry.py"
+    - "scripts/quality.py"
+    - "tests/unit/test_ci_policy.py"
+    - "tests/fixtures/p1_4/known-vulnerable-requirement.json"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.4.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - ".github/workflows/ci.yml"
+    - ".pre-commit-config.yaml"
+    - ".secrets.baseline"
+    - "pyproject.toml"
+    - "uv.lock"
+    - "scripts/ci_policy.py"
+    - "scripts/precommit_entry.py"
+    - "scripts/quality.py"
+    - "tests/unit/test_ci_policy.py"
+    - "tests/fixtures/p1_4/known-vulnerable-requirement.json"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.4.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/**"
+    - "docs/PROJECT_BRIEF.md"
+    - "packages/**/src/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+    - "Dockerfile"
+    - "tests/acceptance/**"
+    - "tests/evaluator/**"
+  max_changed_files: 17
+  # uv.lock adds the audited transitive graph; policy/test code closes the
+  # self-skip, action-input, baseline and dependency-source mutation surface.
+  max_diff_lines: 3200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, web_primary_sources, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/log/add/commit/ls-files"
+    - "git ls-remote official action repositories"
+    - "rg"
+    - "uvx --from uv==0.12.0 uv lock/sync/run/tree"
+    - "pre-commit validate-config/run"
+    - "detect-secrets scan/hook"
+    - "pip-audit"
+    - "python scripts/ci_policy.py"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "allow_only_tool_provisioning_and_live_vulnerability_metadata; untrusted_PR_jobs_use_ephemeral_hosted_runners_without_secrets_or_write_tokens; strong_sandbox_deferred"
+  secrets: "deny"
+  dependency_changes: "allow_exact_pre-commit_detect-secrets_pip-audit_pyyaml_zizmor_and_locked_transitives_in_quality_group_only"
+
+inputs:
+  artifacts:
+    - "P1.3 canonical quality runner and negative oracles"
+    - "single root uv.lock and Python 3.12-3.14 support"
+    - "GitHub fork and GITHUB_TOKEN security model"
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "local-only pre-commit hooks using the locked root environment"
+    - "GitHub Actions workflow with full-SHA action pins and least permissions"
+    - "Python 3.12-3.14 quality matrix invoking the single P1.3 runner, extended only to include security-critical scripts"
+    - "fork-safe quality execution with no secrets, write token, cache or persisted checkout credential"
+    - "tracked-file secret baseline plus staged/all-files blocking checks"
+    - "locked dependency-source/integrity policy and live vulnerability audit"
+    - "offline strict workflow audit with an exact locked zizmor version"
+    - "unit and negative tests for CI, secret and dependency policy"
+  structured_result_schema: null
+  handoff_required_fields:
+    - "task_id_and_role"
+    - "scope_completed"
+    - "files_read_and_changed"
+    - "commands_and_exact_results"
+    - "action_and_tool_versions"
+    - "positive_and_negative_evidence"
+    - "assumptions"
+    - "risks_and_unresolved"
+    - "integration_order"
+
+constraints:
+  invariants:
+    - "CI and pre-commit invoke scripts/quality.py rather than duplicate its policy"
+    - "every third-party GitHub Action uses a full 40-hex commit SHA with a version comment"
+    - "quality jobs receive read-only repository permission, no declared secrets and no persisted checkout credential"
+    - "untrusted PR quality receives no declared secrets, write/OIDC permission, cache or persisted checkout credential"
+    - "secret scanner never prints a detected secret value in CI output"
+    - "dependency policy is fail-closed on unknown source, non-PyPI registry, missing SHA-256 artifact or live audit failure"
+  compatibility:
+    - "quality matrix covers CPython 3.12, 3.13 and 3.14"
+    - "local hook launcher resolves the project-owned uv executable on Windows and POSIX"
+  security:
+    - "workflow uses pull_request, never pull_request_target, to execute PR bytes"
+    - "top-level and job permissions are explicit least privilege"
+    - "workflow steps do not interpolate untrusted event text into shell"
+    - "quality execution environment excludes GitHub tokens, secrets, proxies and Python/pytest injection"
+    - "vulnerability audit uses a hash-complete uv.lock export with --disable-pip and does not install repository dependencies"
+    - "protected paths remain unchanged"
+  privacy:
+    - "no repository source, secret candidate or audit token is uploaded as an artifact"
+  performance:
+    - "each CI job has an explicit timeout and concurrency cancellation"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 55
+  timeout_seconds: 2400
+  max_output_bytes: 300000
+
+verification:
+  acceptance_commands:
+    - "uvx --offline --from uv==0.12.0 uv lock --check"
+    - "uvx --offline --from uv==0.12.0 uv run --locked --offline --no-sync --group quality pre-commit validate-config"
+    - "uvx --offline --from uv==0.12.0 uv run --locked --offline --no-sync --group quality pre-commit run --all-files"
+    - "uvx --offline --from uv==0.12.0 uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py validate"
+    - "pip-audit live vulnerability scan over a hash-complete uv.lock export"
+    - "canonical quality command on CPython 3.12, 3.13 and 3.14"
+    - "CI workflow structural/unit tests"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check and protected-path diff empty"
+  negative_cases:
+    - "floating or shortened action ref fails CI policy"
+    - "pull_request_target or write permission fails CI policy"
+    - "persisted checkout credentials fail CI policy"
+    - "secret canary in a staged/tracked fixture fails without printing the canary"
+    - "baseline updated with an unaudited new finding fails policy"
+    - "unknown/VCS/non-PyPI dependency source or missing artifact hash fails policy"
+    - "known-vulnerable isolated fixture/environment makes vulnerability audit non-zero"
+    - "secret/write/OIDC/cache/persisted-credential or privileged-event workflow mutation fails policy"
+    - "format/type/test mutation remains blocking through pre-commit/CI entrypoint"
+  required_evidence:
+    - "exact full action SHAs and tool versions"
+    - "local pre-commit and policy exit codes"
+    - "quality matrix and fork-safe permission/environment policy results"
+    - "GitHub ruleset receipt requiring the stable ci / gate check and a failing-PR merge-block demonstration"
+    - "secret/dependency/vulnerability negative exit codes"
+    - "independent architecture and security/evaluation PASS"
+    - "post-commit clean worktree and strict G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "CI_requires_secret_or_write_token_for_untrusted_PR"
+  - "security_scanner_cannot_fail_closed_without_disclosing_candidate"
+  - "untrusted_PR_cannot_run_without_secrets_and_write_token"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.4, SC-SYS-006, SC-SCM-005]
+  changelog_required: true
+  adr_required: false

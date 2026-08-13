@@ -46,8 +46,8 @@ Then run the canonical gate without dependency resolution or network access:
 uv run --locked --offline --no-sync --group quality python -I scripts/quality.py
 ```
 
-The runner checks every Python file under `packages/`, `apps/`, `integrations/`
-and `tests/`, plus its own implementation. Static format, lint and strict-type
+The runner checks every Python file under `packages/`, `apps/`, `integrations/`,
+`scripts/` and `tests/` except the immutable G0 validator. Static format, lint and strict-type
 checks must pass before repository tests may execute. Child processes receive a
 minimal credential/proxy/injection-free environment, each stage is bounded by a
 timeout, pytest plug-in autoloading is disabled, and any non-ignored repository
@@ -58,6 +58,46 @@ product sandbox delivered in later phases.
 Branch coverage is measured against `securecode_ai.core` alone and must be at
 least 80%. Core currently contains only its packaging marker, so the displayed
 100% is evidence that the gate is wired—not a claim of behavioral test quality.
+
+## Local pre-commit checks
+
+After provisioning the locked quality group, install both supported hook types:
+
+```powershell
+uv run --locked --offline --no-sync --group quality pre-commit install --hook-type pre-commit --hook-type pre-push
+uv run --locked --offline --no-sync --group quality pre-commit run --all-files
+```
+
+The hooks run four closed commands: CI/dependency policy validation, staged
+secret detection, offline strict workflow analysis and the canonical quality
+gate. A standard-library launcher resolves `uv 0.12.0` from the project
+`.venv` on Windows or POSIX, checks its version and fails if the locked
+environment is missing. It does not download a second hook environment.
+
+## GitHub CI and merge protection
+
+The single workflow `.github/workflows/ci.yml` runs on pull requests, merge
+queues and pushes to `master`. It pins every action to a full commit SHA,
+persists no checkout credential, disables action/dependency caches and grants
+only `contents: read`. Mandatory jobs are policy, secret-history scan, locked
+dependency audit and the Python 3.12–3.14 quality matrix. The stable aggregate
+status is `ci / gate`; skipped, cancelled or failed mandatory jobs make it fail.
+
+The repository has no GitHub remote yet, so CI configuration alone is **not a
+merge guarantee**. Before `P1.4` can be accepted, the repository owner must:
+
+1. push the reviewed commit to GitHub;
+2. protect `master` with a ruleset requiring `ci / gate` and merge-queue checks;
+3. require trusted review for changes to `.github/workflows/**`,
+   `scripts/ci_policy.py`, `.secrets.baseline` and branch/ruleset policy;
+4. demonstrate that a deliberately failing pull request cannot merge and retain
+   the ruleset/check-run receipt as gate evidence.
+
+Until that external evidence exists, the local P1.4 implementation is a
+verified candidate and the task remains open. Full untrusted-code execution
+isolation belongs to the later scanner/agent sandbox phases; the P1 workflow
+is configured for an ephemeral GitHub-hosted runner with no declared
+secrets, write/OIDC permission, cache or persisted checkout credential.
 
 Current first-party package graph:
 
@@ -115,8 +155,9 @@ packages/adapters/
   installable package boundaries and the single locked dependency authority.
 - `P1.3` completed the pinned Ruff/mypy/pytest quality toolchain and the single
   fail-closed local/CI entrypoint described above.
-- `P1.4` owns pre-commit and CI integration, including secret and dependency
-  policy jobs; it must call the same quality entrypoint.
+- `P1.4` has a locally verified pre-commit/CI candidate, including secret and
+  dependency policy jobs; external GitHub ruleset and failing-PR evidence are
+  still required before completion.
 - `P1.5` owns the first domain/contract Python modules.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
