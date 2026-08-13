@@ -5,8 +5,8 @@
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
-- Последняя завершённая задача: `P1.2 — packaging and locked dependencies`.
-- Следующая последовательная задача: `P1.3 — quality tooling`.
+- Последняя завершённая задача: `P1.3 — quality tooling`.
+- Следующая последовательная задача: `P1.4 — pre-commit and base CI`.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -20,6 +20,12 @@
 - P1.2 verification: one `uv.lock`; clean non-editable install/imports on
   Python 3.12/3.13/3.14; Python 3.11 and lock drift rejected; six distributions
   built; protected diff empty; strict G0 and independent review `PASS`.
+- P1.3 verification: exact Ruff 0.15.22, mypy 2.3.0, pytest 9.1.1 and
+  pytest-cov 7.1.0 in the root lock; one offline/no-sync quality entrypoint;
+  clean non-editable Python 3.12/3.13/3.14 runs; 17 tests; closed Core/contracts
+  import allow-lists; Core-only branch coverage floor; sanitized child env;
+  static-preflight, low-coverage, zero-test and repository-mutation negatives;
+  independent architecture and security/evaluation reviews `PASS/PASS`.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -105,7 +111,8 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Выполнить `P1.3`: единая format/lint/type/unit-test команда.
+1. Выполнить `P1.4`: pre-commit и CI должны вызывать единый P1.3 runner и
+   блокировать ошибки quality, secret и dependency policy.
 2. Не закрывать G1 до versioned contracts, fake provider, runtime/CLI skeleton,
    fixture factory, redaction и spec-drift checks по `P1.4–P1.13`.
 

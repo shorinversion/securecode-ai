@@ -190,7 +190,7 @@ Gate пройден, если:
 |---|---|---|---|---|
 | `P1.1` | Создать repository/monorepo layout | G0 | отдельные Core, CLI, server, integrations, tests, fixtures | `DONE` |
 | `P1.2` | Настроить packaging и locked dependencies | P1.1 | clean install в новой среде по одной инструкции | `DONE` |
-| `P1.3` | Настроить lint, format, type-check, unit tests | P1.1 | единая quality-команда локально и в CI | `TODO` |
+| `P1.3` | Настроить lint, format, type-check, unit tests | P1.1 | единая quality-команда локально и в CI | `DONE` |
 | `P1.4` | Настроить pre-commit и базовый CI | P1.3 | PR с ошибкой гарантированно блокируется | `TODO` |
 | `P1.5` | Ввести versioned domain contracts | P1.1 | schemas `AuditRun`, `FindingCase`, `Evidence`, `Patch`, `Validation` | `TODO` |
 | `P1.6` | Ввести append-only events и stable IDs | P1.5 | serialization/round-trip/idempotency tests | `TODO` |
@@ -518,10 +518,10 @@ security boundary, набора обязательных языков, blocking 
 ## 18. Текущий фокус
 
 G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation.
-`P1.1–P1.2` завершены: ownership-aware skeleton и locked uv workspace прошли
-strict G0 regression, protected-path проверки, clean install на Python
-3.12–3.14 и независимый architecture/packaging review. Следующий шаг — `P1.3`
-quality tooling. Затем идут versioned
+`P1.1–P1.3` завершены: ownership-aware skeleton, locked uv workspace и единый
+fail-closed quality runner прошли strict G0 regression, protected-path
+проверки и Python 3.12–3.14 matrix. Следующий шаг — `P1.4` pre-commit/CI, затем
+идут versioned
 contracts, fake provider, `RepositoryView`, LocalRuntime и CLI skeleton; узкий
 Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
 строятся до стабилизации Core contracts и deterministic evidence layer.

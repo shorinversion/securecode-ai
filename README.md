@@ -32,6 +32,33 @@ explicit reviewed change: update the relevant package metadata, regenerate
 with pinned uv, inspect `uv.lock`, then require `uv lock --check` and the clean
 install oracle to pass.
 
+## Deterministic quality gate
+
+Provision the exact non-editable runtime plus the locked quality tool group:
+
+```powershell
+uv sync --locked --exact --no-editable --group quality
+```
+
+Then run the canonical gate without dependency resolution or network access:
+
+```powershell
+uv run --locked --offline --no-sync --group quality python -I scripts/quality.py
+```
+
+The runner checks every Python file under `packages/`, `apps/`, `integrations/`
+and `tests/`, plus its own implementation. Static format, lint and strict-type
+checks must pass before repository tests may execute. Child processes receive a
+minimal credential/proxy/injection-free environment, each stage is bounded by a
+timeout, pytest plug-in autoloading is disabled, and any non-ignored repository
+mutation fails the run. Unit tests also deny common socket and child-process
+APIs as a defense-in-depth test boundary; this is not a substitute for the
+product sandbox delivered in later phases.
+
+Branch coverage is measured against `securecode_ai.core` alone and must be at
+least 80%. Core currently contains only its packaging marker, so the displayed
+100% is evidence that the gate is wired—not a claim of behavioral test quality.
+
 Current first-party package graph:
 
 ```text
@@ -86,7 +113,10 @@ packages/adapters/
 
 - `P1.2` completed the uv workspace, Python compatibility decision, private
   installable package boundaries and the single locked dependency authority.
-- `P1.3` owns formatter, linter, type-checker and unit-test configuration.
+- `P1.3` completed the pinned Ruff/mypy/pytest quality toolchain and the single
+  fail-closed local/CI entrypoint described above.
+- `P1.4` owns pre-commit and CI integration, including secret and dependency
+  policy jobs; it must call the same quality entrypoint.
 - `P1.5` owns the first domain/contract Python modules.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.

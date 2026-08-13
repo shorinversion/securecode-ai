@@ -20,6 +20,12 @@ build-constraint-dependencies = ["uv_build>=0.11.32,<0.13"]
 
 [dependency-groups]
 build = ["uv-build>=0.11.32,<0.13"]
+quality = [
+    "mypy==2.3.0",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.22",
+]
 
 [tool.uv.sources]
 securecode-ai-adapters = { workspace = true }
@@ -37,3 +43,48 @@ members = [
 name = "pypi"
 url = "https://pypi.org/simple"
 default = true
+
+[tool.ruff]
+required-version = "==0.15.22"
+target-version = "py312"
+line-length = 100
+extend-exclude = ["scripts/validate_g0.py"]
+
+[tool.ruff.lint]
+select = ["B", "C4", "DTZ", "E4", "E7", "E9", "F", "I", "PTH", "RUF", "SIM", "UP"]
+
+[tool.ruff.format]
+preview = false
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = [
+    "packages/adapters/src",
+    "packages/contracts/src",
+    "packages/core/src",
+]
+exclude = ["scripts/validate_g0.py"]
+
+[tool.pytest.ini_options]
+minversion = "9.1"
+testpaths = ["tests/unit"]
+addopts = ["--strict-config", "--strict-markers", "--import-mode=importlib", "-ra"]
+xfail_strict = true
+
+[tool.coverage.run]
+branch = true
+source = [
+    "securecode_ai.core",
+]
+
+[tool.coverage.report]
+fail_under = 80
+precision = 2
+show_missing = true
+skip_empty = true

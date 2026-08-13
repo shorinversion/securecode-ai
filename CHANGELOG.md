@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-13 — реализован `P1.3`: exact-pinned Ruff/mypy/pytest/pytest-cov,
+  единый offline/no-sync quality runner для format/lint/strict typing/tests,
+  Core-only branch coverage `>=80%`, закрытые import allow-lists и fail-closed
+  проверки изоляции окружения, static preflight и мутаций репозитория; clean
+  matrix подтверждена на CPython 3.12–3.14.
 - 2026-08-13 — реализован `P1.2`: один private `uv` workspace и корневой
   `uv.lock` для contracts → Core → adapters, CPython `3.12–3.14` с default
   `3.13`, exact `uv 0.12.0`, Pydantic v2 и hashed build/runtime artifacts;

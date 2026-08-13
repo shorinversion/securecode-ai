@@ -1,0 +1,184 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.3"
+  type: "implementation"
+  objective: "Install a reproducible format, lint, strict-type and unit-test baseline behind one cross-platform quality command."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "79346d3d88ba21a49c862b32b7756ba7397b59ad"
+  spec_refs: [SC-SYS-001, SC-SYS-006, SC-SYS-008, SC-PROD-016, SC-PROD-020]
+  decision_refs: [D-013, D-016, D-026, D-029]
+  preconditions:
+    - "P1.2 is committed and its post-commit independent review passed"
+    - "G0 strict validator exits 0 against the committed effective attestation"
+  non_goals:
+    - "pre-commit hooks or CI workflow owned by P1.4"
+    - "secret and dependency blocking policies owned by P1.4"
+    - "mature SBOM, provenance and signing controls owned by P8.11"
+    - "domain models or behavior owned by P1.5 and later tasks"
+    - "spec compatibility/drift implementation owned by P1.13"
+    - "modification or reformatting of the frozen G0 evaluator"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "quality-foundation-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "pyproject.toml"
+    - "uv.lock"
+    - "scripts/quality.py"
+    - "tests/unit/**"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.3.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "pyproject.toml"
+    - "uv.lock"
+    - "scripts/quality.py"
+    - "tests/unit/**"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.3.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/**"
+    - "docs/PROJECT_BRIEF.md"
+    - "tests/acceptance/**"
+    - "tests/evaluator/**"
+    - ".github/**"
+    - ".pre-commit-config.yaml"
+    - "packages/**/src/**"
+  max_changed_files: 12
+  max_diff_lines: 1200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, web_primary_sources, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/log/add/commit"
+    - "rg"
+    - "uvx --from uv==0.12.0 uv lock/sync/run/tree"
+    - "ruff format/check"
+    - "mypy"
+    - "pytest/coverage"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "allow_only_https_package_metadata_and_artifacts_from_pypi_pythonhosted"
+  secrets: "deny"
+  dependency_changes: "allow_only_ruff_mypy_pytest_pytest-cov_and_their_transitive_dependencies_in_quality_group"
+
+inputs:
+  artifacts:
+    - "P1.2 uv workspace and uv.lock"
+    - "packages/{contracts,core,adapters} packaging boundaries"
+    - "docs/SPEC_DRIVEN_DEVELOPMENT.md section 12"
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "locked quality dependency group"
+    - "stable Ruff format/lint configuration targeting Python 3.12"
+    - "strict mypy configuration for first-party Python"
+    - "pytest and branch-coverage configuration with 80 percent Core floor"
+    - "one cross-platform Python quality runner"
+    - "unit tests for package import and dependency boundaries"
+    - "negative mutation evidence for format/lint/type/test failures"
+  structured_result_schema: null
+  handoff_required_fields:
+    - "task_id_and_role"
+    - "scope_completed"
+    - "files_read_and_changed"
+    - "commands_and_exact_results"
+    - "locked_tool_versions"
+    - "positive_and_negative_evidence"
+    - "assumptions"
+    - "risks_and_unresolved"
+    - "integration_order"
+
+constraints:
+  invariants:
+    - "one quality command runs format-check, lint, strict type-check and unit tests"
+    - "the command checks without rewriting source"
+    - "all quality tools resolve only from the root uv.lock"
+    - "Core and contracts remain free of adapter/runtime/SCM/provider/database/container imports"
+    - "frozen G0 evaluator is excluded by exact path rather than reformatted"
+  compatibility:
+    - "quality command executes on supported CPython 3.12, 3.13 and 3.14"
+    - "Ruff behavior is pinned by exact package and required-version"
+    - "P1.4 can invoke the same command without duplicating policy"
+  security:
+    - "quality runner uses fixed argv without shell execution"
+    - "quality runner sanitizes credentials, proxies and Python/pytest injection variables"
+    - "static preflight failure prevents execution of repository tests"
+    - "each quality stage has a bounded timeout"
+    - "repository mutation during the canonical quality run is a failure"
+    - "tests do not import or execute repository lifecycle/bootstrap configuration"
+    - "test discovery is restricted to tests/"
+    - "no external pytest plugins are auto-loaded during the canonical command"
+    - "protected paths remain unchanged"
+  privacy:
+    - "quality command performs no model calls and sends no source externally"
+  performance:
+    - "canonical quality command completes within five minutes"
+
+budgets:
+  max_iterations: 8
+  max_tool_calls: 35
+  timeout_seconds: 1800
+  max_output_bytes: 250000
+
+verification:
+  acceptance_commands:
+    - "uvx --from uv==0.12.0 uv lock --check"
+    - "provision: uvx --from uv==0.12.0 uv sync --locked --exact --group quality"
+    - "execute: uvx --from uv==0.12.0 uv run --locked --offline --no-sync --group quality python -I scripts/quality.py"
+    - "canonical quality command on Python 3.12, 3.13 and 3.14"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check"
+    - "protected-path diff is empty"
+  negative_cases:
+    - "unformatted temporary Python fails ruff format --check"
+    - "lint-invalid temporary Python fails ruff check"
+    - "type-invalid temporary Python fails mypy"
+    - "failing temporary test fails pytest"
+    - "lock drift fails uv lock --check"
+    - "third-party pytest plugin auto-loading is disabled by the quality runner"
+    - "credential/proxy/Python injection canaries are absent from the child process"
+    - "network and child-process attempts fail inside unit tests"
+    - "static preflight failure skips pytest"
+    - "repository mutation during pytest fails the quality run"
+  required_evidence:
+    - "exact Python and quality-tool versions"
+    - "format/lint/type/test stage exit codes"
+    - "branch coverage report and threshold result"
+    - "negative mutation exit codes"
+    - "independent architecture and security/evaluation PASS"
+    - "post-commit clean worktree and strict G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "new_dependency_outside_declared_quality_group"
+  - "quality_command_requires_shell_or_network_at_execution"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.3, SC-SYS-001, SC-SYS-006, SC-SYS-008]
+  changelog_required: true
+  adr_required: false
