@@ -194,7 +194,7 @@ Gate пройден, если:
 | `P1.4` | Настроить pre-commit и базовый CI | P1.3 | PR с ошибкой гарантированно блокируется | `IN PROGRESS` |
 | `P1.5` | Ввести versioned domain contracts | P1.1 | schemas `AuditRun`, `FindingCase`, `Evidence`, `Patch`, `Validation` | `DONE` |
 | `P1.6` | Ввести append-only events и stable IDs | P1.5 | serialization/round-trip/idempotency tests | `DONE` |
-| `P1.7` | Реализовать config и secret-safe env loading | P1.2 | validation, redaction, missing-key diagnostics | `TODO` |
+| `P1.7` | Реализовать config и secret-safe env loading | P1.2 | validation, redaction, missing-key diagnostics | `IN PROGRESS` |
 | `P1.8` | Реализовать provider-agnostic model adapter | P1.5, P1.7 | fake provider + endpoint contract tests; native refusal/incomplete/filter/error normalization | `TODO` |
 | `P1.9` | Создать `WorkflowRuntime` interface и in-memory adapter | P1.5 | graph-independent domain tests | `TODO` |
 | `P1.10` | Создать CLI skeleton и стабильные exit codes | P1.2, P1.5 | `securecode --help`, config diagnostics, machine-readable errors | `TODO` |

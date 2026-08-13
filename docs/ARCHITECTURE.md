@@ -277,16 +277,20 @@ code, а не LLM.
 
 ## 9. Provider-agnostic model layer
 
-Базовая конфигурация:
+Runtime выбирает immutable профиль из одобренного registry; lower-trust слои
+могут выбрать только exact `profile_id@version`, но не переопределить endpoint,
+model, capabilities, terms, budgets или credential reference:
 
 ```dotenv
-SECURECODE_LLM_BASE_URL=
-SECURECODE_LLM_API_KEY=
-SECURECODE_LLM_MODEL=
-SECURECODE_LLM_API_MODE=responses
-SECURECODE_LLM_TIMEOUT_SECONDS=120
-SECURECODE_LLM_MAX_RETRIES=3
+SECURECODE_PROVIDER_PROFILE=openai-approved@1.1.0
+SECURECODE_POLICY_PROFILE=advisory-default
+SECURECODE_EGRESS_PROFILE=metadata_external
+OPENAI_API_KEY=<runtime secret referenced by env://OPENAI_API_KEY in the profile>
 ```
+
+Прямые `SECURECODE_LLM_BASE_URL/MODEL/API_KEY/...` overrides запрещены: URL,
+model и budgets принадлежат профилю, а credential value существует только в
+ephemeral environment/secret-store lease и не входит в effective config/hash.
 
 Нужен capability profile:
 
@@ -307,7 +311,8 @@ data_residency
 retention_policy
 ```
 
-Допускаются per-role model overrides. Локальная модель, cloud API и
+Допускаются только заранее зарегистрированные per-role profile selections.
+Локальная модель, cloud API и
 корпоративный gateway являются равноправными deployment profiles.
 
 ## 10. Runtime abstraction

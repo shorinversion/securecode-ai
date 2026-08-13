@@ -12,5 +12,11 @@ Reserved implementation namespaces are:
 - `providers/fake`, `providers/openai`, `providers/anthropic` and
   `providers/openai_compatible`.
 
-These namespaces are allocation documentation only in `P1.1`; later tasks must
-create them when their contracts and tests are in scope.
+`P1.7` adds a configuration adapter outside those runtime namespaces. It parses
+only approved immutable `ProviderProfile` objects, resolves selection-only
+CLI/environment/repository/user/default precedence, and exposes host-bound
+ephemeral credential leases. Repository and user configuration cannot inject
+provider endpoints, model IDs, budgets, capabilities or credential values.
+
+Provider HTTP execution, DNS/rebinding checks and outcome normalization remain
+owned by `P1.8`; general telemetry redaction remains owned by `P1.12`.

@@ -24,6 +24,11 @@ class PackagePolicy:
 
 POLICIES = (
     PackagePolicy(
+        REPOSITORY_ROOT / "packages" / "adapters" / "src",
+        "securecode_ai.adapters",
+        frozenset({"securecode_ai.adapters", "securecode_ai.core"}),
+    ),
+    PackagePolicy(
         REPOSITORY_ROOT / "packages" / "contracts" / "src",
         "securecode_ai.contracts",
         frozenset({"pydantic", "securecode_ai.contracts"}),
@@ -155,7 +160,7 @@ def test_declared_dependencies_point_inward(distribution: str, expected_dependen
 def test_closed_policy_rejects_infrastructure_and_dynamic_imports(
     tmp_path: Path, source: str, expected_fragment: str
 ) -> None:
-    policy = POLICIES[1]
+    policy = POLICIES[2]
     path = tmp_path / "module.py"
     path.write_text(source, encoding="utf-8")
     violations = _policy_violations(path, policy)

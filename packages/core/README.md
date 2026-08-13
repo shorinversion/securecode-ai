@@ -14,3 +14,7 @@ plus admitted-HEAD binding, sequence and canonical previous-hash verification,
 exact idempotent replay and current-coverage reconstruction. Persistence,
 workflow execution, transport and side effects remain outside Core and are
 owned by later tasks.
+
+`P1.7` adds only the typed `ProviderProfile`/`EgressProfileId` configuration
+port so infrastructure adapters continue to depend inward through Core. Profile
+parsing and environment credential access remain adapter concerns.

@@ -1,0 +1,168 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.7"
+  type: "implementation"
+  objective: "Implement immutable ProviderProfile validation, closed non-secret configuration precedence and host-bound ephemeral credential resolution without persisting or rendering credential values."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "c0d95d51cc02578fbcd5e26c2baa8b0e05786832"
+  spec_refs: [SC-CLI-006, SC-ENDPOINT-001, SC-ENDPOINT-002, SC-ENDPOINT-004, SC-ENDPOINT-006, SC-MODEL-004, SC-MODEL-005, SC-MODEL-006]
+  decision_refs: [D-002, D-024, D-026]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.2 packaging/dependency lock and P1.6 completion are committed"
+  non_goals:
+    - "DNS resolution/rebinding and connect-time IP validation from SC-ENDPOINT-003 are owned by P1.8"
+    - "provider HTTP requests, outcome normalization and capability preflight are owned by P1.8"
+    - "CLI command parsing and exit-code mapping are owned by P1.10"
+    - "general structured logging and multi-sink telemetry redaction are owned by P1.12"
+    - "production secret-manager clients and credential rotation are owned by P8.5"
+    - "repository content cannot define or override endpoint, model, capability, terms, credential reference or budgets"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "configuration-security-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/contracts/**"
+    - "packages/core/src/securecode_ai/core/config.py"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/README.md"
+    - "packages/adapters/**"
+    - "tests/unit/test_config_contracts.py"
+    - "tests/unit/test_config_loading.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "docs/ARCHITECTURE.md"
+    - "work/task-packets/P1.7.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/contracts/**"
+    - "packages/core/src/securecode_ai/core/config.py"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/README.md"
+    - "packages/adapters/**"
+    - "tests/unit/test_config_contracts.py"
+    - "tests/unit/test_config_loading.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "docs/ARCHITECTURE.md"
+    - "work/task-packets/P1.7.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - "artifacts/gates/**"
+    - "packages/core/src/securecode_ai/core/events.py"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 18
+  max_diff_lines: 2200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "pytest targeted config suites"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny"
+
+inputs:
+  artifacts:
+    - "specs/contracts/provider-profile.schema.json 0.2.0"
+    - "specs/contracts/provider-fixtures/*.json"
+    - "specs/contracts/cli.md SC-CLI-006"
+    - "specs/security/data-classification.md SC-ENDPOINT-001/002/004/006"
+    - "specs/system/architecture.md SC-MODEL-004/005/006"
+  fixtures:
+    - "normative provider profile valid/invalid fixture set"
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "closed immutable ProviderProfile and nested configuration models"
+    - "static endpoint/provider/authority/port/consumer-product validation before network I/O"
+    - "canonical profile content hash and immutable-version registry conflict detection"
+    - "closed CLI > environment > repository > user > defaults selection precedence for approved profile IDs"
+    - "repository/user/CLI secret fields and provider security-field overrides rejected"
+    - "host-bound ephemeral environment credential lease with redacted repr/str/errors/snapshots and explicit zeroization"
+    - "safe structured missing-key and unsupported-secret-backend diagnostics"
+  structured_result_schema: null
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "effective configuration stores ProviderProfile plus credential reference, never credential value"
+    - "only the approved registry creates provider profiles; lower-trust layers select IDs only"
+    - "all profile objects are immutable and content-hashed from canonical secret-free bytes"
+    - "credential reveal requires the exact profile ID and normalized authority"
+    - "diagnostic codes/messages are deterministic and never interpolate untrusted values or secrets"
+  security:
+    - "remote plaintext, URL userinfo/query/fragment, consumer chat hosts and literal private/loopback/link-local targets reject"
+    - "local plaintext is limited to explicit openai_compatible_local loopback profiles"
+    - "unknown fields, unknown selection keys and secret-like configuration keys fail closed"
+    - "missing/empty/oversized/NUL credential values fail without echoing the value"
+    - "protected frozen paths remain unchanged"
+  compatibility:
+    - "all normative valid provider fixtures load and invalid fixtures reject"
+    - "ProviderProfile schema_version remains exactly 0.2.0"
+    - "configuration precedence is deterministic and independent of mapping iteration order"
+
+budgets:
+  max_iterations: 8
+  max_tool_calls: 60
+  timeout_seconds: 3600
+  max_output_bytes: 250000
+
+verification:
+  acceptance_commands:
+    - "targeted provider/config tests"
+    - "canonical quality command on CPython 3.12, 3.13 and 3.14"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check and protected-path diff empty"
+  negative_cases:
+    - "remote HTTP, authority/port mismatch, userinfo/query/fragment and consumer endpoint reject"
+    - "literal loopback/private/link-local remote endpoint and non-loopback local plaintext reject"
+    - "fake credential, provider-kind/dialect mismatch and duplicate content-conflicting profile version reject"
+    - "inline key/token/secret and endpoint/model/budget override from lower-trust layer reject"
+    - "missing/empty/oversized/NUL environment credential returns safe diagnostic without canary"
+    - "cross-host/profile reveal and serialization/pickle of credential lease reject"
+    - "closed lease zeroizes its internal byte buffer and cannot reveal again"
+  required_evidence:
+    - "normative fixture matrix"
+    - "precedence/property mutation matrix"
+    - "multi-sink credential canary absence from repr/str/diagnostics/safe snapshot"
+    - "independent product, architecture and security/evaluation PASS"
+    - "post-commit clean worktree and strict G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "dynamic DNS/network/provider behavior required"
+  - "dependency_change_required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.7, SC-CLI-006, SC-MODEL-005, SC-ENDPOINT-004]
+  changelog_required: true
+  adr_required: false

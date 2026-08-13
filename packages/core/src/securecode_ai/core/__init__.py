@@ -1,5 +1,6 @@
 """Framework-independent SecureCode AI domain behavior."""
 
+from .config import EgressProfileId, ProviderProfile
 from .events import (
     AppendDisposition,
     AppendReceipt,
@@ -13,9 +14,11 @@ from .events import (
 __all__ = [
     "AppendDisposition",
     "AppendReceipt",
+    "EgressProfileId",
     "EventConflict",
     "EventConflictCode",
     "EventStream",
+    "ProviderProfile",
     "RunProjection",
     "rebuild_projection",
 ]
