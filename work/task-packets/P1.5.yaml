@@ -1,0 +1,173 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.5"
+  type: "implementation"
+  objective: "Implement the frozen 0.2.0 versioned domain contracts as provider-, SCM- and graph-runtime-independent Pydantic v2 models with deterministic checked-in JSON Schemas."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "0f89edfd20237f75ae390f17a07bdc090b705370"
+  spec_refs: [SC-DOM-001, SC-DOM-002, SC-DOM-003, SC-DOM-004, SC-DOM-005, SC-DOM-006, SC-DOM-007, SC-DOM-008, SC-DOM-010, SC-DOM-011, SC-DOM-012, SC-DOM-013, SC-DOM-014, SC-WF-016, SC-WF-017, SC-SYS-001, SC-SYS-002, SC-SYS-003]
+  decision_refs: [D-001, D-004, D-006, D-015, D-016, D-017, D-020, D-027]
+  preconditions:
+    - "G0 strict validator exits 0 against the frozen baseline"
+    - "P1.1 and P1.2 package/lock boundaries are committed"
+    - "P1.3 canonical quality runner is committed"
+  non_goals:
+    - "AuditEvent append/replay, ID generation and hash-chain storage owned by P1.6"
+    - "environment/provider configuration owned by P1.7 and provider execution owned by P1.8"
+    - "WorkflowRuntime implementation owned by P1.9"
+    - "repository-wide compatibility/protected-path drift gate owned by P1.13"
+    - "EvidenceGraph algorithms, scanner normalization or security verdict logic owned by P2/P3"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "domain-contract-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/contracts/**"
+    - "tests/unit/test_domain_contracts.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.5.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/contracts/**"
+    - "tests/unit/test_domain_contracts.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.5.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "scripts/ci_policy.py"
+    - "artifacts/gates/**"
+    - "docs/PROJECT_BRIEF.md"
+    - "packages/core/**"
+    - "packages/adapters/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 24
+  max_diff_lines: 3350
+  budget_revision: "Raised from 3200 after independent reviews required identity-binding and cross-tenant/unsupported mutation oracles."
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "uvx --offline --from uv==0.12.0 uv run"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny; use the locked Pydantic v2 dependency"
+
+inputs:
+  artifacts:
+    - "specs/contracts/domain.md 0.2.0"
+    - "specs/behavior/workflows.md mandatory coverage semantics"
+    - "specs/system/architecture.md domain boundary"
+    - "packages/contracts P1.2 distribution"
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "closed versioned Pydantic models for AuditRun, FindingCase, Evidence, PatchCandidate and ValidationResult"
+    - "supporting revision, execution identity, coverage, location, receipt, lineage and artifact-reference types required by those roots"
+    - "deterministic canonical RunExecutionIdentity hashing"
+    - "deterministic Draft 2020-12 JSON Schema artifacts for the five public roots"
+    - "positive, round-trip, version, unknown-field, path, hash-mutation and fail-closed outcome tests"
+  structured_result_schema: null
+  handoff_required_fields:
+    - "task_id_and_role"
+    - "scope_completed"
+    - "files_read_and_changed"
+    - "commands_and_exact_results"
+    - "positive_and_negative_evidence"
+    - "assumptions"
+    - "risks_and_unresolved"
+    - "integration_order"
+
+constraints:
+  invariants:
+    - "contracts import no provider, SCM, database, container or graph-runtime SDK"
+    - "every public wire root carries schema_version and rejects unknown top-level fields"
+    - "ModelCallStatus, FindingVerdict and AuditRunOutcome remain distinct types and field names"
+    - "PASS requires complete mandatory coverage and zero blocking finding IDs"
+    - "source locations are normalized repository-relative one-based intervals"
+    - "RunExecutionIdentity binds every SC-DOM-014 pin and rejects any mismatched hash"
+    - "DC3/DC4 content is referenced, never embedded in ordinary fields or extension payloads"
+  compatibility:
+    - "unsupported major and versions older than 0.2.0 are rejected"
+    - "same-major future-minor data is preserved only inside a typed extension envelope"
+    - "generated schema bytes are deterministic across repeated runs"
+  security:
+    - "all Pydantic models use extra=forbid and frozen=True at trust boundaries"
+    - "no raw source, diff, command, provider response or secret-bearing free text is serialized"
+    - "hybrid candidate origin requires both deterministic and model-native lineage"
+    - "non-success model receipts cannot satisfy completed/schema-valid coverage"
+    - "protected paths remain unchanged"
+  privacy:
+    - "ArtifactRef carries class/hash/size/expiry metadata only and never an embedded blob"
+  performance:
+    - "canonical hashing and schema generation are bounded and deterministic"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 60
+  timeout_seconds: 3000
+  max_output_bytes: 300000
+
+verification:
+  acceptance_commands:
+    - "targeted contracts unit/schema tests"
+    - "canonical quality command on CPython 3.12, 3.13 and 3.14"
+    - "repeat schema generation and compare exact bytes"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check and protected-path diff empty"
+  negative_cases:
+    - "unknown field and unsupported/old version rejected"
+    - "absolute, parent-traversal, backslash and invalid source intervals rejected"
+    - "each RunExecutionIdentity component mutation changes the canonical hash"
+    - "forged execution_identity_hash rejected"
+    - "PASS with incomplete coverage or blocking finding rejected"
+    - "hybrid origin without both lane lineages rejected"
+    - "model completed-zero accepted only for SUCCEEDED plus schema-valid receipt"
+    - "DC3/DC4 extension payload rejected"
+    - "raw source/diff/command fields absent from emitted schemas"
+  required_evidence:
+    - "schema artifact hashes and deterministic regeneration result"
+    - "round-trip and negative-test output"
+    - "dependency/import boundary result"
+    - "independent product, architecture and security/evaluation PASS"
+    - "post-commit clean worktree and strict G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "public_contract_requires_unaccepted_semantics"
+  - "dependency_change_required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.5, SC-DOM-001, SC-DOM-014, SC-SYS-001]
+  changelog_required: true
+  adr_required: false

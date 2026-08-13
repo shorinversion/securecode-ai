@@ -192,7 +192,7 @@ Gate пройден, если:
 | `P1.2` | Настроить packaging и locked dependencies | P1.1 | clean install в новой среде по одной инструкции | `DONE` |
 | `P1.3` | Настроить lint, format, type-check, unit tests | P1.1 | единая quality-команда локально и в CI | `DONE` |
 | `P1.4` | Настроить pre-commit и базовый CI | P1.3 | PR с ошибкой гарантированно блокируется | `IN PROGRESS` |
-| `P1.5` | Ввести versioned domain contracts | P1.1 | schemas `AuditRun`, `FindingCase`, `Evidence`, `Patch`, `Validation` | `TODO` |
+| `P1.5` | Ввести versioned domain contracts | P1.1 | schemas `AuditRun`, `FindingCase`, `Evidence`, `Patch`, `Validation` | `IN PROGRESS` |
 | `P1.6` | Ввести append-only events и stable IDs | P1.5 | serialization/round-trip/idempotency tests | `TODO` |
 | `P1.7` | Реализовать config и secret-safe env loading | P1.2 | validation, redaction, missing-key diagnostics | `TODO` |
 | `P1.8` | Реализовать provider-agnostic model adapter | P1.5, P1.7 | fake provider + endpoint contract tests; native refusal/incomplete/filter/error normalization | `TODO` |
@@ -520,8 +520,10 @@ security boundary, набора обязательных языков, blocking 
 G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation.
 `P1.1–P1.3` завершены. Локальный кандидат `P1.4` проходит pre-commit, CI policy,
 secret/dependency checks и Python 3.12–3.14 matrix, но остаётся `IN PROGRESS`
-до GitHub ruleset и failing-PR merge-block receipt. Пока внешний blocker не
-мешает независимому графу задач, далее идут versioned contracts, fake provider,
+до GitHub ruleset и failing-PR merge-block receipt. Кандидат `P1.5` принят тремя
+independent review после schema/contract/quality/strict-G0 oracles и ожидает
+integration commit с clean post-commit verification. Далее по dependency graph
+идут events/stable IDs, config, fake provider,
 `RepositoryView`, LocalRuntime и CLI skeleton; узкий
 Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
 строятся до стабилизации Core contracts и deterministic evidence layer.

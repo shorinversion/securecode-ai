@@ -6,9 +6,9 @@
 
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.3 — quality tooling`.
-- Текущая задача: `P1.4 — pre-commit and base CI`, локальный кандидат проходит
-  hooks/policy/tests; acceptance заблокирован внешним GitHub ruleset и
-  failing-PR merge-block receipt, потому что remote ещё не настроен.
+- Текущие задачи: `P1.4` ожидает внешний GitHub ruleset/failing-PR receipt;
+  `P1.5 — versioned domain contracts` принят тремя candidate reviews и ожидает
+  integration commit плюс обязательный clean post-commit verification.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -34,6 +34,14 @@
   product/architecture/security-evaluation reviews are `PASS/PASS/PASS` on the
   staged candidate. This proves the local increment only, not the external
   GitHub ruleset or failing-PR merge-block criterion.
+- P1.5 candidate verification: 92 contract/schema tests at 86.54% branch
+  coverage; 152 repository tests pass on CPython 3.12/3.13/3.14; deterministic
+  schema drift check, strict G0, Ruff/mypy, ECMAScript regex compilation and a
+  wheel containing all five schemas pass. Architecture/security reviews found
+  and remediation now tests manifest identity binding, unsupported-language
+  fail-closed semantics and recursive extension tenant binding. Candidate
+  product/architecture/security-evaluation reviews are `PASS/PASS/PASS`;
+  статус остаётся `IN PROGRESS` до post-commit evidence.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -119,13 +127,13 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Сохранить прошедший `PASS/PASS/PASS` локальный кандидат `P1.4` отдельным
-   integration commit без ложного статуса `DONE`.
-2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
-   и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`.
-3. Пока внешний blocker не мешает независимым задачам, начать `P1.5` versioned
-   domain contracts; не закрывать G1 до fake provider, runtime/CLI skeleton,
-   fixture factory, redaction и spec-drift checks по `P1.4–P1.13`.
+1. Сохранить принятый `P1.5` отдельным атомарным integration commit после
+   финального Primary Integrator rerun.
+2. Начать `P1.6` append-only events/stable IDs и затем независимый от него
+   `P1.7` secret-safe config только через отдельные constrained task packets.
+3. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
+   и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
+   закрывать G1 до всех доказательств `P1.4–P1.13`.
 
 ## Критические запреты
 

@@ -5,7 +5,8 @@ evidence-gated development. The frozen definition baseline is `0.2.0`; the
 current implementation phase is `P1 — Engineering Foundation`.
 
 This repository contains the completed specification baseline, the `P1.1`
-ownership skeleton and the reproducible `P1.2` Python workspace. It does
+ownership skeleton, the reproducible `P1.2` Python workspace, the `P1.3`
+quality gate and the current `P1.5` versioned-contract candidate. It does
 **not** yet contain a working scanner, agent workflow, backend, SCM bot or
 sandbox.
 
@@ -109,8 +110,15 @@ securecode-ai-adapters
 ```
 
 All three distributions are private pre-alpha packages under the shared
-implicit namespace `securecode_ai`. Their `__init__.py` files are packaging
-markers only; P1.5 owns the first domain models and behavior.
+implicit namespace `securecode_ai`. Core and adapters remain packaging
+markers. The contracts package now owns closed Pydantic v2 models and five
+checked-in Draft 2020-12 JSON Schemas for `AuditRun`, `FindingCase`,
+`Evidence`, `PatchCandidate` and `ValidationResult`; it deliberately imports
+no provider, SCM, database or graph-runtime SDK.
+Conformance requires both structural JSON Schema validation and its resolvable
+`x-securecode-semantic-validator`; provider execution, events/stable IDs and
+runtime behavior remain owned by later P1 tasks. The exact drift command is in
+the contracts package README.
 
 ## Repository ownership
 
@@ -158,7 +166,8 @@ packages/adapters/
 - `P1.4` has a locally verified pre-commit/CI candidate, including secret and
   dependency policy jobs; external GitHub ruleset and failing-PR evidence are
   still required before completion.
-- `P1.5` owns the first domain/contract Python modules.
+- `P1.5` has a locally verified domain-contract candidate awaiting independent
+  product, architecture and security/evaluation acceptance.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

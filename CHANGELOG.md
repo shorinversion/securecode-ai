@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-13 — подготовлен кандидат `P1.5`: пять closed immutable Pydantic v2
+  public roots и deterministic Draft 2020-12 schemas с canonical identity,
+  tenant/lineage/coverage/outcome invariants и resolvable semantic validator;
+  92 contract/schema tests и 86.54% branch coverage; три candidate reviews PASS,
+  post-commit clean verification ожидается.
 - 2026-08-13 — реализован локально проверенный кандидат `P1.4`: закрытый
   pre-commit launcher на project-owned `uv 0.12.0`, full-SHA GitHub Actions,
   read-only/fork-safe jobs, Python 3.12–3.14 quality matrix, secret-history,
