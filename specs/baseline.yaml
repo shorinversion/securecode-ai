@@ -1,6 +1,6 @@
 schema_version: 0.2.0
 baseline_id: securecode-definition-0.2.0
-lifecycle: accepted_pending_repository_commit
+lifecycle: frozen
 accepted_date: 2026-08-13
 normative_documents:
   - product/requirements.md
@@ -49,6 +49,6 @@ supporting_documents:
   - ../docs/security/THREAT_MODEL.md
   - ../docs/security/PROMPT_INJECTION.md
 freeze:
-  commit_sha: null
+  commit_sha: f5cd4ef2a0f7130d16cb2c206091908be71b0702
   content_sha256: dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9
-  note: normative content passed integrated validation; commit SHA is required before freeze/GO
+  note: immutable normative predecessor reviewed by three independent roles; effective GO is recorded in its successor attestation commit

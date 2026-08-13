@@ -17,12 +17,12 @@ Review date: 13 августа 2026 года
 | Data/egress/retention | `D-024`, security spec and JSON schemas | PASS |
 | Frozen MVP evaluation | `D-025`, `D-028`, protocol/dataset hash/metrics/threshold policy | PASS — definition only |
 | Traceability | `specs/traceability/requirements.yaml` | PASS |
-| Normative baseline | `specs/` lifecycle accepted, stable IDs/oracles | PASS |
+| Normative baseline | `specs/` lifecycle frozen, stable IDs/oracles | PASS |
 | Machine syntax | JSON/YAML parse; dataset hash matches | PASS |
 | Local Markdown references | link-resolution check | PASS |
 | Independent product/architecture/security review | `independent-reviews.md`: exact-hash CR-014–016 delta verdicts | PASS — three independent roles |
 | Normative content hash | `test-results/prefreeze-validation.md`, `specs/baseline.yaml` | PASS — `dedb43be…54b5c9` |
-| Baseline repository commit | gate decision binds an existing immutable local commit | PENDING BASELINE COMMIT |
+| Baseline repository commit | `f5cd4ef2a0f7130d16cb2c206091908be71b0702`, strict predecessor/content verification | PASS — immutable predecessor |
 
 No implementation/test claim is made by a definition PASS. Planned oracles
 become executable evidence in P1–P9.

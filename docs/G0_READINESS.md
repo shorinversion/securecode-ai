@@ -2,7 +2,7 @@
 
 Дата: 13 августа 2026 года  
 Baseline: `securecode-definition-0.2.0`  
-Текущий verdict: `THREE REVIEWS PASS — IMMUTABLE FREEZE PENDING`
+Текущий verdict: `PASS — GO FOR P1 ONLY`
 
 ## Outcome first
 
@@ -13,9 +13,10 @@ CR-014, CR-015 и CR-016 приняты и синхронизированы с �
 9 policy fixtures, 5 provider-schema fixtures и 2 исполнимых
 provider/egress preflight fixtures.
 
-Формальный `GO FOR P1 ONLY` ещё не эффективен. Три независимых `PASS` на этих
-же байтах получены; остаются immutable baseline commit, отдельный successor
-attestation commit и `python scripts/validate_g0.py --require-frozen` exit `0`.
+Формальный `GO FOR P1 ONLY` эффективен. Три независимых `PASS` относятся к
+одним нормативным байтам; immutable baseline commit является строгим предком
+отдельной successor attestation, а `python scripts/validate_g0.py
+--require-frozen` завершился с exit `0`.
 Никакая implementation correctness, benchmark accuracy или production
 security на G0 не заявляется.
 
@@ -35,7 +36,7 @@ security на G0 не заявляется.
 | Full threat/privacy mapping | `TM-001–026`, `PV-001–005` | 31/31 mapped |
 | Reproducible evaluation baseline | locked cases/dataset hashes/metrics/thresholds | definition PASS |
 | Independent final reviews | G0 review packet | PASS/PASS/PASS current hash |
-| Immutable/effective gate | two-commit proof + strict validator | pending |
+| Immutable/effective gate | two-commit proof + strict validator | PASS |
 
 ## Explicit deferrals that do not block P1
 

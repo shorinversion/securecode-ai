@@ -2,9 +2,9 @@
 
 Дата: 13 августа 2026 года  
 Baseline: `securecode-definition-0.2.0`  
-Текущий вывод: **normal definition validation и три exact-hash independent
-reviews проходят; immutable two-commit freeze ещё не завершён. P1 пока не
-разрешён.**
+Текущий вывод: **G0 эффективен: normal и strict validation проходят, три
+exact-hash independent reviews имеют PASS, immutable baseline и successor
+attestation закоммичены. P1 разрешён, но ещё не начат.**
 
 ## Метод
 
@@ -40,7 +40,7 @@ readiness доказываются на `G1–G9`, не на G0.
 | Subagent governance | `D-016`, SDD, navigator skill | one Primary Integrator; bounded reviewers |
 | Mechanical consistency | `python scripts/validate_g0.py` | `PASS`; 228 requirements, 38 source rows, 31 threat/privacy mappings, hash `dedb43be…54b5c9` |
 | Independent baseline `0.2.0` reviews | G0 review packet | `PASS/PASS/PASS` on exact hash |
-| Immutable/effective G0 | `--require-frozen` | `NOT YET`; expected failure before two commits |
+| Immutable/effective G0 | `--require-frozen` | `PASS`; baseline is strict ancestor of committed attestation |
 
 ## Каноническая формула
 
@@ -61,13 +61,8 @@ Completed-zero model discovery и transport/model empty output — разные
 состояния. Первое может участвовать в clean только с complete
 receipt; второе даёт `INDETERMINATE`.
 
-## Что осталось до P1
+## Следующий разрешённый шаг
 
-1. Создать immutable baseline commit.
-2. Записать его SHA, lifecycle `frozen`, exact checklist/reviews/decision.
-3. Создать successor attestation commit и получить strict exit `0`.
-
-После этого `P0.18` может стать `DONE`, а первая разрешённая
-работа — `P1 Engineering foundation`. Подготовленный
-`work/task-packets/P1.1.yaml` до freeze считается stale и будет
-перевыпущен по exact frozen baseline.
+`P0.18` завершена. После решения пользователя можно запустить только
+`P1.1 — ownership-aware repository layout` по обновлённому constrained packet
+`work/task-packets/P1.1.yaml`. P2+ остаются закрыты соответствующими gates.

@@ -26,12 +26,16 @@ Exit code: `0`
   `dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9`;
 - validator errors: `[]`.
 
-Strict command `python scripts/validate_g0.py --require-frozen` exits `1` by
-design before the first commit. It rejects non-frozen lifecycle, absent full
-commit SHA/HEAD/ancestor, uncommitted evaluator/spec/gate bytes, any non-PASS
-checklist row, missing/mismatched review hash or categories, and non-effective
-decision/status/commit binding. This negative control prevents prose-only or
-working-tree-only gate closure.
+Before the baseline commit, strict command
+`python scripts/validate_g0.py --require-frozen` exited `1` as the intended
+negative control: it rejected non-frozen lifecycle, absent commit/HEAD/ancestor,
+uncommitted evaluator/spec/gate bytes, an incomplete checklist and non-effective
+decision. The successor attestation reran the same command against committed
+bytes and exited `0`. It verified the baseline commit as a strict ancestor,
+recomputed the committed normative hash, matched every protected working byte
+to attestation HEAD, found the protected scope clean, parsed the exact 17-row
+PASS checklist, verified three distinct review roles and bound the effective
+decision to the immutable baseline commit.
 
 The hash algorithm is SHA-256 over sorted normative paths, then for every path
 `UTF-8 path + NUL + exact file bytes + NUL`. `specs/baseline.yaml` and G0

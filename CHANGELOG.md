@@ -75,6 +75,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Changed
 
+- 2026-08-13 — `G0 Definition Ready` закрыт: CR-014/015/016 интегрированы,
+  baseline `0.2.0` получил три independent exact-hash `PASS`, immutable commit
+  `f5cd4ef2a0f7130d16cb2c206091908be71b0702`, отдельную effective attestation
+  и strict frozen-validator `PASS`; разрешён только `P1 Engineering Foundation`.
+
 - 2026-08-13 — принят `CR-014`: baseline `0.2.0` требует два
   independent discovery lane. SAST/AST/taint/SCA/secret output — `RawSignal`;
   LLM Auditor интерпретирует каждый normalized candidate, а mandatory

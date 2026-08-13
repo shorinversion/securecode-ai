@@ -4,17 +4,17 @@
 
 ## Текущая позиция
 
-- Фаза: `P0 — Definition and risk retirement`.
-- Задача: `P0.18 — independent completion audit and immutable G0 freeze`.
-- Gate: `G0 Definition Ready` пока не эффективен.
-- Normative baseline: `0.2.0`, lifecycle
-  `accepted_pending_repository_commit`.
+- Фаза: `P1 — Engineering foundation` разрешена, но не начата.
+- Следующая задача: `P1.1 — ownership-aware repository layout`.
+- Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
+- Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
+  `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
 - Normal validator: `PASS`; normative hash
   `dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9`.
 - Final independent reviews baseline `0.2.0`: `PASS/PASS/PASS` на exact
-  normative hash; baseline/attestation commits ещё не созданы.
-- P1 и implementation paths не разрешены, пока strict validator не
-  докажет immutable two-commit baseline/attestation chain.
+  normative hash; отдельная successor attestation закоммичена.
+- Решение `GO FOR P1 ONLY` не разрешает автоматически начинать P2+ или
+  ослаблять frozen contracts; пользователь принимает решение о старте P1.1.
 
 ## Принятые последние изменения
 
@@ -98,13 +98,11 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Создать baseline commit; затем successor attestation commit с exact
-   baseline SHA, lifecycle `frozen`, complete checklist и effective
-   `GO FOR P1 ONLY`.
-2. Получить `python scripts/validate_g0.py --require-frozen` exit `0`.
-3. Только после этого начать `P1 Engineering foundation` с
-   repository layout, packaging, quality CI, versioned contracts, fake provider,
-   `RepositoryView`, LocalRuntime и CLI skeleton.
+1. Получить решение пользователя о старте `P1.1`.
+2. Выполнить constrained packet `work/task-packets/P1.1.yaml` и независимо
+   проверить repository ownership boundaries.
+3. После G1 последовательно реализовать packaging, quality CI, versioned
+   contracts, fake provider, `RepositoryView`, LocalRuntime и CLI skeleton.
 
 ## Критические запреты
 

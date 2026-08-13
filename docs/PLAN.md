@@ -3,8 +3,8 @@
 Версия плана: `0.7`  
 Статус: `active`  
 Последнее обновление: 13 августа 2026 года  
-Текущая фаза: `P0 — Definition and risk retirement`  
-Текущий gate: `G0 — Definition Ready` — не пройден
+Текущая фаза: `P1 — Engineering foundation` — разрешена, не начата  
+Текущий gate: `G0 — Definition Ready` — пройден
 
 Этот файл является каноническим планом проекта от исходной постановки до
 релиза и закрытия. Он задаёт порядок работ, зависимости, проверяемые результаты
@@ -159,7 +159,7 @@ Gate нельзя закрыть фразой «работает на моей �
 | `P0.15` | Создать project-local context/navigation skill | P0.1, P0.5 | skill, read-only snapshot helper и agent instructions | `DONE` |
 | `P0.16` | Зафиксировать SDD, contract-first loop и constraint stack для LLM | P0.1, P0.5 | SDD operating model, spec namespace и task-packet template | `DONE` |
 | `P0.17` | Ввести project-specific research protocol и evidence ledger | P0.1–P0.3 | protocol, claim statuses, provenance manifest, exact search/amendment logs | `DONE` |
-| `P0.18` | Провести independent completion audit и immutable G0 freeze | P0.1–P0.17 | три substantive PASS, normal validator exit 0, strict frozen validator exit 0, exact baseline commit и effective decision | `IN PROGRESS` |
+| `P0.18` | Провести independent completion audit и immutable G0 freeze | P0.1–P0.17 | три substantive PASS, normal validator exit 0, strict frozen validator exit 0, exact baseline commit и effective decision | `DONE` |
 
 ### G0 — Definition Ready
 
@@ -517,7 +517,10 @@ security boundary, набора обязательных языков, blocking 
 
 ## 18. Текущий фокус
 
-P0 definition artifacts собраны и проходят G0 consistency/security review.
-После формального freeze/GO первая реализация — `P1` engineering foundation,
-затем узкий Python CWE-89 vertical slice. Enterprise adapters не строятся до
-стабилизации Core contracts и deterministic evidence layer.
+G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation;
+`P1 Engineering foundation` разрешена, но реализация ещё не начата. Следующее
+решение — запуск constrained packet `P1.1` для ownership-aware repository
+layout. Затем идут packaging, quality CI, versioned contracts, fake provider,
+`RepositoryView`, LocalRuntime и CLI skeleton; узкий Python CWE-89 vertical
+slice начинается после G1. Enterprise adapters не строятся до стабилизации
+Core contracts и deterministic evidence layer.

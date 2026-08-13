@@ -6,7 +6,7 @@ task:
   objective: "Create the ownership-aware repository skeleton without implementing scanner, agent, SCM, backend or sandbox behavior."
   baseline_id: "securecode-definition-0.2.0"
   baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
-  baseline_commit_sha: null
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
   spec_refs: [SC-SYS-001, SC-SYS-002, SC-SYS-003, SC-SYS-008, SC-PORT-001, SC-DOM-007]
   decision_refs: [D-007, D-013, D-016, D-017, D-020, D-026, D-027, D-028]
   preconditions:
