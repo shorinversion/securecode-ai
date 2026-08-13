@@ -6,8 +6,8 @@ current implementation phase is `P1 — Engineering Foundation`.
 
 This repository contains the completed specification baseline, the `P1.1`
 ownership skeleton, the reproducible `P1.2` Python workspace, the `P1.3`
-quality gate, versioned domain contracts and the current `P1.6` append-only
-event-stream increment. A `P1.7` secret-safe configuration candidate validates
+quality gate, versioned domain contracts, the `P1.6` append-only event stream
+and the completed `P1.7` secret-safe configuration increment. `P1.7` validates
 immutable provider profiles and resolves credential references without placing
 credential values in effective or durable configuration. It does
 **not** yet contain a working scanner, agent workflow, backend, SCM bot or
@@ -173,8 +173,8 @@ packages/adapters/
 - `P1.5` completed the versioned domain contracts and independent acceptance.
 - `P1.6` completed append-only events/stable IDs after independent product,
   architecture and security/evaluation acceptance.
-- `P1.7` has a locally verified provider-profile/configuration candidate
-  awaiting independent product, architecture and security/evaluation review.
+- `P1.7` completed immutable provider profiles, selection-only precedence and
+  registry/host-bound ephemeral credential leases after independent acceptance.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

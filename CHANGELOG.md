@@ -24,7 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-13 — подготовлен кандидат `P1.7`: immutable provider profiles,
+- 2026-08-13 — завершён `P1.7`: immutable provider profiles,
   selection-only config precedence и host-bound ephemeral credential leases с
   safe diagnostics/zeroization; DNS/connect/provider execution остаются `P1.8`.
 - 2026-08-13 — завершён `P1.6`: versioned `AuditEvent`, stable IDs
