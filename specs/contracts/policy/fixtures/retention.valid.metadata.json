@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "retention-default",
+  "policy_version": "1.0.0",
+  "profile": "no_code_egress",
+  "default_effect": "deny_persist",
+  "rules": [{"rule_id": "RET-METADATA", "effect": "persist", "artifact_types": ["run_metadata"], "data_classes": ["DC1_INTERNAL_METADATA"], "max_seconds": 7776000, "immutable": false}]
+}

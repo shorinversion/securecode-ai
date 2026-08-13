@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "private-model-source",
+  "policy_version": "1.0.0",
+  "tenant_scope": "tenant-fixture",
+  "profile": "private_model_zdr",
+  "default_effect": "deny",
+  "rules": [
+    {
+      "rule_id": "EGR-LOCAL-SOURCE-NATIVE",
+      "effect": "allow",
+      "data_classes": ["DC3_CONFIDENTIAL_SOURCE"],
+      "destinations": ["profile://local-source-model"],
+      "purposes": ["model_native_discovery"],
+      "requires_transforms": ["bounded_repository_view"],
+      "max_bytes": 1048576,
+      "tenant_admin_approval": false
+    }
+  ]
+}

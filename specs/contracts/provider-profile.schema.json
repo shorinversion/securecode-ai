@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securecode.ai/schemas/provider-profile/0.2.0",
+  "title": "SecureCodeProviderProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "profile_id", "profile_version", "provider_kind",
+    "api_dialect", "endpoint", "execution_boundary", "model_id", "capabilities", "data_terms",
+    "credential_ref", "egress_profiles", "budgets"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.2.0"},
+    "profile_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"},
+    "profile_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "provider_kind": {"enum": ["fake", "openai", "anthropic", "openai_compatible_local", "openai_compatible_remote"]},
+    "api_dialect": {"enum": ["fake", "openai_responses", "anthropic_messages", "openai_compatible"]},
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_url", "authority", "allowed_ports", "follow_redirects", "local_plaintext_exception"],
+      "properties": {
+        "base_url": {"type": "string", "format": "uri"},
+        "authority": {"type": "string", "minLength": 1},
+        "allowed_ports": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 65535}},
+        "follow_redirects": {"const": false},
+        "local_plaintext_exception": {"type": "boolean"}
+      }
+    },
+    "execution_boundary": {"enum": ["local_runner", "private_tenant_endpoint", "public_external"]},
+    "model_id": {"type": "string", "minLength": 1},
+    "model_snapshot": {"type": ["string", "null"]},
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structured_output", "native_refusal_signal", "native_incomplete_signal", "tool_calling", "source_code_analysis", "repository_tool_calls", "repository_tools", "max_context_tokens", "max_output_tokens"],
+      "properties": {
+        "structured_output": {"type": "boolean"},
+        "native_refusal_signal": {"type": "boolean"},
+        "native_incomplete_signal": {"type": "boolean"},
+        "tool_calling": {"type": "boolean"},
+        "source_code_analysis": {"type": "boolean"},
+        "repository_tool_calls": {"type": "boolean"},
+        "repository_tools": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["list_paths", "lookup_symbol", "read_range", "read_evidence"]}
+        },
+        "max_context_tokens": {"type": "integer", "minimum": 1},
+        "max_output_tokens": {"type": "integer", "minimum": 1}
+      }
+    },
+    "data_terms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_status", "residency", "retention_seconds", "training_use", "zero_data_retention", "maximum_input_data_class", "allowed_purposes"],
+      "properties": {
+        "evidence_status": {"enum": ["verified", "unverified", "not_applicable_local"]},
+        "residency": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "retention_seconds": {"type": ["integer", "null"], "minimum": 0},
+        "training_use": {"enum": ["none_verified", "provider_declared", "unknown", "not_applicable_local"]},
+        "zero_data_retention": {"type": ["boolean", "null"]},
+        "maximum_input_data_class": {"enum": ["DC0_PUBLIC", "DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY", "DC3_CONFIDENTIAL_SOURCE"]},
+        "allowed_purposes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["model_native_discovery", "candidate_investigation", "skeptic_review", "patch_generation", "evaluation"]}
+        },
+        "evidence_ref": {"type": ["string", "null"]}
+      }
+    },
+    "credential_ref": {"type": ["string", "null"], "pattern": "^(env|secret|workload)://[A-Za-z0-9._/-]+$"},
+    "egress_profiles": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"enum": ["air_gap", "no_code_egress", "private_model_zdr", "metadata_external", "managed_scan_opt_in"]}
+    },
+    "budgets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["timeout_seconds", "max_attempts", "max_total_tokens"],
+      "properties": {
+        "timeout_seconds": {"type": "integer", "minimum": 1},
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+        "max_total_tokens": {"type": "integer", "minimum": 1}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"provider_kind": {"enum": ["openai", "anthropic", "openai_compatible_remote"]}}},
+      "then": {
+        "properties": {
+          "endpoint": {"properties": {"base_url": {"pattern": "^https://"}, "local_plaintext_exception": {"const": false}}},
+          "execution_boundary": {"enum": ["private_tenant_endpoint", "public_external"]},
+          "credential_ref": {"type": "string"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"provider_kind": {"const": "fake"}}},
+      "then": {"properties": {"credential_ref": {"type": "null"}, "api_dialect": {"const": "fake"}}}
+    },
+    {
+      "if": {"properties": {"capabilities": {"properties": {"repository_tool_calls": {"const": false}}}}},
+      "then": {"properties": {"capabilities": {"properties": {"repository_tools": {"maxItems": 0}}}}}
+    },
+    {
+      "if": {"properties": {"capabilities": {"properties": {"repository_tool_calls": {"const": true}}}}},
+      "then": {"properties": {"capabilities": {"properties": {
+        "tool_calling": {"const": true},
+        "repository_tools": {
+          "minItems": 4,
+          "allOf": [
+            {"contains": {"const": "list_paths"}},
+            {"contains": {"const": "lookup_symbol"}},
+            {"contains": {"const": "read_range"}},
+            {"contains": {"const": "read_evidence"}}
+          ]
+        }
+      }}}}
+    }
+  ]
+}

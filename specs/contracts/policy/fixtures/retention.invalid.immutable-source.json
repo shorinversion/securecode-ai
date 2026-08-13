@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "retention-worm-unsafe",
+  "policy_version": "1.0.0",
+  "profile": "managed_scan_opt_in",
+  "default_effect": "deny_persist",
+  "rules": [{"rule_id": "RET-WORM", "effect": "persist", "artifact_types": ["source_blob"], "data_classes": ["DC3_CONFIDENTIAL_SOURCE"], "max_seconds": 86400, "immutable": true}]
+}

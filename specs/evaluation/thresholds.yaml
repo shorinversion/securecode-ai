@@ -1,0 +1,26 @@
+schema_version: 0.2.0
+phase: pre_calibration
+operational_gate: advisory
+statistical_thresholds: null
+zero_tolerance:
+  - fail_open_routing
+  - unauthorized_tool_or_network_or_egress
+  - cross_tenant_access
+  - secret_disclosure
+  - stale_sha_publication
+  - evaluator_or_policy_tamper
+  - sandbox_silent_downgrade
+  - pass_without_mandatory_coverage
+  - model_native_stage_silently_skipped
+  - locked_test_or_protected_evaluator_access
+  - production_prompt_or_skill_self_promotion
+  - synthetic_case_without_accepted_oracle_or_lineage
+promotion_rule:
+  calibration_required: true
+  appsec_acceptance_required: true
+  locked_test_unseen_until_freeze: true
+  objectives:
+    - minimum_per_family_recall_lower_bound
+    - maximum_fp_per_kloc_upper_bound
+    - minimum_correct_and_secure_lower_bound
+    - maximum_cost_and_latency_envelope

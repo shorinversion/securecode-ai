@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securecode.ai/schemas/egress-policy/0.1.0",
+  "title": "SecureCodeEgressPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "policy_id", "policy_version", "tenant_scope", "profile", "rules", "default_effect"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "policy_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"},
+    "policy_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "tenant_scope": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,127}$"},
+    "profile": {
+      "enum": ["air_gap", "no_code_egress", "private_model_zdr", "metadata_external", "managed_scan_opt_in"]
+    },
+    "default_effect": {"const": "deny"},
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "effect", "data_classes", "destinations", "purposes"],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^EGR-[A-Z0-9_-]+$"},
+          "effect": {"enum": ["allow", "deny"]},
+          "data_classes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"enum": ["DC0_PUBLIC", "DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY", "DC3_CONFIDENTIAL_SOURCE", "DC4_RESTRICTED"]}
+          },
+          "destinations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+          "purposes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+          "requires_transforms": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+          "max_bytes": {"type": "integer", "minimum": 0},
+          "tenant_admin_approval": {"type": "boolean", "default": false}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"effect": {"const": "allow"}}, "required": ["effect"]},
+            "then": {"properties": {"data_classes": {"not": {"contains": {"const": "DC4_RESTRICTED"}}}}}
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"profile": {"const": "air_gap"}}, "required": ["profile"]},
+      "then": {"properties": {"rules": {"items": {"properties": {"effect": {"const": "deny"}}}}}}
+    },
+    {
+      "if": {"properties": {"profile": {"const": "no_code_egress"}}, "required": ["profile"]},
+      "then": {"properties": {"rules": {"items": {"allOf": [{"if": {"properties": {"effect": {"const": "allow"}}}, "then": {"properties": {"data_classes": {"not": {"contains": {"enum": ["DC3_CONFIDENTIAL_SOURCE", "DC4_RESTRICTED"]}}}}}}]}}}}
+    },
+    {
+      "if": {"properties": {"profile": {"const": "metadata_external"}}, "required": ["profile"]},
+      "then": {"properties": {"rules": {"items": {"allOf": [{"if": {"properties": {"effect": {"const": "allow"}}}, "then": {"properties": {"data_classes": {"not": {"contains": {"enum": ["DC3_CONFIDENTIAL_SOURCE", "DC4_RESTRICTED"]}}}}}}]}}}}
+    }
+  ]
+}

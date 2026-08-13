@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securecode.ai/schemas/retention-policy/0.1.0",
+  "title": "SecureCodeRetentionPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "policy_id", "policy_version", "profile", "rules", "default_effect"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "policy_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$"},
+    "policy_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "profile": {"enum": ["air_gap", "no_code_egress", "private_model_zdr", "metadata_external", "managed_scan_opt_in"]},
+    "default_effect": {"const": "deny_persist"},
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "effect", "artifact_types", "data_classes", "max_seconds", "immutable"],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^RET-[A-Z0-9_-]+$"},
+          "effect": {"enum": ["persist", "deny_persist"]},
+          "artifact_types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["run_metadata", "finding_metadata", "audit_decision", "artifact_ref", "source_blob", "prompt", "model_response", "patch", "build_log", "telemetry", "non_source_audit_export"]}},
+          "data_classes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["DC0_PUBLIC", "DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY", "DC3_CONFIDENTIAL_SOURCE", "DC4_RESTRICTED"]}},
+          "max_seconds": {"type": "integer", "minimum": 0, "maximum": 31536000},
+          "immutable": {"type": "boolean"},
+          "requires_tenant_admin": {"type": "boolean", "default": false}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"effect": {"const": "persist"}}, "required": ["effect"]},
+            "then": {"properties": {"data_classes": {"not": {"contains": {"const": "DC4_RESTRICTED"}}}}}
+          },
+          {
+            "if": {"properties": {"immutable": {"const": true}}, "required": ["immutable"]},
+            "then": {
+              "properties": {
+                "data_classes": {"not": {"contains": {"enum": ["DC3_CONFIDENTIAL_SOURCE", "DC4_RESTRICTED"]}}},
+                "artifact_types": {"items": {"const": "non_source_audit_export"}}
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

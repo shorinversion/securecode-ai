@@ -1,0 +1,325 @@
+schema_version: 0.2.0
+baseline: securecode-definition-0.2.0
+lifecycle: accepted
+requirements:
+  - id: BRIEF-001
+    source: PROJECT_BRIEF/module_loader
+    statement: Load local Python, JavaScript and Go repositories safely.
+    normative: [SC-PROD-002, SC-PROD-003, SC-DOM-006]
+    tasks: [P2.1, P2.2, P7.1, P7.2]
+    tests: [repository_intake_security, mixed_language_coverage, language_conformance]
+    evidence: [G2, G7, G9]
+  - id: BRIEF-002
+    source: PROJECT_BRIEF/tools_ast
+    statement: Provide AST or Tree-sitter parsing and program facts.
+    normative: [SC-PROD-003, SC-SYS-003]
+    tasks: [P2.3, P2.4, P7.1, P7.2]
+    tests: [parser_positive_negative, symbol_location_stability]
+    evidence: [G2, G7]
+  - id: BRIEF-003
+    source: PROJECT_BRIEF/tools_secrets
+    statement: Detect hardcoded secrets without leaking secret values.
+    normative: [SC-PROD-003, SC-DATA-004, SC-REPORT-004]
+    tasks: [P2.5, P6.7, P8.5]
+    tests: [secret_detector, multi_sink_secret_canary]
+    evidence: [G2, G6, G8]
+  - id: BRIEF-004
+    source: PROJECT_BRIEF/tools_dependencies
+    statement: Detect vulnerable dependency versions.
+    normative: [SC-PROD-003, SC-EVAL-007]
+    tasks: [P2.6, P7.1, P7.2]
+    tests: [dependency_manifest_positive_negative, advisory_normalization]
+    evidence: [G2, G7]
+  - id: BRIEF-005
+    source: PROJECT_BRIEF/unified_contract
+    statement: Use one contract for fragment, file/lines and CWE metadata.
+    normative: [SC-PROD-004, SC-DOM-005, SC-DOM-006, SC-DOM-007]
+    tasks: [P1.5, P1.6, P1.13]
+    tests: [schema_round_trip, compatibility, path_location]
+    evidence: [G1]
+  - id: BRIEF-006
+    source: PROJECT_BRIEF/agent_core
+    statement: Provide Auditor and Architect roles over a configurable LLM.
+    normative: [SC-PROD-005, SC-CAP-002, SC-MODEL-001]
+    tasks: [P1.8, P3.2, P3.3, P4.4, P4.6]
+    tests: [provider_contract, auditor_contract, architect_contract, architect_validation]
+    evidence: [G3, G4]
+  - id: BRIEF-007
+    source: PROJECT_BRIEF/semantic_audit
+    statement: Find contextual and logical vulnerabilities with evidence.
+    normative: [SC-PROD-001, SC-PROD-005, SC-WF-005, SC-WF-006]
+    tasks: [P2.7, P2.10, P3.1, P3.3, P7.4]
+    tests: [DEMO-CWE89-001, evidence_citation, safe_control, expanded_cwe_portfolio_conformance]
+    evidence: [G3, G4, G7]
+  - id: BRIEF-008
+    source: PROJECT_BRIEF/auto_fix
+    statement: Generate safe unified-diff patch candidates.
+    normative: [SC-PROD-007, SC-WF-009, SC-WF-012, SC-WF-014]
+    tasks: [P4.1, P4.2, P4.3, P4.4, P4.5, P4.6, P4.7, P4.8, P4.9]
+    tests: [diff_parser, path_tamper, regression, poc_plus]
+    evidence: [G4]
+  - id: BRIEF-009
+    source: PROJECT_BRIEF/reporting
+    statement: Produce Markdown and HTML reports with OWASP/CWE and fixes.
+    normative: [SC-PROD-008, SC-REPORT-001, SC-REPORT-002, SC-REPORT-005]
+    tasks: [P2.11, P2.12, P4.11]
+    tests: [report_schema, golden_rendering, injection_rendering]
+    evidence: [G2, G4]
+  - id: BRIEF-010
+    source: PROJECT_BRIEF/quality_artifacts
+    statement: Deliver documentation, unit tests and a demo notebook.
+    normative: [SC-PROD-016]
+    tasks: [P1.3, P1.11, P4.10, P4.12, P9.2, P9.3, P9.5]
+    tests: [clean_environment_docs, notebook_execution, release_test_suite]
+    evidence: [G1, G4, G9]
+  - id: BRIEF-011
+    source: PROJECT_BRIEF/submission_repository
+    statement: Submit an accessible Git repository with source, README, dependencies, tests, configuration and runnable notebook.
+    normative: [SC-PROD-020, SC-SYS-008]
+    tasks: [P1.1, P1.2, P1.3, P4.12, P9.13]
+    tests: [submission_manifest, clean_environment_docs, notebook_execution, anonymous_repository_access]
+    evidence: [G1, G4, G9]
+  - id: BRIEF-012
+    source: PROJECT_BRIEF/submission_report
+    statement: Deliver a PDF or HTML report with problem, solution, experiments, metrics and conclusions.
+    normative: [SC-PROD-020, SC-EVAL-017]
+    tasks: [P9.4, P9.5, P9.13]
+    tests: [report_content_check, metric_recomputation, limitations_check]
+    evidence: [G9]
+  - id: BRIEF-013
+    source: PROJECT_BRIEF/web_service_delivery
+    statement: For the web service provide Dockerfile, launch instructions and a 2-5 minute screencast.
+    normative: [SC-PROD-020, SC-SYS-008]
+    tasks: [P6.12, P9.14]
+    tests: [docker_clean_build, web_launch_smoke, screencast_duration]
+    evidence: [G6, G9]
+  - id: BRIEF-014
+    source: PROJECT_BRIEF/data_reproducibility_links
+    statement: Link datasets, reproduce generated data with a fixed seed and keep all submission links accessible.
+    normative: [SC-PROD-020, SC-EVAL-004, SC-EVAL-008]
+    tasks: [P7.6, P9.13, P9.14]
+    tests: [dataset_link_and_hash, fixed_seed_replay, anonymous_link_check]
+    evidence: [G7, G9]
+  - id: BRIEF-015
+    source: PROJECT_BRIEF/deadline_and_team
+    statement: Confirm the deadline year/timezone and team-size compliance or individual-work approval.
+    normative: [SC-PROD-021]
+    tasks: [P9.12]
+    tests: [submission_administration_check]
+    evidence: [G9]
+  - id: EXP-001
+    source: CR-001
+    statement: Support provider-agnostic URL/key/model profiles including local.
+    normative: [SC-MODEL-001, SC-MODEL-002, SC-MODEL-003, SC-ENDPOINT-005]
+    tasks: [P1.7, P1.8, P6.5]
+    tests: [provider_normalization, capability_mismatch, secret_redaction]
+    evidence: [G1, G3, G6]
+  - id: EXP-002
+    source: CR-002
+    statement: Separate workflow/evidence graphs and use bounded harness loops.
+    normative: [SC-SYS-003, SC-SYS-004, SC-WF-001, SC-WF-005, SC-WF-010]
+    tasks: [P1.9, P2.10, P3.3, P4.7]
+    tests: [transition_contract, loop_budget, no_progress]
+    evidence: [G1, G3, G4]
+  - id: EXP-003
+    source: CR-003
+    statement: One Core serves offline CLI, CI worker and backend.
+    normative: [SC-SYS-002, SC-PROD-009, SC-PROD-010, SC-CLI-001]
+    tasks: [P1.10, P5.1, P6.1, P6.6, P6.11]
+    tests: [cross_entrypoint_golden, air_gap, connected_worker]
+    evidence: [G1, G5, G6]
+  - id: EXP-004
+    source: user_SCM_request
+    statement: Integrate PR/MR comments and a SHA-bound merge gate.
+    normative: [SC-PROD-011, SC-PROD-012, SC-SCM-001, SC-SCM-004, SC-SCM-007]
+    tasks: [P5.2, P5.3, P5.4, P5.5, P5.6, P5.7, P5.8, P7.5]
+    tests: [webhook_security, stale_sha, summary_idempotency, bounded_annotations, gate_outcome_mapping, adapter_conformance]
+    evidence: [G5, G7]
+  - id: EXP-005
+    source: CR-008
+    statement: Resist direct/indirect injection and refusal-induced fail-open.
+    normative: [SC-PROD-014, SC-CAP-001, SC-CAP-003, SC-WF-016, SC-EVAL-013]
+    tasks: [P1.8, P3.5, P3.6, P8.3]
+    tests: [provider_fault_matrix, injection_corpus, pass_guard]
+    evidence: [G3, G8]
+  - id: EXP-006
+    source: D-009_and_CR-001
+    statement: Keep code in runner by default and enforce classified egress.
+    normative: [SC-PROD-010, SC-EGRESS-001, SC-EGRESS-004, SC-EGRESS-005]
+    tasks: [P1.7, P3.1, P5.1, P6.6, P6.7, P8.5]
+    tests: [classification_property, egress_capture, secret_canary]
+    evidence: [G3, G5, G6, G8]
+  - id: EXP-007
+    source: D-005_and_D-006
+    statement: Independently validate high-risk findings and patches; no auto-merge.
+    normative: [SC-PROD-006, SC-PROD-007, SC-WF-007, SC-WF-013]
+    tasks: [P3.4, P4.4, P4.5, P4.6, P4.8, P4.9]
+    tests: [skeptic_read_only, every_gate_failure, checkout_unchanged]
+    evidence: [G3, G4]
+  - id: EXP-008
+    source: D-010_D-011_D-025
+    statement: Use advisory before calibration and new-code blocking afterward.
+    normative: [SC-PROD-013, SC-EVAL-015, SC-EVAL-016, SC-SCM-008]
+    tasks: [P5.3, P5.4, P5.8, P7.9, P7.11]
+    tests: [pre_calibration_policy, calibration_freeze, outcome_mapping]
+    evidence: [G5, G7]
+  - id: SEC-001
+    source: THREAT_MODEL/TM-001_to_TM-026
+    statement: Enforce repository, tool, sandbox, tenant, SCM, evaluation-lab and supply-chain boundaries.
+    normative: [SC-CAP-001, SC-CAP-011, SC-SBX-001, SC-SBX-003, SC-SBX-006, SC-STORE-002, SC-ENDPOINT-003]
+    tasks: [P2.1, P3.6, P3.7, P4.4, P7.12, P7.13, P7.14, P7.15, P7.16, P8.2, P8.6]
+    tests: [security_conformance_suite]
+    evidence: [G2, G3, G4, G7, G8]
+  - id: SEC-002
+    source: D-015
+    statement: Keep model-call, finding-verdict and run-outcome types disjoint.
+    normative: [SC-DOM-001, SC-DOM-002, SC-DOM-003, SC-WF-017]
+    tasks: [P1.5, P1.8, P3.2, P3.5]
+    tests: [outcome_cartesian_matrix]
+    evidence: [G1, G3]
+  - id: SEC-003
+    source: D-024
+    statement: Classify, minimize, retain and delete every source-derived artifact.
+    normative: [SC-DATA-001, SC-DATA-002, SC-RET-001, SC-RET-002]
+    tasks: [P1.5, P6.4, P6.7, P8.6]
+    tests: [classification_and_retention_conformance]
+    evidence: [G6, G8]
+  - id: ARCH-001
+    source: D-020_to_D-023
+    statement: Use portable runtime/storage/blob/sandbox ports with proven adapters.
+    normative: [SC-SYS-001, SC-RUNTIME-001, SC-STORE-003, SC-BLOB-001, SC-SBX-004]
+    tasks: [P1.9, P4.5, P6.2, P6.3, P6.4, P8.2]
+    tests: [port_contract, kill_restart, artifact_integrity, sandbox_teardown]
+    evidence: [G1, G4, G6, G8]
+  - id: EVAL-001
+    source: D-025
+    statement: Evaluate with frozen inputs, baselines, leakage controls and scoped claims.
+    normative: [SC-EVAL-001, SC-EVAL-005, SC-EVAL-008, SC-EVAL-017]
+    tasks: [P4.10, P7.6, P7.7, P7.8, P7.9]
+    tests: [dataset_lock, split_leakage, manifest_completeness, claim_check]
+    evidence: [G4, G7]
+  - id: GOV-001
+    source: CR-004_CR-006_CR-007_D-016
+    statement: Use SDD, research evidence, controlled delegation and formal gates.
+    normative: [SC-DOM-007, SC-CAP-005, SC-EVAL-001]
+    tasks: [P0.13, P0.14, P0.16, P0.17, P0.18, P1.13]
+    tests: [spec_lint, traceability, protected_paths, research_claim_gate, delegated_task_boundary]
+    evidence: [G0, G1]
+  - id: GOV-002
+    source: CR-005
+    statement: Restore and persist project context through a repository-local navigation protocol.
+    normative: [SC-DOM-007, SC-CAP-005]
+    tasks: [P0.15]
+    tests: [navigator_snapshot, required_memory_files]
+    evidence: [G0]
+  - id: EXP-009
+    source: CR-009
+    statement: Freeze Python-first Core, GitHub-first reference and pilot-only release semantics.
+    normative: [SC-PROD-002, SC-PROD-011, SC-PROD-013]
+    tasks: [P0.4, P0.5, P0.6, P0.7]
+    tests: [product_consistency, scm_permission_manifest]
+    evidence: [G0]
+  - id: ARCH-002
+    source: CR-010
+    statement: Freeze Local/Temporal runtime and connected infrastructure ports.
+    normative: [SC-RUNTIME-001, SC-STORE-003, SC-BLOB-001, SC-SBX-001]
+    tasks: [P0.8, P0.9, P1.9]
+    tests: [architecture_consistency, port_contract]
+    evidence: [G0, G1]
+  - id: SEC-004
+    source: CR-011
+    statement: Freeze full threat, classification, egress and retention baseline.
+    normative: [SC-DATA-001, SC-EGRESS-001, SC-RET-001, SC-CAP-001]
+    tasks: [P0.10, P0.11]
+    tests: [threat_traceability, policy_schema_parse]
+    evidence: [G0]
+  - id: EVAL-002
+    source: CR-012
+    statement: Forbid guessed confidence thresholds and production blocking before calibration.
+    normative: [SC-PROD-013, SC-EVAL-015, SC-EVAL-016]
+    tasks: [P0.12, P5.8, P7.9]
+    tests: [pre_calibration_advisory, calibration_access_separation]
+    evidence: [G0, G5, G7]
+  - id: GOV-003
+    source: CR-013
+    statement: Freeze specification, evaluation and traceability baseline before P1.
+    normative: [SC-DOM-007, SC-CAP-005, SC-EVAL-001]
+    tasks: [P0.13, P0.14, P0.18, P1.13]
+    tests: [baseline_manifest, content_hash, final_independent_reviews, strict_frozen_validator, commit_provenance, effective_gate_decision]
+    evidence: [G0, G1]
+  - id: EXP-010
+    source: CR-014_D-027
+    statement: Require independent deterministic and model-native discovery, preserve lane provenance and interpret every normalized candidate.
+    normative: [SC-PROD-019, SC-SYS-007, SC-PORT-004, SC-DOM-011, SC-DOM-012, SC-DOM-013, SC-DOM-014, SC-EVENT-010, SC-EVENT-011, SC-EVENT-012, SC-EVENT-013, SC-WF-022, SC-WF-023, SC-CAP-009, SC-CAP-010, SC-MODEL-007, SC-EGRESS-008, SC-EVAL-018, SC-POLICY-010, SC-CLI-009, SC-API-016, SC-API-017, SC-SCM-002, SC-SCM-011, SC-REPORT-001, SC-REPORT-011]
+    tasks: [P1.5, P1.6, P1.8, P1.9, P1.10, P1.13, P2.3, P2.8, P2.9, P2.10, P2.12, P2.13, P3.2, P3.3, P3.5, P3.7, P3.10, P3.11, P4.10, P4.11, P5.6, P6.1, P6.5, P6.7, P7.7, P7.8]
+    tests: [dual_lane_zero_signal, completed_zero_receipt, deterministic_candidate_interpretation, hybrid_lineage_dedup, provider_non_success_indeterminate, origin_stratified_independent_recomputation, run_execution_identity_cross_transport_mutation]
+    evidence: [G0, G1, G2, G3, G4, G5, G6, G7]
+  - id: GOV-004
+    source: CR-015
+    statement: Restore complete academic delivery, reproducibility and administrative acceptance requirements.
+    normative: [SC-PROD-020, SC-PROD-021, SC-SYS-008]
+    tasks: [P1.1, P1.2, P1.3, P4.12, P6.12, P7.6, P9.12, P9.13, P9.14]
+    tests: [submission_manifest, clean_room_reproduction, docker_clean_build, screencast_duration, anonymous_link_check, submission_administration_check]
+    evidence: [G0, G1, G4, G6, G7, G9]
+  - id: EVAL-003
+    source: CR-016_D-028
+    statement: Limit RLM, DSPy/GEPA, SkillOpt and synthetic generation to an isolated governed P7 Evaluation Lab.
+    normative: [SC-DATA-006, SC-RET-005, SC-EVAL-019, SC-EVAL-020, SC-EVAL-021, SC-EVAL-022, SC-EVAL-023, SC-EVAL-024, SC-CAP-011, SC-CAP-012, SC-SBX-006]
+    tasks: [P7.12, P7.13, P7.14, P7.15, P7.16]
+    tests: [synthetic_candidate_acceptance, optimizer_protected_access, generated_program_isolation, held_out_promotion, unsafe_candidate_rejection]
+    evidence: [G0, G7]
+threat_traceability:
+  - {id: TM-001, normative: [SC-SCM-001, SC-SCM-002], tasks: [P5.5, P6.3], tests: [webhook_signature_replay_idempotency]}
+  - {id: TM-002, normative: [SC-SCM-003, SC-SCM-004], tasks: [P5.4, P5.5], tests: [ref_move_and_stale_sha_race]}
+  - {id: TM-003, normative: [SC-DOM-006, SC-SBX-005], tasks: [P2.1], tests: [path_symlink_submodule_archive_escape]}
+  - {id: TM-004, normative: [SC-SYS-004, SC-WF-005], tasks: [P2.1, P2.8, P3.3], tests: [resource_context_bomb_budgets]}
+  - {id: TM-005, normative: [SC-PORT-003, SC-CAP-001], tasks: [P2.8, P3.6], tests: [malicious_scanner_config_and_output]}
+  - {id: TM-006, normative: [SC-SBX-005], tasks: [P2.1, P4.5], tests: [lifecycle_script_sentinel]}
+  - {id: TM-007, normative: [SC-CAP-001, SC-WF-001, SC-WF-011], tasks: [P3.6, P3.7], tests: [direct_indirect_composed_injection]}
+  - {id: TM-008, normative: [SC-DOM-002, SC-WF-017, SC-EVAL-013], tasks: [P1.8, P3.5, P3.6], tests: [provider_non_success_fail_open_matrix]}
+  - {id: TM-009, normative: [SC-SYS-005, SC-CAP-003], tasks: [P3.7], tests: [unauthorized_tool_argument_zero_effect]}
+  - {id: TM-010, normative: [SC-WF-012, SC-CAP-004], tasks: [P4.4, P4.6], tests: [protected_path_and_evaluator_tamper]}
+  - {id: TM-011, normative: [SC-SBX-001, SC-SBX-003], tasks: [P4.5, P8.2], tests: [sandbox_escape_and_profile_attestation]}
+  - {id: TM-012, normative: [SC-SBX-003, SC-SBX-004], tasks: [P4.5, P8.2], tests: [network_resource_bomb_and_teardown]}
+  - {id: TM-013, normative: [SC-DATA-004, SC-EGRESS-005, SC-REPORT-004], tasks: [P2.5, P6.7, P8.5], tests: [multi_sink_secret_canary]}
+  - {id: TM-014, normative: [SC-ENDPOINT-001, SC-ENDPOINT-002, SC-ENDPOINT-003, SC-ENDPOINT-004], tasks: [P1.7, P1.8, P6.7], tests: [ssrf_redirect_rebinding_credential_host]}
+  - {id: TM-015, normative: [SC-STORE-002, SC-BLOB-002, SC-API-002], tasks: [P6.2, P6.4], tests: [tenant_bola_cache_artifact_isolation]}
+  - {id: TM-016, normative: [SC-POLICY-005, SC-API-004], tasks: [P6.8], tests: [waiver_scope_sha_expiry_replay]}
+  - {id: TM-017, normative: [SC-EVENT-001, SC-EVENT-002, SC-BLOB-001], tasks: [P1.6, P6.4], tests: [event_artifact_tamper_and_gap]}
+  - {id: TM-018, normative: [SC-WF-012, SC-WF-013, SC-WF-014], tasks: [P4.4, P4.6, P4.8], tests: [patch_path_semantic_regression_poc_plus]}
+  - {id: TM-019, normative: [SC-MODEL-003, SC-MODEL-005, SC-ENDPOINT-005], tasks: [P1.8, P6.5], tests: [provider_downgrade_replay_cache_isolation]}
+  - {id: TM-020, normative: [SC-SYS-004, SC-WF-005], tasks: [P3.3, P8.7], tests: [provider_outage_retry_cost_ceiling]}
+  - {id: TM-021, normative: [SC-SYS-006], tasks: [P1.2, P8.11], tests: [dependency_action_image_provenance]}
+  - {id: TM-022, normative: [SC-REPORT-005, SC-REPORT-010], tasks: [P2.12], tests: [html_markdown_sarif_terminal_rendering]}
+  - {id: TM-023, normative: [SC-RUNTIME-005], tasks: [P8.7, P8.10], tests: [tenant_fairness_webhook_storm]}
+  - {id: TM-024, normative: [SC-CAP-005, SC-EVENT-001, SC-POLICY-008], tasks: [P1.13, P6.10], tests: [privileged_policy_change_audit_signal]}
+  - {id: TM-025, normative: [SC-CAP-011, SC-CAP-012, SC-SBX-006, SC-EVAL-020, SC-EVAL-021, SC-EVAL-024], tasks: [P7.12, P7.14, P7.15, P7.16], tests: [optimizer_generated_program_protected_access_isolation]}
+  - {id: TM-026, normative: [SC-DATA-006, SC-EVAL-019, SC-EVAL-024], tasks: [P7.13, P7.16], tests: [synthetic_oracle_provenance_lineage_leakage]}
+  - {id: PV-001, normative: [SC-DATA-001, SC-STORE-002], tasks: [P6.2, P6.7], tests: [cross_tenant_purpose_linkability]}
+  - {id: PV-002, normative: [SC-API-002, SC-BLOB-002, SC-REPORT-005], tasks: [P2.12, P6.2, P6.4], tests: [identity_existence_and_path_disclosure]}
+  - {id: PV-003, normative: [SC-RET-004, SC-POLICY-005], tasks: [P6.8, P8.6], tests: [audit_visibility_and_worm_source_rejection]}
+  - {id: PV-004, normative: [SC-DATA-006, SC-EGRESS-002, SC-EGRESS-006, SC-ENDPOINT-005, SC-EVAL-020, SC-RET-005], tasks: [P6.5, P6.7, P7.12, P7.13, P7.14, P7.15, P7.16, P9.2], tests: [undeclared_purpose_training_destination, optimizer_dataset_license_purpose_authorization, synthetic_dataset_lineage_split]}
+  - {id: PV-005, normative: [SC-RET-002, SC-RET-003], tasks: [P6.4, P8.6], tests: [deletion_descendant_reconciliation]}
+spec_prefix_coverage:
+  SC-PROD: {owner_phase: P1-P9, test_family: product_acceptance}
+  SC-DOM: {owner_phase: P1, test_family: domain_schema_and_compatibility}
+  SC-SYS: {owner_phase: P1, test_family: architecture}
+  SC-PORT: {owner_phase: P1, test_family: port_contract}
+  SC-RUNTIME: {owner_phase: P1-P6, test_family: runtime_contract}
+  SC-STORE: {owner_phase: P6, test_family: persistence_security}
+  SC-BLOB: {owner_phase: P6, test_family: artifact_contract}
+  SC-SBX: {owner_phase: P4-P8, test_family: sandbox_security}
+  SC-MODEL: {owner_phase: P1-P3, test_family: provider_contract}
+  SC-WF: {owner_phase: P1-P4, test_family: workflow_scenarios}
+  SC-CLI: {owner_phase: P1-P4, test_family: cli_contract}
+  SC-API: {owner_phase: P6, test_family: api_contract_and_authz}
+  SC-EVENT: {owner_phase: P1-P6, test_family: event_replay_and_integrity}
+  SC-POLICY: {owner_phase: P1-P7, test_family: policy_conformance}
+  SC-SCM: {owner_phase: P5-P7, test_family: scm_conformance}
+  SC-REPORT: {owner_phase: P2-P4, test_family: report_contract}
+  SC-CAP: {owner_phase: P1-P4, test_family: capability_security}
+  SC-DATA: {owner_phase: P1-P8, test_family: classification_property}
+  SC-EGRESS: {owner_phase: P1-P8, test_family: egress_security}
+  SC-ENDPOINT: {owner_phase: P1-P8, test_family: endpoint_ssrf}
+  SC-RET: {owner_phase: P6-P8, test_family: retention_conformance}
+  SC-EVAL: {owner_phase: P4-P8, test_family: evaluation_governance}

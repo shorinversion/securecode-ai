@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "dc4-unsafe",
+  "policy_version": "1.0.0",
+  "tenant_scope": "tenant-fixture",
+  "profile": "private_model_zdr",
+  "default_effect": "deny",
+  "rules": [{"rule_id": "EGR-DC4", "effect": "allow", "data_classes": ["DC4_RESTRICTED"], "destinations": ["provider"], "purposes": ["audit"]}]
+}

@@ -1,0 +1,88 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P?.?"
+  type: "implementation"
+  objective: ""
+  spec_refs: []
+  decision_refs: []
+  preconditions: []
+  non_goals: []
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "implementer"
+  mode: "direct" # direct | read_only_subtask | proposal_only | path_isolated_subtask
+  parent_task_id: null
+  exclusive_path_lease: []
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths: []
+  forbidden_paths:
+    - "specs/**"
+    - "tests/acceptance/**"
+    - "tests/evaluator/**"
+    - "artifacts/gates/**"
+  max_changed_files: null
+  max_diff_lines: null
+
+capabilities:
+  allowed_tools: []
+  allowed_commands: []
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny_unless_explicit"
+
+inputs:
+  artifacts: []
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts: []
+  structured_result_schema: null
+  handoff_required_fields:
+    - "task_id_and_role"
+    - "scope_completed"
+    - "files_read_and_changed"
+    - "commands_and_exact_results"
+    - "evidence"
+    - "assumptions"
+    - "risks_and_unresolved"
+    - "integration_order"
+
+constraints:
+  invariants: []
+  compatibility: []
+  security: []
+  privacy: []
+  performance: []
+
+budgets:
+  max_iterations: null
+  max_tool_calls: null
+  timeout_seconds: null
+  max_output_bytes: null
+
+verification:
+  acceptance_commands: []
+  negative_cases: []
+  required_evidence: []
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "new_dependency_required_but_not_allowed"
+  - "security_boundary_change_required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: []
+  changelog_required: false
+  adr_required: false

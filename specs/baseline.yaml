@@ -1,0 +1,54 @@
+schema_version: 0.2.0
+baseline_id: securecode-definition-0.2.0
+lifecycle: accepted_pending_repository_commit
+accepted_date: 2026-08-13
+normative_documents:
+  - product/requirements.md
+  - system/architecture.md
+  - contracts/domain.md
+  - contracts/api.md
+  - contracts/events.md
+  - contracts/cli.md
+  - contracts/policy.md
+  - contracts/scm.md
+  - contracts/reports.md
+  - contracts/provider-profile.schema.json
+  - contracts/provider-profile.fixtures.yaml
+  - contracts/provider-fixtures/valid.fake.json
+  - contracts/provider-fixtures/valid.remote-openai.json
+  - contracts/provider-fixtures/valid.local-openai-compatible.json
+  - contracts/provider-fixtures/invalid.remote-http.json
+  - contracts/provider-fixtures/invalid.fake-credential.json
+  - contracts/policy/egress-policy.schema.json
+  - contracts/policy/retention-policy.schema.json
+  - contracts/policy/fixtures.yaml
+  - contracts/policy/fixtures/egress.valid.air-gap.json
+  - contracts/policy/fixtures/egress.invalid.air-gap-allow.json
+  - contracts/policy/fixtures/egress.invalid.dc4-allow.json
+  - contracts/policy/fixtures/egress.invalid.no-code-dc3.json
+  - contracts/policy/fixtures/egress.valid.private-model-source.json
+  - contracts/policy/fixtures/egress.valid.metadata-external.json
+  - contracts/policy/fixtures/retention.valid.metadata.json
+  - contracts/policy/fixtures/retention.invalid.dc4-persist.json
+  - contracts/policy/fixtures/retention.invalid.immutable-source.json
+  - behavior/workflows.md
+  - behavior/stage-catalogue.yaml
+  - security/capability-policy.md
+  - security/data-classification.md
+  - evaluation/protocol.md
+  - evaluation/datasets.lock
+  - evaluation/metrics.yaml
+  - evaluation/thresholds.yaml
+  - evaluation/cases/mvp-cwe89.yaml
+  - traceability/requirements.yaml
+supporting_documents:
+  - ../docs/PROJECT_BRIEF.md
+  - ../docs/PRODUCT.md
+  - ../docs/ARCHITECTURE.md
+  - ../docs/DECISIONS.md
+  - ../docs/security/THREAT_MODEL.md
+  - ../docs/security/PROMPT_INJECTION.md
+freeze:
+  commit_sha: null
+  content_sha256: dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9
+  note: normative content passed integrated validation; commit SHA is required before freeze/GO

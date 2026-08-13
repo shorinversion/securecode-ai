@@ -1,0 +1,217 @@
+# Changelog
+
+Здесь фиксируются значимые изменения SecureCode AI: продукта, scope,
+архитектуры, безопасности, требований, планов и пользовательского поведения.
+Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), а
+версии продукта после первого релиза следуют Semantic Versioning.
+
+Changelog отвечает на вопрос «что и когда изменилось». Причины и альтернативы
+архитектурных решений находятся в [docs/DECISIONS.md](docs/DECISIONS.md),
+текущий план — в [docs/PLAN.md](docs/PLAN.md).
+
+## Правила ведения
+
+- Каждое наблюдаемое изменение попадает в `Unreleased` в день принятия.
+- Используются категории `Added`, `Changed`, `Fixed`, `Security`, `Deprecated`,
+  `Removed` и `Decisions`.
+- Запись содержит дату, краткий эффект и ссылки на документ/ADR/CR.
+- История не переписывается. Ошибочное решение помечается `superseded` новой
+  записью.
+- При релизе содержимое `Unreleased` переносится в версионную секцию с датой,
+  commit/tag и ссылкой на release evidence.
+
+## [Unreleased]
+
+### Added
+
+- 2026-08-13 — добавлено единое понятное описание operating model разработки с
+  ИИ: Spec-Driven/contract-first, task packets, Primary Integrator и bounded
+  subagents, test/evidence gates, durable memory и controlled optimization.
+- 2026-08-12 — добавлен targeted research note по RLM, DSPy/GEPA, SkillOpt,
+  LLM-generated eval cases, sandbox constraints и staged ablation/promotion;
+  методы остаются experimental candidates и не объявлены runtime dependency.
+- 2026-08-12 — сохранена исходная постановка проекта и отделена от дальнейших
+  расширений: [PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md).
+- 2026-08-12 — создана исследовательская база с научными работами, стандартами,
+  benchmarks и конкурентной рамкой: [RESEARCH.md](docs/RESEARCH.md).
+- 2026-08-12 — зафиксированы целевая graph-based архитектура, evidence graph,
+  bounded investigation/repair loops и validation ladder:
+  [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- 2026-08-12 — зафиксирована продуктовая модель offline CLI, CI worker,
+  backend control plane и GitHub/GitLab adapters:
+  [PRODUCT.md](docs/PRODUCT.md).
+- 2026-08-12 — создан журнал архитектурных решений:
+  [DECISIONS.md](docs/DECISIONS.md).
+- 2026-08-12 — создан master plan от definition baseline до v1.0 и закрытия
+  проекта с фазами `P0–P9`, gates `G0–G9` и traceability:
+  [PLAN.md](docs/PLAN.md).
+- 2026-08-12 — создан постоянный компактный контекст проекта:
+  [CONTEXT.md](docs/CONTEXT.md).
+- 2026-08-12 — добавлен project-local skill
+  [securecode-project-navigator](.agents/skills/securecode-project-navigator/SKILL.md),
+  read-only context snapshot helper и обязательное подключение через
+  [AGENTS.md](AGENTS.md).
+- 2026-08-12 — принят Spec-Driven Development operating model, создан
+  [specification guide](docs/SPEC_DRIVEN_DEVELOPMENT.md), namespace
+  [`specs/`](specs/README.md) и constrained LLM
+  [task-packet template](specs/templates/implementation-task.yaml).
+- 2026-08-12 — импортирован полный Deep Research report: hash-verified raw
+  source, provenance manifest, impact review, project research protocol, claim
+  ledger, search log и amendment log в [`docs/research/`](docs/research/README.md).
+- 2026-08-12 — создан focused
+  [prompt-injection threat model](docs/security/PROMPT_INJECTION.md) для
+  untrusted code/SCM/tool content, refusal induction, provider fault states,
+  attack corpus и acceptance oracles.
+- 2026-08-12 — SDD operating model дополнен правилами разработки основным
+  Codex-agent и ограниченными субагентами; task-packet template теперь фиксирует
+  owner role, execution mode, exclusive paths и structured handoff.
+- 2026-08-12 — создан decision-complete specification baseline `0.1.0`:
+  product/system/domain/API/events/CLI/policy/SCM/report contracts, workflow
+  state machines, data/capability policies, frozen MVP evaluation и полная
+  [traceability](specs/traceability/README.md).
+- 2026-08-12 — создан полный [system threat model](docs/security/THREAT_MODEL.md)
+  с trust boundaries и `TM-001–TM-024`, а также G0 evidence packet в
+  [`artifacts/gates/G0/`](artifacts/gates/G0/checklist.md).
+
+### Changed
+
+- 2026-08-13 — принят `CR-014`: baseline `0.2.0` требует два
+  independent discovery lane. SAST/AST/taint/SCA/secret output — `RawSignal`;
+  LLM Auditor интерпретирует каждый normalized candidate, а mandatory
+  model-native lane ищет candidates без scanner seed и не пропускается
+  при zero deterministic signals. Non-success даёт `INDETERMINATE`, а не clean.
+- 2026-08-13 — `CR-015` синхронизирован с product/plan/traceability:
+  Git/README/dependencies/tests/notebook, PDF/HTML experiments report, data
+  links/fixed-seed generator, clean-room reproducibility, Dockerfile, web launch
+  instructions, 2–5 minute screencast, public-link и administrative checks теперь
+  имеют normative IDs, tasks, tests и G9 evidence.
+- 2026-08-13 — ограниченно принят `CR-016`: RLM/DSPy/GEPA/SkillOpt и
+  synthetic generation разрешены только в isolated offline P7 Evaluation Lab;
+  они не Core/runtime dependency, production agents не self-promote, а promotion
+  требует held-out/security/human gates.
+- 2026-08-12 — `D-016` дополнен фактическим evidence роли субагентов: product,
+  architecture и security/evaluation reviewers нашли разные классы дефектов,
+  после чего единый Primary Integrator свёл исправления и повторил validation;
+  право самостоятельно менять baseline субагентам не предоставляется.
+- 2026-08-12 — targeted source review OpenAI Codex Security выявил, что
+  заявленный гибрид не полностью закреплён в normative workflow: clean scanner
+  path допускает отсутствие model-native discovery. Открыт `CR-014`; G0 freeze
+  приостановлен до явного решения и delta review.
+- 2026-08-12 — project navigator усилен обязательной проверкой predecessor gate
+  до implementation-изменений, явным fail-closed переходом между фазами и
+  протоколом тестовых доказательств, разделяющим self-tests платформы и
+  генерируемые security regression tests.
+- 2026-08-12 — требование «только локальная LLM» расширено до
+  provider-agnostic model layer; локальный endpoint остаётся поддерживаемым
+  deployment profile (`D-002`).
+- 2026-08-12 — целевой продукт расширен от локального прототипа до единого Core
+  с CLI, CI-connected и managed режимами (`D-007`, `D-008`).
+- 2026-08-12 — Auto-Fix определён как проверяемый patch candidate, а не
+  автоматическая гарантия безопасности (`D-006`).
+- 2026-08-12 — план разделяет Core MVP `v0.1` и Enterprise MVP `v0.2`, чтобы
+  control plane строился после проверки сквозного security vertical slice.
+- 2026-08-12 — master plan обновлён до `0.2`: `P0.14` теперь создаёт
+  decision-complete specification baseline, добавлены `P0.16`, `P1.13` и
+  contract/spec gates.
+- 2026-08-12 — master plan обновлён до `0.3`: добавлен `P0.17`, усилены
+  acceptance criteria `P0.2/P0.3` и research evidence gate `G0`.
+- 2026-08-12 — master plan обновлён до `0.4`: `P0.10` начат, provider/agent
+  contracts и `G3/P8.3` требуют fail-closed обработки refusal, incomplete,
+  filtered, invalid и provider-error outcomes.
+- 2026-08-12 — master plan обновлён до `0.5`: P0 definition tasks получили
+  проверяемые артефакты; `G5/G6` до calibration являются advisory pilot, а
+  production `new_code` blocking перенесён после `P7.9`.
+- 2026-08-12 — master plan обновлён до `0.6`: добавлен `P0.18` с обязательным
+  independent completion audit и strict frozen-commit oracle перед effective
+  G0; создан `READINESS_AUDIT.md`.
+- 2026-08-12 — перед первым baseline commit добавлен repository hygiene
+  `.gitignore` для secrets, environment, Python/build/cache и local runtime
+  artifacts; prefreeze secret-pattern scan не нашёл candidate files.
+- 2026-08-12 — подготовлен, но не запущен первый constrained implementation
+  packet `work/task-packets/P1.1.yaml`; его precondition требует effective G0 и
+  strict validator exit `0`.
+- 2026-08-12 — релизы названы однозначно: `Core MVP v0.1`, `Enterprise Workflow
+  MVP v0.2 — pilot only`, multi-language beta, RC и v1.0.
+
+### Fixed
+
+- 2026-08-12 — полная копия задания восстановила пропущенные в первоначальной
+  выдержке условия: дедлайн, команду 3–4 человека/согласование индивидуального
+  выполнения, формат репозитория и отчёта, Dockerfile/скринкаст для веб-сервиса,
+  data-link/fixed-seed policy, clean-room воспроизводимость и открытые ссылки.
+  Исправление зафиксировано в `PROJECT_BRIEF.md`; G0 traceability требует delta.
+- 2026-08-12 — context snapshot helper сделан совместимым с Windows PowerShell
+  5: исходник остаётся ASCII-only, а Markdown явно читается как UTF-8.
+- 2026-08-12 — G0 evidence recheck исправил research drift: arXiv `2509.22097`
+  в актуальной v5 называется SecureVibeBench и сообщает 23,8%, а не старые
+  15,2%; ledger сохраняет version/scope limitation и не делает число KPI.
+- 2026-08-12 — два независимых G0 review cycles устранили несовместимые outcome
+  enums, fail-open precedence, неполные evaluation denominators, policy/provider
+  schema loopholes, stale PVBench source, SCM identity, worker protocol и
+  threat/privacy traceability; три финальных definition reviews дали `PASS`.
+
+### Security
+
+- 2026-08-12 — код не покидает CI runner по умолчанию; передача полного
+  repository snapshot требует opt-in (`D-009`).
+- 2026-08-12 — blocking status привязан к точному HEAD SHA, stale runs получают
+  `superseded` (`D-010`).
+- 2026-08-12 — default rollout использует `new_code` gate и не блокирует весь
+  legacy debt (`D-011`).
+- 2026-08-12 — untrusted repository, sandbox, prompt injection, tool allowlist,
+  secret redaction и human approval включены в обязательные gates плана.
+- 2026-08-12 — принят двухконтурный outcome protocol: отказ модели, safety
+  filter, пустой/неполный ответ, invalid schema, timeout или provider error не
+  могут означать `no_finding/PASS`; blocking run становится явно
+  `INDETERMINATE/ERROR` (`D-015`).
+
+### Decisions
+
+- 2026-08-12 — приняты `D-001–D-011`; `D-012` о runtime abstraction остаётся
+  proposed до сравнительного исследования.
+- 2026-08-12 — принят `D-013`: accepted specs и executable contracts становятся
+  нормативным источником реализации; implementation agent не может ослаблять
+  спецификацию, evaluator или gate evidence.
+- 2026-08-12 — принят `D-014`: external/LLM research становится основанием для
+  ADR/spec только после primary-source resolution, scope check и provenance.
+- 2026-08-12 — принят `D-015`: repository/SCM/tool content не имеет instruction
+  authority, а `ModelCallStatus`, `FindingVerdict` и `AuditRunOutcome`
+  разделены, чтобы исключить refusal-induced false pass.
+- 2026-08-12 — принят `D-016`: основной Codex-agent остаётся Primary Integrator,
+  а субагенты получают только независимые task packets с непересекающимися
+  writes и обязательной повторной проверкой результата.
+- 2026-08-12 — приняты `D-017–D-026`: Python-first Core MVP с обязательными
+  Python/JS/Go к финалу; GitHub-first reference SCM; LocalRuntime +
+  TemporalRuntime; PostgreSQL/Temporal queues; content-addressed BlobStore;
+  rootless OCI/gVisor sandbox; `DC0–DC4` egress/retention; frozen evaluation;
+  domain-first schemas и typed policy/workflow contracts.
+- 2026-08-12 — канонический порядок реализации: deterministic facts → evidence
+  and agent investigation → root-cause repair → sandbox validation → CI/SCM →
+  backend → multi-language → enterprise hardening.
+
+## Change request register
+
+| ID | Дата | Изменение | Статус | Влияние/ссылки |
+|---|---|---|---|---|
+| `CR-001` | 2026-08-12 | Разрешить local/cloud/corporate LLM endpoints через env/config | `accepted` | `D-002`, provider adapter и egress policies |
+| `CR-002` | 2026-08-12 | Использовать workflow graph, evidence graph и bounded harness loops | `accepted` | `D-003–D-005`, P3–P4 |
+| `CR-003` | 2026-08-12 | Добавить CLI, CI bot и backend control plane как режимы одного Core | `accepted` | `D-007–D-009`, P5–P6 |
+| `CR-004` | 2026-08-12 | Ввести master plan, формальные gates и change control | `accepted` | [PLAN.md](docs/PLAN.md), G0–G9 |
+| `CR-005` | 2026-08-12 | Ввести обязательный project-local skill для восстановления и сохранения контекста | `accepted` | `P0.15`, `AGENTS.md`, `securecode-project-navigator` |
+| `CR-006` | 2026-08-12 | Перейти на Spec-Driven Development и constrained task packets для LLM | `accepted` | `D-013`, `P0.14`, `P0.16`, `P1.13`, `specs/` |
+| `CR-007` | 2026-08-12 | Ввести research protocol и evidence gate для Deep Research/LLM claims | `accepted` | `D-014`, `P0.17`, `docs/research/`, усиленный `G0` |
+| `CR-008` | 2026-08-12 | Защитить аудит от прямой/скрытой prompt injection и refusal-induced fail-open | `accepted` | `D-015`, `P0.10–P0.12`, `P1.8`, `P3.2/P3.5/P3.6`, `P8.3`, threat model |
+| `CR-009` | 2026-08-12 | Зафиксировать Python-first Core MVP, GitHub-first reference SCM и pilot-only release semantics | `accepted` | `D-017–D-019`, P0.4–P0.7, product spec |
+| `CR-010` | 2026-08-12 | Выбрать LocalRuntime + TemporalRuntime и connected infrastructure baseline | `accepted` | `D-020–D-023`, system architecture spec |
+| `CR-011` | 2026-08-12 | Ввести normative data classification/egress/retention и full-system threat model | `accepted` | `D-024`, TM-001–TM-024, security specs |
+| `CR-012` | 2026-08-12 | Убрать выдуманный confidence 0.85 и запретить production blocking до calibration | `accepted` | `D-011` amended, `D-025`, P5/G5/P7.9 |
+| `CR-013` | 2026-08-12 | Заморозить SDD baseline 0.1.0, contracts, evaluation и traceability для G0 | `accepted` | `D-026`, `specs/`, G0 evidence packet |
+| `CR-014` | 2026-08-12 | Добавить независимый model-native discovery lane с прямым bounded read-only анализом кода наряду с deterministic analyzers | `accepted` | `D-027`, baseline/stage catalogue `0.2.0`, provider/egress/capability/workflow/domain/evaluation/traceability delta; evidence `PA-011–PA-013` |
+| `CR-015` | 2026-08-12 | Восстановить пропущенные обязательные условия сдачи из полной исходной формулировки | `accepted` | Corrected product/plan/traceability; deadline year/timezone and individual approval remain tracked external G9 inputs |
+| `CR-016` | 2026-08-12 | Добавить evaluation lab для synthetic cases и контролируемой офлайн-оптимизации prompt/skill; проверить sandboxed RLM как discovery strategy | `accepted — limited P7 scope` | `D-028`, P7.12–P7.16; not Core/runtime dependency, no production self-modification; evidence `EO-001–EO-006` |
+
+## Release history
+
+Релизов пока нет. Первый планируемый продуктовый инкремент — Core MVP `v0.1`
+после прохождения `G4`; дата определяется после закрытия `G0` и оценки
+трудоёмкости decision-complete scope.

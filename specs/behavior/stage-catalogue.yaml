@@ -1,0 +1,141 @@
+schema_version: 0.2.0
+catalogue_id: core-mvp-0.2.0
+lifecycle: accepted
+candidate_origins: [deterministic, model_native, hybrid]
+
+stage_definitions:
+  intake: {kind: atomic}
+  language_discovery: {kind: atomic}
+  python_parse_symbols:
+    kind: deterministic_atomic
+    operations: [scan]
+    required_inventory_tags_any: [source:python]
+  secret_scan:
+    kind: deterministic_atomic
+    operations: [scan]
+    required_inventory_tags_any: [source:any]
+  dependency_scan:
+    kind: deterministic_atomic
+    operations: [scan]
+    required_inventory_tags_any: [manifest:python]
+  cwe89_scan:
+    kind: deterministic_atomic
+    operations: [scan]
+    required_inventory_tags_any: [source:python]
+  deterministic_analysis:
+    kind: composite
+    child_stage_ids: [python_parse_symbols, secret_scan, dependency_scan, cwe89_scan]
+    child_selection: select_child_when_operation_matches_and_required_inventory_tags_any_intersects_inventory_tags
+    completion_rule: every_selected_child_has_terminal_coverage_unit
+    zero_candidates_is_success_only_when_all_selected_children_completed: true
+  model_native_discovery: {kind: model_atomic, completed_zero_requires_receipt: true}
+  normalization: {kind: atomic}
+  evidence_graph: {kind: atomic}
+  auditor_investigation: {kind: dynamic_per_candidate}
+  skeptic_review: {kind: dynamic_per_policy_selected_candidate}
+  finding_gate: {kind: dynamic_per_candidate}
+  root_cause_localization: {kind: dynamic_per_confirmed_finding}
+  security_test_generation: {kind: dynamic_per_patch_request}
+  architect: {kind: dynamic_per_patch_request}
+  validation_ladder: {kind: dynamic_per_patch_candidate}
+  coverage_guard: {kind: atomic}
+  reporting: {kind: atomic}
+
+supported_semantic_scope:
+  mandatory_discovery_lanes: [deterministic_analysis, model_native_discovery]
+  model_native_not_applicable_when_deterministic_zero: false
+  every_normalized_candidate_requires: [auditor_investigation, finding_gate]
+  scanner_signal_is_finding_verdict: false
+
+outcome_rules:
+  completed_zero_candidates_requires_receipt: true
+  mandatory_model_non_success_without_blocking_finding: INDETERMINATE
+  known_blocking_finding_with_later_degradation: FAIL
+
+deterministic_selection_snapshots:
+  - id: python_with_manifest
+    operation: scan
+    inventory_tags: [source:any, source:python, manifest:python]
+    expected_selected_child_ids: [python_parse_symbols, secret_scan, dependency_scan, cwe89_scan]
+  - id: python_without_manifest
+    operation: scan
+    inventory_tags: [source:any, source:python]
+    expected_selected_child_ids: [python_parse_symbols, secret_scan, cwe89_scan]
+  - id: unsupported_go_in_python_mvp
+    operation: scan
+    inventory_tags: [source:any, source:go]
+    expected_selected_child_ids: [secret_scan]
+
+scenarios:
+  demo_cwe89_scan:
+    required:
+      - intake
+      - language_discovery
+      - python_parse_symbols
+      - secret_scan
+      - dependency_scan
+      - cwe89_scan
+      - model_native_discovery
+      - normalization
+      - evidence_graph
+      - auditor_investigation
+      - skeptic_review
+      - finding_gate
+      - coverage_guard
+      - reporting
+  clean_no_candidate:
+    required:
+      - intake
+      - language_discovery
+      - deterministic_analysis
+      - model_native_discovery
+      - normalization
+      - coverage_guard
+      - reporting
+    not_applicable_after_completed_zero_union:
+      - evidence_graph
+      - auditor_investigation
+      - skeptic_review
+      - finding_gate
+      - root_cause_localization
+      - security_test_generation
+      - architect
+      - validation_ladder
+  confirmed_finding_without_repair:
+    required:
+      - intake
+      - language_discovery
+      - deterministic_analysis
+      - model_native_discovery
+      - normalization
+      - evidence_graph
+      - auditor_investigation
+      - skeptic_review
+      - finding_gate
+      - coverage_guard
+      - reporting
+  repair_requested:
+    required:
+      - intake
+      - language_discovery
+      - deterministic_analysis
+      - model_native_discovery
+      - normalization
+      - evidence_graph
+      - auditor_investigation
+      - skeptic_review
+      - finding_gate
+      - root_cause_localization
+      - security_test_generation
+      - architect
+      - validation_ladder
+      - coverage_guard
+      - reporting
+  unsupported_required_language:
+    required:
+      - intake
+      - language_discovery
+      - deterministic_analysis
+      - coverage_guard
+      - reporting
+    unsupported_units_prevent_pass: true

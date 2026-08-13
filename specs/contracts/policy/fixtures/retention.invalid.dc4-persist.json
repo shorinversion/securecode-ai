@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "retention-dc4-unsafe",
+  "policy_version": "1.0.0",
+  "profile": "private_model_zdr",
+  "default_effect": "deny_persist",
+  "rules": [{"rule_id": "RET-DC4", "effect": "persist", "artifact_types": ["source_blob"], "data_classes": ["DC4_RESTRICTED"], "max_seconds": 60, "immutable": false}]
+}

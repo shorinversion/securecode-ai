@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "metadata-external-evaluation",
+  "policy_version": "1.0.0",
+  "tenant_scope": "tenant-fixture",
+  "profile": "metadata_external",
+  "default_effect": "deny",
+  "rules": [
+    {
+      "rule_id": "EGR-METADATA-EVAL",
+      "effect": "allow",
+      "data_classes": ["DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY"],
+      "destinations": ["profile://openai-approved"],
+      "purposes": ["evaluation"],
+      "requires_transforms": ["source_exclusion"],
+      "max_bytes": 262144,
+      "tenant_admin_approval": false
+    }
+  ]
+}

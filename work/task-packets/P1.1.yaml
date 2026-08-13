@@ -1,0 +1,148 @@
+schema_version: "0.2.0"
+
+task:
+  id: "P1.1"
+  type: "implementation"
+  objective: "Create the ownership-aware repository skeleton without implementing scanner, agent, SCM, backend or sandbox behavior."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: null
+  spec_refs: [SC-SYS-001, SC-SYS-002, SC-SYS-003, SC-SYS-008, SC-PORT-001, SC-DOM-007]
+  decision_refs: [D-007, D-013, D-016, D-017, D-020, D-026, D-027, D-028]
+  preconditions:
+    - "G0 strict validator has exited 0 against committed effective attestation"
+    - "specs/baseline.yaml lifecycle is frozen"
+  non_goals:
+    - "domain model implementation"
+    - "provider network calls"
+    - "scanner, workflow, sandbox, SCM or backend implementation"
+    - "dependency selection beyond packaging skeleton"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+    - "tests/**"
+    - "examples/**"
+    - "notebooks/**"
+    - "report/**"
+    - "README.md"
+    - "pyproject.toml"
+    - "Dockerfile"
+    - "CHANGELOG.md"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+    - "tests/**"
+    - "examples/**"
+    - "notebooks/**"
+    - "report/**"
+    - "README.md"
+    - "pyproject.toml"
+    - "Dockerfile"
+    - "CHANGELOG.md"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/**"
+    - "docs/PROJECT_BRIEF.md"
+    - "tests/acceptance/**"
+    - "tests/evaluator/**"
+  max_changed_files: 30
+  max_diff_lines: 700
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands:
+    - "git status --short"
+    - "rg --files"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny_unless_explicit"
+
+inputs:
+  artifacts:
+    - "specs/system/architecture.md"
+    - "specs/contracts/domain.md"
+    - "specs/behavior/workflows.md"
+    - "docs/PLAN.md#P1.1"
+  fixtures: []
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "ownership-aware directories for packages/apps/integrations/deploy/tests/examples/notebooks/report"
+    - "minimal package-boundary documentation or placeholders"
+    - "explicit ownership handoff for pyproject.toml and Dockerfile to P1.2/P6.12 when intentionally deferred"
+  structured_result_schema: null
+  handoff_required_fields:
+    - "task_id_and_role"
+    - "scope_completed"
+    - "files_read_and_changed"
+    - "commands_and_exact_results"
+    - "evidence"
+    - "assumptions"
+    - "risks_and_unresolved"
+    - "integration_order"
+
+constraints:
+  invariants:
+    - "domain packages do not import runtime/SCM/database/container/provider SDKs"
+    - "CLI, worker and server remain adapters over one Core/contracts layer"
+    - "EvidenceGraph and WorkflowGraph ownership is separate"
+  compatibility:
+    - "accepted namespace and repository layout contract remains unchanged"
+  security:
+    - "no credentials, environment values, generic tool capability or executable repository hooks"
+  privacy:
+    - "no proprietary or source-bearing fixture content"
+  performance: []
+
+budgets:
+  max_iterations: 5
+  max_tool_calls: 20
+  timeout_seconds: 900
+  max_output_bytes: 50000
+
+verification:
+  acceptance_commands:
+    - "python scripts/validate_g0.py --require-frozen"
+    - "rg --files packages apps integrations deploy tests examples notebooks report README.md pyproject.toml Dockerfile CHANGELOG.md"
+  negative_cases:
+    - "accepted spec or gate path changed"
+    - "runtime/provider SDK imported by domain skeleton"
+    - "duplicate Core implementation created for an entry point"
+  required_evidence:
+    - "directory/file inventory"
+    - "protected-path diff is empty"
+    - "strict G0 remains green"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "G0_not_effective"
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "new_dependency_required_but_not_allowed"
+  - "security_boundary_change_required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.1]
+  changelog_required: true
+  adr_required: false

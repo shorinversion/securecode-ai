@@ -1,0 +1,43 @@
+schema_version: 0.2.0
+lifecycle: accepted
+schema: provider-profile.schema.json
+cases:
+  - {id: PROVIDER-VALID-FAKE, instance: provider-fixtures/valid.fake.json, expect: valid}
+  - {id: PROVIDER-VALID-REMOTE, instance: provider-fixtures/valid.remote-openai.json, expect: valid}
+  - {id: PROVIDER-VALID-LOCAL-SOURCE, instance: provider-fixtures/valid.local-openai-compatible.json, expect: valid}
+  - {id: PROVIDER-INVALID-REMOTE-HTTP, instance: provider-fixtures/invalid.remote-http.json, expect: invalid}
+  - {id: PROVIDER-INVALID-FAKE-CREDENTIAL, instance: provider-fixtures/invalid.fake-credential.json, expect: invalid}
+semantic_cases:
+  - id: PROVIDER-ALLOW-SOURCE-NATIVE-LOCAL
+    provider_instance: provider-fixtures/valid.local-openai-compatible.json
+    egress_instance: policy/fixtures/egress.valid.private-model-source.json
+    required_execution_boundary: local_runner
+    required_tenant_scope: tenant-fixture
+    required_purpose: model_native_discovery
+    required_data_class: DC3_CONFIDENTIAL_SOURCE
+    required_destination: profile://local-source-model
+    planned_transforms: [bounded_repository_view]
+    required_max_bytes: 65536
+    expect:
+      eligibility: eligible
+      preflight_context_bytes: 0
+      preflight_network_bytes: 0
+      next_action: CONTINUE_DUAL_LANE
+      deterministic_only_fallback: false
+  - id: PROVIDER-DENY-METADATA-ONLY-NATIVE
+    provider_instance: provider-fixtures/valid.remote-openai.json
+    egress_instance: policy/fixtures/egress.valid.metadata-external.json
+    required_execution_boundary: public_external
+    required_tenant_scope: tenant-fixture
+    required_purpose: model_native_discovery
+    required_data_class: DC3_CONFIDENTIAL_SOURCE
+    required_destination: profile://openai-approved
+    planned_transforms: [bounded_repository_view]
+    required_max_bytes: 65536
+    expect:
+      eligibility: ineligible
+      preflight_context_bytes: 0
+      preflight_network_bytes: 0
+      audit_run_outcome: INDETERMINATE
+      next_action: STOP_BEFORE_CONTEXT_OR_NETWORK
+      deterministic_only_fallback: false

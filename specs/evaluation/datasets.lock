@@ -1,0 +1,94 @@
+schema_version: 0.2.0
+frozen_at: 2026-08-13
+datasets:
+  - dataset_id: SC-MVP-CWE89
+    version: 1.1.0
+    source: first_party
+    source_url: specs/evaluation/cases/mvp-cwe89.yaml
+    revision: securecode-spec-0.2.0
+    license: CC0-1.0
+    bytes: 7032
+    sha256: 436843b02bee53cc2997903b3e61afb9734ff5fa2580756ecba7344e92c12663
+    build_hash: N/A
+    splits:
+      - name: definition_conformance
+        case_ids:
+          - CWE89-VULN-001
+          - CWE89-SAFE-001
+          - CWE89-GUARD-001
+          - CWE89-INTERPROC-001
+          - INJECTION-COMMENT-001
+          - HYBRID-NATIVE-ONLY-001
+          - HYBRID-DETERMINISTIC-INTERPRET-001
+          - HYBRID-MERGE-001
+          - HYBRID-CLEAN-001
+          - HYBRID-DROPPED-CANDIDATE-001
+          - HYBRID-FORGED-EVIDENCE-001
+          - MODEL-REFUSAL-001
+          - MODEL-EMPTY-001
+          - MODEL-SCHEMA-001
+          - MODEL-PROVIDER-ERROR-001
+          - MODEL-NON-SUCCESS-MATRIX-001
+          - MODEL-PROFILE-INELIGIBLE-001
+          - PATCH-PATH-001
+          - PATCH-REGRESSION-001
+          - COVERAGE-MIXED-001
+          - REPLAY-SAFE-001
+    ground_truth:
+      status: specification_reviewed
+      reviewer_role: Primary_Integrator
+      independent_review_required_before_confirmatory_claim: true
+    root_cause_groups:
+      CWE89_SQL_STRING_CONSTRUCTION: [CWE89-VULN-001, CWE89-GUARD-001, CWE89-INTERPROC-001, INJECTION-COMMENT-001]
+      SAFE_PARAMETER_BINDING: [CWE89-SAFE-001, REPLAY-SAFE-001]
+      DUAL_LANE_DISCOVERY: [HYBRID-NATIVE-ONLY-001, HYBRID-DETERMINISTIC-INTERPRET-001, HYBRID-MERGE-001, HYBRID-CLEAN-001, HYBRID-DROPPED-CANDIDATE-001, HYBRID-FORGED-EVIDENCE-001]
+      MODEL_NON_SUCCESS_ROUTING: [MODEL-REFUSAL-001, MODEL-EMPTY-001, MODEL-SCHEMA-001, MODEL-PROVIDER-ERROR-001, MODEL-NON-SUCCESS-MATRIX-001, MODEL-PROFILE-INELIGIBLE-001]
+      PATCH_INTEGRITY: [PATCH-PATH-001, PATCH-REGRESSION-001]
+      COVERAGE_INCOMPLETENESS: [COVERAGE-MIXED-001]
+    exclusions:
+      - no_external_repository_or_cve_cases
+      - no_js_typescript_or_go_semantic_accuracy_claim
+      - no_statistical_accuracy_or_production_blocking_claim
+    limitations:
+      - first_party_and_small
+      - python_cwe89_only
+      - specifies_cases_but_does_not_yet_prove_implementation_accuracy
+  - dataset_id: SC-ADVERSARIAL-SEED
+    version: 1.1.0
+    source: first_party_subset
+    source_url: specs/evaluation/cases/mvp-cwe89.yaml
+    revision: securecode-spec-0.2.0
+    license: CC0-1.0
+    bytes: 7032
+    sha256: 436843b02bee53cc2997903b3e61afb9734ff5fa2580756ecba7344e92c12663
+    build_hash: N/A
+    splits:
+      - name: g3_fixed_seed
+        case_ids: [INJECTION-COMMENT-001, MODEL-REFUSAL-001, MODEL-EMPTY-001, MODEL-SCHEMA-001, MODEL-PROVIDER-ERROR-001, MODEL-NON-SUCCESS-MATRIX-001, MODEL-PROFILE-INELIGIBLE-001, PATCH-PATH-001]
+    root_cause_groups:
+      DIRECT_REPOSITORY_INJECTION: [INJECTION-COMMENT-001]
+      REFUSAL_INDUCTION: [MODEL-REFUSAL-001]
+      EMPTY_OR_INVALID_OUTPUT: [MODEL-EMPTY-001, MODEL-SCHEMA-001]
+      PROVIDER_OR_PROFILE_FAILURE: [MODEL-PROVIDER-ERROR-001, MODEL-NON-SUCCESS-MATRIX-001, MODEL-PROFILE-INELIGIBLE-001]
+      TOOL_PATH_ESCALATION: [PATCH-PATH-001]
+    exclusions:
+      - fixed_non_adaptive_seed_only
+      - no_cross_provider_asr_claim
+    ground_truth:
+      status: specification_reviewed
+      reviewer_role: Primary_Integrator
+      independent_review_required_before_confirmatory_claim: true
+    limitations: [small_first_party_seed, adaptive_expansion_deferred_to_P8.3]
+deferred_datasets:
+  - dataset_id: SC-REPAIR-CWE89
+    target_tasks: [P4.3, P4.6, P4.10]
+    gate: G4
+    reason: requires implemented fixture repository, PoC+ and reference patch
+  - dataset_id: SC-ADVERSARIAL-ADAPTIVE
+    target_task: P8.3
+    gate: G8
+    reason: fixed G3 seed is locked above; adaptive model/provider/encoding attempts expand before G8 freeze
+  - dataset_id: SC-BETA-EXTERNAL
+    target_task: P7.6
+    gate: G7
+    reason: exact benchmark revisions, licenses, hashes and leakage review must be resolved near acquisition

@@ -1,0 +1,12 @@
+schema_version: 0.1.0
+lifecycle: accepted
+cases:
+  - {id: EGRESS-VALID-AIRGAP-DENY, schema: egress-policy.schema.json, instance: fixtures/egress.valid.air-gap.json, expect: valid}
+  - {id: EGRESS-INVALID-AIRGAP-ALLOW, schema: egress-policy.schema.json, instance: fixtures/egress.invalid.air-gap-allow.json, expect: invalid}
+  - {id: EGRESS-INVALID-DC4-ALLOW, schema: egress-policy.schema.json, instance: fixtures/egress.invalid.dc4-allow.json, expect: invalid}
+  - {id: EGRESS-INVALID-NO-CODE-DC3, schema: egress-policy.schema.json, instance: fixtures/egress.invalid.no-code-dc3.json, expect: invalid}
+  - {id: EGRESS-VALID-PRIVATE-MODEL-SOURCE, schema: egress-policy.schema.json, instance: fixtures/egress.valid.private-model-source.json, expect: valid}
+  - {id: EGRESS-VALID-METADATA-EXTERNAL, schema: egress-policy.schema.json, instance: fixtures/egress.valid.metadata-external.json, expect: valid}
+  - {id: RETENTION-VALID-METADATA, schema: retention-policy.schema.json, instance: fixtures/retention.valid.metadata.json, expect: valid}
+  - {id: RETENTION-INVALID-DC4-PERSIST, schema: retention-policy.schema.json, instance: fixtures/retention.invalid.dc4-persist.json, expect: invalid}
+  - {id: RETENTION-INVALID-IMMUTABLE-SOURCE, schema: retention-policy.schema.json, instance: fixtures/retention.invalid.immutable-source.json, expect: invalid}
