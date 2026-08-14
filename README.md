@@ -6,8 +6,8 @@ current implementation phase is `P1 — Engineering Foundation`.
 
 This repository contains the completed specification baseline, reproducible
 Python workspace and quality gate, versioned domain/event/model contracts, the
-completed `P1.7` secret-safe configuration and `P1.8` model boundary, plus a
-locally verified `P1.9` workflow-runtime candidate. `P1.8` provides
+completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
+workflow-runtime substrate. `P1.8` provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
 budgets/dialects, fail-closed native outcome normalization, payload/attempt
 identity, process-local idempotency and connect-time endpoint authorization.
@@ -185,10 +185,11 @@ packages/adapters/
 - `P1.8` completed provider/egress preflight, issuer-owned single-use permits,
   SSRF/rebinding-safe endpoint authorization, normalized non-success outcomes,
   lock-backed process-local idempotency and a no-network fake.
-- `P1.9` has a locally verified candidate for public workflow contracts,
+- `P1.9` completed public workflow contracts,
   exact-definition dual-lane routing, bounded loop accounting, replay-complete
-  transition events and a process-local in-memory runtime; independent
-  acceptance and clean post-commit verification are still pending.
+  transition events and a process-local in-memory runtime after independent
+  product/architecture/security-evaluation acceptance and clean post-commit
+  verification on implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

@@ -24,7 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-14 — подготовлен локально проверенный кандидат `P1.9`: пять versioned
+- 2026-08-14 — завершён `P1.9`: пять versioned
   public workflow roots и deterministic schemas, exact-definition
   graph-independent state machine, обязательный dual-lane fan-out/fan-in,
   bounded investigation/repair accounting, replay-complete hash-linked
@@ -41,12 +41,13 @@ Changelog отвечает на вопрос «что и когда измени
   public method к operation, typed error precedence и assignment-immutable
   registry. Portable conformance-suite и матрицы покрывают все model non-success
   outcomes, 31 комбинацию exhaustion, cumulative Architect+validation usage и
-  factory-driven snapshot/resume/replay/terminal-state authority. Локально
-  проходят 166 целевых и все 603 repository tests, Ruff/mypy, 89,72% Core branch
-  coverage,
-  exact-byte schema check, 13-schema wheel inventory и strict frozen G0.
-  Independent acceptance и clean post-commit evidence ещё требуются; задача
-  остаётся `IN PROGRESS`.
+  factory-driven snapshot/resume/replay/terminal-state authority. Independent
+  product/architecture/security-evaluation acceptance дала `PASS/PASS/PASS` на
+  exact digest `f8f34d2d58cdf452857ff5379130e74d269d7df9`. Clean post-commit
+  verification implementation commit
+  `0431ba66f2a288ee1978950fb01e77e5430c5f04` прошла расширенные 249 targeted и
+  все 603 repository tests, Ruff/mypy, 89,72% Core branch coverage, exact-byte
+  schema check, 13-schema wheel inventory и strict frozen G0.
 - 2026-08-14 — завершён `P1.8`: public
   `ModelRequest`/`ModelCallResult`, exact provider/egress preflight,
   issuer-owned single-use authorization chain, hermetic fake, cross-dialect
