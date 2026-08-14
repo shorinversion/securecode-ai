@@ -24,7 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-14 — подготовлен локально проверенный кандидат `P1.10`: installable
+- 2026-08-14 — завершён `P1.10`: installable
   first-party `securecode` entry point, closed `CliDoctorResult`/
   `CliErrorResult`, стабильные exit codes `0/2/3/4/5/6`, canonical JSON errors и
   source-free `doctor` с `scan_readiness=NOT_EVALUATED`. CLI не читает исходный
@@ -38,8 +38,13 @@ Changelog отвечает на вопрос «что и когда измени
   targeted и все 696 tests, Ruff,
   mypy, 89,72% Core branch coverage, schema/CI-policy/strict-G0 gates, offline
   wheel build, exact 15-schema inventory и clean offline install/entrypoint
-  smoke. Independent exact-digest implementation reviews и post-commit
-  verification ещё не выполнены, поэтому задача остаётся `IN PROGRESS`.
+  smoke. Independent product/architecture/security-evaluation acceptance дала
+  `PASS/PASS/PASS` на exact digest
+  `c36748f084e71f3639943b860e5f07538a6b6646`. Clean post-commit verification
+  implementation commit `a0dd7849db3e372ca5cc396706f3a166329a1f8a`
+  повторно прошла 165 targeted, все 696 tests, Ruff/mypy, 89,72% Core branch
+  coverage, schema/CI-policy/strict-G0 gates, offline build, 15-schema wheel и
+  clean offline entrypoint smoke.
 - 2026-08-14 — завершён `P1.9`: пять versioned
   public workflow roots и deterministic schemas, exact-definition
   graph-independent state machine, обязательный dual-lane fan-out/fan-in,

@@ -197,7 +197,7 @@ Gate пройден, если:
 | `P1.7` | Реализовать config и secret-safe env loading | P1.2 | validation, redaction, missing-key diagnostics | `DONE` |
 | `P1.8` | Реализовать provider-agnostic model adapter | P1.5, P1.7 | fake provider + endpoint contract tests; native refusal/incomplete/filter/error normalization | `DONE` |
 | `P1.9` | Создать `WorkflowRuntime` interface и in-memory adapter | P1.5 | graph-independent domain tests | `DONE` |
-| `P1.10` | Создать CLI skeleton и стабильные exit codes | P1.2, P1.5 | `securecode --help`, config diagnostics, machine-readable errors | `IN PROGRESS` |
+| `P1.10` | Создать CLI skeleton и стабильные exit codes | P1.2, P1.5 | `securecode --help`, config diagnostics, machine-readable errors | `DONE` |
 | `P1.11` | Создать fixture repository factory | P1.3 | deterministic positive/negative repos и golden files | `TODO` |
 | `P1.12` | Настроить structured logs, tracing IDs и redaction tests | P1.6 | raw code/API keys отсутствуют в telemetry snapshots | `TODO` |
 | `P1.13` | Ввести spec validation, contract compatibility и drift checks | P1.3, P1.5 | CI валидирует IDs, schemas, examples, compatibility, traceability и protected paths | `TODO` |
@@ -524,9 +524,8 @@ secret/dependency checks и Python 3.12–3.14 matrix, но остаётся `IN
 schema/contracts, events/stable IDs, secret-safe config и provider-neutral
 model boundary, а также graph-independent `WorkflowRuntime` прошли полную
 матрицу, independent acceptance и clean post-commit validation. `P1.10` CLI
-skeleton со стабильными exit codes имеет локально проверенный candidate; exact
-staged digest, три independent reviews, implementation commit и clean
-post-commit evidence ещё обязательны. Затем следуют fixture repository factory,
-telemetry/redaction и spec-drift gate. Узкий Python CWE-89 vertical slice
-начинается после G1. Enterprise adapters не строятся до стабилизации Core
-contracts и deterministic evidence layer.
+skeleton со стабильными exit codes завершён после трёх independent reviews и
+clean post-commit verification. Следующий constrained increment — `P1.11`
+fixture repository factory; затем следуют telemetry/redaction и spec-drift gate.
+Узкий Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
+строятся до стабилизации Core contracts и deterministic evidence layer.

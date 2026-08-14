@@ -5,10 +5,10 @@
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
-- Последняя завершённая задача: `P1.9 — graph-independent WorkflowRuntime`,
-  implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`.
-- Текущая implementation-задача: `P1.10`; constrained packet и локально
-  проверенный CLI candidate открыты, P2 scope закрыт.
+- Последняя завершённая задача: `P1.10 — foundation CLI`, implementation commit
+  `a0dd7849db3e372ca5cc396706f3a166329a1f8a`.
+- Следующая implementation-задача: `P1.11`; constrained packet ещё не открыт,
+  P2 scope закрыт.
 - Параллельная внешняя задача: `P1.4` ожидает GitHub
   ruleset/failing-PR receipt.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
@@ -78,7 +78,7 @@
   `841fbdfc36a92d0de77d96083bc1d349990f1304`. Clean post-commit verification on
   `030fad9f4567f59def348387d9484a0b4a5eea29` passed 174 targeted tests, all 459
   repository tests, schema drift and strict frozen G0. `P1.8` is `DONE`; after
-  completion of `P1.9`, `G1` remains open because `P1.4` and `P1.10–P1.13` are
+  completion of `P1.10`, `G1` remains open because `P1.4` and `P1.11–P1.13` are
   not complete.
 - P1.9 completion verification: пять новых public workflow schema roots,
   exact-definition graph-independent state machine, обязательный dual-lane
@@ -99,8 +99,8 @@
   implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`
   прошла расширенные 249 targeted tests, все 603 repository tests, Ruff/mypy,
   schema exact-byte, 13-schema wheel inventory и strict frozen G0. `P1.9` —
-  `DONE`; `G1` остаётся открыт из-за `P1.4` и `P1.10–P1.13`.
-- P1.10 local candidate verification: installable first-party `securecode`
+  `DONE`; `G1` остаётся открыт из-за `P1.4` и `P1.11–P1.13`.
+- P1.10 completion verification: installable first-party `securecode`
   package, exact human/machine grammar, stable exit/error mapping, два public CLI
   schema roots и source-free foundation `doctor` проходят 165 targeted tests.
   Первый implementation review закрыл positional command attribution и
@@ -110,10 +110,13 @@
   coverage; CI lock/metadata authority, exact-byte schema check, 15-schema wheel
   inventory, clean offline install/entrypoint smoke и strict frozen G0 — `PASS`.
   `scan_readiness` всегда `NOT_EVALUATED`; scan/fix/validate/apply/ci и P2-анализ
-  не реализованы. Packet delta получил independent product/architecture/
-  security-evaluation `PASS/PASS/PASS`; implementation exact-digest reviews,
-  commit и clean post-commit verification ещё обязательны. `P1.10` остаётся
-  `IN PROGRESS`, `G1` открыт.
+  не реализованы. Independent product/architecture/security-evaluation reviews
+  дали `PASS/PASS/PASS` на exact digest
+  `c36748f084e71f3639943b860e5f07538a6b6646`. Clean post-commit verification
+  implementation commit `a0dd7849db3e372ca5cc396706f3a166329a1f8a`
+  повторно прошла 165 targeted, все 696 tests, schema/CI/strict-G0, offline
+  build, 15-schema wheel и clean offline entrypoint smoke. `P1.10` — `DONE`;
+  `G1` остаётся открыт из-за `P1.4` и `P1.11–P1.13`.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -199,13 +202,12 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Зафиксировать exact staged digest кандидата `P1.10`, получить независимые
-   product/architecture/security-evaluation reviews, устранить blockers и только
-   после PASS выполнить implementation commit и clean post-commit verification.
+1. Открыть constrained packet `P1.11` от завершённого P1.10 commit и реализовать
+   deterministic fixture repository factory без расширения в P2 scanners.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.
-3. Не начинать P2 до внешней приёмки `P1.4`, завершения `P1.10–P1.13` и
+3. Не начинать P2 до внешней приёмки `P1.4`, завершения `P1.11–P1.13` и
    эффективного G1.
 
 ## Критические запреты
