@@ -24,7 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-14 — подготовлен принятый implementation candidate `P1.8`: public
+- 2026-08-14 — завершён `P1.8`: public
   `ModelRequest`/`ModelCallResult`, exact provider/egress preflight,
   issuer-owned single-use authorization chain, hermetic fake, cross-dialect
   fail-closed normalization и SSRF/DNS-rebinding/peer policy. После первого
@@ -41,8 +41,9 @@ Changelog отвечает на вопрос «что и когда измени
   Durable/restart idempotency, live provider SDK, retries, workflow routing и
   P2-анализ не добавлялись. Итоговая independent product/architecture/
   security-evaluation acceptance — `PASS/PASS/PASS` на exact digest
-  `841fbdfc36a92d0de77d96083bc1d349990f1304`; завершение P1.8 ожидает clean
-  post-commit targeted/full/schema/strict-G0 evidence.
+  `841fbdfc36a92d0de77d96083bc1d349990f1304`; clean post-commit targeted/full/
+  schema/strict-G0 verification прошла на implementation commit
+  `030fad9f4567f59def348387d9484a0b4a5eea29`.
 - 2026-08-13 — завершён `P1.7`: immutable provider profiles,
   selection-only config precedence и host-bound ephemeral credential leases с
   safe diagnostics/zeroization; DNS/connect/provider execution остаются `P1.8`.

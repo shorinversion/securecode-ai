@@ -5,12 +5,10 @@
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
-- Последняя завершённая задача: `P1.7 — secret-safe config/env loading`, commit
-  `2b21356f29df2d9d95e1a0155cdfd16f9ecfcf13`.
-- Текущая implementation-задача: `P1.8 — provider-agnostic model adapter`;
-  independent acceptance `PASS/PASS/PASS` на exact staged digest
-  `841fbdfc36a92d0de77d96083bc1d349990f1304`. Остались implementation commit и
-  обязательная clean post-commit verification; P1.9/P2 scope не открыт.
+- Последняя завершённая задача: `P1.8 — provider-agnostic model adapter`, commit
+  `030fad9f4567f59def348387d9484a0b4a5eea29`.
+- Новая implementation-задача не открыта. Следующий разрешённый шаг — создать
+  constrained packet `P1.9` от интегрированного P1.8 commit; P2 scope закрыт.
 - Параллельная внешняя задача: `P1.4` ожидает GitHub
   ruleset/failing-PR receipt.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
@@ -66,7 +64,7 @@
   `8065e67898e9d75bf69203afabb5846fb3fb1510`; clean post-commit targeted,
   schema and strict-G0 verification passes on commit
   `2b21356f29df2d9d95e1a0155cdfd16f9ecfcf13`. `G1` remains open.
-- P1.8 candidate verification: public model request/result schemas, exact
+- P1.8 completion verification: public model request/result schemas, exact
   provider/egress authorization, profile-owned budget/dialect enforcement,
   manifest-bound provider attempts and payload snapshots, safe native
   normalization, restricted-output guard, hermetic fake, process-local concurrent
@@ -77,9 +75,10 @@
   bytes. Schema exact-byte check and strict frozen G0 pass. Independent reviews
   produced bounded remediation rounds, then product/architecture/
   security-evaluation returned `PASS/PASS/PASS` on exact digest
-  `841fbdfc36a92d0de77d96083bc1d349990f1304`. `P1.8` remains `IN PROGRESS`
-  until clean post-commit targeted/full/schema/strict-G0 evidence is recorded;
-  `G1` remains open.
+  `841fbdfc36a92d0de77d96083bc1d349990f1304`. Clean post-commit verification on
+  `030fad9f4567f59def348387d9484a0b4a5eea29` passed 174 targeted tests, all 459
+  repository tests, schema drift and strict frozen G0. `P1.8` is `DONE`; `G1`
+  remains open because `P1.4` and `P1.9–P1.13` are not complete.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -165,14 +164,13 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Создать атомарный implementation commit P1.8, выполнить clean post-commit
-   targeted/full/schema/strict-G0 verification и только затем записать
-   completion attestation.
+1. Открыть constrained packet `P1.9` и реализовать только graph-independent
+   in-memory `WorkflowRuntime` после проверки predecessor evidence P1.8.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.
-3. После completion attestation P1.8 открыть constrained packet `P1.9`; не
-   начинать P2 до внешней приёмки `P1.4`, завершения `P1.9–P1.13` и G1.
+3. Не начинать P2 до внешней приёмки `P1.4`, завершения `P1.9–P1.13` и
+   эффективного G1.
 
 ## Критические запреты
 
