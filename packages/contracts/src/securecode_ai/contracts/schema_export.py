@@ -11,10 +11,13 @@ from typing import Final
 from .base import CONTRACT_SCHEMA_VERSION, WireModel
 from .domain import PUBLIC_ROOT_MODELS as DOMAIN_PUBLIC_ROOT_MODELS
 from .events import AuditEvent
+from .model import ModelCallResult, ModelRequest
 
 PUBLIC_ROOT_MODELS: dict[str, type[WireModel]] = {
     **DOMAIN_PUBLIC_ROOT_MODELS,
     "audit-event": AuditEvent,
+    "model-call-result": ModelCallResult,
+    "model-request": ModelRequest,
 }
 
 JSON_SCHEMA_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
@@ -37,6 +40,8 @@ SEMANTIC_RULES: Final = {
     ),
     "evidence": ("SC-DOM-005", "SC-DOM-006", "SC-DOM-010"),
     "finding-case": ("SC-DOM-004", "SC-DOM-006", "SC-DOM-011", "SC-DOM-013"),
+    "model-call-result": ("SC-DOM-001", "SC-DOM-002", "SC-MODEL-001", "SC-MODEL-002"),
+    "model-request": ("SC-DOM-014", "SC-PORT-001", "SC-PORT-004", "SC-MODEL-005"),
     "patch-candidate": ("SC-DOM-004", "SC-DOM-010"),
     "validation-result": ("SC-DOM-005", "SC-DOM-010"),
 }

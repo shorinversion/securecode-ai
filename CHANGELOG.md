@@ -24,6 +24,25 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-14 — подготовлен принятый implementation candidate `P1.8`: public
+  `ModelRequest`/`ModelCallResult`, exact provider/egress preflight,
+  issuer-owned single-use authorization chain, hermetic fake, cross-dialect
+  fail-closed normalization и SSRF/DNS-rebinding/peer policy. После первого
+  independent review добавлены profile-owned budget/dialect checks,
+  manifest-bound provider attempts, immutable keyed payload snapshot,
+  restricted-output guard, execution-identity-bound egress manifest, verified
+  private-ZDR terms и lock-backed process-local idempotency с concurrent race/
+  timeout tests. Второй review-pass закрыл unknown nested native controls,
+  permissive validator bypass, remote local-exemption и произвольные callback
+  exceptions. Следующий adversarial pass закрыл весь поддерживаемый remote
+  control surface: top-level provider errors, неизвестные terminal-поля и
+  дополнительные вложенные content/message controls больше не могут
+  сопровождать success-shaped envelope и нормализоваться в `SUCCEEDED`.
+  Durable/restart idempotency, live provider SDK, retries, workflow routing и
+  P2-анализ не добавлялись. Итоговая independent product/architecture/
+  security-evaluation acceptance — `PASS/PASS/PASS` на exact digest
+  `841fbdfc36a92d0de77d96083bc1d349990f1304`; завершение P1.8 ожидает clean
+  post-commit targeted/full/schema/strict-G0 evidence.
 - 2026-08-13 — завершён `P1.7`: immutable provider profiles,
   selection-only config precedence и host-bound ephemeral credential leases с
   safe diagnostics/zeroization; DNS/connect/provider execution остаются `P1.8`.

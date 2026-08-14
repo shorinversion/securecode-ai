@@ -6,12 +6,14 @@ current implementation phase is `P1 — Engineering Foundation`.
 
 This repository contains the completed specification baseline, the `P1.1`
 ownership skeleton, the reproducible `P1.2` Python workspace, the `P1.3`
-quality gate, versioned domain contracts, the `P1.6` append-only event stream
-and the completed `P1.7` secret-safe configuration increment. `P1.7` validates
-immutable provider profiles and resolves credential references without placing
-credential values in effective or durable configuration. It does
-**not** yet contain a working scanner, agent workflow, backend, SCM bot or
-sandbox.
+quality gate, versioned domain contracts, the `P1.6` append-only event stream,
+the completed `P1.7` secret-safe configuration increment and a locally verified
+`P1.8` model-boundary candidate. `P1.8` adds provider-neutral request/result
+contracts, a hermetic fake, profile-bound budgets/dialects, fail-closed native
+outcome normalization, manifest-bound payload/attempt identity, remote
+process-local idempotency and connect-time endpoint authorization without a live
+provider SDK. It does **not** yet contain a working scanner, agent workflow,
+backend, SCM bot or sandbox.
 
 ## Reproducible Python environment
 
@@ -113,15 +115,17 @@ securecode-ai-adapters
 ```
 
 All three distributions are private pre-alpha packages under the shared
-implicit namespace `securecode_ai`. Adapters remains a packaging marker. The
-contracts package now owns stable-ID derivation, closed Pydantic v2 models and
-six checked-in Draft 2020-12 JSON Schemas for `AuditRun`, `FindingCase`,
-`Evidence`, `PatchCandidate`, `ValidationResult` and `AuditEvent`; it
+implicit namespace `securecode_ai`. The contracts package owns stable-ID
+derivation, closed Pydantic v2 models and eight checked-in Draft 2020-12 JSON
+Schemas for `AuditRun`, `FindingCase`, `Evidence`, `PatchCandidate`,
+`ValidationResult`, `AuditEvent`, `ModelRequest` and `ModelCallResult`; it
 deliberately imports no provider, SCM, database or graph-runtime SDK.
 Conformance requires both structural JSON Schema validation and its resolvable
 `x-securecode-semantic-validator`. Core owns the immutable, hash-linked
-in-memory `EventStream` and `RunProjection`; provider
-execution, persistence and workflow runtime remain owned by later P1 tasks.
+in-memory `EventStream`/`RunProjection` and the framework-independent two-phase
+model/egress authorization boundary. Adapters owns the hermetic provider fake,
+native-envelope normalization and endpoint peer checks; live provider HTTP,
+persistence and workflow runtime remain outside this increment.
 The exact schema drift command is in the contracts package README.
 
 ## Repository ownership
@@ -175,6 +179,11 @@ packages/adapters/
   architecture and security/evaluation acceptance.
 - `P1.7` completed immutable provider profiles, selection-only precedence and
   registry/host-bound ephemeral credential leases after independent acceptance.
+- `P1.8` has a locally verified candidate for provider/egress preflight,
+  issuer-owned single-use permits, SSRF/rebinding-safe endpoint authorization,
+  normalized non-success outcomes, lock-backed process-local idempotency and a
+  no-network fake; independent acceptance and post-commit verification are still
+  pending.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

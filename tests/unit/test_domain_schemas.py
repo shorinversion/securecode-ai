@@ -23,6 +23,8 @@ EXPECTED_SCHEMA_FILES = {
     "audit-run.schema.json",
     "evidence.schema.json",
     "finding-case.schema.json",
+    "model-call-result.schema.json",
+    "model-request.schema.json",
     "patch-candidate.schema.json",
     "validation-result.schema.json",
 }

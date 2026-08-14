@@ -1,0 +1,234 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.8"
+  type: "implementation"
+  objective: "Implement a provider-agnostic model port, hermetic fake provider, dialect-specific response normalization, joint provider/egress preflight and connect-time endpoint authorization without live SDK or workflow-runtime coupling."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "700c71919a65705e2786d7da2b570ee176953fba"
+  spec_refs: [SC-DOM-001, SC-DOM-002, SC-DOM-014, SC-PORT-001, SC-PORT-002, SC-PORT-003, SC-PORT-004, SC-MODEL-001, SC-MODEL-002, SC-MODEL-003, SC-MODEL-004, SC-MODEL-005, SC-MODEL-006, SC-MODEL-007, SC-ENDPOINT-001, SC-ENDPOINT-002, SC-ENDPOINT-003, SC-ENDPOINT-004, SC-ENDPOINT-005, SC-ENDPOINT-006, SC-EGRESS-001, SC-EGRESS-002, SC-EGRESS-003, SC-EGRESS-004, SC-EGRESS-005, SC-EGRESS-007, SC-EGRESS-008, SC-EVAL-003, SC-EVAL-013]
+  decision_refs: [D-002, D-015, D-024, D-026, D-027]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.5 versioned contracts and P1.7 immutable provider registry/credential lease are committed"
+  non_goals:
+    - "live OpenAI, Anthropic or OpenAI-compatible HTTP clients and external provider SDK dependencies"
+    - "prompt/context assembly, RepositoryView operation execution or model-native discovery workflow owned by P3; P1.8 only carries and validates the immutable scope/policy pins"
+    - "WorkflowRuntime transitions, retries and durable orchestration owned by P1.9/P3"
+    - "SC-WF-017 AuditRunOutcome derivation and mandatory-node routing are owned by P3.5; P1.8 exposes typed non-success inputs and cannot emit a clean verdict"
+    - "general structured logging, persistence and telemetry sinks owned by P1.12 and later phases"
+    - "production secret-manager clients and credential rotation owned by P8.5"
+    - "LLM output becoming a finding verdict, policy decision or clean PASS"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "model-boundary-security-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/contracts/src/securecode_ai/contracts/model.py"
+    - "packages/contracts/src/securecode_ai/contracts/__init__.py"
+    - "packages/contracts/src/securecode_ai/contracts/schema_export.py"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/model-request.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/model-call-result.schema.json"
+    - "packages/contracts/README.md"
+    - "packages/core/src/securecode_ai/core/model.py"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/README.md"
+    - "packages/adapters/src/securecode_ai/adapters/model.py"
+    - "packages/adapters/src/securecode_ai/adapters/endpoint.py"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/README.md"
+    - "tests/unit/test_model_contracts.py"
+    - "tests/unit/test_model_schemas.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "tests/unit/test_provider_preflight.py"
+    - "tests/unit/test_provider_normalization.py"
+    - "tests/unit/test_endpoint_policy.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.8.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/contracts/src/securecode_ai/contracts/model.py"
+    - "packages/contracts/src/securecode_ai/contracts/__init__.py"
+    - "packages/contracts/src/securecode_ai/contracts/schema_export.py"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/model-request.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/model-call-result.schema.json"
+    - "packages/contracts/README.md"
+    - "packages/core/src/securecode_ai/core/model.py"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/README.md"
+    - "packages/adapters/src/securecode_ai/adapters/model.py"
+    - "packages/adapters/src/securecode_ai/adapters/endpoint.py"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/README.md"
+    - "tests/unit/test_model_contracts.py"
+    - "tests/unit/test_model_schemas.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "tests/unit/test_provider_preflight.py"
+    - "tests/unit/test_provider_normalization.py"
+    - "tests/unit/test_endpoint_policy.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "README.md"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "docs/CONTEXT.md"
+    - "work/task-packets/P1.8.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - "artifacts/gates/**"
+    - "packages/contracts/src/securecode_ai/contracts/domain.py"
+    - "packages/contracts/src/securecode_ai/contracts/config.py"
+    - "packages/core/src/securecode_ai/core/config.py"
+    - "packages/core/src/securecode_ai/core/events.py"
+    - "packages/adapters/src/securecode_ai/adapters/config.py"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 25
+  max_diff_lines: 7000
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted model/preflight/endpoint suites"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny"
+
+inputs:
+  artifacts:
+    - "specs/contracts/domain.md SC-DOM-001/002/014"
+    - "specs/system/architecture.md SC-PORT-001..004 and SC-MODEL-001..007"
+    - "specs/security/data-classification.md SC-EGRESS-001..005/007/008 and SC-ENDPOINT-001..006"
+    - "specs/evaluation/protocol.md SC-EVAL-003/013"
+    - "specs/contracts/provider-profile.schema.json 0.2.0"
+    - "specs/contracts/provider-profile.fixtures.yaml and provider-fixtures/*.json"
+    - "specs/contracts/policy/egress-policy.schema.json 0.1.0 and accepted egress fixtures"
+    - "P1.7 ProviderProfileRegistry, EffectiveConfiguration and CredentialLease"
+  fixtures:
+    - "accepted provider and egress semantic cases"
+    - "one shared normalized outcome matrix for fake/OpenAI/Anthropic/OpenAI-compatible dialects"
+    - "SSRF, DNS rebinding, alternate-IP, redirect and peer-mismatch corpus"
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "public closed immutable ModelRequest containing unchanged RunExecutionIdentity, correlated request/run/tenant/revision identities, role/mode, provider/model/prompt/output-schema/tool-policy pins, RepositoryView scope/policy, conditionally optional evidence IDs/hashes/classes, budgets and idempotency key"
+    - "public safe ModelCallResult containing request correlation, independent ModelCallStatus, bounded native request/finish/refusal/filter codes, schema result/error code, usage/latency/retryability and opaque/keyed content ID plus tenant/data-class/validator provenance without content or unkeyed content digest"
+    - "deterministically exported model-request.schema.json and model-call-result.schema.json public roots with structural and semantic compatibility tests"
+    - "exact closed EgressPolicyDocument mirror of the accepted 0.1.0 policy schema, metadata-only EgressManifest and source-bearing pre-context/pre-send request/result contracts"
+    - "framework-independent ModelProvider and EgressPolicyEvaluator Protocols plus trusted immutable EgressPolicyRegistry and deterministic two-phase evaluator implementation"
+    - "one-attempt provider call harness whose only public call path consumes an issuer-owned authorization chain and orders pre-context, context builder, pre-send, endpoint resolution, connect, peer verification, credential attach, payload attach, send and normalization without owning P1.9 workflow retries"
+    - "hermetic scripted fake provider keyed by full immutable request/idempotency identity that performs no context/DNS/credential/network callbacks and returns only typed normalized outcomes"
+    - "OpenAI Responses, Anthropic Messages and limited OpenAI-compatible native-envelope normalizers using one domain outcome mapping"
+    - "issuer-owned single-use connect-time endpoint authorization with injected resolver, full request/provider/policy/attempt binding, all-address validation, immutable resolution binding and connected-peer verification"
+    - "safe typed provider/normalization/preflight/endpoint diagnostics that never include raw response, prompt, source or credential values"
+    - "ephemeral non-serializable validated structured payload handed separately from durable ModelCallResult to a caller-supplied role-schema validator; role schemas remain P3-owned"
+  structured_result_schema: null
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "Core depends only on contracts and standard-library Protocols; adapters depend inward and no graph/agent/provider SDK enters Core"
+    - "ModelRequest contains immutable identities, pins, scope and budgets but no raw repository source, credential or arbitrary URL"
+    - "ModelRequest carries an unchanged revalidated RunExecutionIdentity and all duplicated request/run/tenant/revision/profile fields must agree with it"
+    - "ModelCallResult is safe durable metadata; raw native envelopes, response content and deterministic unkeyed content/secret digests are never retained or rendered; only an opaque/keyed content ID plus classified provenance may cross the durable boundary"
+    - "HTTP 2xx, transport completion or nonempty text alone never establishes SUCCEEDED"
+    - "SUCCEEDED requires a complete native outcome, nonempty locally parsed structured output and a passing schema validator"
+    - "mandatory model non-success remains a typed non-success for later INDETERMINATE routing, never clean/PASS"
+    - "preflight returns eligibility, safe reasons and required terminal consequence INDETERMINATE but never mutates AuditRun; P3.5 owns SC-WF-017 transition application"
+    - "source-bearing pre-context preflight is pure and occurs before context assembly, credential lookup/lease, DNS, connect or network I/O"
+    - "pre-send authorization revalidates registry-owned provider/policy bytes and binds actual content IDs, classes, transforms and byte count to the issued plan before credential/DNS/connect/send"
+    - "pre-context result, pre-send permit and endpoint authorization are minted by trusted issuer state, cannot be publicly constructed/copied/model-copied, are consumed once in order and bind the manifest hash across the complete chain"
+    - "canonical destination is derived from the registry-owned profile ID and cannot be supplied or overridden by repository/model/request content"
+  security:
+    - "provider and policy inputs are revalidated against registry-owned canonical immutable bytes and pinned content hashes; same-version conflicting or unregistered content rejects"
+    - "within one adapter process, the same idempotency key plus the same complete canonical preflight/profile/policy semantics reserves one in-flight operation and returns one effect plus the same result; a semantic conflict, including after a denied preflight, adds no effect; retry policy and durable/restart idempotency remain downstream runtime/persistence work"
+    - "matching deny overrides every allow; default is deny; allow requires exact tenant/profile/class/purpose/destination/transformation set and sufficient byte budget"
+    - "ineligible or evaluator-exception pre-context result returns zero context-builder, credential, DNS, connector and send calls/bytes, no deterministic-only fallback and exact INDETERMINATE outcome"
+    - "DC4 is denied and air_gap invokes neither resolver nor network"
+    - "remote resolution rejects loopback/private/link-local/multicast/unspecified/reserved/cloud-metadata targets; local exception permits only the exact approved loopback literal"
+    - "endpoint authorization binds request/run/tenant/idempotency identity, provider/policy hashes, scheme/authority/port, canonical IP set, attempt and expiry"
+    - "redirects, ambient proxies, client-side hostname re-resolution, authority/port substitution, cross-scope/reused/stale authorization and connected-peer mismatch reject"
+    - "connector receives no credential or context/payload before connected-peer verification; endpoint failure may perform a bounded connect but has zero credential attachment, application send calls and application bytes"
+    - "native/provider-controlled strings are classified into bounded safe codes or hashes and never copied into exceptions/results"
+    - "protected frozen paths remain unchanged"
+  compatibility:
+    - "every manifest-listed provider case, both semantic cases and every accepted valid/invalid egress fixture execute without filtering or skips and reproduce the exact G0 decisions"
+    - "fake, OpenAI-native, Anthropic-native and OpenAI-compatible fixtures cover every ModelCallStatus and produce identical statuses for equivalent outcomes"
+    - "P1.5/P1.6 public contract schemas and P1.7 provider-profile parsing remain byte-stable"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 90
+  timeout_seconds: 5400
+  max_output_bytes: 350000
+
+verification:
+  acceptance_commands:
+    - "targeted model contract, preflight, normalization, endpoint and package-boundary tests"
+    - "canonical quality command on CPython 3.12, 3.13 and 3.14"
+    - "checked-in schema drift and wheel inventory regression"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check and protected/dependency path diff empty"
+  negative_cases:
+    - "missing request/run/tenant/schema/idempotency identity and profile/policy/scope pins reject"
+    - "duplicated request identity fields inconsistent with RunExecutionIdentity/revision/profile reject"
+    - "concurrent process-local duplicates share one exact result/effect; the same idempotency key with different request, preflight, profile or policy semantics, including after denial, rejects without an additional effect"
+    - "direct provider invocation without the complete issuer-owned authorization chain and forged/copied/model-copied/reordered/replayed chain elements reject before application bytes"
+    - "HTTP-200 refusal, content filter, semantic-empty output, invalid JSON/schema, incomplete and truncation remain non-success even when success-shaped content is also present"
+    - "timeout, cancellation, rate limit, provider error, budget exhaustion, interrupted/duplicated stream, contradictory terminal signals and unknown native codes map to exact typed non-success without exception success"
+    - "stale/replayed/wrong-request/wrong-profile native responses reject; refusal/filter/incomplete/truncation precedence cannot be overwritten by content"
+    - "unsupported structured/native-refusal/native-incomplete/source-analysis/repository-tool capability fails preflight before I/O"
+    - "wrong/forged/unregistered profile or policy hash/content, egress profile, tenant, class, purpose, destination, execution boundary, missing/insufficient byte budget or planned/applied transformation set fails exact preflight/permit"
+    - "matching deny, evaluator exception, missing allow, DC4 and air_gap source transmission fail closed with zero context-builder/credential/DNS/connector/send calls and no fallback"
+    - "resolver error, empty answer, any denied address, IPv4-mapped IPv6, zone ID/alternate notation, DNS answer change, stale/cross-scope/reused authorization, peer mismatch and redirect reject with zero credential attachment/send calls/application bytes"
+    - "fake unknown/exhausted/conflicting script returns typed error; duplicate idempotency identity returns the same scripted result and never defaults to success"
+    - "credential/source/native-response canaries and their deterministic unkeyed digests are absent from repr/str/traceback/validation details/model dumps/JSON/ModelCallResult/safe snapshots"
+    - "safe structured output receives an opaque/keyed content ID and classified provenance; secret/DC4 canary plus its raw SHA are absent and rejected before durable result construction"
+    - "malformed, oversized, deeply nested and duplicate-member native envelopes fail boundedly"
+  required_evidence:
+    - "accepted semantic preflight fixture parity plus registry, planned/applied permit and predicate mutation matrix"
+    - "exhaustive cross-dialect normalized outcome matrix for every ModelCallStatus including HTTP-200 and contradictory failure forms"
+    - "provider_non_success_fail_open_matrix binding refusal/filter/empty/incomplete/schema/transport failures to typed non-success without clean/PASS derivation"
+    - "provider fault metrics prove non_success_to_pass_count=0 and refusal_to_no_finding_count=0"
+    - "context-builder/credential/DNS/connector/send spy matrix proving all-zero calls/bytes for pre-context denial/exception and air_gap"
+    - "resolver/DNS/peer negative matrix proving single-use full-scope permit binding, no ambient proxy and new authorization per reconnect/attempt"
+    - "authorization-chain mutation matrix proves issuer ownership, exact manifest-hash linkage, strict consumption order and zero direct-call bypass"
+    - "multi-sink canary and unkeyed-digest absence from safe results, tracebacks, validation details and diagnostics"
+    - "public model schema exact-byte drift, semantic-validator and wheel-inventory evidence"
+    - "independent product, architecture and security/evaluation PASS on one exact staged digest"
+    - "post-commit clean worktree, targeted/full/schema/strict-G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected_path_change_required"
+  - "live_network_or_provider_credentials_required"
+  - "provider_or_graph_sdk_dependency_required"
+  - "raw_model_content_must_enter_durable_result"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.8, SC-DOM-001, SC-DOM-002, SC-DOM-014, SC-MODEL-001, SC-MODEL-002, SC-MODEL-007, SC-ENDPOINT-003]
+  gate_contribution: "Supplies the fake-LLM/provider-boundary evidence required by G1; does not complete G1 while P1.4 and P1.9-P1.13 remain open."
+  changelog_required: true
+  adr_required: false

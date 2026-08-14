@@ -1,14 +1,18 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 13 августа 2026 года.
+Последнее обновление: 14 августа 2026 года.
 
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.7 — secret-safe config/env loading`, commit
   `2b21356f29df2d9d95e1a0155cdfd16f9ecfcf13`.
-- Текущая внешняя задача: `P1.4` ожидает GitHub ruleset/failing-PR receipt;
-  следующий bounded increment — `P1.8 — provider-agnostic model adapter`.
+- Текущая implementation-задача: `P1.8 — provider-agnostic model adapter`;
+  independent acceptance `PASS/PASS/PASS` на exact staged digest
+  `841fbdfc36a92d0de77d96083bc1d349990f1304`. Остались implementation commit и
+  обязательная clean post-commit verification; P1.9/P2 scope не открыт.
+- Параллельная внешняя задача: `P1.4` ожидает GitHub
+  ruleset/failing-PR receipt.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -62,6 +66,20 @@
   `8065e67898e9d75bf69203afabb5846fb3fb1510`; clean post-commit targeted,
   schema and strict-G0 verification passes on commit
   `2b21356f29df2d9d95e1a0155cdfd16f9ecfcf13`. `G1` remains open.
+- P1.8 candidate verification: public model request/result schemas, exact
+  provider/egress authorization, profile-owned budget/dialect enforcement,
+  manifest-bound provider attempts and payload snapshots, safe native
+  normalization, restricted-output guard, hermetic fake, process-local concurrent
+  idempotency, closed remote native control surfaces and endpoint
+  SSRF/rebinding/peer checks pass 174 targeted tests.
+  Canonical CPython 3.13 and fresh non-editable CPython 3.12/3.14 quality runs
+  pass Ruff/mypy and all 459 tests at 91.65% Core branch coverage on these latest
+  bytes. Schema exact-byte check and strict frozen G0 pass. Independent reviews
+  produced bounded remediation rounds, then product/architecture/
+  security-evaluation returned `PASS/PASS/PASS` on exact digest
+  `841fbdfc36a92d0de77d96083bc1d349990f1304`. `P1.8` remains `IN PROGRESS`
+  until clean post-commit targeted/full/schema/strict-G0 evidence is recorded;
+  `G1` remains open.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -147,13 +165,14 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Открыть constrained task packet `P1.8` и реализовать fake/provider-neutral
-   adapter, endpoint connect-time policy и outcome normalization без P2 work.
+1. Создать атомарный implementation commit P1.8, выполнить clean post-commit
+   targeted/full/schema/strict-G0 verification и только затем записать
+   completion attestation.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.
-3. После P1.8 реализовать graph-independent in-memory runtime (`P1.9`) без
-   начала P2 до эффективного G1.
+3. После completion attestation P1.8 открыть constrained packet `P1.9`; не
+   начинать P2 до внешней приёмки `P1.4`, завершения `P1.9–P1.13` и G1.
 
 ## Критические запреты
 
