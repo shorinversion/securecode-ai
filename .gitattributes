@@ -1,0 +1,5 @@
+# P1.11 evaluator and fixture bytes are hash-pinned across Windows/POSIX checkouts.
+examples/demo-repositories/** text eol=lf
+tests/fixtures/demo-repositories.golden.json text eol=lf
+work/task-packets/P1.11-evaluator-seed.yaml text eol=lf
+work/task-packets/P1.11.yaml text eol=lf
