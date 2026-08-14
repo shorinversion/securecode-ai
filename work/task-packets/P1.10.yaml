@@ -1,0 +1,283 @@
+schema_version: "0.2-draft"
+
+task:
+  id: "P1.10"
+  type: "implementation"
+  objective: "Create the installable SecureCode CLI foundation with a closed versioned machine-result contract, stable exit codes, safe configuration diagnostics, and a no-network doctor command without implementing analysis or outcome authority."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "9efbac41ea9548318b0a4b312dbe24b341d4ce2a"
+  spec_refs: [SC-DOM-001, SC-DOM-005, SC-DOM-007, SC-DOM-008, SC-SYS-002, SC-PROD-009, SC-PROD-010, SC-CLI-001, SC-CLI-002, SC-CLI-003, SC-CLI-006, SC-CLI-009]
+  decision_refs: [D-007, D-015, D-017, D-026, D-027]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.2 packaging, P1.5 domain contracts, P1.7 configuration, P1.8 model boundary, and P1.9 LocalWorkflowRuntime are committed with clean completion evidence"
+    - "repository worktree is clean at starting_commit_sha except this reviewed packet"
+  non_goals:
+    - "repository intake, scanners, agents, model calls, EvidenceGraph, findings, patches, validation, reports, or AuditRunOutcome derivation"
+    - "functional scan/fix/validate commands; P2.13 owns deterministic diagnostic scan mode and P4.11 owns the full scan/fix/validate UX"
+    - "apply authorization/state belongs to P4.9 and its final CLI composition belongs to P4.11"
+    - "connected ci transport/control-plane behavior; P5.1 owns worker-mode exit integration and P6.6 owns the connected protocol"
+    - "file-output creation, overwrite/apply semantics, SARIF/Markdown/HTML formatting, or SC-CLI-004/005/007/008 completion"
+    - "full source-bearing provider/capability/egress preflight; doctor checks only configuration/profile/selected-egress compatibility and leaves SC-CLI-009 product-scan completion downstream"
+    - "repository/user configuration file discovery; P1.10 composes the already accepted resolver with injected closed layers and uses safe defaults plus environment for the installed foundation command"
+    - "a second Core, workflow, policy engine, or CLI-owned security verdict"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "cli-foundation-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "pyproject.toml"
+    - "uv.lock"
+    - "apps/cli/README.md"
+    - "apps/cli/pyproject.toml"
+    - "apps/cli/src/securecode_ai/cli/__init__.py"
+    - "apps/cli/src/securecode_ai/cli/__main__.py"
+    - "apps/cli/src/securecode_ai/cli/application.py"
+    - "packages/contracts/README.md"
+    - "packages/contracts/src/securecode_ai/contracts/__init__.py"
+    - "packages/contracts/src/securecode_ai/contracts/cli.py"
+    - "packages/contracts/src/securecode_ai/contracts/schema_export.py"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/cli-doctor-result.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/cli-error-result.schema.json"
+    - "scripts/ci_policy.py"
+    - "tests/unit/test_cli_application.py"
+    - "tests/unit/test_cli_contracts.py"
+    - "tests/unit/test_cli_entrypoint.py"
+    - "tests/unit/test_cli_schemas.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "tests/unit/test_workflow_schemas.py"
+    - "work/task-packets/P1.10.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "pyproject.toml"
+    - "uv.lock"
+    - "apps/cli/README.md"
+    - "apps/cli/pyproject.toml"
+    - "apps/cli/src/securecode_ai/cli/__init__.py"
+    - "apps/cli/src/securecode_ai/cli/__main__.py"
+    - "apps/cli/src/securecode_ai/cli/application.py"
+    - "packages/contracts/README.md"
+    - "packages/contracts/src/securecode_ai/contracts/__init__.py"
+    - "packages/contracts/src/securecode_ai/contracts/cli.py"
+    - "packages/contracts/src/securecode_ai/contracts/schema_export.py"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/cli-doctor-result.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/cli-error-result.schema.json"
+    - "scripts/ci_policy.py"
+    - "tests/unit/test_cli_application.py"
+    - "tests/unit/test_cli_contracts.py"
+    - "tests/unit/test_cli_entrypoint.py"
+    - "tests/unit/test_cli_schemas.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "tests/unit/test_workflow_schemas.py"
+    - "work/task-packets/P1.10.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/G0/**"
+    - ".github/**"
+    - "packages/core/src/**"
+    - "packages/adapters/src/**"
+    - "packages/contracts/src/securecode_ai/contracts/domain.py"
+    - "packages/contracts/src/securecode_ai/contracts/events.py"
+    - "packages/contracts/src/securecode_ai/contracts/model.py"
+    - "packages/contracts/src/securecode_ai/contracts/runtime.py"
+    - "apps/server/**"
+    - "apps/worker/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 26
+  max_diff_lines: 4200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "uv lock/check/sync/run/build with --offline and the project-owned uv 0.12.0"
+    - "pytest targeted CLI contract/application/schema/package-boundary suites"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "securecode --help/doctor --json subprocess checks"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "allow_only_additive_first_party_cli_workspace_package_with_no_new_external_dependency"
+
+inputs:
+  artifacts:
+    - "specs/contracts/cli.md SC-CLI-001/002/003/006/009"
+    - "specs/contracts/domain.md SC-DOM-001/005/007/008 and public error envelope"
+    - "specs/system/architecture.md SC-SYS-002"
+    - "specs/product/requirements.md SC-PROD-009"
+    - "P1.7 resolve_configuration and immutable provider registry"
+    - "P1.8 fail-closed provider/egress boundary as downstream full-doctor input, not reimplemented here"
+    - "P1.9 graph-independent runtime boundary; CLI never duplicates it"
+  fixtures:
+    - "credential-free no-network foundation fake provider profile"
+    - "invalid/unknown/secret-like environment configuration canaries"
+    - "machine/human stream and exit-code scenario matrix"
+  canonical_foundation_profile:
+    schema_version: "0.2.0"
+    profile_id: "securecode-foundation-fake"
+    profile_version: "0.2.0"
+    provider_kind: "fake"
+    api_dialect: "fake"
+    endpoint:
+      base_url: "fake://local"
+      authority: "local"
+      allowed_ports: [1]
+      follow_redirects: false
+      local_plaintext_exception: false
+    execution_boundary: "local_runner"
+    model_id: "securecode-foundation-fake"
+    model_snapshot: "0.2.0"
+    capabilities:
+      structured_output: true
+      native_refusal_signal: true
+      native_incomplete_signal: true
+      tool_calling: false
+      source_code_analysis: true
+      repository_tool_calls: false
+      repository_tools: []
+      max_context_tokens: 32768
+      max_output_tokens: 4096
+    data_terms:
+      evidence_status: "not_applicable_local"
+      residency: ["local"]
+      retention_seconds: 0
+      training_use: "not_applicable_local"
+      zero_data_retention: true
+      maximum_input_data_class: "DC3_CONFIDENTIAL_SOURCE"
+      allowed_purposes: ["model_native_discovery"]
+      evidence_ref: null
+    credential_ref: null
+    egress_profiles: ["air_gap"]
+    budgets:
+      timeout_seconds: 30
+      max_attempts: 1
+      max_total_tokens: 32768
+  resolver_defaults:
+    provider_profile: "securecode-foundation-fake@0.2.0"
+    policy_profile: "foundation-advisory"
+    egress_profile: "air_gap"
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "installable securecode-ai-cli workspace distribution and securecode console entry point"
+    - "closed CliExitCode enum with exact values 0,2,3,4,5,6 and no success default for unknown outcomes"
+    - "closed versioned CliDoctorResult and CliErrorResult contracts plus two deterministic checked-in Draft 2020-12 schemas; neither model contains a generic status field"
+    - "CliErrorResult fields are exactly schema_version, command, cli_outcome, exit_code, error and extensions; command is a required nullable key and is null for unknown/missing commands"
+    - "the nested error fields are exactly error_code, category, retryable, safe_message, correlation_id, run_id, finding_id, details_ref and extensions; run_id/finding_id/details_ref are required nullable keys, details_ref is ArtifactRef, and all three are null for P1.10 parser/config/internal errors"
+    - "closed CliCommand enum contains scan/fix/validate/apply/ci/doctor for wire compatibility, but only doctor is executable/advertised in P1.10; unknown commands are represented as command=null and never echoed"
+    - "closed CliErrorOutcome enum is POLICY_FAIL, INDETERMINATE, OPERATIONAL_ERROR, INVALID_USAGE_OR_CONFIG, CANCELLED_OR_SUPERSEDED; closed CliErrorCategory is POLICY, INDETERMINATE, OPERATIONAL, USAGE_CONFIG, CONTROL"
+    - "authoritative CliErrorCode mapping columns are code→cli_outcome/category/retryable/safe_message/exit: POLICY_BLOCKED→POLICY_FAIL/POLICY/false/'operation is blocked by policy'/2; ANALYSIS_INDETERMINATE→INDETERMINATE/INDETERMINATE/false/'analysis result is indeterminate'/3; OPERATIONAL_ERROR and INTERNAL_ERROR→OPERATIONAL_ERROR/OPERATIONAL/false/'operation could not be completed'/4; INVALID_USAGE→INVALID_USAGE_OR_CONFIG/USAGE_CONFIG/false/'command-line usage is invalid'/5; INVALID_CONFIG→INVALID_USAGE_OR_CONFIG/USAGE_CONFIG/false/'configuration is invalid'/5; CAPABILITY_INCOMPATIBLE→INVALID_USAGE_OR_CONFIG/USAGE_CONFIG/false/'provider capabilities are incompatible with this foundation diagnostic'/5; CANCELLED→CANCELLED_OR_SUPERSEDED/CONTROL/false/'operation was cancelled'/6; SUPERSEDED→CANCELLED_OR_SUPERSEDED/CONTROL/false/'operation was superseded'/6"
+    - "authoritative already-trusted AuditRunOutcome mapper is PASS→0, FAIL→2, INDETERMINATE→3, ERROR→4, CANCELLED→6, SUPERSEDED→6; exit 5 exists only in the separate parser/config/capability error mapping; unknown/raw/bool inputs reject and advisory policy disposition remains downstream SC-CLI-004 work"
+    - "stdlib grammar is exactly securecode --help|-h, securecode --version, securecode doctor, securecode doctor --json, securecode --json doctor, and securecode --json for a machine missing-subcommand error; --json may occur exactly once, help/version cannot combine with it, and any argv containing exactly one literal --json requests machine rendering even when the remaining command/flag is invalid"
+    - "stream table is fixed: help/version exit 0 with bounded human stdout and empty stderr; doctor human success exits 0 with empty stdout and one bounded stderr line; doctor machine success exits 0 with exactly one JSON line on stdout and empty stderr; invalid human usage exits 5 with empty stdout/one fixed stderr line; invalid machine usage exits 5 with exactly one CliErrorResult line/empty stderr"
+    - "CliDoctorResult fields are exactly schema_version, command=doctor, diagnostic_scope=FOUNDATION_CONFIGURATION_ONLY, cli_outcome=DIAGNOSTIC_COMPLETED, exit_code=0, scan_readiness=NOT_EVALUATED, checks and extensions"
+    - "CliDoctorCheck fields are exactly schema_version, check_id, check_outcome=READY, reason_code and extensions; exactly four checks in this canonical order: CONFIGURATION_RESOLUTION/CONFIGURATION_VALID, FOUNDATION_PROFILE_IDENTITY/PROFILE_IDENTITY_VALID, SELECTED_EGRESS_MEMBERSHIP/EGRESS_MEMBERSHIP_VALID, SOURCE_FREE_CAPABILITY_DECLARATION/CAPABILITY_DECLARATION_VALID"
+    - "doctor source-free capability predicate requires structured_output, native_refusal_signal, native_incomplete_signal and source_code_analysis true; it neither calls nor authorizes a provider and does not evaluate repository-tool or source-egress execution"
+    - "doctor builds the exact inputs.canonical_foundation_profile object and asserts selector securecode-foundation-fake@0.2.0 plus canonical hash b70483bdddf742b6610f9aed77305294b698a51da8c8e60f0901c1b2865e9862 before registry admission; resolution uses exactly inputs.resolver_defaults"
+    - "CliDoctorResult exit 0 means only that the four foundation structural diagnostics executed successfully; scan_readiness is always NOT_EVALUATED and no field can encode product PASS, full provider/egress authorization, or model availability"
+    - "machine mode emits exactly one canonical JSON object plus newline on stdout and no human diagnostic; human failures use stderr and leave stdout empty"
+    - "pure already-trusted AuditRunOutcome-to-exit mapping plus a separate parser/config error mapping without deriving AuditRunOutcome or policy verdict"
+    - "offline package/entrypoint and stream/redaction/exception/interrupt conformance tests"
+  structured_result_schema: "cli-doctor-result.schema.json and cli-error-result.schema.json v0.2.0"
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "CLI imports shared contracts/Core/adapters inward and contains no scanner, workflow graph, policy, model, or verdict implementation"
+    - "exit mapping accepts only typed trusted outcome values; argv/environment cannot directly choose a policy/audit outcome"
+    - "doctor never reads repository source, opens sockets, resolves DNS, starts processes, loads credentials, or invokes a model"
+    - "foundation fake profile is credential-free, immutable and hash-pinned, and used only for the four structural doctor diagnostics, never as evidence of a product scan"
+    - "CliDoctorResult is valid only when all four exact checks are READY in canonical order; any resolution/profile/egress/capability failure emits CliErrorResult exit 5 and cannot emit partial readiness"
+    - "help and docs clearly distinguish available foundation doctor from downstream scan/fix/validate/apply/ci commands"
+  compatibility:
+    - "all public CLI wire models forbid extras, use schema_version 0.2.0, reject unsupported major versions, and preserve additive future data only through the existing extension envelope"
+    - "root uv.lock remains the sole dependency authority and gains no registry dependency beyond existing locked packages"
+    - "the CLI package supports CPython 3.12, 3.13 and 3.14 and is Private :: Do Not Upload"
+  security:
+    - "parser errors, invalid config, capability mismatch, unexpected exceptions and interrupts map to the exhaustive fixed table without echoing argv/env/canary/traceback"
+    - "JSON stdout never mixes help/log/human text and is one object; stderr cannot contain source, credential, secret, terminal control or raw exception"
+    - "unknown command/flag and malformed retained in-memory result fields fail closed"
+    - "protected frozen paths remain unchanged"
+
+budgets:
+  max_iterations: 8
+  max_tool_calls: 65
+  timeout_seconds: 3600
+  max_output_bytes: 250000
+
+verification:
+  acceptance_commands:
+    - "targeted CLI contract/application/entrypoint/schema/package-boundary tests"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "wheel inventory contains the complete prior schema set plus two CLI schemas"
+    - "project-owned uv 0.12.0 lock check and offline clean install/build of securecode-ai-cli"
+    - "securecode --help and doctor --json smoke checks in the clean environment"
+    - "canonical quality command"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check plus protected/out-of-scope drift empty"
+  negative_cases:
+    - "the exact invocation/stream table covers help, version, both allowed --json placements, machine missing-subcommand, duplicate --json, --json+help/version, unknown command/flag and conflicting grammar tokens"
+    - "every CliExitCode value and the exact AuditRunOutcome mapping is tested; exit 5 is unreachable from AuditRunOutcome and unsupported/unknown/raw/bool inputs reject rather than fall back to 0"
+    - "invalid profile/egress/policy selection and SECURECODE_LLM_* environment override return exit 5 without raw value/canary"
+    - "unexpected doctor exception returns exit 4 with fixed safe error; KeyboardInterrupt returns exit 6"
+    - "machine stdout has exactly one JSON line and empty stderr; human error has empty stdout and one bounded stderr line"
+    - "unknown schema field/version/enum/code/category/outcome/check/scope/readiness, generic status, omitted required-nullable command/run_id/finding_id/details_ref, missing retryable, mismatched code/outcome/category/retryable/message/exit Cartesian mapping, noncanonical doctor check order/count and bool-as-exit-code reject"
+    - "a capability declaration with any one required boolean false produces CAPABILITY_INCOMPATIBLE exit 5; no result can change scan_readiness from NOT_EVALUATED"
+    - "foundation profile selector/hash/field mutation rejects the old pin and cannot yield CliDoctorResult"
+    - "socket/DNS/subprocess/source/credential probes remain untouched during doctor"
+    - "CLI package cannot import a private second Core or downstream scanner/agent/reporter modules"
+  required_evidence:
+    - "public contract round-trip, exact-byte schema, semantic-validator and wheel inventory matrix"
+    - "subprocess help/doctor/error stdout-stderr-exit golden matrix"
+    - "exit-code and safe-error Cartesian matrix"
+    - "configuration precedence composition and redaction/non-echo matrix"
+    - "network/process/source/credential zero-effect probes"
+    - "independent product, architecture, and security/evaluation PASS on one exact staged digest"
+    - "post-commit clean worktree with targeted/full/schema/wheel/lock/entrypoint/strict-G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "full scan or outcome authority required"
+  - "protected_path_change_required"
+  - "new external dependency or network access required"
+  - "P1.7/P1.8 public contract change required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.10, SC-DOM-001, SC-DOM-005, SC-DOM-007, SC-DOM-008, SC-CLI-002, SC-CLI-003]
+  partial_refs:
+    SC-SYS-002: "P1.10 makes CLI an inward-composing workspace package; cross-entrypoint domain behavior is completed with functional CLI/worker/backend slices"
+    SC-PROD-009: "P1.10 doctor and entrypoint are offline/no-network; a full air-gap scan remains P2-P4"
+    SC-PROD-010: "P1.10 defines no connected execution or egress path; CI worker/control-plane exchange remains P5/P6"
+    SC-CLI-001: "P1.10 owns the offline CLI package boundary; functional scan/fix/validate and connected ci remain P2/P4/P5/P6"
+    SC-CLI-006: "P1.10 composes the accepted P1.7 resolver for safe defaults/environment/injected layers; repository/user file discovery and command options remain downstream CLI UX"
+    SC-CLI-009: "P1.10 freezes exit 3 and provides source-free structural doctor diagnostics; mandatory model-native scan routing and full provider/capability/egress preflight remain P3/P4"
+  gate_contribution: "Supplies the installable CLI foundation, stable exit/error contracts, no-network doctor, and clean entrypoint evidence required by G1; does not complete G1 while P1.4 and P1.11-P1.13 remain open."
+  changelog_required: true
+  adr_required: false

@@ -25,6 +25,20 @@ VULNERABLE_FIXTURE_PATH: Final = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "p1_4" / "known-vulnerable-requirement.json"
 )
 WORKSPACE_PROJECTS: Final = {
+    "apps/cli/pyproject.toml": (
+        "securecode-ai-cli",
+        [
+            "securecode-ai-adapters==0.1.0a0",
+            "securecode-ai-contracts==0.1.0a0",
+            "securecode-ai-core==0.1.0a0",
+        ],
+        {
+            "securecode-ai-adapters": {"workspace": True},
+            "securecode-ai-contracts": {"workspace": True},
+            "securecode-ai-core": {"workspace": True},
+        },
+        "securecode_ai.cli",
+    ),
     "packages/contracts/pyproject.toml": (
         "securecode-ai-contracts",
         ["pydantic>=2.12,<3"],
@@ -43,6 +57,9 @@ WORKSPACE_PROJECTS: Final = {
         {"securecode-ai-core": {"workspace": True}},
         "securecode_ai.adapters",
     ),
+}
+WORKSPACE_CONSOLE_SCRIPTS: Final = {
+    "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"}
 }
 PYPI_INDEX: Final = "https://pypi.org/simple"
 PYPI_ARTIFACT_HOST: Final = "files.pythonhosted.org"
@@ -86,6 +103,7 @@ EXPECTED_QUALITY_DEPENDENCIES: Final = {
 }
 EXPECTED_ROOT_DEPENDENCIES: Final = [
     "securecode-ai-adapters==0.1.0a0",
+    "securecode-ai-cli==0.1.0a0",
     "securecode-ai-contracts==0.1.0a0",
     "securecode-ai-core==0.1.0a0",
 ]
@@ -549,12 +567,20 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
     workspace_sources = _mapping(uv.get("sources"), "pyproject.tool.uv.sources")
     if workspace_sources != {
         "securecode-ai-adapters": {"workspace": True},
+        "securecode-ai-cli": {"workspace": True},
         "securecode-ai-contracts": {"workspace": True},
         "securecode-ai-core": {"workspace": True},
     }:
         errors.append("workspace source declarations differ from the closed set")
     workspace = _mapping(uv.get("workspace"), "pyproject.tool.uv.workspace")
-    if workspace != {"members": ["packages/adapters", "packages/contracts", "packages/core"]}:
+    if workspace != {
+        "members": [
+            "apps/cli",
+            "packages/adapters",
+            "packages/contracts",
+            "packages/core",
+        ]
+    }:
         errors.append("workspace member inventory differs from the closed set")
 
     dependency_groups = _mapping(pyproject.get("dependency-groups"), "dependency-groups")
@@ -598,6 +624,7 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
     packages = _sequence(lock.get("package"), "uv.lock package")
     expected_workspace_sources = {
         "securecode-ai-adapters": {"editable": "packages/adapters"},
+        "securecode-ai-cli": {"editable": "apps/cli"},
         "securecode-ai-contracts": {"editable": "packages/contracts"},
         "securecode-ai-core": {"editable": "packages/core"},
         "securecode-ai-workspace": {"virtual": "."},
@@ -662,6 +689,9 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
             "dependencies",
             "classifiers",
         }
+        expected_scripts = WORKSPACE_CONSOLE_SCRIPTS.get(path)
+        if expected_scripts is not None:
+            expected_project_keys.add("scripts")
         if set(project) != expected_project_keys:
             errors.append(f"{path}: project metadata keys differ from the closed set")
         if (
@@ -671,6 +701,11 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
             or project.get("dependencies") != dependencies
         ):
             errors.append(f"{path}: identity or dependencies differ from the reviewed values")
+        if (
+            expected_scripts is not None
+            and _mapping(project.get("scripts"), f"{path}.project.scripts") != expected_scripts
+        ):
+            errors.append(f"{path}: console scripts differ from the reviewed set")
         tool = _mapping(document.get("tool"), f"{path}.tool")
         uv = _mapping(tool.get("uv"), f"{path}.tool.uv")
         expected_uv_keys = {"build-backend"} | ({"sources"} if sources else set())

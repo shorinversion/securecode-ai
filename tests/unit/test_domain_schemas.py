@@ -21,6 +21,8 @@ from securecode_ai.contracts.schema_export import (
 EXPECTED_SCHEMA_FILES = {
     "audit-event.schema.json",
     "audit-run.schema.json",
+    "cli-doctor-result.schema.json",
+    "cli-error-result.schema.json",
     "evidence.schema.json",
     "finding-case.schema.json",
     "model-call-result.schema.json",
@@ -35,7 +37,6 @@ EXPECTED_SCHEMA_FILES = {
 }
 FORBIDDEN_EMBEDDED_FIELDS = {
     "api_key",
-    "command",
     "diff",
     "provider_response",
     "raw_response",
@@ -100,12 +101,16 @@ def test_every_versioned_object_schema_requires_schema_version() -> None:
 
 def test_schema_surface_has_no_raw_source_diff_command_or_secret_fields() -> None:
     property_names: set[str] = set()
-    for content in render_schema_documents().values():
+    non_cli_property_names: set[str] = set()
+    for filename, content in render_schema_documents().items():
         document = json.loads(content)
         for node in _walk(document):
             if isinstance(node, dict) and isinstance(node.get("properties"), dict):
                 property_names.update(node["properties"])
+                if not filename.startswith("cli-"):
+                    non_cli_property_names.update(node["properties"])
     assert property_names.isdisjoint(FORBIDDEN_EMBEDDED_FIELDS)
+    assert "command" not in non_cli_property_names
 
 
 def test_schema_writer_and_comparator_detect_missing_extra_and_drift(tmp_path: Path) -> None:

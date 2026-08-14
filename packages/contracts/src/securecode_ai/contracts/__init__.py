@@ -1,6 +1,27 @@
 """Versioned, provider-neutral public contracts for SecureCode AI."""
 
 from .base import CONTRACT_SCHEMA_VERSION, ContractExtension, ExtensionDataClass
+from .cli import (
+    CLI_ERROR_DEFINITIONS,
+    CliCommand,
+    CliDiagnosticScope,
+    CliDoctorCheck,
+    CliDoctorCheckId,
+    CliDoctorCheckOutcome,
+    CliDoctorOutcome,
+    CliDoctorReasonCode,
+    CliDoctorResult,
+    CliErrorCategory,
+    CliErrorCode,
+    CliErrorEnvelope,
+    CliErrorOutcome,
+    CliErrorResult,
+    CliExitCode,
+    CliSafeMessage,
+    CliScanReadiness,
+    cli_error_result,
+    exit_code_for_audit_outcome,
+)
 from .config import (
     ApiDialect,
     EgressProfileId,
@@ -121,6 +142,7 @@ from .runtime import (
 )
 
 __all__ = [
+    "CLI_ERROR_DEFINITIONS",
     "CONTRACT_SCHEMA_VERSION",
     "MAX_SAFE_INTEGER",
     "ZERO_SHA256",
@@ -134,6 +156,22 @@ __all__ = [
     "AuditRunOutcome",
     "CandidateInterpretationReceipt",
     "CandidateOrigin",
+    "CliCommand",
+    "CliDiagnosticScope",
+    "CliDoctorCheck",
+    "CliDoctorCheckId",
+    "CliDoctorCheckOutcome",
+    "CliDoctorOutcome",
+    "CliDoctorReasonCode",
+    "CliDoctorResult",
+    "CliErrorCategory",
+    "CliErrorCode",
+    "CliErrorEnvelope",
+    "CliErrorOutcome",
+    "CliErrorResult",
+    "CliExitCode",
+    "CliSafeMessage",
+    "CliScanReadiness",
     "ComponentPin",
     "ContractExtension",
     "CoverageManifest",
@@ -237,8 +275,10 @@ __all__ = [
     "WorkflowUsageDelta",
     "WorkflowWaitReason",
     "canonical_runtime_sha256",
+    "cli_error_result",
     "derive_event_id",
     "derive_idempotency_key",
     "derive_stable_id",
+    "exit_code_for_audit_outcome",
     "has_unvalidated_runtime_state",
 ]

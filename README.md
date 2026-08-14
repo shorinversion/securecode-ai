@@ -7,7 +7,8 @@ current implementation phase is `P1 — Engineering Foundation`.
 This repository contains the completed specification baseline, reproducible
 Python workspace and quality gate, versioned domain/event/model contracts, the
 completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
-workflow-runtime substrate. `P1.8` provides
+workflow-runtime substrate, plus a locally verified `P1.10` foundation CLI
+candidate. `P1.8` provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
 budgets/dialects, fail-closed native outcome normalization, payload/attempt
 identity, process-local idempotency and connect-time endpoint authorization.
@@ -190,12 +191,17 @@ packages/adapters/
   transition events and a process-local in-memory runtime after independent
   product/architecture/security-evaluation acceptance and clean post-commit
   verification on implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`.
+- `P1.10` has a locally verified candidate for the installable `securecode`
+  entry point, stable exit/error contracts and the source-free `doctor`
+  diagnostic. It exposes no scan/fix/validate/apply/ci behavior and does not
+  claim product scan readiness; independent exact-digest acceptance and the
+  implementation commit are still pending.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 
-The current `Dockerfile` remains a non-buildable ownership marker until P6.12;
-the clean Python install above is supported, but no product entry point exists
-yet.
+The current `Dockerfile` remains a non-buildable ownership marker until P6.12.
+The clean Python install and foundation CLI entry point are supported, but the
+product scan commands remain intentionally unavailable until their later tasks.
 
 ## Durable project documentation
 

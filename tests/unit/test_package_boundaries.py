@@ -25,6 +25,18 @@ class PackagePolicy:
 
 POLICIES = (
     PackagePolicy(
+        REPOSITORY_ROOT / "apps" / "cli" / "src",
+        "securecode_ai.cli",
+        frozenset(
+            {
+                "securecode_ai.adapters",
+                "securecode_ai.cli",
+                "securecode_ai.contracts",
+                "securecode_ai.core",
+            }
+        ),
+    ),
+    PackagePolicy(
         REPOSITORY_ROOT / "packages" / "adapters" / "src",
         "securecode_ai.adapters",
         frozenset({"securecode_ai.adapters", "securecode_ai.core"}),
@@ -113,7 +125,12 @@ def _policy_violations(path: Path, policy: PackagePolicy) -> list[str]:
 
 @pytest.mark.parametrize(
     "module_name",
-    ["securecode_ai.adapters", "securecode_ai.contracts", "securecode_ai.core"],
+    [
+        "securecode_ai.adapters",
+        "securecode_ai.cli",
+        "securecode_ai.contracts",
+        "securecode_ai.core",
+    ],
 )
 def test_workspace_packages_are_importable(module_name: str) -> None:
     module = importlib.import_module(module_name)
@@ -139,13 +156,28 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
     ("distribution", "expected_dependency"),
     [
         ("securecode-ai-adapters", "securecode-ai-core==0.1.0a0"),
+        (
+            "securecode-ai-cli",
+            (
+                "securecode-ai-adapters==0.1.0a0",
+                "securecode-ai-contracts==0.1.0a0",
+                "securecode-ai-core==0.1.0a0",
+            ),
+        ),
         ("securecode-ai-contracts", "pydantic>=2.12,<3"),
         ("securecode-ai-core", "securecode-ai-contracts==0.1.0a0"),
     ],
 )
-def test_declared_dependencies_point_inward(distribution: str, expected_dependency: str) -> None:
+def test_declared_dependencies_point_inward(
+    distribution: str, expected_dependency: str | tuple[str, ...]
+) -> None:
     requirements = importlib.metadata.requires(distribution) or []
-    assert requirements == [expected_dependency]
+    expected = (
+        list(expected_dependency)
+        if isinstance(expected_dependency, tuple)
+        else [expected_dependency]
+    )
+    assert requirements == expected
 
 
 def test_contract_package_contains_complete_public_schema_inventory() -> None:
@@ -153,6 +185,8 @@ def test_contract_package_contains_complete_public_schema_inventory() -> None:
     assert {item.name for item in schema_root.iterdir() if item.name.endswith(".schema.json")} == {
         "audit-event.schema.json",
         "audit-run.schema.json",
+        "cli-doctor-result.schema.json",
+        "cli-error-result.schema.json",
         "evidence.schema.json",
         "finding-case.schema.json",
         "model-call-result.schema.json",

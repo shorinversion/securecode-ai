@@ -11,12 +11,14 @@ from typing import Final
 from pydantic import BaseModel
 
 from .base import CONTRACT_SCHEMA_VERSION
+from .cli import PUBLIC_CLI_ROOT_MODELS
 from .domain import PUBLIC_ROOT_MODELS as DOMAIN_PUBLIC_ROOT_MODELS
 from .events import AuditEvent
 from .model import ModelCallResult, ModelRequest
 from .runtime import PUBLIC_RUNTIME_ROOT_MODELS
 
 PUBLIC_ROOT_MODELS: dict[str, type[BaseModel]] = {
+    **PUBLIC_CLI_ROOT_MODELS,
     **DOMAIN_PUBLIC_ROOT_MODELS,
     "audit-event": AuditEvent,
     "model-call-result": ModelCallResult,
@@ -27,6 +29,22 @@ PUBLIC_ROOT_MODELS: dict[str, type[BaseModel]] = {
 JSON_SCHEMA_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
 SEMANTIC_VALIDATOR: Final = "securecode_ai.contracts.schema_export:validate_public_document"
 SEMANTIC_RULES: Final = {
+    "cli-doctor-result": (
+        "SC-DOM-001",
+        "SC-DOM-005",
+        "SC-DOM-007",
+        "SC-DOM-008",
+        "SC-CLI-002",
+        "SC-CLI-003",
+    ),
+    "cli-error-result": (
+        "SC-DOM-001",
+        "SC-DOM-005",
+        "SC-DOM-007",
+        "SC-DOM-008",
+        "SC-CLI-002",
+        "SC-CLI-003",
+    ),
     "audit-event": (
         "SC-EVENT-004",
         "SC-EVENT-009",

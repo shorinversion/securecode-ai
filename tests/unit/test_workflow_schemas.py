@@ -105,7 +105,7 @@ def test_five_workflow_schema_roots_are_checked_in_and_deterministic() -> None:
     second = render_schema_documents()
     assert first == second
     assert WORKFLOW_SCHEMA_FILES.issubset(first)
-    assert len(first) == 13
+    assert len(first) == 15
 
 
 def test_workflow_schemas_name_resolvable_semantic_validator_and_rules() -> None:

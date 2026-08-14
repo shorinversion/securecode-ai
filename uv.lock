@@ -8,6 +8,7 @@ exclude-newer = "2026-08-13T00:00:00Z"
 [manifest]
 members = [
     "securecode-ai-adapters",
+    "securecode-ai-cli",
     "securecode-ai-contracts",
     "securecode-ai-core",
     "securecode-ai-workspace",
@@ -998,6 +999,23 @@ dependencies = [
 requires-dist = [{ name = "securecode-ai-core", editable = "packages/core" }]
 
 [[package]]
+name = "securecode-ai-cli"
+version = "0.1.0a0"
+source = { editable = "apps/cli" }
+dependencies = [
+    { name = "securecode-ai-adapters" },
+    { name = "securecode-ai-contracts" },
+    { name = "securecode-ai-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "securecode-ai-adapters", editable = "packages/adapters" },
+    { name = "securecode-ai-contracts", editable = "packages/contracts" },
+    { name = "securecode-ai-core", editable = "packages/core" },
+]
+
+[[package]]
 name = "securecode-ai-contracts"
 version = "0.1.0a0"
 source = { editable = "packages/contracts" }
@@ -1025,6 +1043,7 @@ version = "0.1.0a0"
 source = { virtual = "." }
 dependencies = [
     { name = "securecode-ai-adapters" },
+    { name = "securecode-ai-cli" },
     { name = "securecode-ai-contracts" },
     { name = "securecode-ai-core" },
 ]
@@ -1049,6 +1068,7 @@ quality = [
 [package.metadata]
 requires-dist = [
     { name = "securecode-ai-adapters", editable = "packages/adapters" },
+    { name = "securecode-ai-cli", editable = "apps/cli" },
     { name = "securecode-ai-contracts", editable = "packages/contracts" },
     { name = "securecode-ai-core", editable = "packages/core" },
 ]

@@ -7,8 +7,8 @@
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.9 — graph-independent WorkflowRuntime`,
   implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`.
-- Следующая implementation-задача: `P1.10`; constrained packet ещё не открыт,
-  P2 scope закрыт.
+- Текущая implementation-задача: `P1.10`; constrained packet и локально
+  проверенный CLI candidate открыты, P2 scope закрыт.
 - Параллельная внешняя задача: `P1.4` ожидает GitHub
   ruleset/failing-PR receipt.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
@@ -100,6 +100,20 @@
   прошла расширенные 249 targeted tests, все 603 repository tests, Ruff/mypy,
   schema exact-byte, 13-schema wheel inventory и strict frozen G0. `P1.9` —
   `DONE`; `G1` остаётся открыт из-за `P1.4` и `P1.10–P1.13`.
+- P1.10 local candidate verification: installable first-party `securecode`
+  package, exact human/machine grammar, stable exit/error mapping, два public CLI
+  schema roots и source-free foundation `doctor` проходят 165 targeted tests.
+  Первый implementation review закрыл positional command attribution и
+  fail-open через unsafe copied Doctor result: retained state теперь повторно
+  валидируется и malformed result даёт typed `INTERNAL_ERROR`, не exit 0.
+  Canonical quality gate проходит Ruff/mypy, все 696 tests и 89,72% Core branch
+  coverage; CI lock/metadata authority, exact-byte schema check, 15-schema wheel
+  inventory, clean offline install/entrypoint smoke и strict frozen G0 — `PASS`.
+  `scan_readiness` всегда `NOT_EVALUATED`; scan/fix/validate/apply/ci и P2-анализ
+  не реализованы. Packet delta получил independent product/architecture/
+  security-evaluation `PASS/PASS/PASS`; implementation exact-digest reviews,
+  commit и clean post-commit verification ещё обязательны. `P1.10` остаётся
+  `IN PROGRESS`, `G1` открыт.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -185,8 +199,9 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Открыть constrained packet `P1.10` от завершённого P1.9 commit и реализовать
-   CLI skeleton со стабильными exit codes без расширения в P2-анализ.
+1. Зафиксировать exact staged digest кандидата `P1.10`, получить независимые
+   product/architecture/security-evaluation reviews, устранить blockers и только
+   после PASS выполнить implementation commit и clean post-commit verification.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.

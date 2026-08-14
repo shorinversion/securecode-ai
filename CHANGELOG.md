@@ -24,6 +24,22 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-14 — подготовлен локально проверенный кандидат `P1.10`: installable
+  first-party `securecode` entry point, closed `CliDoctorResult`/
+  `CliErrorResult`, стабильные exit codes `0/2/3/4/5/6`, canonical JSON errors и
+  source-free `doctor` с `scan_readiness=NOT_EVALUATED`. CLI не читает исходный
+  код, credentials или repository, не открывает сеть/процессы и не реализует
+  scan/fix/validate/apply/ci. CI lock authority синхронизирован с новым
+  first-party workspace package без ослабления closed policy; schema inventory
+  расширен с 13 до 15. Первый implementation review выявил неверную атрибуцию
+  mixed unknown command и доверие к unsafe `model_copy` result; remediation
+  привязала command только к top-level позиции и ввела повторную canonical/
+  runtime-shape validation с fail-closed `INTERNAL_ERROR`. Локально проходят 165
+  targeted и все 696 tests, Ruff,
+  mypy, 89,72% Core branch coverage, schema/CI-policy/strict-G0 gates, offline
+  wheel build, exact 15-schema inventory и clean offline install/entrypoint
+  smoke. Independent exact-digest implementation reviews и post-commit
+  verification ещё не выполнены, поэтому задача остаётся `IN PROGRESS`.
 - 2026-08-14 — завершён `P1.9`: пять versioned
   public workflow roots и deterministic schemas, exact-definition
   graph-independent state machine, обязательный dual-lane fan-out/fan-in,

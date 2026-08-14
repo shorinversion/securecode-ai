@@ -5,7 +5,7 @@ backend and integration adapters. Pydantic v2 models are the Python validation
 source of truth. They do not import model-provider, SCM, database,
 object-store, container or workflow-runtime SDKs.
 
-The `0.2.x` contract exposes thirteen closed, immutable public roots: `AuditRun`
+The `0.2.x` contract exposes fifteen closed, immutable public roots: `AuditRun`
 with canonical `RunExecutionIdentity`; `FindingCase` with discovery lineage and
 model receipts; `Evidence` with metadata-only `ArtifactRef`; `PatchCandidate`
 without embedded diff bytes; ordered-gate `ValidationResult`; and `AuditEvent`
@@ -13,7 +13,10 @@ with an independently versioned typed payload envelope; plus `ModelRequest`
 and `ModelCallResult`, which carry immutable execution/policy identity and safe
 normalized metadata without prompt, source, credential or raw response bytes;
 plus `WorkflowDefinition`, `WorkflowRuntimeRequest`, `WorkflowRuntimeResult`,
-`WorkflowSnapshot` and replay-complete `WorkflowTransitionEvent`.
+`WorkflowSnapshot` and replay-complete `WorkflowTransitionEvent`; plus
+`CliDoctorResult` and `CliErrorResult` for safe streams and stable exit mapping.
+The foundation doctor root always records `scan_readiness=NOT_EVALUATED` and
+cannot encode product scan readiness or an audit verdict.
 Each non-model transition binds an exact definition-owned producer pin; the
 model-native producer remains bound to the run's admitted provider profile.
 The request explicitly pins its native API dialect; the result exposes the

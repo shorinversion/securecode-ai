@@ -1,0 +1,32 @@
+[build-system]
+requires = ["uv_build>=0.11.32,<0.13"]
+build-backend = "uv_build"
+
+[project]
+name = "securecode-ai-cli"
+version = "0.1.0a0"
+description = "Offline SecureCode AI command-line composition boundary"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "securecode-ai-adapters==0.1.0a0",
+    "securecode-ai-contracts==0.1.0a0",
+    "securecode-ai-core==0.1.0a0",
+]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
+[project.scripts]
+securecode = "securecode_ai.cli:main"
+
+[tool.uv.sources]
+securecode-ai-adapters = { workspace = true }
+securecode-ai-contracts = { workspace = true }
+securecode-ai-core = { workspace = true }
+
+[tool.uv.build-backend]
+module-name = "securecode_ai.cli"
