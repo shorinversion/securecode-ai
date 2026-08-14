@@ -1,0 +1,285 @@
+schema_version: "0.2-draft"
+
+task:
+  id: "P1.11"
+  type: "implementation"
+  objective: "Create a hermetic test-only fixture repository factory that materializes six opaque, non-sensitive Python CWE-89 source repositories byte-for-byte and is checked against the separately committed evaluator golden, without implementing repository intake, analysis, verdicts, repair, or evaluation scoring."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "46f24297fe76c274b88bb228febe3f3289198f17"
+  spec_refs: [SC-PROD-001, SC-PROD-015, SC-PROD-016, SC-SYS-008, SC-CAP-001, SC-CAP-005, SC-CAP-010, SC-EVAL-001, SC-EVAL-002, SC-EVAL-004, SC-EVAL-006]
+  decision_refs: [D-013, D-015, D-025, D-026]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.3 quality infrastructure and P1.10 completion evidence are committed"
+    - "evaluator-owned seed is committed at ad84f403224af55db19b8e2e2e3374e8f178f669; golden SHA-256 is 17a6377860b35123c47f3660714973dbb8797456a91549d361a1397b2906d6c7"
+    - "path-specific LF checkout policy is committed at starting_commit_sha so clean Windows/POSIX checkouts preserve catalog/template/golden bytes"
+    - "repository worktree is clean at starting_commit_sha except this reviewed implementation packet"
+  non_goals:
+    - "repository intake, ignore/language/dependency discovery, AST/CST/symbol indexing, SAST, taint, secret or dependency scanners; these begin in P2.1-P2.8"
+    - "EvidenceGraph, candidate normalization, findings, CWE/OWASP classification, reports, model calls, agents, workflow execution, or AuditRunOutcome"
+    - "PoC/PoC+, security invariants, reference patches, sandbox validation, or the end-to-end CWE-89 scenario; SC-REPAIR-CWE89 and these artifacts belong to P4.3-P4.10"
+    - "synthetic/adaptive case generation, RLM, DSPy/GEPA, SkillOpt, threshold tuning, benchmark acquisition, or evaluation scoring; these remain in P7/P8"
+    - "adding factory-authored verdict, vulnerability label, expected finding, patch or pass/fail answer metadata inside any materialized repository; exact frozen adversarial source text is copied unchanged as untrusted data"
+    - "a public/runtime package, new JSON Schema root, CLI command, installed entry point, external dependency, network call, subprocess, git invocation, or fixture-source execution"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "fixture-repository-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "examples/demo-repositories/README.md"
+    - "examples/demo-repositories/catalog.json"
+    - "examples/demo-repositories/repo-001/README.md"
+    - "examples/demo-repositories/repo-001/app.py"
+    - "examples/demo-repositories/repo-002/README.md"
+    - "examples/demo-repositories/repo-002/app.py"
+    - "examples/demo-repositories/repo-003/README.md"
+    - "examples/demo-repositories/repo-003/app.py"
+    - "examples/demo-repositories/repo-004/README.md"
+    - "examples/demo-repositories/repo-004/app.py"
+    - "examples/demo-repositories/repo-005/README.md"
+    - "examples/demo-repositories/repo-005/app.py"
+    - "examples/demo-repositories/repo-006/README.md"
+    - "examples/demo-repositories/repo-006/app.py"
+    - "tests/README.md"
+    - "tests/fixture_repository.py"
+    - "tests/unit/test_fixture_repository.py"
+    - "work/task-packets/P1.11.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "examples/demo-repositories/README.md"
+    - "examples/demo-repositories/catalog.json"
+    - "examples/demo-repositories/repo-001/README.md"
+    - "examples/demo-repositories/repo-001/app.py"
+    - "examples/demo-repositories/repo-002/README.md"
+    - "examples/demo-repositories/repo-002/app.py"
+    - "examples/demo-repositories/repo-003/README.md"
+    - "examples/demo-repositories/repo-003/app.py"
+    - "examples/demo-repositories/repo-004/README.md"
+    - "examples/demo-repositories/repo-004/app.py"
+    - "examples/demo-repositories/repo-005/README.md"
+    - "examples/demo-repositories/repo-005/app.py"
+    - "examples/demo-repositories/repo-006/README.md"
+    - "examples/demo-repositories/repo-006/app.py"
+    - "tests/README.md"
+    - "tests/fixture_repository.py"
+    - "tests/unit/test_fixture_repository.py"
+    - "work/task-packets/P1.11.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/G0/**"
+    - ".gitattributes"
+    - "tests/fixtures/demo-repositories.golden.json"
+    - "work/task-packets/P1.11-evaluator-seed.yaml"
+    - ".github/**"
+    - "pyproject.toml"
+    - "uv.lock"
+    - "packages/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+    - "notebooks/**"
+    - "report/**"
+  max_changed_files: 22
+  max_diff_lines: 2800
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted fixture-repository suite"
+    - "python compile-only checks for fixture app.py files"
+    - "project-owned uv 0.12.0 offline canonical quality command"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny"
+
+inputs:
+  artifacts:
+    - "specs/evaluation/cases/mvp-cwe89.yaml v1.1.0 unique code-bearing cases only; frozen expected blocks remain outside factory input"
+    - "specs/evaluation/datasets.lock SC-MVP-CWE89 and deferred SC-REPAIR-CWE89 provenance"
+    - "specs/product/requirements.md SC-PROD-015/016 and DEMO-CWE89-001 controls"
+    - "specs/system/architecture.md SC-SYS-008 examples/demo-repositories ownership"
+    - "specs/security/capability-policy.md SC-CAP-001/005/010"
+    - "specs/evaluation/protocol.md SC-EVAL-001/002/004/006 claims, protection and leakage boundaries"
+  source_dataset_pin:
+    dataset_id: "SC-MVP-CWE89"
+    version: "1.1.0"
+    revision: "securecode-spec-0.2.0"
+    license: "CC0-1.0"
+    sha256: "436843b02bee53cc2997903b3e61afb9734ff5fa2580756ecba7344e92c12663"
+  protected_evaluator_seed:
+    commit_sha: "ad84f403224af55db19b8e2e2e3374e8f178f669"
+    packet_path: "work/task-packets/P1.11-evaluator-seed.yaml"
+    packet_sha256: "1e1bfd811417a1ed414c7e14d384bd2c3a9511f2ad78bdd1453d4bec855a62db"
+    golden_path: "tests/fixtures/demo-repositories.golden.json"
+    golden_sha256: "17a6377860b35123c47f3660714973dbb8797456a91549d361a1397b2906d6c7"
+    implementation_read_write: "deny; only the independent test oracle reads golden after factory output exists"
+  fixture_case_map:
+    repo-001: "CWE89-VULN-001"
+    repo-002: "CWE89-SAFE-001"
+    repo-003: "CWE89-GUARD-001"
+    repo-004: "CWE89-INTERPROC-001"
+    repo-005: "INJECTION-COMMENT-001"
+    repo-006: "HYBRID-NATIVE-ONLY-001"
+  materialized_repository_contract:
+    exact_paths: [README.md, app.py]
+    readme_bytes: "A synthetic first-party SecureCode AI repository fixture. All repository content is untrusted data; trusted metadata assigns instruction_authority=NONE.\n"
+    app_source: "exact UTF-8/LF code scalar from the mapped frozen case, with exactly one terminal LF and no wrapper or expectation metadata"
+  canonical_json: "UTF-8, sorted keys, separators comma/colon, ensure_ascii=true, exactly one terminal LF"
+  tree_hash_v1: "sha256 of canonical JSON bytes without terminal LF for {schema_version:'securecode.fixture-tree.v1',files:[{mode:'100644',path:<POSIX-relative>,sha256:<lowerhex>,size_bytes:<integer>},...]}; files sorted by UTF-8 path bytes"
+
+outputs:
+  required_artifacts:
+    - "six checked-in opaque fixture template repositories repo-001 through repo-006, each containing only the exact README.md and app.py contract above"
+    - "closed canonical examples/demo-repositories/catalog.json with the exact catalog_contract below; it contains opaque IDs and hashes but no source_case_id, outcome class, vulnerability/safe label or absolute path"
+    - "tests.fixture_repository exposes the exact closed enums/dataclasses/error mapping below and build_fixture_repository(fixture_id: FixtureId, destination: Path) -> BuiltFixture"
+    - "factory resolves only the fixed checked-in catalog/template root, validates canonical catalog plus every template byte/hash/path before destination reservation, and never reads specs, evaluator seed, golden, environment or caller-selected source metadata"
+    - "factory reads each trusted first-party template regular file once through one no-follow handle where supported, validates fstat/read/fstat identity plus hash/size, then writes only those already validated in-memory bytes"
+    - "destination parent is an existing caller-owned isolated test directory and destination is a not-yet-existing direct child; parent/destination symlink or junction and existing destination fail before writes"
+    - "Path.mkdir(exist_ok=false) on the direct destination is the no-overwrite reservation: two cooperating factory calls for one destination create at most one build; P1.11 does not claim atomically invisible complete-directory publication or hostile concurrent-filesystem containment"
+    - "ordinary post-reservation I/O failure attempts to unlink only exact factory-written files then rmdir its still-identity-matching reservation; identity/reparse/unknown-entry change or any unlink/rmdir cleanup failure yields CLEANUP_CONFLICT, preserves all remaining bytes, never recurses and may leave an incomplete quarantined destination"
+    - "factory never follows links or executes/imports/compiles/evaluates fixture source and performs no network, subprocess, git, environment, clock or random-dependent behavior"
+    - "logical file mode is always 100644 and part of the tree hash; POSIX applies/verifies 0644, while Windows records the logical mode without claiming POSIX permission-bit equivalence"
+    - "compile-only tests prove each app.py is syntactically valid without importing or executing it"
+    - "repository docs state that fixture IDs are intentionally opaque, catalog/golden metadata must not be included in RepositoryView/model context, and P1.11 proves reproducible bytes only—not detection, repair, accuracy or scan readiness"
+  catalog_contract:
+    schema_version_literal: "securecode.fixture-catalog.v1"
+    root: "object with exactly schema_version:string literal, repository_content_authority:string literal NONE, source_dataset:object and fixtures:array length 6"
+    source_dataset: "object with exactly dataset_id/version/revision/license/sha256 strings equal to inputs.source_dataset_pin; sha256 is 64 lowercase hex"
+    fixture: "object with exactly fixture_id:string closed repo-001..repo-006, tree_sha256:string 64 lowercase hex and files:array length 2"
+    file: "object with exactly mode:string literal 100644, path:string, sha256:string 64 lowercase hex and size_bytes:integer 1..65536 excluding bool"
+    order: "fixtures repo-001..repo-006; files README.md then app.py; no duplicate or case-fold-colliding ID/path"
+    paths: "only exact single-component README.md and app.py; no absolute, backslash, slash, dot, dot-dot, control, trailing-space/dot or Windows reserved form"
+    bytes: "canonical JSON per inputs.canonical_json; unknown/missing/extra fields or scalar coercion reject"
+  result_contract:
+    FixtureId: "str Enum with exact values repo-001..repo-006"
+    FixtureRepositoryErrorCode: "str Enum with exact member names and serialized values INVALID_FIXTURE_ID, CATALOG_IO_ERROR, CATALOG_INVALID, CATALOG_NONCANONICAL, TEMPLATE_INVALID, TEMPLATE_MISMATCH, DESTINATION_PARENT_INVALID, DESTINATION_EXISTS, BUILD_IO_ERROR, CLEANUP_CONFLICT"
+    BuiltFixtureFile: "frozen slots dataclass fields in order path:str, mode:str, size_bytes:int, sha256:str"
+    BuiltFixture: "frozen slots dataclass fields in order fixture_id:FixtureId, destination:Path, instruction_authority:str literal NONE, tree_sha256:str, files:tuple[BuiltFixtureFile,...]; files are README.md then app.py"
+    FixtureRepositoryError: "final RuntimeError subclass fields code:FixtureRepositoryErrorCode and safe_message:str; args is exactly (safe_message,), repr/str/fields contain no raw identifier/path/content/cause"
+  error_contract:
+    codes_and_messages:
+      INVALID_FIXTURE_ID: "fixture identifier is invalid"
+      CATALOG_IO_ERROR: "fixture catalog could not be read"
+      CATALOG_INVALID: "fixture catalog is invalid"
+      CATALOG_NONCANONICAL: "fixture catalog is not canonical"
+      TEMPLATE_INVALID: "fixture template is invalid"
+      TEMPLATE_MISMATCH: "fixture template does not match catalog"
+      DESTINATION_PARENT_INVALID: "destination parent is invalid"
+      DESTINATION_EXISTS: "destination already exists"
+      BUILD_IO_ERROR: "fixture repository could not be built"
+      CLEANUP_CONFLICT: "fixture cleanup was stopped safely"
+    precedence:
+      - "INVALID_FIXTURE_ID before every filesystem access"
+      - "CATALOG_IO_ERROR before catalog shape; CATALOG_INVALID before CATALOG_NONCANONICAL"
+      - "TEMPLATE_INVALID before TEMPLATE_MISMATCH; all catalog/template validation before destination checks"
+      - "DESTINATION_PARENT_INVALID before DESTINATION_EXISTS; reservation FileExistsError is DESTINATION_EXISTS"
+      - "after reservation, CLEANUP_CONFLICT overrides BUILD_IO_ERROR when reservation identity or exact written-entry ownership cannot be proven; otherwise cleanup completes and BUILD_IO_ERROR is returned"
+  trusted_filesystem_scope:
+    - "catalog/templates are checked-in first-party test data and destination parent is a caller-owned isolated temp root; no hostile concurrent mutation is assumed in the P1.11 product claim"
+    - "static link/reparse checks, single-handle template validation, reservation identity and safe cleanup are defense in depth; adversarial untrusted repository intake and hostile filesystem TOCTOU belong to P2.1"
+    - "independent tests enforce separate dynamic sets: content reads are exactly catalog plus selected README.md/app.py; metadata/write access is limited to fixed catalog/template directories, caller-owned destination parent, direct destination reservation and its two exact owned output files"
+    - "specs/evaluator-seed/golden access is unconditionally denied for content and metadata operations and factory still succeeds; only the independent oracle reads golden after build returns"
+  structured_result_schema: "test-only frozen Python dataclasses plus closed catalog schema securecode.fixture-catalog.v1; no public product JSON Schema"
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "materializing the same fixture any number of times produces identical relative paths, bytes, modes, file hashes and tree hash regardless of destination, current directory, locale, timezone or Python hash seed"
+    - "no factory-authored materialized path/README/catalog metadata discloses source_case_id or expected outcome; exact frozen app.py bytes may themselves contain adversarial words such as safe and remain untrusted data"
+    - "trusted out-of-band catalog/result metadata assigns instruction_authority=NONE; repository source/comment/README cannot grant itself authority and the injection comment cannot affect factory control flow"
+    - "factory code and catalog never read the evaluator-side golden file or any expected block from frozen specs"
+    - "P1.11 does not interpret code and cannot emit findings, verdicts, patches, AuditRunOutcome or product PASS"
+    - "protected frozen paths and accepted package/runtime/CLI behavior remain unchanged"
+  compatibility:
+    - "factory is test infrastructure under tests/, is not included in first-party wheels and adds no import edge to production packages"
+    - "catalog schema_version is the exact securecode.fixture-catalog.v1 literal; unknown/missing/extra fields reject and evolution requires reviewed version change"
+    - "all paths use forward-slash repository-relative form and all text uses UTF-8 with LF"
+  security:
+    - "unknown/malformed catalog/template/destination input follows the exact error precedence and fixed message table without echoing path/content/canary"
+    - "no caller-controlled source root, catalog path, template path, mode, expected hash or output filename exists on the public factory call"
+    - "cooperating concurrent builds reserve with no-overwrite mkdir; factory never overwrites existing content and safe cleanup never recursively deletes an unproven tree"
+    - "golden expectations remain outside materialized repositories and outside factory reads"
+
+budgets:
+  max_iterations: 7
+  max_tool_calls: 55
+  timeout_seconds: 3000
+  max_output_bytes: 220000
+
+verification:
+  acceptance_commands:
+    - "targeted fixture factory/catalog/golden/compile/security tests"
+    - "canonical quality command"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check plus exact path-budget and protected/out-of-scope drift checks"
+  positive_cases:
+    - "all six fixed FixtureId values materialize and an independent oracle matches catalog output to the protected golden tree hashes"
+    - "two destinations per fixture have byte-identical sorted manifests and tree hashes"
+    - "all six app.py files compile without execution"
+    - "factory works after changing cwd and with a destination containing Unicode and spaces"
+  negative_cases:
+    - "unknown/raw/bool/empty/case-changed fixture identifiers reject before destination creation"
+    - "existing empty/non-empty/file destination, parent/destination symlink or junction and same-destination concurrent reservation reject without overwrite"
+    - "catalog missing/extra/duplicate/case-colliding fixture or file entry, unsupported version, wrong dataset pin, path traversal/absolute/backslash/control/reserved path, wrong mode/size/file hash/tree hash and noncanonical bytes reject"
+    - "missing/extra/symlink/junction/non-regular/mutated template and fstat identity change reject before destination reservation"
+    - "ordinary injected write/chmod failure cleans the still-owned reservation; directory identity/reparse/unknown-entry swap yields CLEANUP_CONFLICT, preserves an external canary and never recursively deletes it"
+    - "dynamic open/os.open/stat/lstat/scandir wrappers prove exact content-read and metadata/write sets above while unconditionally denying specs/evaluator-seed/golden"
+    - "injected unlink or rmdir failure returns CLEANUP_CONFLICT, preserves residual/external canaries and performs no recursive deletion"
+    - "compile/exec/eval/runpy/importlib, socket/DNS/subprocess/git/environment/clock/random probes remain untouched during factory construction and build"
+    - "search confirms factory-authored catalog/materialized metadata contains no source_case_id/expected_tree_sha256/verdict/finding/patch/ground-truth fields; exact frozen app.py adversarial text is exempt and remains untrusted"
+  required_evidence:
+    - "exact catalog canonical bytes plus protected evaluator golden SHA/commit and independently recomputed file/tree hashes"
+    - "six-fixture deterministic replay and compile-only matrix"
+    - "path/link/reservation/corruption/cleanup-conflict zero-overwrite matrix within the declared trusted-temp scope"
+    - "read-allowlist, no-execution/import, network/process/git/env/clock/random zero-effect and non-echo matrix"
+    - "independent product, architecture, and security/evaluation PASS on one exact staged digest"
+    - "post-commit clean worktree with targeted/full/strict-G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_or_dataset_conflict"
+  - "expected result must enter materialized repository or factory input"
+  - "repository analysis, verdict, patch or P2/P4 behavior required"
+  - "protected_path_change_required"
+  - "new external dependency, network, subprocess or public package change required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.11]
+  partial_refs:
+    SC-PROD-001: "P1.11 supplies only the opaque deterministic source repositories underlying DEMO-CWE89-001; intake, dual-lane evidence, agents, repair, validation and reports remain P2-P4"
+    SC-PROD-015: "P1.11 supplies byte-reproducible source fixtures and dataset provenance; complete run-manifest replay remains later tasks"
+    SC-PROD-016: "P1.11 supplies the demonstrational vulnerable/safe source repositories; notebook, reports and final clean-environment release evidence remain P4/P9"
+    SC-SYS-008: "P1.11 makes examples/demo-repositories executable as test data; the full final submission manifest remains P9"
+    SC-CAP-001: "P1.11 carries trusted out-of-band instruction_authority=NONE metadata while repository bytes remain data; enforcement through RepositoryView/model tools remains P2/P3"
+    SC-CAP-005: "the separate evaluator commit freezes golden evidence and the implementation packet denies reads/writes from factory code; generalized protected-resource enforcement is completed by P1.13 and later capability policy"
+    SC-CAP-010: "P1.11 preserves the direct injection comment as untrusted bytes; cross-fragment/tool propagation enforcement remains P3/P8"
+    SC-EVAL-001: "P1.11 pins source corpus provenance and fixture bytes before use; full confirmatory run manifests remain P7"
+    SC-EVAL-002: "P1.11 factory cannot read evaluator golden/expected data; runtime implementation-agent capability enforcement remains P3/P7"
+    SC-EVAL-004: "P1.11 records immutable fixture source/case/tree lineage under the already frozen dataset entry; complete dataset governance remains the locked protocol and P7"
+    SC-EVAL-006: "P1.11 prevents evaluator-authored answer metadata from entering materialized repositories; split/access-log enforcement remains P7"
+  gate_contribution: "Supplies deterministic positive/negative/adversarial repository bytes and protected golden tree evidence required by P1/G1; does not complete G1 while P1.4, P1.12 and P1.13 remain open."
+  changelog_required: true
+  adr_required: false

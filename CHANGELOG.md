@@ -24,6 +24,18 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-14 — подготовлен локально проверенный `P1.11` candidate: шесть opaque
+  non-sensitive Python CWE-89 repository templates, canonical catalog и
+  test-only deterministic factory. Evaluator-side case/tree mapping был
+  независимо вычислен и заморожен отдельным commit
+  `ad84f403224af55db19b8e2e2e3374e8f178f669` до implementation; golden недоступен
+  factory, а LF checkout policy сохраняет hash-pinned bytes на Windows/POSIX.
+  Factory использует closed IDs/errors, single-read template validation,
+  no-overwrite destination reservation и non-recursive safe cleanup; не читает
+  specs/golden, не исполняет source и не реализует scanner/finding/repair.
+  Локально проходят 43 targeted и все 739 tests, Ruff, mypy и 89,72% Core branch
+  coverage. Candidate остаётся `IN PROGRESS` до independent exact-digest
+  acceptance, implementation commit и clean post-commit verification.
 - 2026-08-14 — завершён `P1.10`: installable
   first-party `securecode` entry point, closed `CliDoctorResult`/
   `CliErrorResult`, стабильные exit codes `0/2/3/4/5/6`, canonical JSON errors и
