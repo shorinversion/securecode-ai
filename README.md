@@ -7,8 +7,8 @@ current implementation phase is `P1 — Engineering Foundation`.
 This repository contains the completed specification baseline, reproducible
 Python workspace and quality gate, versioned domain/event/model contracts, the
 completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
-workflow-runtime substrate, the completed `P1.10` foundation CLI, and a locally
-verified `P1.11` fixture-repository candidate awaiting independent acceptance.
+  workflow-runtime substrate, the completed `P1.10` foundation CLI and the
+  completed `P1.11` fixture-repository factory.
 `P1.8`
 provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
@@ -199,13 +199,15 @@ packages/adapters/
   verification on implementation commit
    `a0dd7849db3e372ca5cc396706f3a166329a1f8a`. It exposes no
    scan/fix/validate/apply/ci behavior and does not claim product scan readiness.
-- `P1.11` has a locally verified candidate for six opaque, non-sensitive
+- `P1.11` completed six opaque, non-sensitive
   Python repository templates and a test-only deterministic factory. Evaluator
   tree hashes were frozen first in commit
   `ad84f403224af55db19b8e2e2e3374e8f178f669`; path-specific LF checkout policy
-  preserves those bytes on Windows/POSIX. The candidate passes 43 targeted and
-  739 full tests, but remains `IN PROGRESS` until exact-digest independent
-  acceptance, implementation commit and clean post-commit verification.
+  preserves those bytes on Windows/POSIX. Product, architecture and
+  security/evaluation reviews accepted exact digest
+  `f194a1bd66da95642a37487a743144389f229699`; clean post-commit verification on
+  `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc` passes 43 targeted and 739 full
+  tests, Ruff/mypy, 89.72% Core branch coverage, schema check and strict G0.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

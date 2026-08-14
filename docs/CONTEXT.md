@@ -5,12 +5,10 @@
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
-- Последняя завершённая задача: `P1.10 — foundation CLI`, implementation commit
-  `a0dd7849db3e372ca5cc396706f3a166329a1f8a`.
-- Текущая implementation-задача: `P1.11`; constrained packet прошёл
-  preimplementation `PASS/PASS/PASS`, implementation candidate локально зелёный,
-  но independent exact-digest acceptance и commit ещё не выполнены. P2 scope
-  закрыт.
+- Последняя завершённая задача: `P1.11 — fixture repository factory`,
+  implementation commit `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc`.
+- Следующая implementation-задача: `P1.12`; constrained packet ещё не открыт.
+  P2 scope закрыт.
 - Параллельная внешняя задача: `P1.4` ожидает GitHub
   ruleset/failing-PR receipt.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
@@ -80,7 +78,7 @@
   `841fbdfc36a92d0de77d96083bc1d349990f1304`. Clean post-commit verification on
   `030fad9f4567f59def348387d9484a0b4a5eea29` passed 174 targeted tests, all 459
   repository tests, schema drift and strict frozen G0. `P1.8` is `DONE`; after
-  completion of `P1.10`, `G1` remains open because `P1.4` and `P1.11–P1.13` are
+  completion of `P1.11`, `G1` remains open because `P1.4` and `P1.12–P1.13` are
   not complete.
 - P1.9 completion verification: пять новых public workflow schema roots,
   exact-definition graph-independent state machine, обязательный dual-lane
@@ -101,7 +99,7 @@
   implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`
   прошла расширенные 249 targeted tests, все 603 repository tests, Ruff/mypy,
   schema exact-byte, 13-schema wheel inventory и strict frozen G0. `P1.9` —
-  `DONE`; `G1` остаётся открыт из-за `P1.4` и `P1.11–P1.13`.
+  `DONE`; `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
 - P1.10 completion verification: installable first-party `securecode`
   package, exact human/machine grammar, stable exit/error mapping, два public CLI
   schema roots и source-free foundation `doctor` проходят 165 targeted tests.
@@ -118,16 +116,19 @@
   implementation commit `a0dd7849db3e372ca5cc396706f3a166329a1f8a`
   повторно прошла 165 targeted, все 696 tests, schema/CI/strict-G0, offline
   build, 15-schema wheel и clean offline entrypoint smoke. `P1.10` — `DONE`;
-  `G1` остаётся открыт из-за `P1.4` и `P1.11–P1.13`.
-- P1.11 candidate verification: evaluator-owned six-case tree golden заморожен
+  `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
+- P1.11 completion verification: evaluator-owned six-case tree golden заморожен
   до реализации в commit `ad84f403224af55db19b8e2e2e3374e8f178f669`, а
   path-specific LF policy в `46f24297fe76c274b88bb228febe3f3289198f17`
   сохраняет exact bytes на Windows/POSIX. Test-only factory материализует шесть
   opaque repos, не читает specs/golden, не исполняет source и не реализует P2/P4
-  анализ. 43 targeted tests и canonical quality (Ruff/mypy, 739 tests, 89,72%
-  Core branch coverage) проходят; protected golden/spec/G0 не изменены. `P1.11`
-  остаётся `IN PROGRESS` до independent review exact staged digest,
-  implementation commit и clean post-commit verification.
+  анализ. Product/architecture/security-evaluation reviews дали `PASS/PASS/PASS`
+  на exact digest `f194a1bd66da95642a37487a743144389f229699`. Clean
+  post-commit verification implementation commit
+  `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc` повторно прошла 43 targeted,
+  Ruff/mypy, все 739 tests, 89,72% Core branch coverage, schema exact-byte и
+  strict frozen G0; protected golden/spec/G0 не изменены. `P1.11` — `DONE`;
+  `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -213,13 +214,12 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Провести independent product/architecture/security-evaluation reviews
-   exact staged P1.11 candidate; исправить blockers, зафиксировать implementation
-   commit и повторить targeted/full/strict-G0 на чистом worktree.
+1. Открыть constrained packet `P1.12` для structured telemetry/redaction,
+   выполнить preimplementation `PASS/PASS/PASS` и только затем реализовывать.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.
-3. Не начинать P2 до внешней приёмки `P1.4`, завершения `P1.11–P1.13` и
+3. Не начинать P2 до внешней приёмки `P1.4`, завершения `P1.12–P1.13` и
    эффективного G1.
 
 ## Критические запреты
