@@ -24,6 +24,29 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-14 — подготовлен локально проверенный кандидат `P1.9`: пять versioned
+  public workflow roots и deterministic schemas, exact-definition
+  graph-independent state machine, обязательный dual-lane fan-out/fan-in,
+  bounded investigation/repair accounting, replay-complete hash-linked
+  `WorkflowTransitionEvent` и lock-backed process-local `LocalWorkflowRuntime`.
+  Runtime-owned journal, run-wide semantic idempotency, exact CAS, cancellation
+  и supersession проверяются позитивными, negative, replay/tamper и concurrent
+  tests. `AuditEvent`, durable persistence/restart, provider retries, Temporal,
+  P2-анализ и trusted outcome routing не добавлялись. После первого review-pass
+  registry хранит immutable canonical bytes, investigation действительно
+  допускает два дополнительных раунда, superseding HEAD hash-bound в journal,
+  transition hashes обязательны, а adapter/policy faults и overflow receipts
+  закрываются typed errors. Повторная reliability-проверка добавила обнаружение
+  скрытых Pydantic fields, definition-owned producer admission, строгую привязку
+  public method к operation, typed error precedence и assignment-immutable
+  registry. Portable conformance-suite и матрицы покрывают все model non-success
+  outcomes, 31 комбинацию exhaustion, cumulative Architect+validation usage и
+  factory-driven snapshot/resume/replay/terminal-state authority. Локально
+  проходят 166 целевых и все 603 repository tests, Ruff/mypy, 89,72% Core branch
+  coverage,
+  exact-byte schema check, 13-schema wheel inventory и strict frozen G0.
+  Independent acceptance и clean post-commit evidence ещё требуются; задача
+  остаётся `IN PROGRESS`.
 - 2026-08-14 — завершён `P1.8`: public
   `ModelRequest`/`ModelCallResult`, exact provider/egress preflight,
   issuer-owned single-use authorization chain, hermetic fake, cross-dialect

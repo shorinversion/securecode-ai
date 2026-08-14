@@ -4,16 +4,17 @@ SecureCode AI is a security-oriented code-audit platform under staged,
 evidence-gated development. The frozen definition baseline is `0.2.0`; the
 current implementation phase is `P1 — Engineering Foundation`.
 
-This repository contains the completed specification baseline, the `P1.1`
-ownership skeleton, the reproducible `P1.2` Python workspace, the `P1.3`
-quality gate, versioned domain contracts, the `P1.6` append-only event stream,
-the completed `P1.7` secret-safe configuration increment and a locally verified
-`P1.8` model-boundary candidate. `P1.8` adds provider-neutral request/result
-contracts, a hermetic fake, profile-bound budgets/dialects, fail-closed native
-outcome normalization, manifest-bound payload/attempt identity, remote
-process-local idempotency and connect-time endpoint authorization without a live
-provider SDK. It does **not** yet contain a working scanner, agent workflow,
-backend, SCM bot or sandbox.
+This repository contains the completed specification baseline, reproducible
+Python workspace and quality gate, versioned domain/event/model contracts, the
+completed `P1.7` secret-safe configuration and `P1.8` model boundary, plus a
+locally verified `P1.9` workflow-runtime candidate. `P1.8` provides
+provider-neutral request/result contracts, a hermetic fake, profile-bound
+budgets/dialects, fail-closed native outcome normalization, payload/attempt
+identity, process-local idempotency and connect-time endpoint authorization.
+`P1.9` adds a graph-SDK-independent workflow state machine, replay-complete
+transition journal, definition-bound producer admission and a fail-closed
+in-memory adapter. It does **not** yet contain a working scanner, model agent,
+backend, SCM bot, durable runtime or sandbox.
 
 ## Reproducible Python environment
 
@@ -62,8 +63,8 @@ APIs as a defense-in-depth test boundary; this is not a substitute for the
 product sandbox delivered in later phases.
 
 Branch coverage is measured against `securecode_ai.core` alone and must be at
-least 80%. Core currently contains only its packaging marker, so the displayed
-100% is evidence that the gate is wired—not a claim of behavioral test quality.
+least 80%. The threshold is a regression gate, not a claim that coverage alone
+proves security or product quality.
 
 ## Local pre-commit checks
 
@@ -116,16 +117,18 @@ securecode-ai-adapters
 
 All three distributions are private pre-alpha packages under the shared
 implicit namespace `securecode_ai`. The contracts package owns stable-ID
-derivation, closed Pydantic v2 models and eight checked-in Draft 2020-12 JSON
-Schemas for `AuditRun`, `FindingCase`, `Evidence`, `PatchCandidate`,
-`ValidationResult`, `AuditEvent`, `ModelRequest` and `ModelCallResult`; it
-deliberately imports no provider, SCM, database or graph-runtime SDK.
+derivation, closed Pydantic v2 models and thirteen checked-in Draft 2020-12 JSON
+Schemas: the original domain/event/model roots plus `WorkflowDefinition`,
+`WorkflowRuntimeRequest`, `WorkflowRuntimeResult`, `WorkflowSnapshot` and
+`WorkflowTransitionEvent`; it deliberately imports no provider, SCM, database
+or graph-runtime SDK.
 Conformance requires both structural JSON Schema validation and its resolvable
 `x-securecode-semantic-validator`. Core owns the immutable, hash-linked
-in-memory `EventStream`/`RunProjection` and the framework-independent two-phase
-model/egress authorization boundary. Adapters owns the hermetic provider fake,
-native-envelope normalization and endpoint peer checks; live provider HTTP,
-persistence and workflow runtime remain outside this increment.
+`EventStream`/`RunProjection`, the two-phase model/egress authorization boundary
+and the exact-definition workflow transition rules. Adapters owns the hermetic
+provider fake, native-envelope normalization, endpoint peer checks and the
+lock-backed process-local `LocalWorkflowRuntime`. Live provider HTTP, durable
+persistence and external workflow engines remain outside this increment.
 The exact schema drift command is in the contracts package README.
 
 ## Repository ownership
@@ -179,11 +182,13 @@ packages/adapters/
   architecture and security/evaluation acceptance.
 - `P1.7` completed immutable provider profiles, selection-only precedence and
   registry/host-bound ephemeral credential leases after independent acceptance.
-- `P1.8` has a locally verified candidate for provider/egress preflight,
-  issuer-owned single-use permits, SSRF/rebinding-safe endpoint authorization,
-  normalized non-success outcomes, lock-backed process-local idempotency and a
-  no-network fake; independent acceptance and post-commit verification are still
-  pending.
+- `P1.8` completed provider/egress preflight, issuer-owned single-use permits,
+  SSRF/rebinding-safe endpoint authorization, normalized non-success outcomes,
+  lock-backed process-local idempotency and a no-network fake.
+- `P1.9` has a locally verified candidate for public workflow contracts,
+  exact-definition dual-lane routing, bounded loop accounting, replay-complete
+  transition events and a process-local in-memory runtime; independent
+  acceptance and clean post-commit verification are still pending.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

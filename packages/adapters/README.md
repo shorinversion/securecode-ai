@@ -18,7 +18,7 @@ CLI/environment/repository/user/default precedence, and exposes host-bound
 ephemeral credential leases. Repository and user configuration cannot inject
 provider endpoints, model IDs, budgets, capabilities or credential values.
 
-The locally verified `P1.8` candidate adds a hermetic exact-request fake,
+`P1.8` adds a hermetic exact-request fake,
 OpenAI/Anthropic/OpenAI-compatible native-envelope normalization, safe public
 model parsers, ephemeral zeroizable payloads and connect-time endpoint
 authorization with all-address, resolution-replay and connected-peer checks.
@@ -30,3 +30,11 @@ conflicts add no effect. Durable/restart idempotency remains downstream runtime
 and persistence work. This increment does not add a live HTTP/provider SDK,
 retries or workflow routing; general telemetry redaction remains owned by
 `P1.12`.
+
+The locally verified `P1.9` candidate adds `LocalWorkflowRuntime`: a lock-backed
+process-local adapter with runtime-owned in-memory genesis/journal storage,
+run-wide semantic idempotency, exact CAS, full replay verification and atomic
+cancel/supersede behavior. Public methods reject hidden unvalidated fields and
+cross-operation requests; typed state/CAS/receipt outcomes precede internal
+adapter faults. It has no transport, database, external graph engine
+or durable/restart guarantee; those remain downstream responsibilities.

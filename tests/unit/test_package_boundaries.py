@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib
 import importlib.metadata
+import importlib.resources
 import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -145,6 +146,25 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
 def test_declared_dependencies_point_inward(distribution: str, expected_dependency: str) -> None:
     requirements = importlib.metadata.requires(distribution) or []
     assert requirements == [expected_dependency]
+
+
+def test_contract_package_contains_complete_public_schema_inventory() -> None:
+    schema_root = importlib.resources.files("securecode_ai.contracts").joinpath("schemas", "v0.2.0")
+    assert {item.name for item in schema_root.iterdir() if item.name.endswith(".schema.json")} == {
+        "audit-event.schema.json",
+        "audit-run.schema.json",
+        "evidence.schema.json",
+        "finding-case.schema.json",
+        "model-call-result.schema.json",
+        "model-request.schema.json",
+        "patch-candidate.schema.json",
+        "validation-result.schema.json",
+        "workflow-definition.schema.json",
+        "workflow-runtime-request.schema.json",
+        "workflow-runtime-result.schema.json",
+        "workflow-snapshot.schema.json",
+        "workflow-transition-event.schema.json",
+    }
 
 
 @pytest.mark.parametrize(

@@ -196,7 +196,7 @@ Gate пройден, если:
 | `P1.6` | Ввести append-only events и stable IDs | P1.5 | serialization/round-trip/idempotency tests | `DONE` |
 | `P1.7` | Реализовать config и secret-safe env loading | P1.2 | validation, redaction, missing-key diagnostics | `DONE` |
 | `P1.8` | Реализовать provider-agnostic model adapter | P1.5, P1.7 | fake provider + endpoint contract tests; native refusal/incomplete/filter/error normalization | `DONE` |
-| `P1.9` | Создать `WorkflowRuntime` interface и in-memory adapter | P1.5 | graph-independent domain tests | `TODO` |
+| `P1.9` | Создать `WorkflowRuntime` interface и in-memory adapter | P1.5 | graph-independent domain tests | `IN PROGRESS` |
 | `P1.10` | Создать CLI skeleton и стабильные exit codes | P1.2, P1.5 | `securecode --help`, config diagnostics, machine-readable errors | `TODO` |
 | `P1.11` | Создать fixture repository factory | P1.3 | deterministic positive/negative repos и golden files | `TODO` |
 | `P1.12` | Настроить structured logs, tracing IDs и redaction tests | P1.6 | raw code/API keys отсутствуют в telemetry snapshots | `TODO` |
@@ -523,8 +523,9 @@ secret/dependency checks и Python 3.12–3.14 matrix, но остаётся `IN
 до GitHub ruleset и failing-PR merge-block receipt. `P1.5–P1.8` завершены:
 schema/contracts, events/stable IDs, secret-safe config и provider-neutral
 model boundary прошли полную матрицу, independent acceptance и clean
-post-commit validation. Следующий разрешённый implementation-шаг — открыть
-constrained packet `P1.9` для graph-independent `WorkflowRuntime`; затем
-следуют `RepositoryView`, LocalRuntime и CLI skeleton. Узкий
+post-commit validation. Для `P1.9` открыт constrained packet и локально проверен
+кандидат graph-independent `WorkflowRuntime`; до завершения остаются independent
+reviews, integration commit и clean post-commit evidence. Затем следуют CLI
+skeleton, fixture repository factory, telemetry/redaction и spec-drift gate. Узкий
 Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
 строятся до стабилизации Core contracts и deterministic evidence layer.

@@ -19,9 +19,17 @@ owned by later tasks.
 port so infrastructure adapters continue to depend inward through Core. Profile
 parsing and environment credential access remain adapter concerns.
 
-The `P1.8` candidate adds framework-independent provider and egress ports, an
+`P1.8` adds framework-independent provider and egress ports, an
 immutable policy registry, exact deny-overrides-allow preflight and issuer-owned
 single-use pre-context/pre-send authorizations. The authorization chain binds
 the complete request scope, provider/policy hashes, profile-owned budgets/native
 dialect and actual keyed egress manifest; it owns no HTTP client, provider SDK,
 retry loop or workflow transition.
+
+The locally verified `P1.9` candidate adds the framework-independent
+`WorkflowRuntime` port and a pure exact-definition state machine. It owns closed
+dual-lane fan-out/fan-in, bounded investigation/repair accounting, deterministic
+reason precedence, node-producer admission and replay regeneration, while
+remaining separate from the
+`EvidenceGraph`. It imports no adapter, graph engine, persistence layer,
+provider SDK, `AuditEvent` implementation or specification file.

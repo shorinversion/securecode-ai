@@ -27,6 +27,11 @@ EXPECTED_SCHEMA_FILES = {
     "model-request.schema.json",
     "patch-candidate.schema.json",
     "validation-result.schema.json",
+    "workflow-definition.schema.json",
+    "workflow-runtime-request.schema.json",
+    "workflow-runtime-result.schema.json",
+    "workflow-snapshot.schema.json",
+    "workflow-transition-event.schema.json",
 }
 FORBIDDEN_EMBEDDED_FIELDS = {
     "api_key",

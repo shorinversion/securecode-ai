@@ -1,0 +1,256 @@
+schema_version: "0.2-draft"
+
+task:
+  id: "P1.9"
+  type: "implementation"
+  objective: "Implement public versioned workflow contracts, a definition-bound graph-independent state machine, the WorkflowRuntime port, and a process-local LocalRuntime with deterministic replay, bounded loops, semantic idempotency, and a reusable adapter conformance suite."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "0fbf40ed1b575ce57434cddea6049576451821f3"
+  spec_refs: [SC-DOM-005, SC-DOM-007, SC-DOM-008, SC-DOM-014, SC-SYS-001, SC-SYS-003, SC-SYS-004, SC-SYS-007, SC-PORT-001, SC-PORT-002, SC-PORT-003, SC-RUNTIME-001, SC-WF-001, SC-WF-002, SC-WF-003, SC-WF-004, SC-WF-005, SC-WF-010, SC-WF-022]
+  decision_refs: [D-003, D-013, D-020, D-026, D-027]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.5 contracts, P1.6 event stream, and P1.8 provider boundary are committed with clean completion evidence"
+    - "repository worktree is clean at starting_commit_sha except this reviewed packet"
+  non_goals:
+    - "TemporalRuntime, durable persistence, process-kill recovery, restart-surviving signals, and full SC-RUNTIME-001 completion; P6.3 owns those"
+    - "LangGraph or any graph/runtime SDK dependency; any later experiment remains behind WorkflowRuntime"
+    - "changes to public AuditEvent/EventType/event schema; WorkflowTransitionEvent is the sole P1.9 state-replay event and AuditEvent remains a non-authoritative causal audit projection"
+    - "AuditRunOutcome, PASS/FAIL/INDETERMINATE derivation, or caller-supplied security outcome; P3.5 owns SC-WF-016/017 and consumes the trusted COVERAGE_GUARD wait handoff"
+    - "candidate union, EvidenceGraph construction, and provenance semantics owned by P2/P3 under SC-WF-023"
+    - "RepositoryView, scanners, model agents, repair, validation, publication, or external side effects"
+    - "provider retry execution; P1.9 supplies only the definition-bound loop accounting/routing substrate"
+    - "CLI/backend/worker transports, database/RunRepository, artifact storage, or telemetry sinks"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "workflow-runtime-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/contracts/README.md"
+    - "packages/contracts/src/securecode_ai/contracts/__init__.py"
+    - "packages/contracts/src/securecode_ai/contracts/runtime.py"
+    - "packages/contracts/src/securecode_ai/contracts/schema_export.py"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-definition.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-runtime-request.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-runtime-result.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-snapshot.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-transition-event.schema.json"
+    - "packages/core/README.md"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/src/securecode_ai/core/runtime.py"
+    - "packages/adapters/README.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/runtime.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "tests/unit/test_workflow_contracts.py"
+    - "tests/unit/test_workflow_runtime.py"
+    - "tests/unit/test_workflow_schemas.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "work/task-packets/P1.9.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/contracts/README.md"
+    - "packages/contracts/src/securecode_ai/contracts/__init__.py"
+    - "packages/contracts/src/securecode_ai/contracts/runtime.py"
+    - "packages/contracts/src/securecode_ai/contracts/schema_export.py"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-definition.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-runtime-request.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-runtime-result.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-snapshot.schema.json"
+    - "packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/workflow-transition-event.schema.json"
+    - "packages/core/README.md"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/src/securecode_ai/core/runtime.py"
+    - "packages/adapters/README.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/runtime.py"
+    - "tests/unit/test_domain_schemas.py"
+    - "tests/unit/test_workflow_contracts.py"
+    - "tests/unit/test_workflow_runtime.py"
+    - "tests/unit/test_workflow_schemas.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "work/task-packets/P1.9.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/G0/**"
+    - "uv.lock"
+    - "pyproject.toml"
+    - ".github/**"
+    - "packages/contracts/src/securecode_ai/contracts/events.py"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 25
+  max_diff_lines: 7000
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted workflow contract/runtime/schema/package-boundary suites"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny"
+  secrets: "deny"
+  dependency_changes: "deny"
+
+inputs:
+  artifacts:
+    - "specs/contracts/domain.md SC-DOM-005/007/008/014 and schema/compatibility authority"
+    - "specs/behavior/workflows.md SC-WF-001..005, SC-WF-010, and SC-WF-022"
+    - "specs/system/architecture.md SC-SYS-001/003/004/007, SC-PORT-001..003, and SC-RUNTIME-001"
+    - "specs/behavior/stage-catalogue.yaml core-mvp-0.2.0 as an immutable admitted catalogue pin, never a runtime code dependency"
+    - "P1.5 RunExecutionIdentity contracts and public schema exporter"
+    - "P1.6 EventStream as a causal audit projection boundary, never workflow replay or routing authority"
+    - "P1.8 ModelDiscoveryReceipt/provider statuses as the exact model-native lane receipt"
+  fixtures:
+    - "golden top-level workflow routes bound to one exact WorkflowDefinition and stage-catalogue pin"
+    - "dual-lane zero-signal/non-success fan-out/fan-in"
+    - "bounded investigation/repair loop, cancellation, supersession, CAS, and idempotency races"
+  context_budget_tokens: null
+
+outputs:
+  required_artifacts:
+    - "closed immutable start/snapshot/resume/signal/cancel/supersede request union, result/error union, WorkflowSnapshot, WorkflowTransitionEvent, and WorkflowDefinition contracts"
+    - "five deterministic checked-in Draft 2020-12 schema roots with resolvable semantic-validator metadata, exact-byte drift checks, ECMAScript-portable patterns, and wheel inventory coverage"
+    - "closed WorkflowNode, WorkflowOperation, WorkflowOperationStatus, WorkflowErrorCode, WorkflowSignal, receipt, exhaustion-reason, and terminal-control enums; no caller route or AuditRunOutcome field"
+    - "versioned immutable WorkflowDefinition containing the exact node/transition table, admitted non-model producer pins, normative caps/routes, compatible stage-catalogue pins, and a closed map from already-existing RunExecutionIdentity.policy ComponentPins to smaller loop limits; all mapping bytes are protected by the workflow content hash"
+    - "exact built-in workflow and stage-catalogue registries; start/resume require exact registered workflow/catalogue pins and require the unchanged execution-identity policy pin to select one definition-owned limit row"
+    - "one deterministic Core transition evaluator as sole routing authority; mutating graph bytes changes the workflow content hash and invalidates the old pin"
+    - "mandatory deterministic/model-native discovery fan-out and resolved-lane fan-in; deterministic zero never skips model-native, and model non-success remains resolved-but-unsatisfied"
+    - "every node result uses a WorkflowNodeReceiptEnvelope binding exact tenant/run/execution-identity/node/attempt/producer and nested-receipt hash; model-native success/zero additionally embeds the existing ModelDiscoveryReceipt and validates its tenant/head/model-profile/hash fields"
+    - "definition-bound loop limits/derived LoopUsage/policy-computed no-progress fingerprint with strict integer bounds, trusted monotonic time, fixed simultaneous-exhaustion precedence, and definition-owned routes"
+    - "framework-independent WorkflowRuntime Protocol exposing typed start, snapshot, resume, signal, cancel, and supersede messages"
+    - "lock-backed process-local LocalWorkflowRuntime with atomic semantic-idempotency reservation, exact CAS, runtime-owned journal storage, and no external effects"
+    - "WorkflowTransitionEvent is the sole normative state-replay event; each event is safe, hash-linked, replay-complete, and yields the full resulting snapshot/state hash"
+    - "AuditEvent/EventStream is not written by P1.9 and never routes state; a future causal projection may reference transition event ID/hash but cannot replace or mutate the runtime journal"
+    - "one reusable golden runtime conformance suite parameterized only by a WorkflowRuntime factory; P1.9 runs Local and leaves Temporal/durability rows explicitly open"
+  structured_result_schema: "checked-in workflow-definition, workflow-runtime-request, workflow-runtime-result, workflow-snapshot, and workflow-transition-event JSON Schemas v0.2.0"
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "Core depends only on contracts/stdlib and never imports an adapter, graph/runtime SDK, schema file, spec file, or AuditEvent implementation"
+    - "WorkflowDefinition/runtime state and future EvidenceGraph remain distinct; runtime messages accept no evidence-edge shape"
+    - "start resolves exact workflow/stage-catalogue pins and exact policy-pin limit row before creating sequence 1; unknown or recomputed-but-unregistered pins reject with zero state/journal"
+    - "models/callers submit only a typed WorkflowNodeReceiptEnvelope for the exact active node/attempt/identity and exact definition-owned producer pin or admitted model profile; deterministic policy selects the next active-node set"
+    - "every accepted state change appends exactly one WorkflowTransitionEvent containing actor, operation, completed/current nodes, attempt, receipt/input/output hashes, component pins, closed reason, before/after hashes, and replay-complete resulting snapshot"
+    - "fresh Core replay from canonical genesis identity/definition plus the one ordered journal reconstructs byte-identical snapshot and state hash"
+    - "every mutation revalidates tenant/run/revision/schema/execution identity plus expected journal sequence and state hash"
+    - "P1.9 happy processing stops with COVERAGE_GUARD still active and a closed WAITING_FOR_TRUSTED_OUTCOME_GUARD wait reason; the marker is not a WorkflowNode, and only future P3.5 trusted guard receipt may complete COVERAGE_GUARD and route to REPORTING/outcome"
+    - "only CANCELLED and SUPERSEDED are P1.9 terminal controls, and no P1.9 value implies PASS/FAIL/INDETERMINATE"
+    - "LocalRuntime is explicitly process-local/non-durable and performs no external effect"
+  idempotency_and_error_precedence:
+    - "mutation namespace is exactly (tenant_id, run_id, idempotency_key); operation is part of the full canonical semantic request hash, so reusing a key for another operation conflicts"
+    - "an exact prior semantic replay returns the byte-identical stored result before current CAS/terminal checks, even after later transitions"
+    - "same namespace/key with a different semantic hash returns IDEMPOTENCY_CONFLICT with zero mutation"
+    - "cross-tenant or unknown run returns RUN_NOT_FOUND without revealing another tenant; duplicate start under a different key returns RUN_ALREADY_EXISTS"
+    - "after replay/conflict/run lookup, precedence is IDENTITY_OR_DEFINITION_MISMATCH, TERMINAL_STATE, STALE_PRECONDITION, INVALID_RECEIPT_OR_ILLEGAL_OPERATION, INTERNAL_ERROR"
+    - "all success and rejection outcomes are atomically reserved under the Local lock; concurrent same-run starts/signals produce at most one transition"
+  loop_semantics:
+    - "effective limits are min(the policy-pin-selected limit row inside the exact WorkflowDefinition, its canonical normative cap); investigation total-attempt cap is three (initial plus at most two additional-context rounds) and repair-attempt cap is three"
+    - "usage is derived only from accepted receipts/events, is monotonic non-decreasing, rejects bool/negative/non-integer/overflow values, and cannot be supplied/reset by caller snapshot"
+    - "multi-node repair attempts accumulate Architect plus validation usage; only an explicit definition-owned retry boundary increments the attempt and evaluates exhaustion before another Architect/Auditor attempt can start"
+    - "runtime-owned monotonic time is recorded as cumulative elapsed milliseconds; replay validates recorded monotonicity and never consults wall-clock timestamps"
+    - "policy computes the no-progress fingerprint from canonical active-node/receipt/output hashes; callers cannot submit the fingerprint"
+    - "when an unresolved loop reaches an inclusive limit, no next attempt starts; simultaneous exhaustion reason precedence is TIME, TOKENS, TOOL_CALLS, ATTEMPTS, NO_PROGRESS"
+    - "the canonical WorkflowDefinition alone maps exhaustion reason to the next node; request/budget/receipt carries no route"
+  security:
+    - "all wire models forbid extras, including hidden unvalidated fields retained on an in-memory request object; route, next_node, AuditRunOutcome, raw_prompt/prompt_text, source, URL, shell command, arbitrary diagnostic, traceback, and raw error text fields reject; fields discarded before the port boundary cannot affect semantics, and the existing ModelDiscoveryReceipt prompt ComponentPin remains allowed metadata"
+    - "snapshot/resume requests carry identity and expected journal head/state hashes only; they never accept a caller snapshot, LoopUsage, active-node set, terminal flag, definition, policy limits, or journal as authority"
+    - "the runtime receipt envelope validates nested receipt tenant/head/provider-profile and canonical hash; replaying the same nested ModelDiscoveryReceipt under another run, execution identity, node, or attempt rejects"
+    - "resume reloads runtime-owned genesis and journal, verifies the complete chain/definition/identity, replays it, and compares expected head/state before returning"
+    - "terminal, cancelled, or superseded state rejects every new-key mutation; exact old-key replay remains byte-identical and effect-free"
+    - "ordinary adapter/policy exceptions become a closed safe INTERNAL_ERROR result with no transition, no partial reservation leak, and no inferred domain outcome"
+    - "safe results/errors never echo rejected field values, raw receipt content, traceback, source, prompt, patch, secret, or their raw hashes; required DC1 tenant/run IDs remain explicit contract metadata"
+    - "protected frozen paths remain unchanged"
+  compatibility:
+    - "P1.5/P1.6/P1.8 schemas and EventStream bytes/behavior remain stable while the five new additive schema roots appear in exact inventory"
+    - "unsupported runtime-contract major versions reject; unknown future same-major data is accepted only through the existing explicit extension envelope"
+    - "the reusable conformance suite contains no Local storage/lock assertion so Temporal can execute identical port semantics later"
+
+budgets:
+  max_iterations: 8
+  max_tool_calls: 85
+  timeout_seconds: 4800
+  max_output_bytes: 350000
+
+verification:
+  acceptance_commands:
+    - "targeted workflow contract/runtime/schema/package-boundary tests"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "wheel inventory includes all existing plus five new workflow schema roots"
+    - "canonical quality command on CPython 3.12, 3.13, and 3.14"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check plus protected/dependency drift empty"
+  negative_cases:
+    - "unsupported major, unknown field/enum/error/status, and ECMAScript-incompatible schema pattern reject"
+    - "unknown workflow/catalogue pin, policy pin without an exact definition row, and each ID/version/content-hash mutation reject before sequence 1; changing a per-policy limit row changes the canonical workflow hash and invalidates the old workflow pin even if execution hash is recomputed"
+    - "caller-supplied route/next-node/outcome/snapshot/journal/usage/progress/terminal/source/raw-prompt/prompt-text/shell/URL/free-text fields reject whenever retained on the received object, including unsafe model_copy state; prompt ComponentPin inside the accepted nested model receipt is not prompt content"
+    - "missing/mismatched tenant/run/revision/schema/execution identity, active node, attempt, producer pin, receipt, or CAS material rejects before mutation"
+    - "model-native completed-zero requires an exact runtime envelope plus SUCCEEDED + schema-valid ModelDiscoveryReceipt with zero candidates; nested tenant/head/profile/hash or envelope run/identity/node/attempt mismatch rejects; refusal/filter/empty/timeout/error is resolved-unsatisfied and never clean completion"
+    - "zero deterministic candidates leaves model-native active; fan-in occurs only after both lanes have independently identity-bound terminal receipts"
+    - "fresh replay is byte-identical; gap/reorder/tamper/duplicate/forged resulting snapshot or state hash rejects without partial state"
+    - "resume cross-tenant/run, forged node/terminal, lowered loop usage, caller journal, and terminal revival attempts reject"
+    - "exact old-key replay after later/terminal state is one effect; same-key semantic conflict, cross-operation key reuse, new-key stale CAS, duplicate start, and same-version races add zero effects"
+    - "strict numeric corpus covers bool, negative, huge/overflow and decreasing loop values; exact inclusive thresholds and every simultaneous exhaustion combination choose fixed reason/route"
+    - "cancel/supersede race yields one terminal control state and blocks every later new-key mutation"
+    - "ordinary adapter/policy exception returns INTERNAL_ERROR without state/journal change, traceback, raw value, or inferred AuditRunOutcome"
+    - "sensitive canaries are injected into every caller-controlled non-identifier string slot and rejected without appearing in records, snapshots, result/error repr/JSON, exception text, or raw-hash form; required DC1 IDs receive separate non-echo error tests"
+  required_evidence:
+    - "schema exact-byte/semantic-validator/ECMAScript/compatibility/wheel matrix for the complete public inventory"
+    - "workflow-definition canonical-byte/hash/pin mutation and graph-change matrix"
+    - "golden happy, zero-candidate, confirmed-finding, repair, COVERAGE_GUARD wait-handoff, cancellation, supersession, and internal-error snapshots; no READY_FOR_OUTCOME node exists"
+    - "dual-lane zero-signal and one-lane-non-success receipt/transition matrix"
+    - "loop numeric, monotonicity, inclusive-limit, no-progress, simultaneous-exhaustion, and fixed-route matrix"
+    - "identity/CAS/idempotency/concurrent-start/concurrent-signal mutation matrix"
+    - "genesis+journal byte-identical replay plus hash-chain tamper/gap/reorder/duplicate matrix"
+    - "resume authority/tenant/terminal-revival/lowered-budget negative matrix"
+    - "closed result/error precedence and internal-exception zero-mutation matrix"
+    - "multi-sink canary absence/non-echo matrix"
+    - "independent product, architecture, and security/evaluation PASS on one exact staged digest"
+    - "post-commit clean worktree with targeted/full/schema/wheel/strict-G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "public AuditEvent/EventType change required"
+  - "Temporal or durable persistence required"
+  - "protected_path_change_required"
+  - "new dependency or network access required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.9, SC-DOM-005, SC-DOM-007, SC-DOM-008, SC-DOM-014, SC-SYS-001, SC-SYS-004, SC-PORT-001, SC-PORT-002, SC-PORT-003, SC-WF-001, SC-WF-002, SC-WF-003]
+  partial_refs:
+    SC-RUNTIME-001: "Local executes the reusable conformance suite; Temporal/durability remains P6.3"
+    SC-SYS-003: "P1.9 preserves the WorkflowGraph/EvidenceGraph type boundary; EvidenceGraph implementation and union remain P2/P3"
+    SC-SYS-007: "P1.9 implements the workflow state/replay half of the dual-graph architecture; EvidenceGraph remains P3"
+    SC-WF-004: "P1.9 linearizes cancellation/supersession and blocks later runtime mutations; prevention of later external adapter writes and durable races remains downstream"
+    SC-WF-005: "P1.9 enforces definition-bound loop caps/no-progress routing; investigation evidence semantics remain P3"
+    SC-WF-010: "P1.9 enforces definition-bound repair caps/no-progress routing; patch/validation semantics remain P4"
+    SC-WF-022: "P1.9 freezes mandatory dual-lane routing and receipt/fan-in semantics; scanner/model execution and end-to-end supported-scope coverage remain P2/P3"
+  gate_contribution: "Supplies public runtime schemas, framework-independent runtime port, exact definition binding, Local adapter, and reusable transition/replay suite required by G1; does not complete G1 while P1.4 and P1.10-P1.13 remain open."
+  changelog_required: true
+  adr_required: false

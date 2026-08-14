@@ -8,16 +8,20 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
-from .base import CONTRACT_SCHEMA_VERSION, WireModel
+from pydantic import BaseModel
+
+from .base import CONTRACT_SCHEMA_VERSION
 from .domain import PUBLIC_ROOT_MODELS as DOMAIN_PUBLIC_ROOT_MODELS
 from .events import AuditEvent
 from .model import ModelCallResult, ModelRequest
+from .runtime import PUBLIC_RUNTIME_ROOT_MODELS
 
-PUBLIC_ROOT_MODELS: dict[str, type[WireModel]] = {
+PUBLIC_ROOT_MODELS: dict[str, type[BaseModel]] = {
     **DOMAIN_PUBLIC_ROOT_MODELS,
     "audit-event": AuditEvent,
     "model-call-result": ModelCallResult,
     "model-request": ModelRequest,
+    **PUBLIC_RUNTIME_ROOT_MODELS,
 }
 
 JSON_SCHEMA_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
@@ -44,6 +48,24 @@ SEMANTIC_RULES: Final = {
     "model-request": ("SC-DOM-014", "SC-PORT-001", "SC-PORT-004", "SC-MODEL-005"),
     "patch-candidate": ("SC-DOM-004", "SC-DOM-010"),
     "validation-result": ("SC-DOM-005", "SC-DOM-010"),
+    "workflow-definition": (
+        "SC-DOM-005",
+        "SC-DOM-007",
+        "SC-DOM-008",
+        "SC-DOM-014",
+        "SC-WF-001",
+    ),
+    "workflow-runtime-request": (
+        "SC-DOM-005",
+        "SC-DOM-007",
+        "SC-DOM-008",
+        "SC-PORT-001",
+        "SC-PORT-002",
+        "SC-WF-003",
+    ),
+    "workflow-runtime-result": ("SC-DOM-001", "SC-PORT-003", "SC-WF-003"),
+    "workflow-snapshot": ("SC-DOM-014", "SC-WF-002", "SC-WF-003"),
+    "workflow-transition-event": ("SC-DOM-014", "SC-WF-001", "SC-WF-002"),
 }
 DEFAULT_SCHEMA_DIRECTORY: Final = (
     Path(__file__).resolve().parent / "schemas" / f"v{CONTRACT_SCHEMA_VERSION}"

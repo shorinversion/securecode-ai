@@ -5,13 +5,17 @@ backend and integration adapters. Pydantic v2 models are the Python validation
 source of truth. They do not import model-provider, SCM, database,
 object-store, container or workflow-runtime SDKs.
 
-The `0.2.x` contract exposes eight closed, immutable public roots: `AuditRun`
+The `0.2.x` contract exposes thirteen closed, immutable public roots: `AuditRun`
 with canonical `RunExecutionIdentity`; `FindingCase` with discovery lineage and
 model receipts; `Evidence` with metadata-only `ArtifactRef`; `PatchCandidate`
 without embedded diff bytes; ordered-gate `ValidationResult`; and `AuditEvent`
 with an independently versioned typed payload envelope; plus `ModelRequest`
 and `ModelCallResult`, which carry immutable execution/policy identity and safe
-normalized metadata without prompt, source, credential or raw response bytes.
+normalized metadata without prompt, source, credential or raw response bytes;
+plus `WorkflowDefinition`, `WorkflowRuntimeRequest`, `WorkflowRuntimeResult`,
+`WorkflowSnapshot` and replay-complete `WorkflowTransitionEvent`.
+Each non-model transition binds an exact definition-owned producer pin; the
+model-native producer remains bound to the run's admitted provider profile.
 The request explicitly pins its native API dialect; the result exposes the
 unambiguous wire field `model_call_status`, never a generic root `status`.
 
@@ -28,7 +32,7 @@ cannot satisfy model coverage or create a clean run.
 
 ## Checked-in JSON Schemas
 
-Eight Draft 2020-12 artifacts live under
+Thirteen Draft 2020-12 artifacts live under
 `src/securecode_ai/contracts/schemas/v0.2.0/` and are included in the wheel.
 They are generated deterministically from the Pydantic roots. JSON Schema
 closes the structural surface; cross-field rules such as canonical hash,
