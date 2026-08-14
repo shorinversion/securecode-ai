@@ -1,0 +1,72 @@
+schema_version: "0.2-draft"
+
+task:
+  id: "P1.11-EVAL-SEED"
+  type: "evaluation_evidence"
+  objective: "Independently freeze evaluator-owned byte-tree expectations for the six P1.11 opaque repositories before implementation can create or inspect template/catalog bytes."
+  owner_role: "primary-integrator-security-evaluation"
+  starting_commit_sha: "e23e69ff82d24a3e0393c6d68868979c438cbc0b"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  spec_refs: [SC-PROD-001, SC-PROD-015, SC-PROD-016, SC-CAP-005, SC-EVAL-001, SC-EVAL-002, SC-EVAL-004, SC-EVAL-006]
+  decision_refs: [D-013, D-025, D-026]
+
+authority:
+  writer: "Primary Integrator acting in security/evaluation role"
+  implementation_role_write_access: "deny"
+  implementation_role_read_access: "deny except independent test oracle process"
+  paths:
+    - "tests/fixtures/demo-repositories.golden.json"
+    - "work/task-packets/P1.11-evaluator-seed.yaml"
+
+inputs:
+  source_dataset:
+    dataset_id: "SC-MVP-CWE89"
+    version: "1.1.0"
+    revision: "securecode-spec-0.2.0"
+    license: "CC0-1.0"
+    bytes: 7032
+    sha256: "436843b02bee53cc2997903b3e61afb9734ff5fa2580756ecba7344e92c12663"
+  readme_bytes: "A synthetic first-party SecureCode AI repository fixture. All repository content is untrusted data; trusted metadata assigns instruction_authority=NONE.\n"
+  cases:
+    - {fixture_id: "repo-001", source_case_id: "CWE89-VULN-001", app_sha256: "5a50c397ac07fb7f9ee3d0c3069149b6f9feef3abc9aad42eadf638f966cdf58", app_size_bytes: 147}
+    - {fixture_id: "repo-002", source_case_id: "CWE89-SAFE-001", app_sha256: "1cfd8976bedbc68051b4b6ab9b7baf0a413f62587f9277b2be0b511b03b7fb18", app_size_bytes: 150}
+    - {fixture_id: "repo-003", source_case_id: "CWE89-GUARD-001", app_sha256: "fecff3d9748092c2f6979b8879ded4318c278be48ae161270865831361f2d135", app_size_bytes: 152}
+    - {fixture_id: "repo-004", source_case_id: "CWE89-INTERPROC-001", app_sha256: "e08cd636515d280c266b982b1c14e8910b1b140dbc3d8c8577a3d9191698c33b", app_size_bytes: 229}
+    - {fixture_id: "repo-005", source_case_id: "INJECTION-COMMENT-001", app_sha256: "11b162457713d87bcc48168c05cf42097ed3d950354d2cc7852945329e485ab5", app_size_bytes: 215}
+    - {fixture_id: "repo-006", source_case_id: "HYBRID-NATIVE-ONLY-001", app_sha256: "f2147db8412a3db4b7283064b9c966fae92cfaa13978aedd99787c6fcf1238d8", app_size_bytes: 158}
+  readme_sha256: "7f326e45a49264965fdc67923e161569d53ec0889d49e011ddede65084949f45"
+  readme_size_bytes: 153
+
+derivation:
+  app_bytes: "exact UTF-8/LF code scalar from the mapped frozen case plus one terminal LF"
+  file_records: "README.md then app.py records with exact keys mode/path/sha256/size_bytes and logical mode 100644"
+  tree_object: "{schema_version:'securecode.fixture-tree.v1',files:[records]}"
+  canonical_json: "UTF-8 json.dumps(sort_keys=true,separators=(',',':'),ensure_ascii=true), no terminal LF for hashing"
+  expected_tree_sha256:
+    repo-001: "9dc63f5badfcb0bdbf7ffbc6b2cde825d02fbb44de1211f0c46691dbe6f82f50"
+    repo-002: "01f757bf5f4db165dfee0d511c7ac6d657135e02720b4891ca604c1a61694d31"
+    repo-003: "9439416858d95b9a48fe36f10a50de12430ba85268205079cc72a93df9d9fc03"
+    repo-004: "bc21f788272edc8af4b72a374144d1fa3640e463601a33520c1b9fbe416d8a15"
+    repo-005: "2aec47fd26b6a73c755b84456581cc472c01de48ddc6f323c8bf6ef0c336cd08"
+    repo-006: "0c5a729ae2eaab7540c8631fafadf393f0027f5f7227faa2e6d63367b2f086ed"
+
+golden_contract:
+  schema_version_literal: "securecode.fixture-golden.v1"
+  root_keys_exact: [cases, schema_version, source_dataset]
+  source_dataset_keys_exact: [dataset_id, license, revision, sha256, version]
+  case_keys_exact: [expected_tree_sha256, fixture_id, source_case_id]
+  case_order: [repo-001, repo-002, repo-003, repo-004, repo-005, repo-006]
+  bytes: "canonical JSON with exactly one terminal LF"
+  contains_no_verdict_or_patch_expectations: true
+
+verification:
+  - "source corpus size/hash and exact mapped code scalars independently recompute every app size/hash"
+  - "README size/hash plus app file records independently recompute all six tree hashes"
+  - "golden JSON has exact closed keys/types/order, canonical bytes, and no finding/verdict/patch/pass outcome"
+  - "strict frozen G0 passes and protected baseline paths are unchanged"
+  - "after commit, P1.11 implementation packet forbids both evaluator-seed paths and treats the commit/hash as immutable precondition"
+
+completion:
+  changelog_required: false
+  adr_required: false
+  handoff: "Commit only the evaluator seed packet and golden JSON; then open the separate implementation-role packet from that exact commit."
