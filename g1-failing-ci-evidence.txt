@@ -1,0 +1,1 @@
+intentional failing candidate for G1 evidence
