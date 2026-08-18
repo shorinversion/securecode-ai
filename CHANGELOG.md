@@ -24,7 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-14 — подготовлен и локально реализован кандидат `P1.12`: internal
+- 2026-08-18 — завершён `P1.12`: internal
   exact-version structured telemetry в Core, HMAC trace authority, closed
   DC1-only event/measurement surface, canonical JSONL, fail-closed multi-sink
   result precedence и emitter-issued guarded payload capability. First-party
@@ -37,14 +37,18 @@ Changelog отвечает на вопрос «что и когда измени
   atomicity, bounded same-thread stream re-entry, flush-time wiring mutation,
   self-signed/resealed capability forgery через emission-scoped exact-object
   provenance с проверкой real emitter code/globals/builtins resolution, истечение
-  retained payload после fan-out, nested-record render race, mutable retained
-  memory storage и parser exception echo.
+  retained payload после fan-out, exact emitter-owned issuer identity,
+  nested-record render race, mutable retained memory storage и parser exception
+  echo.
   Новый public wire root/schema, raw-content redactor,
   OpenTelemetry/backend/persistence и P2 instrumentation не добавлены. Packet
   SHA `19a00d3842773a0a91b616abe29c87c9ab5f7e1b73ef590d05b872084aa1cbed`
-  получил preimplementation `PASS/PASS/PASS`; implementation остаётся
-  кандидатом после 162 targeted и 885 full tests, Ruff/mypy и 85,80% Core branch
-  coverage до exact staged reviews, commit и clean post-commit evidence.
+  получил preimplementation `PASS/PASS/PASS`; product/architecture/
+  security-evaluation reviews приняли exact staged digest
+  `879f41ceef64e76fb7daab2398f8ab39e8559cd4`. Clean post-commit verification
+  implementation commit `5ace16e80730d56f994cb6a24fa4748867a49646`
+  повторно прошла 162 targeted и все 885 tests, Ruff/mypy, 85,80% Core branch
+  coverage, schema check и strict frozen G0.
 - 2026-08-14 — завершён `P1.11`: шесть opaque
   non-sensitive Python CWE-89 repository templates, canonical catalog и
   test-only deterministic factory. Evaluator-side case/tree mapping был

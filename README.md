@@ -8,9 +8,9 @@ This repository contains the completed specification baseline, reproducible
 Python workspace and quality gate, versioned domain/event/model contracts, the
 completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
 workflow-runtime substrate, the completed `P1.10` foundation CLI and the
-completed `P1.11` fixture-repository factory. The current `P1.12` candidate
+completed `P1.11` fixture-repository factory. The completed `P1.12` increment
 adds internal exact-version structured telemetry without creating a new public
-wire contract.
+wire contract; `P1.13` remains unopened.
 `P1.8`
 provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
@@ -136,7 +136,7 @@ lock-backed process-local `LocalWorkflowRuntime`. Live provider HTTP, durable
 persistence and external workflow engines remain outside this increment.
 The exact schema drift command is in the contracts package README.
 
-The locally verified `P1.12` candidate keeps operational telemetry inside
+The completed `P1.12` increment keeps operational telemetry inside
 Core: closed event/measurement enums, authority-issued trace/span IDs,
 canonical DC1-only JSONL, exact result precedence and an emitter-issued guarded
 payload capability. First-party in-memory and binary-stream sinks independently
@@ -225,11 +225,13 @@ packages/adapters/
   `f194a1bd66da95642a37487a743144389f229699`; clean post-commit verification on
   `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc` passes 43 targeted and 739 full
   tests, Ruff/mypy, 89.72% Core branch coverage, schema check and strict G0.
-- `P1.12` is an independently specified internal-telemetry candidate. Its
+- `P1.12` completed an independently specified internal-telemetry increment. Its
   14-path packet passed product/architecture/security-evaluation review before
-  implementation; 162 targeted and all 885 repository tests currently pass
-  with Ruff/mypy and 85.80% Core branch coverage, while exact staged-digest
-  reviews and clean post-commit evidence remain required before completion.
+  implementation; the same roles accepted exact staged digest
+  `879f41ceef64e76fb7daab2398f8ab39e8559cd4`. Clean post-commit verification on
+  `5ace16e80730d56f994cb6a24fa4748867a49646` passes 162 targeted and all 885
+  repository tests, Ruff/mypy, 85.80% Core branch coverage, schema check and
+  strict G0.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

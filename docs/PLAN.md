@@ -2,7 +2,7 @@
 
 Версия плана: `0.7`  
 Статус: `active`  
-Последнее обновление: 14 августа 2026 года
+Последнее обновление: 18 августа 2026 года
 Текущая фаза: `P1 — Engineering foundation` — выполняется
 Текущий gate: `G0 — Definition Ready` — пройден
 
@@ -199,7 +199,7 @@ Gate пройден, если:
 | `P1.9` | Создать `WorkflowRuntime` interface и in-memory adapter | P1.5 | graph-independent domain tests | `DONE` |
 | `P1.10` | Создать CLI skeleton и стабильные exit codes | P1.2, P1.5 | `securecode --help`, config diagnostics, machine-readable errors | `DONE` |
 | `P1.11` | Создать fixture repository factory | P1.3 | deterministic positive/negative repos и golden files | `DONE` |
-| `P1.12` | Настроить structured logs, tracing IDs и redaction tests | P1.6 | raw code/API keys отсутствуют в telemetry snapshots | `IN PROGRESS` |
+| `P1.12` | Настроить structured logs, tracing IDs и redaction tests | P1.6 | raw code/API keys отсутствуют в telemetry snapshots | `DONE` |
 | `P1.13` | Ввести spec validation, contract compatibility и drift checks | P1.3, P1.5 | CI валидирует IDs, schemas, examples, compatibility, traceability и protected paths | `TODO` |
 
 ### G1 — Foundation Ready
@@ -528,8 +528,10 @@ model boundary, а также graph-independent `WorkflowRuntime` прошли �
   clean post-commit verification. `P1.11` fixture repository factory также
   завершён: evaluator golden был заморожен отдельно до реализации, exact digest
   принят тремя reviewers, а implementation commit прошёл clean post-commit 43
-  targeted и 739 full tests. `P1.12` internal telemetry candidate реализован
-  после preimplementation `PASS/PASS/PASS`; exact staged reviews, commit и clean
-  post-commit verification ещё обязательны. Затем следует `P1.13` spec-drift gate.
+  targeted и 739 full tests. `P1.12` internal telemetry завершён: exact staged
+  digest принят product/architecture/security-evaluation reviewers, а
+  implementation commit прошёл clean post-commit 162 targeted и 885 full tests,
+  Ruff/mypy, schema check и strict G0. Затем следует `P1.13` spec-drift gate;
+  `G1` остаётся открыт из-за `P1.4` и `P1.13`.
 Узкий Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
 строятся до стабилизации Core contracts и deterministic evidence layer.
