@@ -24,6 +24,15 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-19 — завершён `P1.4`: private GitHub repository
+  `shorinversion/securecode-ai` защищён active ruleset `21006868`, который
+  требует pull request и exact status check `ci / gate`, запрещает deletion и
+  non-fast-forward update. Intentional failing PR #1 на commit
+  `703817360a9966cc6858a5dc35cdecc50c76a14b` получил серверный
+  `mergeStateStatus=BLOCKED`; Actions run `32175856948` завершился `failure`,
+  после чего PR закрыт без merge и ветка удалена. External evidence hashes
+  записаны в отдельной completion attestation; G1 ещё требует собственного
+  evidence/review/promotion lifecycle.
 - 2026-08-18 — открыт `P1.13`: один read-only fail-closed spec gate проверяет
   frozen baseline/digest, requirement IDs, traceability, Draft 2020-12 schemas,
   indexed examples, exact public-schema bytes, conservative compatibility и
@@ -166,9 +175,9 @@ Changelog отвечает на вопрос «что и когда измени
 - 2026-08-13 — реализован локально проверенный кандидат `P1.4`: закрытый
   pre-commit launcher на project-owned `uv 0.12.0`, full-SHA GitHub Actions,
   read-only/fork-safe jobs, Python 3.12–3.14 quality matrix, secret-history,
-  dependency-integrity/vulnerability и strict zizmor checks. Задача остаётся
-  открытой до внешнего GitHub ruleset receipt и демонстрации реально
-  заблокированного failing PR; сильная product sandbox isolation не заявляется.
+  dependency-integrity/vulnerability и strict zizmor checks. Внешний ruleset и
+  blocked failing-PR evidence позже приняты 2026-08-19; сильная product sandbox
+  isolation не заявляется.
 - 2026-08-13 — реализован `P1.3`: exact-pinned Ruff/mypy/pytest/pytest-cov,
   единый offline/no-sync quality runner для format/lint/strict typing/tests,
   Core-only branch coverage `>=80%`, закрытые import allow-lists и fail-closed
