@@ -1,0 +1,2438 @@
+"""Deterministic fail-closed specification, compatibility and drift gate."""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import binascii
+import fnmatch
+import hashlib
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
+from typing import Final, NoReturn, cast
+from urllib.parse import unquote, unquote_to_bytes, urlparse, urlsplit
+
+import yaml  # type: ignore[import-untyped]
+from jsonschema import Draft202012Validator, FormatChecker  # type: ignore[import-untyped]
+from jsonschema.exceptions import SchemaError  # type: ignore[import-untyped]
+from rfc3987_syntax import (  # type: ignore[import-untyped]
+    is_valid_syntax as rfc3987_is_valid_syntax,
+)
+
+REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
+POLICY_PATH: Final = REPOSITORY_ROOT / "scripts" / "spec_gate_policy.json"
+BASELINE_PATH: Final = REPOSITORY_ROOT / "specs" / "baseline.yaml"
+TRACEABILITY_PATH: Final = REPOSITORY_ROOT / "specs" / "traceability" / "requirements.yaml"
+PLAN_PATH: Final = REPOSITORY_ROOT / "docs" / "PLAN.md"
+PUBLIC_SCHEMA_ROOT: Final = (
+    REPOSITORY_ROOT
+    / "packages"
+    / "contracts"
+    / "src"
+    / "securecode_ai"
+    / "contracts"
+    / "schemas"
+    / "v0.2.0"
+)
+POLICY_SCHEMA_ROOT: Final = REPOSITORY_ROOT / "specs" / "contracts"
+JSON_SCHEMA_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
+SEMANTIC_VALIDATOR: Final = "securecode_ai.contracts.schema_export:validate_public_document"
+TASK_ID_PATTERN: Final = re.compile(r"P(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*))?\Z")
+GATE_ID_PATTERN: Final = re.compile(r"G(?:0|[1-9][0-9]*)\Z")
+REQUIREMENT_ID_PATTERN: Final = re.compile(r"[A-Z][A-Z0-9]*-[A-Z]+-[0-9]{3}\Z")
+SHA1_PATTERN: Final = re.compile(r"[0-9a-f]{40}\Z")
+SHA256_PATTERN: Final = re.compile(r"[0-9a-f]{64}\Z")
+DEFINITION_PATTERN: Final = re.compile(
+    r"^- `(?P<identifier>[A-Z][A-Z0-9]*-[A-Z]+-[0-9]{3})`: ", re.MULTILINE
+)
+REFERENCE_PATTERN: Final = re.compile(r"\b[A-Z][A-Z0-9]*-[A-Z]+-[0-9]{3}\b")
+TASK_ROW_PATTERN: Final = re.compile(
+    r"^\| `(?P<id>P[0-9]+(?:\.[0-9]+)?)` \|.*\| `(?P<status>DONE|TODO|IN PROGRESS|BLOCKED)` \|$",
+    re.MULTILINE,
+)
+GATE_HEADING_PATTERN: Final = re.compile(r"^### (?P<id>G[0-9]+) — ", re.MULTILINE)
+MARKDOWN_LINK_PATTERN: Final = re.compile(r"(?<!!)\[[^\]]+\]\((?P<target>[^)]+)\)")
+FENCE_PATTERN: Final = re.compile(r"(?ms)^(```|~~~).*?^\1[^\n]*$")
+HTML_COMMENT_PATTERN: Final = re.compile(r"(?s)<!--.*?-->")
+CRITICAL_TOKEN_PATTERN: Final = re.compile(r"(?i)(?:TBD:|FIXME:)")
+MAX_GIT_OUTPUT: Final = 4 * 1024 * 1024
+GIT_TIMEOUT_SECONDS: Final = 30
+
+type JSONScalar = None | bool | int | float | str
+type JSONValue = JSONScalar | list[JSONValue] | dict[str, JSONValue]
+
+
+class GateInputError(ValueError):
+    """A fixed-code validation failure that never carries raw input."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class Limits:
+    input_file_count: int
+    bytes_per_json_yaml_or_task_packet: int
+    bytes_per_markdown: int
+    total_validated_input_bytes: int
+    parsed_depth: int
+    parsed_nodes_per_document: int
+    collection_items_per_node: int
+    scalar_utf8_bytes: int
+    git_paths: int
+    git_path_utf8_bytes: int
+    diagnostics: int
+    diagnostic_utf8_bytes_each: int
+    final_receipt_utf8_bytes: int
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> Limits:
+        fields = cls.__dataclass_fields__
+        if set(value) != set(fields):
+            raise GateInputError("POLICY_LIMIT_KEYS")
+        parsed: dict[str, int] = {}
+        for name in fields:
+            item = value[name]
+            if not isinstance(item, int) or isinstance(item, bool) or item <= 0:
+                raise GateInputError("POLICY_LIMIT_VALUE")
+            parsed[name] = item
+        return cls(**parsed)
+
+
+@dataclass(slots=True)
+class Diagnostics:
+    limits: Limits
+    _codes: set[str] = field(default_factory=set)
+
+    def add(self, code: str) -> None:
+        safe = re.sub(r"[^A-Z0-9_.:/-]", "_", code.upper())
+        encoded = safe.encode("utf-8")[: self.limits.diagnostic_utf8_bytes_each]
+        self._codes.add(encoded.decode("utf-8", "ignore"))
+
+    def extend(self, codes: Iterable[str]) -> None:
+        for code in codes:
+            self.add(code)
+
+    def sorted(self) -> tuple[str, ...]:
+        return tuple(sorted(self._codes)[: self.limits.diagnostics])
+
+
+@dataclass(slots=True)
+class ReadBudget:
+    limits: Limits
+    file_count: int = 0
+    total_bytes: int = 0
+
+    def account(self, size: int) -> None:
+        self.file_count += 1
+        self.total_bytes += size
+        if self.file_count > self.limits.input_file_count:
+            raise GateInputError("RESOURCE_FILE_COUNT")
+        if self.total_bytes > self.limits.total_validated_input_bytes:
+            raise GateInputError("RESOURCE_TOTAL_BYTES")
+
+
+class _UniqueSafeLoader(yaml.SafeLoader):  # type: ignore[misc]
+    pass
+
+
+def _construct_unique_mapping(
+    loader: _UniqueSafeLoader, node: yaml.nodes.MappingNode, deep: bool = False
+) -> dict[object, object]:
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:
+        if not isinstance(key_node, yaml.nodes.ScalarNode):
+            raise GateInputError("YAML_NON_SCALAR_KEY")
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as error:
+            raise GateInputError("YAML_UNHASHABLE_KEY") from error
+        if duplicate:
+            raise GateInputError("YAML_DUPLICATE_KEY")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueSafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
+)
+
+
+def _duplicate_json_object(pairs: list[tuple[str, JSONValue]]) -> dict[str, JSONValue]:
+    result: dict[str, JSONValue] = {}
+    for key, value in pairs:
+        if key in result:
+            raise GateInputError("JSON_DUPLICATE_KEY")
+        result[key] = value
+    return result
+
+
+def _reject_constant(_: str) -> None:
+    raise GateInputError("JSON_NONFINITE")
+
+
+def _text_from_bytes(data: bytes, *, kind: str) -> str:
+    if data.startswith((b"\xef\xbb\xbf", b"\xff\xfe", b"\xfe\xff")):
+        raise GateInputError(f"{kind}_BOM")
+    if b"\x00" in data:
+        raise GateInputError(f"{kind}_NUL")
+    try:
+        return data.decode("utf-8", "strict")
+    except UnicodeDecodeError as error:
+        raise GateInputError(f"{kind}_UTF8") from error
+
+
+def _validate_tree(value: object, limits: Limits) -> None:
+    stack: list[tuple[object, int]] = [(value, 1)]
+    nodes = 0
+    while stack:
+        item, depth = stack.pop()
+        nodes += 1
+        if nodes > limits.parsed_nodes_per_document:
+            raise GateInputError("RESOURCE_NODE_COUNT")
+        if depth > limits.parsed_depth:
+            raise GateInputError("RESOURCE_DEPTH")
+        if isinstance(item, str) and len(item.encode("utf-8")) > limits.scalar_utf8_bytes:
+            raise GateInputError("RESOURCE_SCALAR_BYTES")
+        if isinstance(item, Mapping):
+            if len(item) > limits.collection_items_per_node:
+                raise GateInputError("RESOURCE_COLLECTION_ITEMS")
+            stack.extend((key, depth + 1) for key in item)
+            stack.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            if len(item) > limits.collection_items_per_node:
+                raise GateInputError("RESOURCE_COLLECTION_ITEMS")
+            stack.extend((child, depth + 1) for child in item)
+        elif isinstance(item, float) and not math.isfinite(item):
+            raise GateInputError("RESOURCE_NONFINITE")
+
+
+def strict_json_loads(data: bytes, limits: Limits) -> JSONValue:
+    if len(data) > limits.bytes_per_json_yaml_or_task_packet:
+        raise GateInputError("JSON_BYTES")
+    text = _text_from_bytes(data, kind="JSON")
+    try:
+        value: JSONValue = json.loads(
+            text,
+            object_pairs_hook=_duplicate_json_object,
+            parse_constant=_reject_constant,
+        )
+    except GateInputError:
+        raise
+    except (json.JSONDecodeError, RecursionError) as error:
+        raise GateInputError("JSON_PARSE") from error
+    _validate_tree(value, limits)
+    return value
+
+
+def strict_yaml_loads(data: bytes, limits: Limits) -> object:
+    if len(data) > limits.bytes_per_json_yaml_or_task_packet:
+        raise GateInputError("YAML_BYTES")
+    text = _text_from_bytes(data, kind="YAML")
+    try:
+        for token in yaml.scan(text):
+            if isinstance(token, (yaml.tokens.AliasToken, yaml.tokens.AnchorToken)):
+                raise GateInputError("YAML_ALIAS_ANCHOR")
+            if isinstance(token, yaml.tokens.TagToken):
+                raise GateInputError("YAML_EXPLICIT_TAG")
+        documents = list(yaml.load_all(text, Loader=_UniqueSafeLoader))
+    except GateInputError:
+        raise
+    except (yaml.YAMLError, RecursionError) as error:
+        raise GateInputError("YAML_PARSE") from error
+    if len(documents) != 1:
+        raise GateInputError("YAML_DOCUMENT_COUNT")
+    value = documents[0]
+    _validate_tree(value, limits)
+    return value
+
+
+def markdown_visible_text(data: bytes, limits: Limits) -> str:
+    if len(data) > limits.bytes_per_markdown:
+        raise GateInputError("MARKDOWN_BYTES")
+    text = _text_from_bytes(data, kind="MARKDOWN")
+    return HTML_COMMENT_PATTERN.sub("", FENCE_PATTERN.sub("", text))
+
+
+def markdown_definitions(data: bytes, limits: Limits) -> tuple[str, ...]:
+    visible = markdown_visible_text(data, limits)
+    return tuple(match.group("identifier") for match in DEFINITION_PATTERN.finditer(visible))
+
+
+def length_prefixed_digest(documents: Mapping[str, bytes]) -> str:
+    digest = hashlib.sha256()
+    for raw_path, content in sorted(documents.items()):
+        path = normalize_repo_path(raw_path)
+        path_bytes = path.encode("utf-8")
+        digest.update(len(path_bytes).to_bytes(8, "big", signed=False))
+        digest.update(path_bytes)
+        digest.update(len(content).to_bytes(8, "big", signed=False))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def frozen_digest(documents: Mapping[str, bytes]) -> str:
+    digest = hashlib.sha256()
+    for path, content in sorted(documents.items()):
+        digest.update(path.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(content)
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def normalize_repo_path(path: str) -> str:
+    if not path or "\x00" in path or "\\" in path:
+        raise GateInputError("PATH_ENCODING")
+    if path.startswith(("-", "/")) or re.match(r"^[A-Za-z]:", path):
+        raise GateInputError("PATH_ABSOLUTE_OPTION")
+    pure = PurePosixPath(path)
+    if pure.is_absolute() or any(part in {"", ".", ".."} for part in pure.parts):
+        raise GateInputError("PATH_TRAVERSAL")
+    normalized = pure.as_posix()
+    if normalized != path:
+        raise GateInputError("PATH_NONCANONICAL")
+    return normalized
+
+
+def _safe_path(root: Path, relative: str) -> Path:
+    normalized = normalize_repo_path(relative)
+    candidate = root.joinpath(*PurePosixPath(normalized).parts)
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved = candidate.resolve(strict=False)
+    except OSError as error:
+        raise GateInputError("PATH_RESOLVE") from error
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        raise GateInputError("PATH_OUTSIDE_ROOT")
+    return candidate
+
+
+def _read_file(
+    root: Path, relative: str, budget: ReadBudget, *, maximum: int, require_regular: bool = True
+) -> bytes:
+    path = _safe_path(root, relative)
+    try:
+        if require_regular and (not path.is_file() or path.is_symlink()):
+            raise GateInputError("INPUT_NOT_REGULAR")
+        size = path.stat().st_size
+        if size > maximum:
+            raise GateInputError("INPUT_BYTES")
+        data = path.read_bytes()
+    except GateInputError:
+        raise
+    except OSError as error:
+        raise GateInputError("INPUT_READ") from error
+    if len(data) != size:
+        raise GateInputError("INPUT_CHANGED")
+    budget.account(len(data))
+    return data
+
+
+def _mapping(value: object, code: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise GateInputError(code)
+    return {str(key): item for key, item in value.items()}
+
+
+def _sequence(value: object, code: str) -> Sequence[object]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        raise GateInputError(code)
+    return value
+
+
+def _strings(value: object, code: str) -> tuple[str, ...]:
+    items = _sequence(value, code)
+    if any(not isinstance(item, str) for item in items):
+        raise GateInputError(code)
+    return tuple(str(item) for item in items)
+
+
+def _git_environment() -> dict[str, str]:
+    allowed = (
+        "COMSPEC",
+        "LANG",
+        "LC_ALL",
+        "NO_COLOR",
+        "PATH",
+        "PATHEXT",
+        "SYSTEMROOT",
+        "WINDIR",
+    )
+    environment = {name: value for name in allowed if (value := os.environ.get(name)) is not None}
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_PAGER": "cat",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    return environment
+
+
+def _git_executable(root: Path) -> str:
+    """Resolve Git from absolute PATH entries while ignoring repository shadow files."""
+
+    repository = root.resolve(strict=True)
+    executable_name = "git.exe" if os.name == "nt" else "git"
+    for raw_directory in os.environ.get("PATH", "").split(os.pathsep):
+        directory = Path(raw_directory)
+        if not raw_directory or not directory.is_absolute():
+            continue
+        try:
+            candidate = (directory / executable_name).resolve(strict=True)
+        except OSError:
+            continue
+        if (
+            not candidate.is_file()
+            or not os.access(candidate, os.X_OK)
+            or candidate == repository
+            or repository in candidate.parents
+        ):
+            continue
+        return str(candidate)
+    raise GateInputError("GIT_EXECUTABLE")
+
+
+def git_bytes(root: Path, *arguments: str) -> bytes:
+    try:
+        completed = subprocess.run(
+            (
+                _git_executable(root),
+                "--no-optional-locks",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol",
+                "-c",
+                "core.hooksPath=",
+                *arguments,
+            ),
+            cwd=root,
+            env=_git_environment(),
+            check=False,
+            capture_output=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise GateInputError("GIT_EXECUTION") from error
+    if completed.returncode != 0:
+        raise GateInputError("GIT_NONZERO")
+    if len(completed.stdout) > MAX_GIT_OUTPUT:
+        raise GateInputError("GIT_OUTPUT_BYTES")
+    return completed.stdout
+
+
+def git_text(root: Path, *arguments: str) -> str:
+    try:
+        return git_bytes(root, *arguments).decode("ascii", "strict")
+    except UnicodeDecodeError as error:
+        raise GateInputError("GIT_TEXT_ENCODING") from error
+
+
+def _git_blob(root: Path, revision: str, relative: str) -> bytes:
+    normalize_repo_path(relative)
+    return git_bytes(root, "cat-file", "blob", f"{revision}:{relative}")
+
+
+def _walk(value: object) -> Iterable[object]:
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        yield item
+        if isinstance(item, Mapping):
+            stack.extend(item.values())
+        elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            stack.extend(item)
+
+
+def _resolve_fragment(document: object, reference: str) -> bool:
+    if reference == "#":
+        return True
+    if not reference.startswith("#/"):
+        return False
+    encoded_pointer = reference[1:]
+    if re.search(r"%(?![0-9A-Fa-f]{2})", encoded_pointer):
+        return False
+    try:
+        pointer = unquote_to_bytes(encoded_pointer).decode("utf-8", "strict")
+    except UnicodeDecodeError:
+        return False
+    if not pointer.startswith("/"):
+        return False
+    current = document
+    for raw_part in pointer[1:].split("/"):
+        if re.search(r"~(?:[^01]|$)", raw_part):
+            return False
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, Mapping) and part in current:
+            current = current[part]
+        elif isinstance(current, Sequence) and not isinstance(current, (str, bytes)):
+            if not re.fullmatch(r"0|[1-9][0-9]*", part):
+                return False
+            index = int(part)
+            if index >= len(current):
+                return False
+            current = current[index]
+        else:
+            return False
+    return True
+
+
+def schema_document_errors(
+    document: object, *, known_formats: frozenset[str], public: bool = False
+) -> tuple[str, ...]:
+    errors: set[str] = set()
+    if not isinstance(document, Mapping):
+        return ("SCHEMA_ROOT",)
+    if document.get("$schema") != JSON_SCHEMA_DIALECT:
+        errors.add("SCHEMA_DIALECT")
+    try:
+        Draft202012Validator.check_schema(document)
+    except SchemaError:
+        errors.add("SCHEMA_META")
+    for item in _walk(document):
+        if not isinstance(item, Mapping):
+            continue
+        reference = item.get("$ref")
+        if reference is not None:
+            if not isinstance(reference, str) or not reference.startswith("#"):
+                errors.add("SCHEMA_EXTERNAL_REF")
+            elif not _resolve_fragment(document, reference):
+                errors.add("SCHEMA_UNRESOLVED_REF")
+        for dynamic_key in ("$dynamicRef", "$recursiveRef"):
+            if dynamic_key in item:
+                errors.add("SCHEMA_DYNAMIC_REF")
+        format_name = item.get("format")
+        if format_name is not None and (
+            not isinstance(format_name, str) or format_name not in known_formats
+        ):
+            errors.add("SCHEMA_UNKNOWN_FORMAT")
+    if public and document.get("x-securecode-semantic-validator") != SEMANTIC_VALIDATOR:
+        errors.add("SCHEMA_SEMANTIC_VALIDATOR")
+    return tuple(sorted(errors))
+
+
+def _schema_validator(
+    document: Mapping[str, object], formats: frozenset[str]
+) -> Draft202012Validator:
+    checker = FormatChecker(formats=(name for name in formats if name != "uri"))
+    if "uri" in formats:
+        checker.checkers["uri"] = (_is_uri, ())
+    return Draft202012Validator(document, format_checker=checker)
+
+
+def _is_uri(instance: object) -> bool:
+    if not isinstance(instance, str):
+        return True
+    if any(ord(character) > 127 or character.isspace() for character in instance):
+        return False
+    try:
+        parsed = urlsplit(instance)
+    except ValueError:
+        return False
+    return bool(parsed.scheme) and rfc3987_is_valid_syntax("iri", instance)
+
+
+def compatibility_errors(old: object, new: object) -> tuple[str, ...]:
+    """Conservative same-version comparator; ambiguity is a breaking delta."""
+
+    errors: set[str] = set()
+    if not isinstance(old, Mapping) or not isinstance(new, Mapping):
+        return ("COMPAT_ROOT",)
+    old_id = old.get("$id")
+    new_id = new.get("$id")
+    if old_id != new_id:
+        errors.add("COMPAT_ID")
+    old_type = old.get("type")
+    new_type = new.get("type")
+    if old_type != new_type:
+        errors.add("COMPAT_TYPE")
+    old_required = (
+        set(old.get("required", [])) if isinstance(old.get("required", []), list) else set()
+    )
+    new_required = (
+        set(new.get("required", [])) if isinstance(new.get("required", []), list) else set()
+    )
+    if not new_required.issubset(old_required):
+        errors.add("COMPAT_REQUIRED")
+    old_properties = old.get("properties", {})
+    new_properties = new.get("properties", {})
+    if isinstance(old_properties, Mapping) and isinstance(new_properties, Mapping):
+        if not set(old_properties).issubset(new_properties):
+            errors.add("COMPAT_PROPERTY_REMOVED")
+        for name in set(old_properties) & set(new_properties):
+            left = old_properties[name]
+            right = new_properties[name]
+            if left != right:
+                errors.add(f"COMPAT_PROPERTY_CHANGED:{name}")
+    elif old_properties != new_properties:
+        errors.add("COMPAT_PROPERTIES")
+    for keyword in ("enum", "minimum", "maximum", "minLength", "maxLength", "pattern"):
+        if old.get(keyword) != new.get(keyword):
+            errors.add(f"COMPAT_KEYWORD:{keyword}")
+    supported = {
+        "$comment",
+        "$defs",
+        "$id",
+        "$schema",
+        "additionalProperties",
+        "description",
+        "enum",
+        "format",
+        "items",
+        "maxItems",
+        "maxLength",
+        "maximum",
+        "minItems",
+        "minLength",
+        "minimum",
+        "pattern",
+        "properties",
+        "required",
+        "title",
+        "type",
+        "x-securecode-semantic-rules",
+        "x-securecode-semantic-validator",
+    }
+    if (set(old) | set(new)) - supported and old != new:
+        errors.add("COMPAT_AMBIGUOUS")
+    return tuple(sorted(errors))
+
+
+def _path_matches(path: str, patterns: Sequence[str]) -> bool:
+    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+
+
+def parse_name_status(raw: bytes, *, maximum_paths: int = 4096) -> tuple[tuple[str, ...], ...]:
+    parts = raw.split(b"\0")
+    records: list[tuple[str, ...]] = []
+    index = 0
+    while index < len(parts) and parts[index]:
+        try:
+            status = parts[index].decode("ascii", "strict")
+        except UnicodeDecodeError as error:
+            raise GateInputError("GIT_STATUS_ENCODING") from error
+        index += 1
+        if not re.fullmatch(r"[AMD]|[RC][0-9]{1,3}", status):
+            raise GateInputError("GIT_STATUS_KIND")
+        path_count = 2 if status.startswith(("R", "C")) else 1
+        paths: list[str] = []
+        for _ in range(path_count):
+            if index >= len(parts) or not parts[index]:
+                raise GateInputError("GIT_STATUS_FIELDS")
+            try:
+                path = parts[index].decode("utf-8", "strict")
+            except UnicodeDecodeError as error:
+                raise GateInputError("GIT_PATH_ENCODING") from error
+            paths.append(normalize_repo_path(path))
+            index += 1
+        records.append((status, *paths))
+        if sum(len(record) - 1 for record in records) > maximum_paths:
+            raise GateInputError("GIT_PATH_COUNT")
+    if any(part for part in parts[index:]):
+        raise GateInputError("GIT_STATUS_TRAILING")
+    return tuple(records)
+
+
+def changed_paths(records: Sequence[Sequence[str]]) -> tuple[str, ...]:
+    return tuple(sorted({path for record in records for path in record[1:]}))
+
+
+def _strict_keys(mapping: Mapping[str, object], expected: set[str], code: str) -> None:
+    if set(mapping) != expected:
+        raise GateInputError(code)
+
+
+def canonical_review_subject(
+    documents: Mapping[str, bytes], *, packet_path: str, stored_hash: str
+) -> str:
+    """Hash exact proposal bytes with only the packet's self-hash scalar zeroed."""
+
+    if not SHA256_PATTERN.fullmatch(stored_hash):
+        raise GateInputError("CHANGE_PACKET_REVIEW_HASH")
+    packet = documents.get(packet_path)
+    if packet is None:
+        raise GateInputError("CHANGE_PACKET_REVIEW_DOCUMENTS")
+    needle = stored_hash.encode("ascii")
+    if packet.count(needle) != 1:
+        raise GateInputError("CHANGE_PACKET_REVIEW_SELF_HASH")
+    canonical = dict(documents)
+    canonical[packet_path] = packet.replace(needle, b"0" * 64, 1)
+    return length_prefixed_digest(canonical)
+
+
+def task_statuses(data: bytes) -> dict[str, str]:
+    text = _text_from_bytes(data, kind="MARKDOWN")
+    statuses: dict[str, str] = {}
+    for match in TASK_ROW_PATTERN.finditer(text):
+        task_id = match.group("id")
+        if task_id in statuses:
+            raise GateInputError("PLAN_DUPLICATE_TASK")
+        statuses[task_id] = match.group("status")
+    return statuses
+
+
+def repository_identity(value: str) -> tuple[str, str] | None:
+    """Parse one exact owner/repository identity supplied by trusted GitHub context."""
+
+    if value.count("/") != 1:
+        return None
+    owner, repository = value.split("/", 1)
+    safe = re.compile(r"[A-Za-z0-9_.-]{1,100}\Z")
+    if (
+        not safe.fullmatch(owner)
+        or not safe.fullmatch(repository)
+        or owner in {".", ".."}
+        or repository in {".", ".."}
+        or repository.lower().endswith(".git")
+    ):
+        return None
+    return owner.lower(), repository.lower()
+
+
+def github_evidence_identity(source: str, evidence_type: str) -> tuple[str, str] | None:
+    """Validate one evidence-type-specific GitHub URI and return its repository."""
+
+    try:
+        parsed = urlsplit(source)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.username
+        or parsed.password
+        or parsed.fragment
+        or parsed.query
+        or port is not None
+        or "%" in parsed.path
+    ):
+        return None
+    host = (parsed.hostname or "").lower()
+    segments = [unquote(part) for part in parsed.path.split("/") if part]
+    if evidence_type == "github_ruleset_required_check":
+        if (
+            host != "api.github.com"
+            or len(segments) != 5
+            or segments[0] != "repos"
+            or segments[3] != "rulesets"
+            or not re.fullmatch(r"[1-9][0-9]*", segments[4])
+        ):
+            return None
+        owner, repository = segments[1:3]
+    elif evidence_type == "github_failing_pr_merge_block":
+        if host == "github.com" and len(segments) == 5:
+            owner, repository = segments[:2]
+            suffix = segments[2:]
+        else:
+            return None
+        if suffix[:2] != ["actions", "runs"] or not re.fullmatch(r"[1-9][0-9]*", suffix[2]):
+            return None
+    else:
+        return None
+    safe = re.compile(r"[A-Za-z0-9_.-]{1,100}\Z")
+    if (
+        not safe.fullmatch(owner)
+        or not safe.fullmatch(repository)
+        or owner in {".", ".."}
+        or repository in {".", ".."}
+        or repository.lower().endswith(".git")
+    ):
+        return None
+    return owner.lower(), repository.lower()
+
+
+def validate_completion_attestation(
+    value: object, *, policy: Mapping[str, object], actual_paths: tuple[str, ...]
+) -> tuple[str, ...]:
+    errors: set[str] = set()
+    try:
+        data = _mapping(value, "ATTESTATION_ROOT")
+        expected_keys = {
+            "schema_version",
+            "change_type",
+            "task_id",
+            "starting_commit_sha",
+            "packet_sha256",
+            "implementation_commit_sha",
+            "evidence_refs",
+            "allowed_paths",
+            "budgets",
+        }
+        _strict_keys(data, expected_keys, "ATTESTATION_KEYS")
+        task_id = data.get("task_id")
+        if (
+            data.get("schema_version") != "1.0.0"
+            or data.get("change_type") != "completion_attestation"
+        ):
+            errors.add("ATTESTATION_IDENTITY")
+        if not isinstance(task_id, str) or not TASK_ID_PATTERN.fullmatch(task_id):
+            errors.add("ATTESTATION_TASK")
+        for name in ("starting_commit_sha", "implementation_commit_sha"):
+            item = data.get(name)
+            if not isinstance(item, str) or not SHA1_PATTERN.fullmatch(item):
+                errors.add("ATTESTATION_GIT_OID")
+        packet_hash = data.get("packet_sha256")
+        if not isinstance(packet_hash, str) or not SHA256_PATTERN.fullmatch(packet_hash):
+            errors.add("ATTESTATION_PACKET_HASH")
+        allowed_paths = _strings(data.get("allowed_paths"), "ATTESTATION_PATHS")
+        if tuple(sorted(allowed_paths)) != actual_paths or len(set(allowed_paths)) != len(
+            allowed_paths
+        ):
+            errors.add("ATTESTATION_PATH_SET")
+        budgets = _mapping(data.get("budgets"), "ATTESTATION_BUDGETS")
+        if budgets != {"max_changed_files": 5, "max_diff_lines": 800}:
+            errors.add("ATTESTATION_BUDGETS")
+        catalog = _mapping(policy.get("completion_evidence"), "POLICY_COMPLETION_EVIDENCE")
+        required = _strings(catalog.get(str(task_id)), "POLICY_COMPLETION_TASK")
+        refs = _sequence(data.get("evidence_refs"), "ATTESTATION_EVIDENCE")
+        observed: list[str] = []
+        for raw_ref in refs:
+            ref = _mapping(raw_ref, "ATTESTATION_EVIDENCE_REF")
+            _strict_keys(ref, {"type", "source", "content_sha256"}, "ATTESTATION_EVIDENCE_KEYS")
+            ref_type = ref.get("type")
+            source = ref.get("source")
+            content_hash = ref.get("content_sha256")
+            if not isinstance(ref_type, str) or len(ref_type.encode()) > 64:
+                errors.add("ATTESTATION_EVIDENCE_TYPE")
+                continue
+            observed.append(ref_type)
+            if not isinstance(source, str) or len(source.encode()) > 1024:
+                errors.add("ATTESTATION_EVIDENCE_SOURCE")
+            if not isinstance(content_hash, str) or not SHA256_PATTERN.fullmatch(content_hash):
+                errors.add("ATTESTATION_EVIDENCE_HASH")
+        if tuple(observed) != required or len(set(observed)) != len(observed):
+            errors.add("ATTESTATION_EVIDENCE_CATALOG")
+    except GateInputError as error:
+        errors.add(error.code)
+    return tuple(sorted(errors))
+
+
+def _promotion_manifest_errors(
+    value: object,
+    *,
+    gate_id: str,
+    policy_paths: tuple[str, ...],
+    base_documents: Mapping[str, bytes],
+) -> tuple[tuple[str, bytes], ...]:
+    manifest = _mapping(value, "PROMOTION_MANIFEST_ROOT")
+    _strict_keys(
+        manifest,
+        {
+            "schema_version",
+            "gate_id",
+            "evidence_bundle_sha256",
+            "promotion_subject_sha256",
+            "files",
+        },
+        "PROMOTION_MANIFEST_KEYS",
+    )
+    if manifest.get("schema_version") != "1.0.0" or manifest.get("gate_id") != gate_id:
+        raise GateInputError("PROMOTION_MANIFEST_IDENTITY")
+    evidence_hash = manifest.get("evidence_bundle_sha256")
+    subject_hash = manifest.get("promotion_subject_sha256")
+    if not isinstance(evidence_hash, str) or not SHA256_PATTERN.fullmatch(evidence_hash):
+        raise GateInputError("PROMOTION_MANIFEST_EVIDENCE_HASH")
+    if not isinstance(subject_hash, str) or not SHA256_PATTERN.fullmatch(subject_hash):
+        raise GateInputError("PROMOTION_MANIFEST_SUBJECT_HASH")
+    files = _sequence(manifest.get("files"), "PROMOTION_MANIFEST_FILES")
+    decoded: dict[str, bytes] = {}
+    total_decoded = 0
+    for raw_file in files:
+        entry = _mapping(raw_file, "PROMOTION_MANIFEST_FILE")
+        _strict_keys(
+            entry,
+            {"path", "base_sha256", "final_sha256", "final_base64"},
+            "PROMOTION_MANIFEST_FILE_KEYS",
+        )
+        path = entry.get("path")
+        if not isinstance(path, str):
+            raise GateInputError("PROMOTION_MANIFEST_PATH")
+        path = normalize_repo_path(path)
+        if path in decoded:
+            raise GateInputError("PROMOTION_MANIFEST_DUPLICATE_PATH")
+        base_hash = entry.get("base_sha256")
+        final_hash = entry.get("final_sha256")
+        encoded = entry.get("final_base64")
+        if not isinstance(base_hash, str) or not SHA256_PATTERN.fullmatch(base_hash):
+            raise GateInputError("PROMOTION_MANIFEST_BASE_HASH")
+        if not isinstance(final_hash, str) or not SHA256_PATTERN.fullmatch(final_hash):
+            raise GateInputError("PROMOTION_MANIFEST_FINAL_HASH")
+        if not isinstance(encoded, str) or len(encoded) > 4 * 1024 * 1024:
+            raise GateInputError("PROMOTION_MANIFEST_BASE64")
+        try:
+            final_bytes = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise GateInputError("PROMOTION_MANIFEST_BASE64") from error
+        total_decoded += len(final_bytes)
+        if total_decoded > 16 * 1024 * 1024:
+            raise GateInputError("PROMOTION_MANIFEST_TOTAL_BYTES")
+        if hashlib.sha256(final_bytes).hexdigest() != final_hash:
+            raise GateInputError("PROMOTION_MANIFEST_FINAL_HASH")
+        current = base_documents.get(path)
+        if current is None or hashlib.sha256(current).hexdigest() != base_hash:
+            raise GateInputError("PROMOTION_MANIFEST_BASE_DRIFT")
+        decoded[path] = final_bytes
+    if tuple(sorted(decoded)) != tuple(sorted(policy_paths)):
+        raise GateInputError("PROMOTION_MANIFEST_PATH_SET")
+    if length_prefixed_digest(decoded) != subject_hash:
+        raise GateInputError("PROMOTION_MANIFEST_SUBJECT_HASH")
+    return tuple(sorted(decoded.items()))
+
+
+def validate_task_packet(
+    value: object,
+    *,
+    packet_path: str,
+    base_sha: str,
+    changed: tuple[str, ...],
+    diff_lines: int,
+    policy: Mapping[str, object],
+) -> tuple[str, ...]:
+    errors: set[str] = set()
+    try:
+        packet = _mapping(value, "PACKET_ROOT")
+        task = _mapping(packet.get("task"), "PACKET_TASK")
+        execution = _mapping(packet.get("execution"), "PACKET_EXECUTION")
+        scope = _mapping(packet.get("scope"), "PACKET_SCOPE")
+        if packet.get("schema_version") != "0.1-draft" or task.get("type") != "implementation":
+            errors.add("PACKET_IDENTITY")
+        task_id = task.get("id")
+        if not isinstance(task_id, str) or packet_path != f"work/task-packets/{task_id}.yaml":
+            errors.add("PACKET_FILENAME")
+        authority = _mapping(policy.get("baseline"), "POLICY_BASELINE")
+        for name in ("baseline_id", "baseline_content_sha256", "baseline_commit_sha"):
+            if task.get(name) != authority.get(name):
+                errors.add(f"PACKET_{name.upper()}")
+        if task.get("starting_commit_sha") != base_sha:
+            errors.add("PACKET_BASE")
+        lease = _strings(execution.get("exclusive_path_lease"), "PACKET_LEASE")
+        allowed = _strings(scope.get("allowed_paths"), "PACKET_ALLOWED")
+        forbidden = _strings(scope.get("forbidden_paths"), "PACKET_FORBIDDEN")
+        if lease != allowed or len(set(allowed)) != len(allowed) or packet_path not in allowed:
+            errors.add("PACKET_CLOSED_PATHS")
+        if any(_path_matches(path, forbidden) for path in allowed):
+            errors.add("PACKET_ALLOW_FORBID_OVERLAP")
+        protected = _strings(policy.get("self_protected_paths"), "POLICY_PROTECTED")
+        bootstrap = task_id == "P1.13" and base_sha == authority.get("bootstrap_commit_sha")
+        for path in changed:
+            if path not in allowed or _path_matches(path, forbidden):
+                errors.add("PACKET_SCOPE")
+            if _path_matches(path, protected) and not bootstrap:
+                errors.add("PACKET_SELF_PROTECTED")
+        maximum_files = scope.get("max_changed_files")
+        maximum_lines = scope.get("max_diff_lines")
+        if not isinstance(maximum_files, int) or len(changed) > maximum_files:
+            errors.add("PACKET_FILE_BUDGET")
+        if not isinstance(maximum_lines, int) or diff_lines > maximum_lines:
+            errors.add("PACKET_LINE_BUDGET")
+    except GateInputError as error:
+        errors.add(error.code)
+    return tuple(sorted(errors))
+
+
+@dataclass(slots=True)
+class SpecGate:
+    root: Path = REPOSITORY_ROOT
+    policy_path: Path = POLICY_PATH
+    github_repository: tuple[str, str] | None = None
+    policy: Mapping[str, object] = field(init=False)
+    limits: Limits = field(init=False)
+    diagnostics: Diagnostics = field(init=False)
+    budget: ReadBudget = field(init=False)
+
+    def __post_init__(self) -> None:
+        raw = self.policy_path.read_bytes()
+        bootstrap_limits = Limits(
+            input_file_count=1024,
+            bytes_per_json_yaml_or_task_packet=1048576,
+            bytes_per_markdown=2097152,
+            total_validated_input_bytes=16777216,
+            parsed_depth=64,
+            parsed_nodes_per_document=100000,
+            collection_items_per_node=100000,
+            scalar_utf8_bytes=262144,
+            git_paths=4096,
+            git_path_utf8_bytes=4096,
+            diagnostics=256,
+            diagnostic_utf8_bytes_each=512,
+            final_receipt_utf8_bytes=131072,
+        )
+        loaded = strict_json_loads(raw, bootstrap_limits)
+        self.policy = _mapping(loaded, "POLICY_ROOT")
+        if self.policy.get("schema_version") != "1.0.0":
+            raise GateInputError("POLICY_VERSION")
+        self.limits = Limits.from_mapping(
+            _mapping(self.policy.get("resource_limits"), "POLICY_LIMITS")
+        )
+        self.diagnostics = Diagnostics(self.limits)
+        self.budget = ReadBudget(self.limits)
+
+    def _read(self, relative: str) -> bytes:
+        maximum = (
+            self.limits.bytes_per_markdown
+            if relative.lower().endswith(".md")
+            else self.limits.bytes_per_json_yaml_or_task_packet
+        )
+        return _read_file(self.root, relative, self.budget, maximum=maximum)
+
+    def _load(self, relative: str) -> object:
+        data = self._read(relative)
+        suffix = PurePosixPath(relative).suffix.lower()
+        if suffix == ".json":
+            return strict_json_loads(data, self.limits)
+        if suffix in {".yaml", ".yml", ".lock"}:
+            return strict_yaml_loads(data, self.limits)
+        if suffix == ".md":
+            return markdown_visible_text(data, self.limits)
+        raise GateInputError("INPUT_SUFFIX")
+
+    def _baseline(self) -> tuple[Mapping[str, object], tuple[str, ...]]:
+        baseline = _mapping(self._load("specs/baseline.yaml"), "BASELINE_ROOT")
+        authority = _mapping(self.policy.get("baseline"), "POLICY_BASELINE")
+        if baseline.get("baseline_id") != authority.get("baseline_id"):
+            self.diagnostics.add("BASELINE_ID")
+        if baseline.get("schema_version") != "0.2.0" or baseline.get("lifecycle") != "frozen":
+            self.diagnostics.add("BASELINE_LIFECYCLE")
+        freeze = _mapping(baseline.get("freeze"), "BASELINE_FREEZE")
+        if freeze.get("commit_sha") != authority.get("baseline_commit_sha"):
+            self.diagnostics.add("BASELINE_COMMIT")
+        if freeze.get("content_sha256") != authority.get("baseline_content_sha256"):
+            self.diagnostics.add("BASELINE_DECLARED_DIGEST")
+        paths = _strings(baseline.get("normative_documents"), "BASELINE_DOCUMENTS")
+        if len(set(paths)) != len(paths):
+            self.diagnostics.add("BASELINE_DUPLICATE_PATH")
+        return baseline, paths
+
+    def _validate_normative(self, paths: tuple[str, ...]) -> set[str]:
+        documents: dict[str, bytes] = {}
+        committed: dict[str, bytes] = {}
+        definitions: dict[str, str] = {}
+        references: set[str] = set()
+        commit = str(
+            _mapping(self.policy.get("baseline"), "POLICY_BASELINE")["baseline_commit_sha"]
+        )
+        for relative in paths:
+            path = f"specs/{normalize_repo_path(relative)}"
+            try:
+                data = self._read(path)
+                documents[relative] = data
+                committed[relative] = _git_blob(self.root, commit, path)
+                if path.endswith(".json"):
+                    parsed_json = strict_json_loads(data, self.limits)
+                    for item in _walk(parsed_json):
+                        if isinstance(item, str):
+                            references.update(REFERENCE_PATTERN.findall(item))
+                elif path.endswith((".yaml", ".yml", ".lock")):
+                    parsed_yaml = strict_yaml_loads(data, self.limits)
+                    for item in _walk(parsed_yaml):
+                        if isinstance(item, str):
+                            references.update(REFERENCE_PATTERN.findall(item))
+                elif path.endswith(".md"):
+                    visible = markdown_visible_text(data, self.limits)
+                    references.update(REFERENCE_PATTERN.findall(visible))
+                    if CRITICAL_TOKEN_PATTERN.search(visible):
+                        self.diagnostics.add(f"NORMATIVE_CRITICAL_TOKEN:{relative}")
+                    for identifier in markdown_definitions(data, self.limits):
+                        if identifier in definitions:
+                            self.diagnostics.add(f"NORMATIVE_DUPLICATE_ID:{identifier}")
+                        definitions[identifier] = relative
+                    self._validate_links(path, visible)
+                else:
+                    self.diagnostics.add(f"NORMATIVE_SUFFIX:{relative}")
+            except GateInputError as error:
+                self.diagnostics.add(f"NORMATIVE_{error.code}:{relative}")
+        for identifier in sorted(
+            item for item in references - set(definitions) if item.startswith("SC-")
+        ):
+            self.diagnostics.add(f"NORMATIVE_UNDEFINED_ID:{identifier}")
+        expected = str(
+            _mapping(self.policy.get("baseline"), "POLICY_BASELINE")["baseline_content_sha256"]
+        )
+        if frozen_digest(documents) != expected:
+            self.diagnostics.add("BASELINE_WORKTREE_DIGEST")
+        if frozen_digest(committed) != expected:
+            self.diagnostics.add("BASELINE_COMMITTED_DIGEST")
+        return set(definitions)
+
+    def _validate_links(self, source: str, visible: str) -> None:
+        source_directory = PurePosixPath(source).parent
+        for match in MARKDOWN_LINK_PATTERN.finditer(visible):
+            target = match.group("target").strip().split(maxsplit=1)[0].strip("<>")
+            parsed = urlparse(target)
+            if not target or parsed.scheme or target.startswith(("#", "mailto:")):
+                continue
+            path_part = unquote(target.split("#", 1)[0])
+            if not path_part:
+                continue
+            try:
+                if PurePosixPath(path_part).is_absolute() or re.match(r"^[A-Za-z]:", path_part):
+                    raise GateInputError("MARKDOWN_LINK_ABSOLUTE")
+                root = self.root.resolve(strict=True)
+                path = (root / Path(source_directory.as_posix()) / Path(path_part)).resolve(
+                    strict=False
+                )
+                if path != root and root not in path.parents:
+                    raise GateInputError("MARKDOWN_LINK_OUTSIDE")
+            except (GateInputError, OSError):
+                self.diagnostics.add(f"MARKDOWN_LINK_PATH:{source}")
+                continue
+            if not path.exists() or path.is_symlink():
+                self.diagnostics.add(f"MARKDOWN_LINK_MISSING:{source}")
+
+    def _plan_catalog(self) -> tuple[dict[str, str], set[str]]:
+        data = self._read("docs/PLAN.md")
+        text = _text_from_bytes(data, kind="MARKDOWN")
+        tasks: dict[str, str] = {}
+        for match in TASK_ROW_PATTERN.finditer(text):
+            task_id = match.group("id")
+            if task_id in tasks:
+                self.diagnostics.add(f"PLAN_DUPLICATE_TASK:{task_id}")
+            tasks[task_id] = match.group("status")
+        gates = [match.group("id") for match in GATE_HEADING_PATTERN.finditer(text)]
+        if len(gates) != len(set(gates)):
+            self.diagnostics.add("PLAN_DUPLICATE_GATE")
+        return tasks, set(gates)
+
+    def _catalogs(self, tasks: Mapping[str, str], gates: set[str]) -> tuple[set[str], set[str]]:
+        tests_raw = _mapping(self.policy.get("test_catalog"), "POLICY_TEST_CATALOG")
+        test_ids = set(tests_raw)
+        allowed_commands = set(_strings(self.policy.get("executable_commands"), "POLICY_COMMANDS"))
+        for test_id, raw_entry in tests_raw.items():
+            entry = _mapping(raw_entry, "POLICY_TEST_ENTRY")
+            owners = _strings(entry.get("owners"), "POLICY_TEST_OWNERS")
+            if not owners or any(owner not in tasks for owner in owners):
+                self.diagnostics.add(f"CATALOG_TEST_OWNER:{test_id}")
+            state = entry.get("state")
+            if state == "planned":
+                if not any(tasks.get(owner) != "DONE" for owner in owners):
+                    self.diagnostics.add(f"CATALOG_STALE_PLANNED:{test_id}")
+                if set(entry) != {"owners", "state"}:
+                    self.diagnostics.add(f"CATALOG_PLANNED_KEYS:{test_id}")
+            elif state == "executable":
+                command = entry.get("command")
+                if not isinstance(command, str) or command not in allowed_commands:
+                    self.diagnostics.add(f"CATALOG_EXECUTABLE_COMMAND:{test_id}")
+                if set(entry) != {"owners", "state", "command"}:
+                    self.diagnostics.add(f"CATALOG_EXECUTABLE_KEYS:{test_id}")
+            else:
+                self.diagnostics.add(f"CATALOG_TEST_STATE:{test_id}")
+        evidence_raw = _mapping(self.policy.get("evidence_catalog"), "POLICY_EVIDENCE_CATALOG")
+        evidence_ids = set(evidence_raw)
+        for evidence_id, raw_entry in evidence_raw.items():
+            entry = _mapping(raw_entry, "POLICY_EVIDENCE_ENTRY")
+            if evidence_id not in gates or entry.get("gate") != evidence_id:
+                self.diagnostics.add(f"CATALOG_EVIDENCE_GATE:{evidence_id}")
+            path = entry.get("path")
+            state = entry.get("state")
+            if not isinstance(path, str):
+                self.diagnostics.add(f"CATALOG_EVIDENCE_PATH:{evidence_id}")
+            elif state == "completed" and not _safe_path(self.root, path).is_dir():
+                self.diagnostics.add(f"CATALOG_EVIDENCE_MISSING:{evidence_id}")
+            elif state not in {"completed", "planned"}:
+                self.diagnostics.add(f"CATALOG_EVIDENCE_STATE:{evidence_id}")
+        return test_ids, evidence_ids
+
+    def _validate_traceability(self, definitions: set[str]) -> None:
+        trace = _mapping(self._load("specs/traceability/requirements.yaml"), "TRACE_ROOT")
+        tasks, gates = self._plan_catalog()
+        test_ids, evidence_ids = self._catalogs(tasks, gates)
+        rows: list[Mapping[str, object]] = []
+        for section in ("requirements", "threat_traceability"):
+            for item in _sequence(trace.get(section), "TRACE_ROWS"):
+                rows.append(_mapping(item, "TRACE_ROW"))
+        row_ids: set[str] = set()
+        for row in rows:
+            identifier = row.get("id")
+            if not isinstance(identifier, str) or identifier in row_ids:
+                self.diagnostics.add("TRACE_DUPLICATE_ROW")
+            else:
+                row_ids.add(identifier)
+            for name, authority in (
+                ("normative", definitions),
+                ("tasks", set(tasks)),
+                ("tests", test_ids),
+            ):
+                values = _strings(row.get(name), f"TRACE_{name.upper()}")
+                if (
+                    not values
+                    or len(values) != len(set(values))
+                    or any(item not in authority for item in values)
+                ):
+                    self.diagnostics.add(f"TRACE_{name.upper()}:{identifier}")
+            if "evidence" in row:
+                values = _strings(row.get("evidence"), "TRACE_EVIDENCE")
+                if (
+                    not values
+                    or len(values) != len(set(values))
+                    or any(item not in evidence_ids for item in values)
+                ):
+                    self.diagnostics.add(f"TRACE_EVIDENCE:{identifier}")
+        prefix_map = _mapping(trace.get("spec_prefix_coverage"), "TRACE_PREFIXES")
+        expected_prefixes = {identifier.rsplit("-", 1)[0] for identifier in definitions}
+        if set(prefix_map) != expected_prefixes:
+            self.diagnostics.add("TRACE_PREFIX_COVERAGE")
+
+    def _validate_schemas(self, definitions: set[str]) -> None:
+        known_formats = frozenset(_strings(self.policy.get("known_formats"), "POLICY_FORMATS"))
+        public_hashes = _mapping(self.policy.get("public_schema_sha256"), "POLICY_PUBLIC_SCHEMAS")
+        public_names = {path.name for path in PUBLIC_SCHEMA_ROOT.glob("*.schema.json")}
+        if public_names != set(public_hashes):
+            self.diagnostics.add("PUBLIC_SCHEMA_INVENTORY")
+        schema_documents: dict[str, Mapping[str, object]] = {}
+        paths = [
+            "specs/contracts/provider-profile.schema.json",
+            "specs/contracts/policy/egress-policy.schema.json",
+            "specs/contracts/policy/retention-policy.schema.json",
+        ]
+        paths.extend(
+            f"packages/contracts/src/securecode_ai/contracts/schemas/v0.2.0/{name}"
+            for name in sorted(public_names)
+        )
+        for relative in paths:
+            try:
+                data = self._read(relative)
+                document = _mapping(strict_json_loads(data, self.limits), "SCHEMA_ROOT")
+                public = relative.startswith("packages/")
+                self.diagnostics.extend(
+                    f"{code}:{PurePosixPath(relative).name}"
+                    for code in schema_document_errors(
+                        document, known_formats=known_formats, public=public
+                    )
+                )
+                if public:
+                    expected_hash = public_hashes.get(PurePosixPath(relative).name)
+                    if hashlib.sha256(data).hexdigest() != expected_hash:
+                        self.diagnostics.add(f"PUBLIC_SCHEMA_DRIFT:{PurePosixPath(relative).name}")
+                    rules = document.get("x-securecode-semantic-rules")
+                    if not isinstance(rules, list) or any(
+                        rule not in definitions for rule in rules
+                    ):
+                        self.diagnostics.add(f"SCHEMA_SEMANTIC_RULE:{PurePosixPath(relative).name}")
+                schema_documents[relative] = document
+            except GateInputError as error:
+                self.diagnostics.add(f"SCHEMA_{error.code}:{PurePosixPath(relative).name}")
+        self._validate_examples(schema_documents, known_formats)
+
+    def _validate_examples(
+        self, schemas: Mapping[str, Mapping[str, object]], known_formats: frozenset[str]
+    ) -> None:
+        indexes = (
+            "specs/contracts/policy/fixtures.yaml",
+            "specs/contracts/provider-profile.fixtures.yaml",
+        )
+        case_ids: set[str] = set()
+        instance_paths: set[str] = set()
+        for index_path in indexes:
+            index = _mapping(self._load(index_path), "EXAMPLE_INDEX")
+            base = PurePosixPath(index_path).parent
+            default_schema = index.get("schema")
+            for raw_case in _sequence(index.get("cases"), "EXAMPLE_CASES"):
+                case = _mapping(raw_case, "EXAMPLE_CASE")
+                case_id = case.get("id")
+                instance = case.get("instance")
+                schema_name = case.get("schema", default_schema)
+                expectation = case.get("expect")
+                if not isinstance(case_id, str) or case_id in case_ids:
+                    self.diagnostics.add("EXAMPLE_DUPLICATE_ID")
+                    continue
+                case_ids.add(case_id)
+                if not isinstance(instance, str) or not isinstance(schema_name, str):
+                    self.diagnostics.add(f"EXAMPLE_FIELDS:{case_id}")
+                    continue
+                instance_path = (base / instance).as_posix()
+                schema_path = (base / schema_name).as_posix()
+                if instance_path in instance_paths:
+                    self.diagnostics.add(f"EXAMPLE_DUPLICATE_INSTANCE:{case_id}")
+                instance_paths.add(instance_path)
+                try:
+                    payload = strict_json_loads(self._read(instance_path), self.limits)
+                    schema = schemas[schema_path]
+                    valid = not list(_schema_validator(schema, known_formats).iter_errors(payload))
+                    if expectation not in {"valid", "invalid"} or valid != (expectation == "valid"):
+                        self.diagnostics.add(f"EXAMPLE_EXPECTATION:{case_id}")
+                except (GateInputError, KeyError):
+                    self.diagnostics.add(f"EXAMPLE_VALIDATION:{case_id}")
+        indexed_roots = (
+            self.root / "specs" / "contracts" / "policy" / "fixtures",
+            self.root / "specs" / "contracts" / "provider-fixtures",
+        )
+        discovered = {
+            path.relative_to(self.root).as_posix()
+            for root in indexed_roots
+            for path in root.glob("*.json")
+            if path.is_file() and not path.is_symlink()
+        }
+        if discovered != instance_paths:
+            self.diagnostics.add("EXAMPLE_INSTANCE_INVENTORY")
+
+    def validate_snapshot(self) -> tuple[str, ...]:
+        try:
+            _, paths = self._baseline()
+            definitions = self._validate_normative(paths)
+            self._validate_traceability(definitions)
+            self._validate_schemas(definitions)
+            packet_hash = hashlib.sha256(self._read("work/task-packets/P1.13.yaml")).hexdigest()
+            expected_packet = self.policy.get("bootstrap_packet_sha256")
+            if packet_hash != expected_packet:
+                self.diagnostics.add("BOOTSTRAP_PACKET_DRIFT")
+        except GateInputError as error:
+            self.diagnostics.add(error.code)
+        return self.diagnostics.sorted()
+
+    def _diff_records(
+        self, mode: str, base: str, candidate: str | None
+    ) -> tuple[tuple[str, ...], ...]:
+        if mode == "index-candidate":
+            raw = git_bytes(self.root, "diff", "--cached", "--name-status", "-z", "-M", "-C", base)
+        else:
+            if candidate is None:
+                raise GateInputError("CANDIDATE_REQUIRED")
+            raw = git_bytes(
+                self.root, "diff", "--name-status", "-z", "-M", "-C", f"{base}..{candidate}"
+            )
+        return parse_name_status(raw, maximum_paths=self.limits.git_paths)
+
+    def _diff_lines(self, mode: str, base: str, candidate: str | None) -> int:
+        if mode == "index-candidate":
+            raw = git_bytes(self.root, "diff", "--cached", "--numstat", "-z", base)
+        else:
+            if candidate is None:
+                raise GateInputError("CANDIDATE_REQUIRED")
+            raw = git_bytes(self.root, "diff", "--numstat", "-z", f"{base}..{candidate}")
+        total = 0
+        for record in raw.split(b"\0"):
+            if not record:
+                continue
+            fields = record.split(b"\t", 2)
+            if len(fields) != 3:
+                raise GateInputError("GIT_NUMSTAT")
+            for field_value in fields[:2]:
+                if field_value == b"-" or not field_value.isdigit():
+                    raise GateInputError("GIT_BINARY_OR_NUMSTAT")
+                total += int(field_value)
+        return total
+
+    def _candidate_file(self, mode: str, candidate: str | None, path: str) -> bytes:
+        if mode == "index-candidate":
+            return git_bytes(self.root, "cat-file", "blob", f":{path}")
+        if candidate is None:
+            raise GateInputError("CANDIDATE_REQUIRED")
+        return _git_blob(self.root, candidate, path)
+
+    def _base_file(self, base: str, path: str) -> bytes:
+        return _git_blob(self.root, base, path)
+
+    def _validate_git_modes(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        records: Sequence[Sequence[str]],
+    ) -> None:
+        def validate_entry(revision: str | None, path: str) -> None:
+            arguments = (
+                ("ls-files", "--stage", "-z", "--", path)
+                if revision is None
+                else ("ls-tree", "-z", revision, "--", path)
+            )
+            raw = git_bytes(self.root, *arguments)
+            entries = [entry for entry in raw.split(b"\0") if entry]
+            if len(entries) != 1:
+                raise GateInputError("GIT_FILE_MODE_RECORD")
+            try:
+                metadata = entries[0].split(b"\t", 1)[0].decode("ascii", "strict")
+            except (UnicodeDecodeError, ValueError) as error:
+                raise GateInputError("GIT_FILE_MODE_RECORD") from error
+            fields = metadata.split()
+            if len(fields) != 3:
+                raise GateInputError("GIT_FILE_MODE_RECORD")
+            mode_value, middle, final = fields
+            if mode_value not in {"100644", "100755"}:
+                raise GateInputError("GIT_FILE_MODE")
+            object_id = middle if revision is None else final
+            if revision is None:
+                if final != "0":
+                    raise GateInputError("GIT_INDEX_STAGE")
+            elif middle != "blob":
+                raise GateInputError("GIT_FILE_MODE")
+            if not SHA1_PATTERN.fullmatch(object_id) or object_id == "0" * 40:
+                raise GateInputError("GIT_OBJECT_ID")
+
+        candidate_revision = None if mode == "index-candidate" else candidate
+        for record in records:
+            status = record[0][0]
+            if status in {"D", "R", "C"}:
+                validate_entry(base, record[1])
+            if status in {"A", "M", "R", "C"}:
+                validate_entry(candidate_revision, record[-1])
+
+    def _candidate_documents(
+        self, mode: str, candidate: str | None, paths: Iterable[str]
+    ) -> dict[str, bytes]:
+        return {path: self._candidate_file(mode, candidate, path) for path in sorted(set(paths))}
+
+    def _completion_errors(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        attestation_path: str,
+        changed: tuple[str, ...],
+        diff_lines: int,
+        records: Sequence[Sequence[str]],
+    ) -> tuple[str, ...]:
+        errors: set[str] = set()
+        try:
+            value = strict_json_loads(
+                self._candidate_file(mode, candidate, attestation_path), self.limits
+            )
+            errors.update(
+                validate_completion_attestation(value, policy=self.policy, actual_paths=changed)
+            )
+            attestation = _mapping(value, "ATTESTATION_ROOT")
+            task_id = attestation.get("task_id")
+            if not isinstance(task_id, str) or not TASK_ID_PATTERN.fullmatch(task_id):
+                raise GateInputError("ATTESTATION_TASK")
+            if attestation_path != f"work/task-attestations/{task_id}.json":
+                errors.add("ATTESTATION_FILENAME")
+            if attestation.get("starting_commit_sha") != base:
+                errors.add("ATTESTATION_BASE")
+            if diff_lines > 800:
+                errors.add("ATTESTATION_ACTUAL_BUDGET")
+            closed_paths = {
+                attestation_path,
+                "README.md",
+                "CHANGELOG.md",
+                "docs/PLAN.md",
+                "docs/CONTEXT.md",
+            }
+            if not set(changed).issubset(closed_paths) or "docs/PLAN.md" not in changed:
+                errors.add("ATTESTATION_CLOSED_PATHS")
+            added_attestations = [
+                record[1]
+                for record in records
+                if record[0] == "A" and record[1].startswith("work/task-attestations/")
+            ]
+            if added_attestations != [attestation_path]:
+                errors.add("ATTESTATION_ADDITION")
+
+            base_plan = self._base_file(base, "docs/PLAN.md")
+            candidate_plan = self._candidate_file(mode, candidate, "docs/PLAN.md")
+            base_text = _text_from_bytes(base_plan, kind="MARKDOWN")
+            candidate_text = _text_from_bytes(candidate_plan, kind="MARKDOWN")
+            base_matches = [
+                match
+                for match in TASK_ROW_PATTERN.finditer(base_text)
+                if match.group("id") == task_id
+            ]
+            candidate_matches = [
+                match
+                for match in TASK_ROW_PATTERN.finditer(candidate_text)
+                if match.group("id") == task_id
+            ]
+            if len(base_matches) != 1 or len(candidate_matches) != 1:
+                errors.add("ATTESTATION_PLAN_TASK")
+            else:
+                base_match = base_matches[0]
+                candidate_match = candidate_matches[0]
+                if base_match.group("status") not in {"TODO", "IN PROGRESS"}:
+                    errors.add("ATTESTATION_BASE_STATUS")
+                expected_text = (
+                    base_text[: base_match.start("status")]
+                    + "DONE"
+                    + base_text[base_match.end("status") :]
+                )
+                if candidate_match.group("status") != "DONE" or candidate_text != expected_text:
+                    errors.add("ATTESTATION_STATUS_TRANSITION")
+
+            packet_path = f"work/task-packets/{task_id}.yaml"
+            packet_bytes = self._base_file(base, packet_path)
+            if hashlib.sha256(packet_bytes).hexdigest() != attestation.get("packet_sha256"):
+                errors.add("ATTESTATION_PACKET_HASH")
+            packet = _mapping(strict_yaml_loads(packet_bytes, self.limits), "PACKET_ROOT")
+            packet_task = _mapping(packet.get("task"), "PACKET_TASK")
+            authority = _mapping(self.policy.get("baseline"), "POLICY_BASELINE")
+            if packet_task.get("id") != task_id or any(
+                packet_task.get(name) != authority.get(name)
+                for name in ("baseline_id", "baseline_content_sha256", "baseline_commit_sha")
+            ):
+                errors.add("ATTESTATION_PACKET_AUTHORITY")
+            implementation = attestation.get("implementation_commit_sha")
+            if not isinstance(implementation, str) or not SHA1_PATTERN.fullmatch(implementation):
+                raise GateInputError("ATTESTATION_IMPLEMENTATION_COMMIT")
+            git_bytes(self.root, "merge-base", "--is-ancestor", implementation, base)
+            additions = git_text(
+                self.root,
+                "log",
+                "--diff-filter=A",
+                "--format=%H",
+                base,
+                "--",
+                packet_path,
+            ).splitlines()
+            if (
+                additions != [implementation]
+                or _git_blob(self.root, implementation, packet_path) != packet_bytes
+            ):
+                errors.add("ATTESTATION_PACKET_PROVENANCE")
+
+            refs = _sequence(attestation.get("evidence_refs"), "ATTESTATION_EVIDENCE")
+            external_identities: set[tuple[str, str]] = set()
+            github_policy: Mapping[str, object] | None = None
+            if task_id == "P1.4":
+                github_policy = _mapping(
+                    self.policy.get("github_repository_authority"),
+                    "POLICY_GITHUB_REPOSITORY_AUTHORITY",
+                )
+                _strict_keys(
+                    github_policy,
+                    {"provider", "identity_format", "source", "variable", "evidence_uri_kinds"},
+                    "POLICY_GITHUB_REPOSITORY_AUTHORITY_KEYS",
+                )
+                kinds = _mapping(
+                    github_policy.get("evidence_uri_kinds"),
+                    "POLICY_GITHUB_EVIDENCE_KINDS",
+                )
+                if (
+                    github_policy.get("provider") != "github"
+                    or github_policy.get("identity_format") != "owner/repository"
+                    or github_policy.get("source") != "github_actions_default_environment"
+                    or github_policy.get("variable") != "GITHUB_REPOSITORY"
+                    or kinds
+                    != {
+                        "github_ruleset_required_check": "api_ruleset",
+                        "github_failing_pr_merge_block": "actions_run",
+                    }
+                ):
+                    raise GateInputError("POLICY_GITHUB_EVIDENCE")
+                if self.github_repository is None:
+                    errors.add("ATTESTATION_EXTERNAL_REPOSITORY_AUTHORITY")
+            for raw_ref in refs:
+                ref = _mapping(raw_ref, "ATTESTATION_EVIDENCE_REF")
+                ref_type = ref.get("type")
+                source = ref.get("source")
+                content_hash = ref.get("content_sha256")
+                if (
+                    not isinstance(ref_type, str)
+                    or not isinstance(source, str)
+                    or not isinstance(content_hash, str)
+                ):
+                    continue
+                if task_id == "P1.4":
+                    identity = github_evidence_identity(source, ref_type)
+                    if identity is None:
+                        errors.add("ATTESTATION_EXTERNAL_AUTHORITY")
+                    else:
+                        external_identities.add(identity)
+                        if identity != self.github_repository:
+                            errors.add("ATTESTATION_EXTERNAL_REPOSITORY")
+                else:
+                    try:
+                        normalized = normalize_repo_path(source)
+                        if normalized in changed:
+                            raise GateInputError("ATTESTATION_EVIDENCE_MUTABLE")
+                        evidence = self._base_file(base, normalized)
+                        if hashlib.sha256(evidence).hexdigest() != content_hash:
+                            errors.add("ATTESTATION_EVIDENCE_CONTENT")
+                    except GateInputError:
+                        errors.add("ATTESTATION_EVIDENCE_AUTHORITY")
+            if task_id == "P1.4" and len(external_identities) != 1:
+                errors.add("ATTESTATION_EXTERNAL_REPOSITORY")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
+
+    def _historical_completion_errors(self, base: str, task_id: str) -> tuple[str, ...]:
+        attestation_path = f"work/task-attestations/{task_id}.json"
+        try:
+            self._base_file(base, attestation_path)
+            additions = git_text(
+                self.root,
+                "log",
+                "--diff-filter=A",
+                "--format=%H",
+                base,
+                "--",
+                attestation_path,
+            ).splitlines()
+            if len(additions) != 1:
+                raise GateInputError("ATTESTATION_HISTORICAL_PROVENANCE")
+            commit = additions[0]
+            parent = self._single_parent(commit)
+            records = self._diff_records("committed-candidate", parent, commit)
+            return self._completion_errors(
+                "committed-candidate",
+                base=parent,
+                candidate=commit,
+                attestation_path=attestation_path,
+                changed=changed_paths(records),
+                diff_lines=self._diff_lines("committed-candidate", parent, commit),
+                records=records,
+            )
+        except GateInputError as error:
+            return (error.code,)
+
+    def _base_gate_decision(self, base: str) -> str | None:
+        path = "artifacts/gates/G1/decision.md"
+        names = git_text(self.root, "ls-tree", "--name-only", base, "--", path).splitlines()
+        if not names:
+            return None
+        if names != [path]:
+            raise GateInputError("GATE_BASE_DECISION")
+        document = _text_from_bytes(self._base_file(base, path), kind="MARKDOWN")
+        decisions = re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", document)
+        if len(decisions) != 1:
+            raise GateInputError("GATE_BASE_DECISION")
+        return cast(str, decisions[0])
+
+    def _proposal_errors(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        packet_path: str,
+        changed: tuple[str, ...],
+        diff_lines: int,
+    ) -> tuple[str, ...]:
+        errors: set[str] = set()
+        try:
+            if self._base_gate_decision(base) == "GO":
+                raise GateInputError("CHANGE_PACKET_GATE_IMMUTABLE")
+            packet = _mapping(
+                strict_yaml_loads(self._candidate_file(mode, candidate, packet_path), self.limits),
+                "CHANGE_PACKET_ROOT",
+            )
+            expected_keys = {
+                "schema_version",
+                "change_type",
+                "change_id",
+                "starting_commit_sha",
+                "protected_class",
+                "gate_id",
+                "decision",
+                "evidence_bundle_sha256",
+                "review_subject_sha256",
+                "allowed_paths",
+                "budgets",
+            }
+            _strict_keys(packet, expected_keys, "CHANGE_PACKET_KEYS")
+            change_id = packet.get("change_id")
+            gate_id = packet.get("gate_id")
+            decision = packet.get("decision")
+            if (
+                packet.get("schema_version") != "1.0.0"
+                or packet.get("change_type") != "spec"
+                or packet.get("protected_class") != "gate_evidence"
+            ):
+                errors.add("CHANGE_PACKET_IDENTITY")
+            if (
+                not isinstance(change_id, str)
+                or not re.fullmatch(r"CR-[0-9]{3}", change_id)
+                or packet_path != f"work/change-control/{change_id}.yaml"
+            ):
+                errors.add("CHANGE_PACKET_FILENAME")
+            if packet.get("starting_commit_sha") != base:
+                errors.add("CHANGE_PACKET_BASE")
+            if gate_id != "G1" or decision not in {"NO-GO", "GO-PROPOSED"}:
+                errors.add("CHANGE_PACKET_GATE_DECISION")
+            gate_policy = _mapping(
+                _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
+                "POLICY_G1",
+            )
+            evidence_files = tuple(
+                f"artifacts/gates/G1/{path}"
+                for path in _strings(gate_policy.get("evidence_files"), "POLICY_GATE_EVIDENCE")
+            )
+            allowed = _strings(packet.get("allowed_paths"), "CHANGE_PACKET_PATHS")
+            if tuple(sorted(allowed)) != changed or len(set(allowed)) != len(allowed):
+                errors.add("CHANGE_PACKET_PATH_SET")
+            closed_allowed = {
+                packet_path,
+                *evidence_files,
+                "artifacts/gates/G1/promotion-manifest.json",
+                "CHANGELOG.md",
+                "docs/DECISIONS.md",
+                "docs/CONTEXT.md",
+            }
+            required_changed = {
+                packet_path,
+                "artifacts/gates/G1/decision.md",
+                "CHANGELOG.md",
+                "docs/DECISIONS.md",
+            }
+            if not set(changed).issubset(closed_allowed) or not required_changed.issubset(changed):
+                errors.add("CHANGE_PACKET_CLOSED_PATHS")
+            budgets = _mapping(packet.get("budgets"), "CHANGE_PACKET_BUDGETS")
+            if budgets != {"max_changed_files": 11, "max_diff_lines": 3000}:
+                errors.add("CHANGE_PACKET_BUDGETS")
+            if len(changed) > 11 or diff_lines > 3000:
+                errors.add("CHANGE_PACKET_ACTUAL_BUDGET")
+            documents = self._candidate_documents(mode, candidate, changed)
+            if isinstance(change_id, str):
+                for path in ("CHANGELOG.md", "docs/DECISIONS.md"):
+                    if (
+                        documents.get(path, b"").count(change_id.encode()) != 1
+                        or self._base_file(base, path).count(change_id.encode()) != 0
+                    ):
+                        errors.add("CHANGE_PACKET_CR_ADR")
+            evidence_documents = self._candidate_documents(mode, candidate, evidence_files)
+            evidence_hash = length_prefixed_digest(evidence_documents)
+            if packet.get("evidence_bundle_sha256") != evidence_hash:
+                errors.add("CHANGE_PACKET_EVIDENCE_HASH")
+            stored_review_hash = packet.get("review_subject_sha256")
+            if (
+                not isinstance(stored_review_hash, str)
+                or canonical_review_subject(
+                    documents,
+                    packet_path=packet_path,
+                    stored_hash=stored_review_hash,
+                )
+                != stored_review_hash
+            ):
+                errors.add("CHANGE_PACKET_REVIEW_HASH")
+            checklist = _text_from_bytes(
+                evidence_documents["artifacts/gates/G1/checklist.md"], kind="MARKDOWN"
+            )
+            expected_criteria = _strings(gate_policy.get("checklist_ids"), "POLICY_GATE_CRITERIA")
+            observed_criteria: list[tuple[str, str]] = []
+            for line in checklist.splitlines():
+                match = re.fullmatch(r"- `([a-z][a-z0-9_]*)`: `(PASS|FAIL)`", line)
+                if match:
+                    observed_criteria.append((match.group(1), match.group(2)))
+            if tuple(item[0] for item in observed_criteria) != expected_criteria:
+                errors.add("CHANGE_PACKET_CHECKLIST_IDS")
+            if decision == "GO-PROPOSED" and any(
+                result != "PASS" for _, result in observed_criteria
+            ):
+                errors.add("CHANGE_PACKET_CHECKLIST_RESULT")
+            decision_text = _text_from_bytes(
+                evidence_documents["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+            )
+            decision_rows = re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", decision_text)
+            if decision_rows != [decision]:
+                errors.add("CHANGE_PACKET_DECISION_BYTES")
+            if decision == "GO-PROPOSED":
+                prerequisites = _strings(
+                    gate_policy.get("prerequisite_tasks"), "POLICY_GATE_PREREQUISITES"
+                )
+                statuses = task_statuses(self._base_file(base, "docs/PLAN.md"))
+                if any(statuses.get(task_id) != "DONE" for task_id in prerequisites):
+                    errors.add("CHANGE_PACKET_PREREQUISITES")
+                for task_id in prerequisites:
+                    task_packet_path = f"work/task-packets/{task_id}.yaml"
+                    self._base_file(base, task_packet_path)
+                    additions = git_text(
+                        self.root,
+                        "log",
+                        "--diff-filter=A",
+                        "--format=%H",
+                        base,
+                        "--",
+                        task_packet_path,
+                    ).splitlines()
+                    if len(additions) != 1:
+                        errors.add("CHANGE_PACKET_PREREQUISITE_RECORD")
+                for task_id in ("P1.4", "P1.13"):
+                    if self._historical_completion_errors(base, task_id):
+                        errors.add("CHANGE_PACKET_COMPLETION_RECORD")
+                promotion_paths = _strings(
+                    gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"
+                )
+                promotion_base_documents = self._candidate_documents(
+                    mode, candidate, promotion_paths
+                )
+                manifest = strict_json_loads(
+                    self._candidate_file(
+                        mode, candidate, "artifacts/gates/G1/promotion-manifest.json"
+                    ),
+                    self.limits,
+                )
+                decoded = _promotion_manifest_errors(
+                    manifest,
+                    gate_id="G1",
+                    policy_paths=promotion_paths,
+                    base_documents=promotion_base_documents,
+                )
+                manifest_map = _mapping(manifest, "PROMOTION_MANIFEST_ROOT")
+                if manifest_map.get("evidence_bundle_sha256") != evidence_hash:
+                    errors.add("PROMOTION_MANIFEST_EVIDENCE_HASH")
+                final_documents = dict(decoded)
+                final_decision = _text_from_bytes(
+                    final_documents["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+                )
+                if re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", final_decision) != ["GO"]:
+                    errors.add("PROMOTION_MANIFEST_DECISION")
+                if task_statuses(final_documents["docs/PLAN.md"]) != statuses:
+                    errors.add("PROMOTION_MANIFEST_TASK_STATUS")
+            elif "artifacts/gates/G1/promotion-manifest.json" in changed:
+                errors.add("CHANGE_PACKET_NO_GO_MANIFEST")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
+
+    def _reviewed_proposal(
+        self, revision: str, review_hash: str
+    ) -> tuple[Mapping[str, object], Mapping[str, object]]:
+        names = git_text(
+            self.root,
+            "ls-tree",
+            "-r",
+            "--name-only",
+            revision,
+            "--",
+            "work/change-control",
+        ).splitlines()
+        matches: list[tuple[str, Mapping[str, object]]] = []
+        for path in names:
+            if not re.fullmatch(r"work/change-control/CR-[0-9]{3}\.yaml", path):
+                continue
+            packet = _mapping(
+                strict_yaml_loads(_git_blob(self.root, revision, path), self.limits),
+                "CHANGE_PACKET_ROOT",
+            )
+            if (
+                packet.get("change_type") == "spec"
+                and packet.get("gate_id") == "G1"
+                and packet.get("decision") == "GO-PROPOSED"
+                and packet.get("review_subject_sha256") == review_hash
+            ):
+                matches.append((path, packet))
+        if len(matches) != 1:
+            raise GateInputError("REVIEW_PROPOSAL_PACKET")
+        packet_path, packet = matches[0]
+        starting_base = packet.get("starting_commit_sha")
+        if not isinstance(starting_base, str) or not SHA1_PATTERN.fullmatch(starting_base):
+            raise GateInputError("REVIEW_PROPOSAL_BASE")
+        git_bytes(self.root, "merge-base", "--is-ancestor", starting_base, revision)
+        additions = git_text(
+            self.root,
+            "log",
+            "--diff-filter=A",
+            "--format=%H",
+            revision,
+            "--",
+            packet_path,
+        ).splitlines()
+        if additions != [revision]:
+            raise GateInputError("REVIEW_PROPOSAL_PROVENANCE")
+        records = self._diff_records("committed-candidate", starting_base, revision)
+        self._validate_git_modes(
+            "committed-candidate",
+            base=starting_base,
+            candidate=revision,
+            records=records,
+        )
+        changed = changed_paths(records)
+        if tuple(sorted(_strings(packet.get("allowed_paths"), "CHANGE_PACKET_PATHS"))) != changed:
+            raise GateInputError("REVIEW_PROPOSAL_PATHS")
+        proposal_errors = self._proposal_errors(
+            "committed-candidate",
+            base=starting_base,
+            candidate=revision,
+            packet_path=packet_path,
+            changed=changed,
+            diff_lines=self._diff_lines("committed-candidate", starting_base, revision),
+        )
+        if proposal_errors:
+            raise GateInputError("REVIEW_PROPOSAL_INVALID")
+        manifest = _mapping(
+            strict_json_loads(
+                _git_blob(self.root, revision, "artifacts/gates/G1/promotion-manifest.json"),
+                self.limits,
+            ),
+            "PROMOTION_MANIFEST_ROOT",
+        )
+        return packet, manifest
+
+    def _review_errors(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        changed: tuple[str, ...],
+        diff_lines: int,
+        records: Sequence[Sequence[str]],
+    ) -> tuple[str, ...]:
+        errors: set[str] = set()
+        try:
+            if self._base_gate_decision(base) == "GO":
+                raise GateInputError("REVIEW_GATE_IMMUTABLE")
+            if (
+                len(changed) != 2
+                or diff_lines > 800
+                or not all(path.startswith("work/change-control/reviews/G1/") for path in changed)
+            ):
+                raise GateInputError("REVIEW_PATH_BUDGET")
+            if any(record[0] != "A" for record in records):
+                raise GateInputError("REVIEW_IMMUTABLE_ADDITION")
+            json_paths = [path for path in changed if path.endswith(".json")]
+            markdown_paths = [path for path in changed if path.endswith(".md")]
+            if len(json_paths) != 1 or len(markdown_paths) != 1:
+                raise GateInputError("REVIEW_FILE_SET")
+            receipt_path = json_paths[0]
+            note_path = markdown_paths[0]
+            receipt = _mapping(
+                strict_json_loads(self._candidate_file(mode, candidate, receipt_path), self.limits),
+                "REVIEW_ROOT",
+            )
+            expected_keys = {
+                "schema_version",
+                "change_type",
+                "gate_id",
+                "role",
+                "reviewer_identity",
+                "reviewed_commit_sha",
+                "evidence_bundle_sha256",
+                "review_subject_sha256",
+                "promotion_subject_sha256",
+                "verdict",
+                "source_ref",
+                "source_ref_sha256",
+            }
+            _strict_keys(receipt, expected_keys, "REVIEW_KEYS")
+            role = receipt.get("role")
+            reviewed = receipt.get("reviewed_commit_sha")
+            review_hash = receipt.get("review_subject_sha256")
+            reviewer_identity = receipt.get("reviewer_identity")
+            if (
+                receipt.get("schema_version") != "1.0.0"
+                or receipt.get("change_type") != "independent_review"
+                or receipt.get("gate_id") != "G1"
+                or role not in {"product_scope", "architecture_contracts", "security_evaluation"}
+                or receipt.get("verdict") not in {"PASS", "BLOCK"}
+                or not isinstance(reviewer_identity, str)
+                or not 1 <= len(reviewer_identity.encode("utf-8")) <= 256
+                or any(
+                    character.isspace() and character not in {" ", "\t"}
+                    for character in reviewer_identity
+                )
+            ):
+                errors.add("REVIEW_IDENTITY")
+            if not isinstance(reviewed, str) or not SHA1_PATTERN.fullmatch(reviewed):
+                raise GateInputError("REVIEW_COMMIT")
+            git_bytes(self.root, "merge-base", "--is-ancestor", reviewed, base)
+            if not isinstance(review_hash, str) or not SHA256_PATTERN.fullmatch(review_hash):
+                raise GateInputError("REVIEW_SUBJECT_HASH")
+            directory = f"work/change-control/reviews/G1/{role}-{review_hash}"
+            if receipt_path != f"{directory}/receipt.json" or note_path != f"{directory}/review.md":
+                errors.add("REVIEW_DIRECTORY")
+            if receipt.get("source_ref") != note_path:
+                errors.add("REVIEW_SOURCE_PATH")
+            note = self._candidate_file(mode, candidate, note_path)
+            if len(note) > 65536:
+                errors.add("REVIEW_SOURCE_BYTES")
+            note_text = _text_from_bytes(note, kind="MARKDOWN")
+            if (
+                "```" in note_text
+                or "~~~" in note_text
+                or any(len(line.encode("utf-8")) > 512 for line in note_text.splitlines())
+                or re.search(r"(?m)(?:[A-Za-z]:\\|^/[^ /])", note_text)
+            ):
+                errors.add("REVIEW_SOURCE_CONTENT")
+            if hashlib.sha256(note).hexdigest() != receipt.get("source_ref_sha256"):
+                errors.add("REVIEW_SOURCE_HASH")
+            existing = git_text(
+                self.root,
+                "ls-tree",
+                "-r",
+                "--name-only",
+                base,
+                "--",
+                directory,
+            ).splitlines()
+            if existing:
+                errors.add("REVIEW_DUPLICATE_ROLE")
+            proposal, manifest = self._reviewed_proposal(reviewed, review_hash)
+            if manifest.get("evidence_bundle_sha256") != receipt.get("evidence_bundle_sha256"):
+                errors.add("REVIEW_EVIDENCE_HASH")
+            if manifest.get("promotion_subject_sha256") != receipt.get("promotion_subject_sha256"):
+                errors.add("REVIEW_PROMOTION_HASH")
+            if proposal.get("review_subject_sha256") != review_hash:
+                errors.add("REVIEW_SUBJECT_HASH")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
+
+    def _single_parent(self, commit: str) -> str:
+        fields = git_text(self.root, "rev-list", "--parents", "-n", "1", commit).split()
+        if len(fields) != 2 or fields[0] != commit:
+            raise GateInputError("COMMIT_SINGLE_PARENT")
+        return fields[1]
+
+    def _promotion_errors(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        changed: tuple[str, ...],
+        diff_lines: int,
+    ) -> tuple[str, ...]:
+        errors: set[str] = set()
+        try:
+            gate_policy = _mapping(
+                _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
+                "POLICY_G1",
+            )
+            promotion_paths = _strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS")
+            if changed != tuple(sorted(promotion_paths)) or diff_lines > 400:
+                raise GateInputError("PROMOTION_PATH_BUDGET")
+            manifest = _mapping(
+                strict_json_loads(
+                    self._base_file(base, "artifacts/gates/G1/promotion-manifest.json"),
+                    self.limits,
+                ),
+                "PROMOTION_MANIFEST_ROOT",
+            )
+            base_documents = {path: self._base_file(base, path) for path in promotion_paths}
+            decoded = dict(
+                _promotion_manifest_errors(
+                    manifest,
+                    gate_id="G1",
+                    policy_paths=promotion_paths,
+                    base_documents=base_documents,
+                )
+            )
+            actual = self._candidate_documents(mode, candidate, changed)
+            if actual != decoded:
+                errors.add("PROMOTION_FINAL_BYTES")
+            if length_prefixed_digest(actual) != manifest.get("promotion_subject_sha256"):
+                errors.add("PROMOTION_SUBJECT_HASH")
+            evidence_files = tuple(
+                f"artifacts/gates/G1/{path}"
+                for path in _strings(gate_policy.get("evidence_files"), "POLICY_GATE_EVIDENCE")
+            )
+            evidence_documents = {path: self._base_file(base, path) for path in evidence_files}
+            if length_prefixed_digest(evidence_documents) != manifest.get("evidence_bundle_sha256"):
+                errors.add("PROMOTION_EVIDENCE_HASH")
+            checklist = _text_from_bytes(
+                evidence_documents["artifacts/gates/G1/checklist.md"], kind="MARKDOWN"
+            )
+            observed = [
+                match.groups()
+                for line in checklist.splitlines()
+                if (match := re.fullmatch(r"- `([a-z][a-z0-9_]*)`: `(PASS|FAIL)`", line))
+            ]
+            expected_criteria = _strings(gate_policy.get("checklist_ids"), "POLICY_GATE_CRITERIA")
+            if tuple(name for name, _ in observed) != expected_criteria or any(
+                result != "PASS" for _, result in observed
+            ):
+                errors.add("PROMOTION_CHECKLIST")
+            base_decision = _text_from_bytes(
+                evidence_documents["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+            )
+            final_decision = _text_from_bytes(
+                actual["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+            )
+            if re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", base_decision) != [
+                "GO-PROPOSED"
+            ] or re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", final_decision) != ["GO"]:
+                errors.add("PROMOTION_DECISION")
+            prerequisites = _strings(
+                gate_policy.get("prerequisite_tasks"), "POLICY_GATE_PREREQUISITES"
+            )
+            base_statuses = task_statuses(self._base_file(base, "docs/PLAN.md"))
+            if any(base_statuses.get(task_id) != "DONE" for task_id in prerequisites):
+                errors.add("PROMOTION_PREREQUISITES")
+            if task_statuses(actual["docs/PLAN.md"]) != base_statuses:
+                errors.add("PROMOTION_TASK_STATUS")
+            review_paths = git_text(
+                self.root,
+                "ls-tree",
+                "-r",
+                "--name-only",
+                base,
+                "--",
+                "work/change-control/reviews/G1",
+            ).splitlines()
+            receipts: list[tuple[str, Mapping[str, object]]] = []
+            commits: set[str] = set()
+            for path in review_paths:
+                if not path.endswith(".json"):
+                    continue
+                receipt = _mapping(
+                    strict_json_loads(self._base_file(base, path), self.limits), "REVIEW_ROOT"
+                )
+                _strict_keys(
+                    receipt,
+                    {
+                        "schema_version",
+                        "change_type",
+                        "gate_id",
+                        "role",
+                        "reviewer_identity",
+                        "reviewed_commit_sha",
+                        "evidence_bundle_sha256",
+                        "review_subject_sha256",
+                        "promotion_subject_sha256",
+                        "verdict",
+                        "source_ref",
+                        "source_ref_sha256",
+                    },
+                    "PROMOTION_RECEIPT_KEYS",
+                )
+                if receipt.get("promotion_subject_sha256") != manifest.get(
+                    "promotion_subject_sha256"
+                ) or receipt.get("evidence_bundle_sha256") != manifest.get(
+                    "evidence_bundle_sha256"
+                ):
+                    continue
+                receipts.append((path, receipt))
+                commit_lines = git_text(
+                    self.root,
+                    "log",
+                    "--diff-filter=A",
+                    "--format=%H",
+                    base,
+                    "--",
+                    path,
+                ).splitlines()
+                if len(commit_lines) != 1:
+                    errors.add("PROMOTION_RECEIPT_PROVENANCE")
+                else:
+                    receipt_commit = commit_lines[0]
+                    commits.add(receipt_commit)
+                    receipt_base = self._single_parent(receipt_commit)
+                    receipt_records = self._diff_records(
+                        "committed-candidate", receipt_base, receipt_commit
+                    )
+                    retrospective = self._review_errors(
+                        "committed-candidate",
+                        base=receipt_base,
+                        candidate=receipt_commit,
+                        changed=changed_paths(receipt_records),
+                        diff_lines=self._diff_lines(
+                            "committed-candidate", receipt_base, receipt_commit
+                        ),
+                        records=receipt_records,
+                    )
+                    if retrospective:
+                        errors.add("PROMOTION_RECEIPT_INVALID")
+            roles = {receipt.get("role") for _, receipt in receipts}
+            if roles != {"product_scope", "architecture_contracts", "security_evaluation"}:
+                errors.add("PROMOTION_RECEIPT_ROLES")
+            if len(receipts) != 3 or len(commits) != 3:
+                errors.add("PROMOTION_RECEIPT_SEPARATION")
+            reviewed_commits = {receipt.get("reviewed_commit_sha") for _, receipt in receipts}
+            review_hashes = {receipt.get("review_subject_sha256") for _, receipt in receipts}
+            if len(reviewed_commits) != 1 or len(review_hashes) != 1:
+                errors.add("PROMOTION_RECEIPT_SUBJECT")
+            for path, receipt in receipts:
+                if receipt.get("verdict") != "PASS":
+                    errors.add("PROMOTION_RECEIPT_VERDICT")
+                role = receipt.get("role")
+                review_hash = receipt.get("review_subject_sha256")
+                expected_directory = f"work/change-control/reviews/G1/{role}-{review_hash}"
+                if path != f"{expected_directory}/receipt.json":
+                    errors.add("PROMOTION_RECEIPT_PATH")
+                note_path = receipt.get("source_ref")
+                if not isinstance(note_path, str) or note_path != f"{expected_directory}/review.md":
+                    errors.add("PROMOTION_RECEIPT_SOURCE")
+                else:
+                    note = self._base_file(base, note_path)
+                    if hashlib.sha256(note).hexdigest() != receipt.get("source_ref_sha256"):
+                        errors.add("PROMOTION_RECEIPT_SOURCE")
+            if (
+                len(reviewed_commits) == 1
+                and len(review_hashes) == 1
+                and isinstance(next(iter(reviewed_commits)), str)
+                and isinstance(next(iter(review_hashes)), str)
+            ):
+                reviewed = str(next(iter(reviewed_commits)))
+                review_hash = str(next(iter(review_hashes)))
+                proposal, reviewed_manifest = self._reviewed_proposal(reviewed, review_hash)
+                if reviewed_manifest != manifest or proposal.get(
+                    "evidence_bundle_sha256"
+                ) != manifest.get("evidence_bundle_sha256"):
+                    errors.add("PROMOTION_PROPOSAL_DRIFT")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
+
+    def validate_candidate(self, mode: str, *, base: str, candidate: str | None) -> tuple[str, ...]:
+        self.diagnostics = Diagnostics(self.limits)
+        try:
+            if mode not in {"index-candidate", "committed-candidate"}:
+                raise GateInputError("CANDIDATE_MODE")
+            if not SHA1_PATTERN.fullmatch(base) or base == "0" * 40:
+                raise GateInputError("BASE_FORMAT")
+            if git_text(self.root, "rev-parse", "--is-shallow-repository").strip() != "false":
+                raise GateInputError("GIT_SHALLOW")
+            git_bytes(self.root, "cat-file", "-e", f"{base}^{{commit}}")
+            head = git_text(self.root, "rev-parse", "HEAD").strip()
+            if mode == "index-candidate":
+                if head != base:
+                    raise GateInputError("INDEX_HEAD_BASE")
+                if git_bytes(self.root, "diff", "--name-only", "-z") or git_bytes(
+                    self.root, "ls-files", "--others", "--exclude-standard", "-z"
+                ):
+                    raise GateInputError("INDEX_UNSTAGED")
+                git_bytes(self.root, "diff", "--cached", "--check", base)
+            else:
+                if (
+                    candidate is None
+                    or not SHA1_PATTERN.fullmatch(candidate)
+                    or candidate == "0" * 40
+                    or head != candidate
+                ):
+                    raise GateInputError("COMMITTED_CANDIDATE")
+                git_bytes(self.root, "cat-file", "-e", f"{candidate}^{{commit}}")
+                git_bytes(self.root, "merge-base", "--is-ancestor", base, candidate)
+                if base == candidate:
+                    raise GateInputError("BASE_SELF")
+            state_before = git_bytes(
+                self.root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
+            )
+            records = self._diff_records(mode, base, candidate)
+            changed = changed_paths(records)
+            if not changed:
+                raise GateInputError("CANDIDATE_EMPTY")
+            if any(len(path.encode("utf-8")) > self.limits.git_path_utf8_bytes for path in changed):
+                raise GateInputError("GIT_PATH_BYTES")
+            self._validate_git_modes(mode, base=base, candidate=candidate, records=records)
+            diff_lines = self._diff_lines(mode, base, candidate)
+            packet_additions = [
+                record[1]
+                for record in records
+                if record[0] == "A"
+                and re.fullmatch(r"work/task-packets/P[0-9]+\.[0-9]+\.yaml", record[1])
+            ]
+            historical_packet_changes = [
+                path
+                for record in records
+                for path in record[1:]
+                if path.startswith("work/task-packets/") and path not in packet_additions
+            ]
+            if historical_packet_changes:
+                self.diagnostics.add("HISTORICAL_PACKET_MUTATION")
+            attestation_additions = [
+                record[1]
+                for record in records
+                if record[0] == "A"
+                and re.fullmatch(r"work/task-attestations/P[0-9]+\.[0-9]+\.json", record[1])
+            ]
+            proposal_additions = [
+                record[1]
+                for record in records
+                if record[0] == "A"
+                and re.fullmatch(r"work/change-control/CR-[0-9]{3}\.yaml", record[1])
+            ]
+            review_candidate = len(changed) == 2 and all(
+                record[0] == "A" and record[1].startswith("work/change-control/reviews/G1/")
+                for record in records
+            )
+            gate_policy = _mapping(
+                _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
+                "POLICY_G1",
+            )
+            promotion_paths = tuple(
+                sorted(_strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"))
+            )
+            kinds: list[str] = []
+            if len(packet_additions) == 1:
+                kinds.append("implementation")
+            if len(attestation_additions) == 1:
+                kinds.append("completion")
+            if len(proposal_additions) == 1:
+                kinds.append("proposal")
+            if review_candidate:
+                kinds.append("review")
+            if changed == promotion_paths:
+                kinds.append("promotion")
+            if (
+                len(packet_additions) > 1
+                or len(attestation_additions) > 1
+                or len(proposal_additions) > 1
+                or len(kinds) > 1
+            ):
+                self.diagnostics.add("CANDIDATE_KIND_AMBIGUOUS")
+            elif not kinds:
+                self.diagnostics.add("UNSUPPORTED_CHANGE_KIND")
+            elif kinds[0] == "implementation":
+                packet_path = packet_additions[0]
+                packet = strict_yaml_loads(
+                    self._candidate_file(mode, candidate, packet_path), self.limits
+                )
+                self.diagnostics.extend(
+                    validate_task_packet(
+                        packet,
+                        packet_path=packet_path,
+                        base_sha=base,
+                        changed=changed,
+                        diff_lines=diff_lines,
+                        policy=self.policy,
+                    )
+                )
+            elif kinds[0] == "completion":
+                self.diagnostics.extend(
+                    self._completion_errors(
+                        mode,
+                        base=base,
+                        candidate=candidate,
+                        attestation_path=attestation_additions[0],
+                        changed=changed,
+                        diff_lines=diff_lines,
+                        records=records,
+                    )
+                )
+            elif kinds[0] == "proposal":
+                self.diagnostics.extend(
+                    self._proposal_errors(
+                        mode,
+                        base=base,
+                        candidate=candidate,
+                        packet_path=proposal_additions[0],
+                        changed=changed,
+                        diff_lines=diff_lines,
+                    )
+                )
+            elif kinds[0] == "review":
+                self.diagnostics.extend(
+                    self._review_errors(
+                        mode,
+                        base=base,
+                        candidate=candidate,
+                        changed=changed,
+                        diff_lines=diff_lines,
+                        records=records,
+                    )
+                )
+            else:
+                self.diagnostics.extend(
+                    self._promotion_errors(
+                        mode,
+                        base=base,
+                        candidate=candidate,
+                        changed=changed,
+                        diff_lines=diff_lines,
+                    )
+                )
+            historical_attestations = [
+                path
+                for record in records
+                for path in record[1:]
+                if re.fullmatch(r"work/task-attestations/P[0-9]+\.[0-9]+\.json", path)
+                and path not in attestation_additions
+            ]
+            historical_change_packets = [
+                path
+                for record in records
+                for path in record[1:]
+                if re.fullmatch(r"work/change-control/CR-[0-9]{3}\.yaml", path)
+                and path not in proposal_additions
+            ]
+            historical_reviews = [
+                path
+                for record in records
+                for path in record[1:]
+                if path.startswith("work/change-control/reviews/") and not review_candidate
+            ]
+            if historical_attestations:
+                self.diagnostics.add("HISTORICAL_ATTESTATION_MUTATION")
+            if historical_change_packets:
+                self.diagnostics.add("HISTORICAL_CHANGE_PACKET_MUTATION")
+            if historical_reviews:
+                self.diagnostics.add("HISTORICAL_REVIEW_MUTATION")
+            self.diagnostics.extend(self.validate_snapshot())
+            state_after = git_bytes(
+                self.root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
+            )
+            if state_after != state_before:
+                self.diagnostics.add("REPOSITORY_MUTATION")
+        except GateInputError as error:
+            self.diagnostics.add(error.code)
+        return self.diagnostics.sorted()
+
+
+class _FixedArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:
+        raise GateInputError("CLI_ARGUMENTS")
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = _FixedArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="mode", required=True)
+    subparsers.add_parser("snapshot")
+    index = subparsers.add_parser("index-candidate")
+    index.add_argument("--base", required=True)
+    index.add_argument("--github-repository", default="")
+    committed = subparsers.add_parser("committed-candidate")
+    committed.add_argument("--base", required=True)
+    committed.add_argument("--candidate", required=True)
+    committed.add_argument("--github-repository", default="")
+    ci = subparsers.add_parser("ci")
+    ci.add_argument("--event", required=True)
+    ci.add_argument("--base", default="")
+    ci.add_argument("--candidate", required=True)
+    ci.add_argument("--github-repository", required=True)
+    return parser
+
+
+def _receipt(mode: str, errors: Sequence[str]) -> str:
+    if errors:
+        body = ",".join(errors)
+        return f"SPEC_GATE=FAIL mode={mode} errors={len(errors)} codes={body}"
+    return f"SPEC_GATE=PASS mode={mode}"
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    receipt_mode = "unknown"
+    try:
+        arguments = _parser().parse_args(argv)
+        receipt_mode = arguments.mode
+        repository_value = getattr(arguments, "github_repository", "")
+        parsed_repository = repository_identity(repository_value) if repository_value else None
+        if repository_value and parsed_repository is None:
+            raise GateInputError("CI_REPOSITORY")
+        gate = SpecGate(github_repository=parsed_repository)
+        if arguments.mode == "snapshot":
+            errors = gate.validate_snapshot()
+        elif arguments.mode == "ci":
+            if arguments.event == "workflow_dispatch":
+                errors = gate.validate_snapshot()
+                receipt_mode = "snapshot"
+            elif arguments.event in {"pull_request", "merge_group", "push"}:
+                errors = gate.validate_candidate(
+                    "committed-candidate",
+                    base=arguments.base,
+                    candidate=arguments.candidate,
+                )
+                receipt_mode = "committed-candidate"
+            else:
+                errors = ("CI_EVENT",)
+        else:
+            errors = gate.validate_candidate(
+                arguments.mode,
+                base=arguments.base,
+                candidate=getattr(arguments, "candidate", None),
+            )
+    except (GateInputError, OSError, ValueError, KeyError, TypeError) as error:
+        code = error.code if isinstance(error, GateInputError) else "INTERNAL_FAILURE"
+        errors = (code,)
+    receipt = _receipt(receipt_mode, errors)
+    if len(receipt.encode("utf-8")) > 131072:
+        receipt = f"SPEC_GATE=FAIL mode={receipt_mode} errors=1 codes=RECEIPT_BYTES"
+        errors = ("RECEIPT_BYTES",)
+    print(receipt, file=sys.stderr if errors else sys.stdout)
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

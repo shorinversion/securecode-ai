@@ -1,0 +1,1739 @@
+{
+  "baseline": {
+    "baseline_commit_sha": "f5cd4ef2a0f7130d16cb2c206091908be71b0702",
+    "baseline_content_sha256": "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9",
+    "baseline_id": "securecode-definition-0.2.0",
+    "bootstrap_commit_sha": "b157512cf867e834298770c2778da02259fde7b9"
+  },
+  "bootstrap_packet_sha256": "b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673",
+  "completion_evidence": {
+    "P1.13": [
+      "targeted_tests",
+      "full_quality",
+      "schema_exact_bytes",
+      "strict_g0",
+      "staged_scope",
+      "independent_reviews"
+    ],
+    "P1.4": [
+      "github_ruleset_required_check",
+      "github_failing_pr_merge_block"
+    ]
+  },
+  "github_repository_authority": {
+    "provider": "github",
+    "identity_format": "owner/repository",
+    "source": "github_actions_default_environment",
+    "variable": "GITHUB_REPOSITORY",
+    "evidence_uri_kinds": {
+      "github_ruleset_required_check": "api_ruleset",
+      "github_failing_pr_merge_block": "actions_run"
+    }
+  },
+  "evidence_catalog": {
+    "G0": {
+      "gate": "G0",
+      "path": "artifacts/gates/G0",
+      "state": "completed"
+    },
+    "G1": {
+      "gate": "G1",
+      "path": "artifacts/gates/G1",
+      "state": "planned"
+    },
+    "G2": {
+      "gate": "G2",
+      "path": "artifacts/gates/G2",
+      "state": "planned"
+    },
+    "G3": {
+      "gate": "G3",
+      "path": "artifacts/gates/G3",
+      "state": "planned"
+    },
+    "G4": {
+      "gate": "G4",
+      "path": "artifacts/gates/G4",
+      "state": "planned"
+    },
+    "G5": {
+      "gate": "G5",
+      "path": "artifacts/gates/G5",
+      "state": "planned"
+    },
+    "G6": {
+      "gate": "G6",
+      "path": "artifacts/gates/G6",
+      "state": "planned"
+    },
+    "G7": {
+      "gate": "G7",
+      "path": "artifacts/gates/G7",
+      "state": "planned"
+    },
+    "G8": {
+      "gate": "G8",
+      "path": "artifacts/gates/G8",
+      "state": "planned"
+    },
+    "G9": {
+      "gate": "G9",
+      "path": "artifacts/gates/G9",
+      "state": "planned"
+    }
+  },
+  "executable_commands": [
+    "python scripts/quality.py",
+    "python scripts/validate_g0.py --require-frozen"
+  ],
+  "gate_policy": {
+    "G1": {
+      "checklist_ids": [
+        "fresh_clone",
+        "schema_compatibility",
+        "graph_runtime_independence",
+        "offline_fake_llm",
+        "blocking_ci_quality",
+        "blocking_spec_drift",
+        "core_security_coverage"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/foundation-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P1.4",
+        "P1.5",
+        "P1.6",
+        "P1.7",
+        "P1.8",
+        "P1.9",
+        "P1.10",
+        "P1.11",
+        "P1.12",
+        "P1.13"
+      ],
+      "promotion_paths": [
+        "artifacts/gates/G1/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ]
+    }
+  },
+  "known_formats": [
+    "date-time",
+    "uri"
+  ],
+  "public_schema_sha256": {
+    "audit-event.schema.json": "ed3649fd9047faf392df2d8c0161afa8f99fc8c521be2401c0f835080fcfef97",
+    "audit-run.schema.json": "83383c2680c4f1af4adabab78c8146b8f813943608ec1de5d1faed38b0d06de4",
+    "cli-doctor-result.schema.json": "531b9bbef9cb64275456179fc6b87ad2fb84f81139ec37abe7437f690f2afb52",
+    "cli-error-result.schema.json": "31dfd4cda7ae32abb5cf9913af1c1e632a318ff0ef9b3b1e34d11ea48c85fed4",
+    "evidence.schema.json": "2e077f945fe7ace8604dcc17d37a56b7908cb84ae859819c60dff164f10249f2",
+    "finding-case.schema.json": "96e6826d52f74e5b5540bebc66505538dde995fab4588af347c389444ae64109",
+    "model-call-result.schema.json": "fbbbd0f1165b6d3d52eff597bdf37cea7721156f87a41ad254f06dbb7107b521",
+    "model-request.schema.json": "74679b44f6edcc058c2304c0f6f10d7fa5848dcc92b8914c6b8099e0145ec3f9",
+    "patch-candidate.schema.json": "c5dcd02acf531e104f79023d6562c2fb189939f4bb2ebb513d3926f646b597f6",
+    "validation-result.schema.json": "4ff6b14e6e8722d2efc3de6377ed5e81a64febb80b97c91e924b79a61a8009ab",
+    "workflow-definition.schema.json": "ad71ab743bbc1724bca23c4b7a89771e732530280445bfec0a9525bf43d30361",
+    "workflow-runtime-request.schema.json": "c0de6c60f0337a5e301e4daa0d3829836ed9c8b5fbdd7b80f3a9636af36d2add",
+    "workflow-runtime-result.schema.json": "3e21a40b4ae830c1dd7f80643b1c3b4063921cbe57734d73085f2dcc8a076dcd",
+    "workflow-snapshot.schema.json": "e90da93f262ea5f142018bf421eb584bd78ff360c47ed1f60baa724f58716229",
+    "workflow-transition-event.schema.json": "3de830d092165be52daae7a8137e1104e44cb1e1a265f90a2894548df5b73051"
+  },
+  "resource_limits": {
+    "bytes_per_json_yaml_or_task_packet": 1048576,
+    "bytes_per_markdown": 2097152,
+    "collection_items_per_node": 100000,
+    "diagnostic_utf8_bytes_each": 512,
+    "diagnostics": 256,
+    "final_receipt_utf8_bytes": 131072,
+    "git_path_utf8_bytes": 4096,
+    "git_paths": 4096,
+    "input_file_count": 1024,
+    "parsed_depth": 64,
+    "parsed_nodes_per_document": 100000,
+    "scalar_utf8_bytes": 262144,
+    "total_validated_input_bytes": 16777216
+  },
+  "schema_version": "1.0.0",
+  "self_protected_paths": [
+    "specs/**",
+    "scripts/validate_g0.py",
+    "artifacts/gates/**",
+    ".secrets.baseline",
+    "scripts/spec_gate.py",
+    "scripts/spec_gate_policy.json",
+    "scripts/quality.py",
+    "scripts/ci_policy.py",
+    ".github/workflows/ci.yml",
+    "tests/unit/test_spec_gate.py",
+    "tests/unit/test_ci_policy.py"
+  ],
+  "test_catalog": {
+    "DEMO-CWE89-001": {
+      "owners": [
+        "P2.10",
+        "P2.7",
+        "P3.1",
+        "P3.3",
+        "P7.4"
+      ],
+      "state": "planned"
+    },
+    "adapter_conformance": {
+      "owners": [
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P7.5"
+      ],
+      "state": "planned"
+    },
+    "advisory_normalization": {
+      "owners": [
+        "P2.6",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "air_gap": {
+      "owners": [
+        "P1.10",
+        "P5.1",
+        "P6.1",
+        "P6.11",
+        "P6.6"
+      ],
+      "state": "planned"
+    },
+    "anonymous_link_check": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P6.12",
+        "P7.6",
+        "P9.12",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "anonymous_repository_access": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P9.13"
+      ],
+      "state": "planned"
+    },
+    "architect_contract": {
+      "owners": [
+        "P1.8",
+        "P3.2",
+        "P3.3",
+        "P4.4",
+        "P4.6"
+      ],
+      "state": "planned"
+    },
+    "architect_validation": {
+      "owners": [
+        "P1.8",
+        "P3.2",
+        "P3.3",
+        "P4.4",
+        "P4.6"
+      ],
+      "state": "planned"
+    },
+    "architecture_consistency": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.8",
+        "P0.9",
+        "P1.9"
+      ],
+      "state": "executable"
+    },
+    "artifact_integrity": {
+      "owners": [
+        "P1.9",
+        "P4.5",
+        "P6.2",
+        "P6.3",
+        "P6.4",
+        "P8.2"
+      ],
+      "state": "planned"
+    },
+    "audit_visibility_and_worm_source_rejection": {
+      "owners": [
+        "P6.8",
+        "P8.6"
+      ],
+      "state": "planned"
+    },
+    "auditor_contract": {
+      "owners": [
+        "P1.8",
+        "P3.2",
+        "P3.3",
+        "P4.4",
+        "P4.6"
+      ],
+      "state": "planned"
+    },
+    "baseline_manifest": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "bounded_annotations": {
+      "owners": [
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P7.5"
+      ],
+      "state": "planned"
+    },
+    "calibration_access_separation": {
+      "owners": [
+        "P0.12",
+        "P5.8",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "calibration_freeze": {
+      "owners": [
+        "P5.3",
+        "P5.4",
+        "P5.8",
+        "P7.11",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "capability_mismatch": {
+      "owners": [
+        "P1.7",
+        "P1.8",
+        "P6.5"
+      ],
+      "state": "planned"
+    },
+    "checkout_unchanged": {
+      "owners": [
+        "P3.4",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "claim_check": {
+      "owners": [
+        "P4.10",
+        "P7.6",
+        "P7.7",
+        "P7.8",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "classification_and_retention_conformance": {
+      "owners": [
+        "P1.5",
+        "P6.4",
+        "P6.7",
+        "P8.6"
+      ],
+      "state": "planned"
+    },
+    "classification_property": {
+      "owners": [
+        "P1.7",
+        "P3.1",
+        "P5.1",
+        "P6.6",
+        "P6.7",
+        "P8.5"
+      ],
+      "state": "planned"
+    },
+    "clean_environment_docs": {
+      "owners": [
+        "P1.1",
+        "P1.11",
+        "P1.2",
+        "P1.3",
+        "P4.10",
+        "P4.12",
+        "P9.13",
+        "P9.2",
+        "P9.3",
+        "P9.5"
+      ],
+      "state": "planned"
+    },
+    "clean_room_reproduction": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P6.12",
+        "P7.6",
+        "P9.12",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "commit_provenance": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "compatibility": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P1.13",
+        "P1.5",
+        "P1.6"
+      ],
+      "state": "executable"
+    },
+    "completed_zero_receipt": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "connected_worker": {
+      "owners": [
+        "P1.10",
+        "P5.1",
+        "P6.1",
+        "P6.11",
+        "P6.6"
+      ],
+      "state": "planned"
+    },
+    "content_hash": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "cross_entrypoint_golden": {
+      "owners": [
+        "P1.10",
+        "P5.1",
+        "P6.1",
+        "P6.11",
+        "P6.6"
+      ],
+      "state": "planned"
+    },
+    "cross_tenant_purpose_linkability": {
+      "owners": [
+        "P6.2",
+        "P6.7"
+      ],
+      "state": "planned"
+    },
+    "dataset_link_and_hash": {
+      "owners": [
+        "P7.6",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "dataset_lock": {
+      "owners": [
+        "P4.10",
+        "P7.6",
+        "P7.7",
+        "P7.8",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "delegated_task_boundary": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.16",
+        "P0.17",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "deletion_descendant_reconciliation": {
+      "owners": [
+        "P6.4",
+        "P8.6"
+      ],
+      "state": "planned"
+    },
+    "dependency_action_image_provenance": {
+      "owners": [
+        "P1.2",
+        "P8.11"
+      ],
+      "state": "planned"
+    },
+    "dependency_manifest_positive_negative": {
+      "owners": [
+        "P2.6",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "deterministic_candidate_interpretation": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "diff_parser": {
+      "owners": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.7",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "direct_indirect_composed_injection": {
+      "owners": [
+        "P3.6",
+        "P3.7"
+      ],
+      "state": "planned"
+    },
+    "docker_clean_build": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P6.12",
+        "P7.6",
+        "P9.12",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "dual_lane_zero_signal": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "effective_gate_decision": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "egress_capture": {
+      "owners": [
+        "P1.7",
+        "P3.1",
+        "P5.1",
+        "P6.6",
+        "P6.7",
+        "P8.5"
+      ],
+      "state": "planned"
+    },
+    "event_artifact_tamper_and_gap": {
+      "owners": [
+        "P1.6",
+        "P6.4"
+      ],
+      "state": "planned"
+    },
+    "every_gate_failure": {
+      "owners": [
+        "P3.4",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "evidence_citation": {
+      "owners": [
+        "P2.10",
+        "P2.7",
+        "P3.1",
+        "P3.3",
+        "P7.4"
+      ],
+      "state": "planned"
+    },
+    "expanded_cwe_portfolio_conformance": {
+      "owners": [
+        "P2.10",
+        "P2.7",
+        "P3.1",
+        "P3.3",
+        "P7.4"
+      ],
+      "state": "planned"
+    },
+    "final_independent_reviews": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "fixed_seed_replay": {
+      "owners": [
+        "P7.6",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "gate_outcome_mapping": {
+      "owners": [
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P7.5"
+      ],
+      "state": "planned"
+    },
+    "generated_program_isolation": {
+      "owners": [
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "golden_rendering": {
+      "owners": [
+        "P2.11",
+        "P2.12",
+        "P4.11"
+      ],
+      "state": "planned"
+    },
+    "held_out_promotion": {
+      "owners": [
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "html_markdown_sarif_terminal_rendering": {
+      "owners": [
+        "P2.12"
+      ],
+      "state": "planned"
+    },
+    "hybrid_lineage_dedup": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "identity_existence_and_path_disclosure": {
+      "owners": [
+        "P2.12",
+        "P6.2",
+        "P6.4"
+      ],
+      "state": "planned"
+    },
+    "injection_corpus": {
+      "owners": [
+        "P1.8",
+        "P3.5",
+        "P3.6",
+        "P8.3"
+      ],
+      "state": "planned"
+    },
+    "injection_rendering": {
+      "owners": [
+        "P2.11",
+        "P2.12",
+        "P4.11"
+      ],
+      "state": "planned"
+    },
+    "kill_restart": {
+      "owners": [
+        "P1.9",
+        "P4.5",
+        "P6.2",
+        "P6.3",
+        "P6.4",
+        "P8.2"
+      ],
+      "state": "planned"
+    },
+    "language_conformance": {
+      "owners": [
+        "P2.1",
+        "P2.2",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "lifecycle_script_sentinel": {
+      "owners": [
+        "P2.1",
+        "P4.5"
+      ],
+      "state": "planned"
+    },
+    "limitations_check": {
+      "owners": [
+        "P9.13",
+        "P9.4",
+        "P9.5"
+      ],
+      "state": "planned"
+    },
+    "loop_budget": {
+      "owners": [
+        "P1.9",
+        "P2.10",
+        "P3.3",
+        "P4.7"
+      ],
+      "state": "planned"
+    },
+    "malicious_scanner_config_and_output": {
+      "owners": [
+        "P2.8",
+        "P3.6"
+      ],
+      "state": "planned"
+    },
+    "manifest_completeness": {
+      "owners": [
+        "P4.10",
+        "P7.6",
+        "P7.7",
+        "P7.8",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "metric_recomputation": {
+      "owners": [
+        "P9.13",
+        "P9.4",
+        "P9.5"
+      ],
+      "state": "planned"
+    },
+    "mixed_language_coverage": {
+      "owners": [
+        "P2.1",
+        "P2.2",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "multi_sink_secret_canary": {
+      "owners": [
+        "P2.5",
+        "P6.7",
+        "P8.5"
+      ],
+      "state": "planned"
+    },
+    "navigator_snapshot": {
+      "command": "python scripts/validate_g0.py --require-frozen",
+      "owners": [
+        "P0.15"
+      ],
+      "state": "executable"
+    },
+    "network_resource_bomb_and_teardown": {
+      "owners": [
+        "P4.5",
+        "P8.2"
+      ],
+      "state": "planned"
+    },
+    "no_progress": {
+      "owners": [
+        "P1.9",
+        "P2.10",
+        "P3.3",
+        "P4.7"
+      ],
+      "state": "planned"
+    },
+    "notebook_execution": {
+      "owners": [
+        "P1.1",
+        "P1.11",
+        "P1.2",
+        "P1.3",
+        "P4.10",
+        "P4.12",
+        "P9.13",
+        "P9.2",
+        "P9.3",
+        "P9.5"
+      ],
+      "state": "planned"
+    },
+    "optimizer_dataset_license_purpose_authorization": {
+      "owners": [
+        "P6.5",
+        "P6.7",
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16",
+        "P9.2"
+      ],
+      "state": "planned"
+    },
+    "optimizer_generated_program_protected_access_isolation": {
+      "owners": [
+        "P7.12",
+        "P7.14",
+        "P7.15",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "optimizer_protected_access": {
+      "owners": [
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "origin_stratified_independent_recomputation": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "outcome_cartesian_matrix": {
+      "owners": [
+        "P1.5",
+        "P1.8",
+        "P3.2",
+        "P3.5"
+      ],
+      "state": "planned"
+    },
+    "outcome_mapping": {
+      "owners": [
+        "P5.3",
+        "P5.4",
+        "P5.8",
+        "P7.11",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "parser_positive_negative": {
+      "owners": [
+        "P2.3",
+        "P2.4",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "pass_guard": {
+      "owners": [
+        "P1.8",
+        "P3.5",
+        "P3.6",
+        "P8.3"
+      ],
+      "state": "planned"
+    },
+    "patch_path_semantic_regression_poc_plus": {
+      "owners": [
+        "P4.4",
+        "P4.6",
+        "P4.8"
+      ],
+      "state": "planned"
+    },
+    "path_location": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P1.13",
+        "P1.5",
+        "P1.6"
+      ],
+      "state": "executable"
+    },
+    "path_symlink_submodule_archive_escape": {
+      "owners": [
+        "P2.1"
+      ],
+      "state": "planned"
+    },
+    "path_tamper": {
+      "owners": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.7",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "poc_plus": {
+      "owners": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.7",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "policy_schema_parse": {
+      "command": "python scripts/validate_g0.py --require-frozen",
+      "owners": [
+        "P0.10",
+        "P0.11"
+      ],
+      "state": "executable"
+    },
+    "port_contract": {
+      "owners": [
+        "P0.8",
+        "P0.9",
+        "P1.9",
+        "P4.5",
+        "P6.2",
+        "P6.3",
+        "P6.4",
+        "P8.2"
+      ],
+      "state": "planned"
+    },
+    "pre_calibration_advisory": {
+      "owners": [
+        "P0.12",
+        "P5.8",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "pre_calibration_policy": {
+      "owners": [
+        "P5.3",
+        "P5.4",
+        "P5.8",
+        "P7.11",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "privileged_policy_change_audit_signal": {
+      "owners": [
+        "P1.13",
+        "P6.10"
+      ],
+      "state": "planned"
+    },
+    "product_consistency": {
+      "command": "python scripts/validate_g0.py --require-frozen",
+      "owners": [
+        "P0.4",
+        "P0.5",
+        "P0.6",
+        "P0.7"
+      ],
+      "state": "executable"
+    },
+    "protected_path_and_evaluator_tamper": {
+      "owners": [
+        "P4.4",
+        "P4.6"
+      ],
+      "state": "planned"
+    },
+    "protected_paths": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.16",
+        "P0.17",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "provider_contract": {
+      "owners": [
+        "P1.8",
+        "P3.2",
+        "P3.3",
+        "P4.4",
+        "P4.6"
+      ],
+      "state": "planned"
+    },
+    "provider_downgrade_replay_cache_isolation": {
+      "owners": [
+        "P1.8",
+        "P6.5"
+      ],
+      "state": "planned"
+    },
+    "provider_fault_matrix": {
+      "owners": [
+        "P1.8",
+        "P3.5",
+        "P3.6",
+        "P8.3"
+      ],
+      "state": "planned"
+    },
+    "provider_non_success_fail_open_matrix": {
+      "owners": [
+        "P1.8",
+        "P3.5",
+        "P3.6"
+      ],
+      "state": "planned"
+    },
+    "provider_non_success_indeterminate": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "provider_normalization": {
+      "owners": [
+        "P1.7",
+        "P1.8",
+        "P6.5"
+      ],
+      "state": "planned"
+    },
+    "provider_outage_retry_cost_ceiling": {
+      "owners": [
+        "P3.3",
+        "P8.7"
+      ],
+      "state": "planned"
+    },
+    "ref_move_and_stale_sha_race": {
+      "owners": [
+        "P5.4",
+        "P5.5"
+      ],
+      "state": "planned"
+    },
+    "regression": {
+      "owners": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.7",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "release_test_suite": {
+      "owners": [
+        "P1.11",
+        "P1.3",
+        "P4.10",
+        "P4.12",
+        "P9.2",
+        "P9.3",
+        "P9.5"
+      ],
+      "state": "planned"
+    },
+    "report_content_check": {
+      "owners": [
+        "P9.13",
+        "P9.4",
+        "P9.5"
+      ],
+      "state": "planned"
+    },
+    "report_schema": {
+      "owners": [
+        "P2.11",
+        "P2.12",
+        "P4.11"
+      ],
+      "state": "planned"
+    },
+    "repository_intake_security": {
+      "owners": [
+        "P2.1",
+        "P2.2",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "required_memory_files": {
+      "command": "python scripts/validate_g0.py --require-frozen",
+      "owners": [
+        "P0.15"
+      ],
+      "state": "executable"
+    },
+    "research_claim_gate": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.16",
+        "P0.17",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "resource_context_bomb_budgets": {
+      "owners": [
+        "P2.1",
+        "P2.8",
+        "P3.3"
+      ],
+      "state": "planned"
+    },
+    "run_execution_identity_cross_transport_mutation": {
+      "owners": [
+        "P1.10",
+        "P1.13",
+        "P1.5",
+        "P1.6",
+        "P1.8",
+        "P1.9",
+        "P2.10",
+        "P2.12",
+        "P2.13",
+        "P2.3",
+        "P2.8",
+        "P2.9",
+        "P3.10",
+        "P3.11",
+        "P3.2",
+        "P3.3",
+        "P3.5",
+        "P3.7",
+        "P4.10",
+        "P4.11",
+        "P5.6",
+        "P6.1",
+        "P6.5",
+        "P6.7",
+        "P7.7",
+        "P7.8"
+      ],
+      "state": "planned"
+    },
+    "safe_control": {
+      "owners": [
+        "P2.10",
+        "P2.7",
+        "P3.1",
+        "P3.3",
+        "P7.4"
+      ],
+      "state": "planned"
+    },
+    "sandbox_escape_and_profile_attestation": {
+      "owners": [
+        "P4.5",
+        "P8.2"
+      ],
+      "state": "planned"
+    },
+    "sandbox_teardown": {
+      "owners": [
+        "P1.9",
+        "P4.5",
+        "P6.2",
+        "P6.3",
+        "P6.4",
+        "P8.2"
+      ],
+      "state": "planned"
+    },
+    "schema_round_trip": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P1.13",
+        "P1.5",
+        "P1.6"
+      ],
+      "state": "executable"
+    },
+    "scm_permission_manifest": {
+      "command": "python scripts/validate_g0.py --require-frozen",
+      "owners": [
+        "P0.4",
+        "P0.5",
+        "P0.6",
+        "P0.7"
+      ],
+      "state": "executable"
+    },
+    "screencast_duration": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P6.12",
+        "P7.6",
+        "P9.12",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "secret_canary": {
+      "owners": [
+        "P1.7",
+        "P3.1",
+        "P5.1",
+        "P6.6",
+        "P6.7",
+        "P8.5"
+      ],
+      "state": "planned"
+    },
+    "secret_detector": {
+      "owners": [
+        "P2.5",
+        "P6.7",
+        "P8.5"
+      ],
+      "state": "planned"
+    },
+    "secret_redaction": {
+      "owners": [
+        "P1.7",
+        "P1.8",
+        "P6.5"
+      ],
+      "state": "planned"
+    },
+    "security_conformance_suite": {
+      "owners": [
+        "P2.1",
+        "P3.6",
+        "P3.7",
+        "P4.4",
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16",
+        "P8.2",
+        "P8.6"
+      ],
+      "state": "planned"
+    },
+    "skeptic_read_only": {
+      "owners": [
+        "P3.4",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.8",
+        "P4.9"
+      ],
+      "state": "planned"
+    },
+    "spec_lint": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.16",
+        "P0.17",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "split_leakage": {
+      "owners": [
+        "P4.10",
+        "P7.6",
+        "P7.7",
+        "P7.8",
+        "P7.9"
+      ],
+      "state": "planned"
+    },
+    "ssrf_redirect_rebinding_credential_host": {
+      "owners": [
+        "P1.7",
+        "P1.8",
+        "P6.7"
+      ],
+      "state": "planned"
+    },
+    "stale_sha": {
+      "owners": [
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P7.5"
+      ],
+      "state": "planned"
+    },
+    "strict_frozen_validator": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "submission_administration_check": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P6.12",
+        "P7.6",
+        "P9.12",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "submission_manifest": {
+      "owners": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P4.12",
+        "P6.12",
+        "P7.6",
+        "P9.12",
+        "P9.13",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "summary_idempotency": {
+      "owners": [
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P7.5"
+      ],
+      "state": "planned"
+    },
+    "symbol_location_stability": {
+      "owners": [
+        "P2.3",
+        "P2.4",
+        "P7.1",
+        "P7.2"
+      ],
+      "state": "planned"
+    },
+    "synthetic_candidate_acceptance": {
+      "owners": [
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "synthetic_dataset_lineage_split": {
+      "owners": [
+        "P6.5",
+        "P6.7",
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16",
+        "P9.2"
+      ],
+      "state": "planned"
+    },
+    "synthetic_oracle_provenance_lineage_leakage": {
+      "owners": [
+        "P7.13",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "tenant_bola_cache_artifact_isolation": {
+      "owners": [
+        "P6.2",
+        "P6.4"
+      ],
+      "state": "planned"
+    },
+    "tenant_fairness_webhook_storm": {
+      "owners": [
+        "P8.10",
+        "P8.7"
+      ],
+      "state": "planned"
+    },
+    "threat_traceability": {
+      "command": "python scripts/validate_g0.py --require-frozen",
+      "owners": [
+        "P0.10",
+        "P0.11"
+      ],
+      "state": "executable"
+    },
+    "traceability": {
+      "command": "python scripts/quality.py",
+      "owners": [
+        "P0.13",
+        "P0.14",
+        "P0.16",
+        "P0.17",
+        "P0.18",
+        "P1.13"
+      ],
+      "state": "executable"
+    },
+    "transition_contract": {
+      "owners": [
+        "P1.9",
+        "P2.10",
+        "P3.3",
+        "P4.7"
+      ],
+      "state": "planned"
+    },
+    "unauthorized_tool_argument_zero_effect": {
+      "owners": [
+        "P3.7"
+      ],
+      "state": "planned"
+    },
+    "undeclared_purpose_training_destination": {
+      "owners": [
+        "P6.5",
+        "P6.7",
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16",
+        "P9.2"
+      ],
+      "state": "planned"
+    },
+    "unsafe_candidate_rejection": {
+      "owners": [
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16"
+      ],
+      "state": "planned"
+    },
+    "waiver_scope_sha_expiry_replay": {
+      "owners": [
+        "P6.8"
+      ],
+      "state": "planned"
+    },
+    "web_launch_smoke": {
+      "owners": [
+        "P6.12",
+        "P9.14"
+      ],
+      "state": "planned"
+    },
+    "webhook_security": {
+      "owners": [
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P7.5"
+      ],
+      "state": "planned"
+    },
+    "webhook_signature_replay_idempotency": {
+      "owners": [
+        "P5.5",
+        "P6.3"
+      ],
+      "state": "planned"
+    }
+  }
+}

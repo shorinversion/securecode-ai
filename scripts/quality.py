@@ -52,6 +52,7 @@ def _python_targets() -> tuple[str, ...]:
 
 def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
     return (
+        QualityStage("spec", ("scripts/spec_gate.py", "snapshot")),
         QualityStage("format", ("-m", "ruff", "format", "--no-cache", "--check", *targets)),
         QualityStage("lint", ("-m", "ruff", "check", "--no-cache", *targets)),
         QualityStage(
@@ -96,6 +97,12 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
 def _sanitized_environment(temporary_root: Path) -> dict[str, str]:
     """Build a minimal child environment without credentials, proxies or Python injection."""
 
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise RuntimeError("git is required for the specification gate")
+    tool_directories = tuple(
+        dict.fromkeys((str(Path(sys.executable).parent), str(Path(git_executable).parent)))
+    )
     environment = {
         name: value for name in SAFE_PARENT_VARIABLES if (value := os.environ.get(name)) is not None
     }
@@ -104,6 +111,7 @@ def _sanitized_environment(temporary_root: Path) -> dict[str, str]:
             "COVERAGE_FILE": str(temporary_root / ".coverage"),
             "HOME": str(temporary_root),
             "MYPY_CACHE_DIR": str(temporary_root / "mypy-cache"),
+            "PATH": os.pathsep.join(tool_directories),
             "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
             "PYTHONHASHSEED": "0",
             "PYTHONIOENCODING": "utf-8",

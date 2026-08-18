@@ -35,7 +35,7 @@ cannot satisfy model coverage or create a clean run.
 
 ## Checked-in JSON Schemas
 
-Thirteen Draft 2020-12 artifacts live under
+Fifteen Draft 2020-12 artifacts live under
 `src/securecode_ai/contracts/schemas/v0.2.0/` and are included in the wheel.
 They are generated deterministically from the Pydantic roots. JSON Schema
 closes the structural surface; cross-field rules such as canonical hash,
@@ -49,7 +49,8 @@ artifacts, as required by the frozen domain contract:
 ```
 
 Omit `--check` only when intentionally regenerating artifacts during an
-accepted contract change. Repository-wide compatibility and protected-drift
-enforcement remain owned by `P1.13`. Stable IDs accept only validated hashed
-semantic material. Event append/replay behavior lives in framework-independent
-Core and is intentionally not claimed by the single-document schema validator.
+accepted contract change. `P1.13` now owns repository-wide exact-byte,
+compatibility and protected-drift enforcement; it does not redefine these
+public schemas. Stable IDs accept only validated hashed semantic material.
+Event append/replay behavior lives in framework-independent Core and is
+intentionally not claimed by the single-document schema validator.

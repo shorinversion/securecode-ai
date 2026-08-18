@@ -23,12 +23,15 @@ build-constraint-dependencies = ["uv_build>=0.11.32,<0.13"]
 build = ["uv-build>=0.11.32,<0.13"]
 quality = [
     "detect-secrets==1.5.0",
+    "jsonschema==4.26.0",
     "mypy==2.3.0",
     "pip-audit==2.10.1",
     "pre-commit==4.6.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pyyaml==6.0.3",
+    "rfc3339-validator==0.1.4",
+    "rfc3987-syntax==1.1.0",
     "ruff==0.15.22",
     "uv==0.12.0",
     "zizmor==1.28.0",

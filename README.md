@@ -10,7 +10,9 @@ completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
 workflow-runtime substrate, the completed `P1.10` foundation CLI and the
 completed `P1.11` fixture-repository factory. The completed `P1.12` increment
 adds internal exact-version structured telemetry without creating a new public
-wire contract; `P1.13` remains unopened.
+wire contract. `P1.13` is in progress: its deterministic specification gate
+validates the frozen baseline, schemas/examples, traceability and admitted Git
+candidate kinds without changing a public runtime contract.
 `P1.8`
 provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
@@ -58,8 +60,9 @@ Then run the canonical gate without dependency resolution or network access:
 uv run --locked --offline --no-sync --group quality python -I scripts/quality.py
 ```
 
-The runner checks every Python file under `packages/`, `apps/`, `integrations/`,
-`scripts/` and `tests/` except the immutable G0 validator. Static format, lint and strict-type
+The runner first executes the read-only specification snapshot gate, then checks
+every Python file under `packages/`, `apps/`, `integrations/`, `scripts/` and
+`tests/` except the immutable G0 validator. Static format, lint and strict-type
 checks must pass before repository tests may execute. Child processes receive a
 minimal credential/proxy/injection-free environment, each stage is bounded by a
 timeout, pytest plug-in autoloading is disabled, and any non-ignored repository
@@ -70,6 +73,27 @@ product sandbox delivered in later phases.
 Branch coverage is measured against `securecode_ai.core` alone and must be at
 least 80%. The threshold is a regression gate, not a claim that coverage alone
 proves security or product quality.
+
+## Specification and candidate gate
+
+`scripts/spec_gate.py` has three read-only entry modes. `snapshot` validates the
+current frozen baseline, requirement IDs and traceability, Draft 2020-12
+schemas, indexed examples and exact public-schema bytes. `index-candidate`
+checks the exact staged delta against an authoritative base and rejects any
+unstaged or untracked byte. `committed-candidate` is the corresponding CI mode;
+the `ci` wrapper selects snapshot only for manual dispatch and otherwise uses
+the event-provided base and candidate commit IDs.
+
+```powershell
+.\.venv\Scripts\python.exe -I scripts/spec_gate.py snapshot
+.\.venv\Scripts\python.exe -I scripts/spec_gate.py index-candidate --base <40-hex-base>
+```
+
+Candidate admission is closed to one implementation packet, completion
+attestation, D-026 gate-evidence proposal, immutable independent-review receipt
+or byte-exact gate promotion. Mixed and unknown kinds fail. This is local
+logical enforcement; protection against a candidate replacing its own CI or
+gate implementation still depends on the external `P1.4` ruleset evidence.
 
 ## Local pre-commit checks
 
@@ -92,8 +116,10 @@ The single workflow `.github/workflows/ci.yml` runs on pull requests, merge
 queues and pushes to `master`. It pins every action to a full commit SHA,
 persists no checkout credential, disables action/dependency caches and grants
 only `contents: read`. Mandatory jobs are policy, secret-history scan, locked
-dependency audit and the Python 3.12–3.14 quality matrix. The stable aggregate
-status is `ci / gate`; skipped, cancelled or failed mandatory jobs make it fail.
+dependency audit, specification/candidate validation and the Python 3.12–3.14
+quality matrix. The spec job uses full history and event-authoritative base and
+candidate SHAs. The stable aggregate status is `ci / gate`; skipped, cancelled
+or failed mandatory jobs make it fail.
 
 The repository has no GitHub remote yet, so CI configuration alone is **not a
 merge guarantee**. Before `P1.4` can be accepted, the repository owner must:
@@ -232,6 +258,12 @@ packages/adapters/
   `5ace16e80730d56f994cb6a24fa4748867a49646` passes 162 targeted and all 885
   repository tests, Ruff/mypy, 85.80% Core branch coverage, schema check and
   strict G0.
+- `P1.13` is in progress under constrained packet SHA-256
+  `b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673`;
+  its remediation revision awaits renewed independent review.
+  The current candidate adds the offline specification/candidate gate, closed
+  D-026 completion/review/promotion records and mandatory CI composition; it
+  does not close `P1.4`, `G1` or authorize `P2`.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

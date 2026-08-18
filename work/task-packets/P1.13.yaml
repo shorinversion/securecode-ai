@@ -1,0 +1,337 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P1.13"
+  type: "implementation"
+  objective: "Implement one deterministic, read-only and fail-closed specification gate for requirement IDs, schemas, indexed examples, current public-contract compatibility, traceability and task-packet/protected-path drift, and make it mandatory in the canonical local quality command and GitHub CI without changing the frozen definition baseline or public runtime contracts."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "b157512cf867e834298770c2778da02259fde7b9"
+  spec_refs: [SC-DOM-007, SC-DOM-008, SC-DOM-014, SC-CAP-005, SC-EVAL-001]
+  decision_refs: [D-013, D-015, D-026]
+  preconditions:
+    - "P1.3, P1.5 and P1.12 are DONE and starting_commit_sha is the exact clean reviewed HEAD"
+    - "system Python 3.14 strict G0 validation passes on the frozen bytes; the project-owned environment currently fails before validation because jsonschema is an undeclared ambient dependency, which P1.13 must remove"
+    - "the exact packet bytes receive product, architecture and security/evaluation PASS/PASS/PASS while untracked; only those accepted bytes are then staged as the implementation candidate before any other path changes"
+  non_goals:
+    - "modifying specs/**, scripts/validate_g0.py, artifacts/gates/**, accepted public models or checked-in public schema bytes"
+    - "defining a general specification migration format; P1.13 implements only the already accepted D-026 protected-change lanes needed for task completion and gate evidence, while every unsupported change-control case remains rejected"
+    - "implementing P2 analysis or P3/P4/P6 runtime capability, tool, context, sandbox, session or model-request features"
+    - "adding DeepSeek Harness, Cordis, plugins, runtime dependencies, OpenAPI generation or future reporter/API examples"
+    - "claiming candidate-controlled CI is tamper-proof before the external P1.4 ruleset/path-protection receipt"
+    - "closing P1.4, G1 or beginning P2"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "spec-gate-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - ".github/workflows/ci.yml"
+    - ".gitignore"
+    - ".secrets.baseline"
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/contracts/README.md"
+    - "pyproject.toml"
+    - "scripts/ci_policy.py"
+    - "scripts/quality.py"
+    - "scripts/spec_gate.py"
+    - "scripts/spec_gate_policy.json"
+    - "tests/README.md"
+    - "tests/unit/test_ci_policy.py"
+    - "tests/unit/test_spec_gate.py"
+    - "uv.lock"
+    - "work/task-packets/P1.13.yaml"
+    - "work/task-attestations/README.md"
+    - "work/change-control/README.md"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - ".github/workflows/ci.yml"
+    - ".gitignore"
+    - ".secrets.baseline"
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/contracts/README.md"
+    - "pyproject.toml"
+    - "scripts/ci_policy.py"
+    - "scripts/quality.py"
+    - "scripts/spec_gate.py"
+    - "scripts/spec_gate_policy.json"
+    - "tests/README.md"
+    - "tests/unit/test_ci_policy.py"
+    - "tests/unit/test_spec_gate.py"
+    - "uv.lock"
+    - "work/task-packets/P1.13.yaml"
+    - "work/task-attestations/README.md"
+    - "work/change-control/README.md"
+  forbidden_paths:
+    - "docs/PROJECT_BRIEF.md"
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/**"
+    - "tests/acceptance/**"
+    - "tests/evaluator/**"
+    - "packages/contracts/src/**"
+    - "packages/core/**"
+    - "packages/adapters/**"
+    - "apps/**"
+    - "integrations/**"
+    - "examples/**"
+  max_changed_files: 20
+  max_diff_lines: 7400
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "project-owned uv 0.12.0 exact dependency lock/sync and offline run commands"
+    - "pytest targeted spec-gate and CI-policy suites"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "python scripts/quality.py"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny except one uv lock resolution to exact index https://pypi.org/simple with artifacts only from files.pythonhosted.org for the exact approved dependency closure below; every verification run is offline"
+  secrets: "deny"
+  dependency_changes: "allow only direct quality dependencies jsonschema==4.26.0, rfc3339-validator==0.1.4 and rfc3987-syntax==1.1.0 plus the exact new transitive closure below; no existing package/version/source/hash or unrelated lock record may drift"
+  secret_baseline_change: "allow only a mechanical false-positive refresh for exact immutable digests and test-only canaries already present in the candidate/current tree; detector plugin/settings and every prior finding remain unchanged, each added path/type/hash identity receives Primary Integrator review, ci_policy count/digest authority is updated, and staged plus full-tree scans must pass"
+
+inputs:
+  artifacts:
+    - "specs/baseline.yaml and every normative document it enumerates"
+    - "specs/traceability/requirements.yaml"
+    - "specs/templates/implementation-task.yaml"
+    - "checked-in public JSON Schemas plus securecode_ai.contracts.schema_export"
+    - "indexed policy/provider fixtures and referenced JSON instances"
+    - "docs/PLAN.md task/gate catalogue and accepted CHANGELOG/DECISIONS records"
+    - "all historical tracked work/task-packets/*.yaml; they are immutable inputs, not implementation instructions"
+    - ".git/securecode-drafts/deepseek-harness-review-2026-08-18.md is informative research only and is not read by the gate"
+  approved_new_dependency_closure:
+    attrs: "26.1.0"
+    jsonschema: "4.26.0"
+    jsonschema-specifications: "2025.9.1"
+    lark: "1.3.1"
+    referencing: "0.37.0"
+    rfc3339-validator: "0.1.4"
+    rfc3987-syntax: "1.1.0"
+    rpds-py: "2026.6.3"
+    six: "1.17.0"
+  dependency_primary_artifacts:
+    jsonschema_sdist_sha256: "0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326"
+    jsonschema_wheel_sha256: "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+  fixtures:
+    - "test-local bounded synthetic documents and temporary Git repositories; no accepted evaluator or locked-test content"
+  context_budget_tokens: 60000
+
+outputs:
+  required_artifacts:
+    - "tracked exact implementation packet work/task-packets/P1.13.yaml"
+    - "scripts/spec_gate.py with closed snapshot, index-candidate and committed-candidate modes"
+    - "scripts/spec_gate_policy.json containing the independent closed test/evidence catalog, known schema formats and post-bootstrap self-protected path inventory"
+    - "work/task-attestations/README.md plus a closed completion-attestation schema/policy that permits evidence/status successor commits without reopening implementation authority"
+    - "work/change-control/README.md plus closed protected-change and review-attestation schemas/policies implementing the already accepted D-026 change_type=spec + CR/ADR route"
+    - "P1.13 positive, boundary, mutation and adversarial unit tests"
+    - "one mandatory spec CI job plus canonical local-quality snapshot wiring"
+    - "exact approved locked dependency closure with no unrelated dependency drift"
+    - "updated project status/evidence documentation only after exact-candidate acceptance"
+  structured_result_schema: "fixed bounded SPEC_GATE=PASS/FAIL receipt; no public product schema"
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  modes:
+    snapshot:
+      purpose: "canonical local quality and workflow_dispatch verification of current authoritative bytes; it makes no candidate-diff claim"
+      requirements: "validate all content/digest/schema/example/traceability/self-integrity checks; no base option is accepted in this mode"
+    index_candidate:
+      purpose: "local exact staged-candidate acceptance before commit"
+      requirements: "HEAD must equal packet starting_commit_sha; base is exactly that SHA; inspect base versus Git index including intent-to-add records; unstaged changes are separately forbidden by acceptance"
+    committed_candidate:
+      purpose: "pull_request, merge_group and push CI for exactly one implementation packet, completion attestation, protected-change proposal, review attestation or gate promotion"
+      requirements: "checked-out HEAD equals the event-authoritative candidate SHA; event base is a strict ancestor; inspect exact base..candidate commit diff and admit exactly one closed candidate kind"
+  ci_base_authority:
+    pull_request: "github.event.pull_request.base.sha"
+    merge_group: "github.event.merge_group.base_sha"
+    push: "github.event.before; all-zero/missing values reject"
+    workflow_dispatch: "snapshot mode only; it cannot produce candidate-scope evidence"
+    forbidden_fallbacks: [github.sha_as_base, HEAD, HEAD_parent, merge_base_inference, user_input, branch_name, commit_message, PR_text]
+  ci_candidate_authority:
+    pull_request: "github.sha, the checked-out synthetic merge commit; checkout ref and the GitHub check run/status association are both bound to this exact event SHA"
+    merge_group: "github.sha, the checked-out merge-group commit and check-run SHA"
+    push: "github.sha, the checked-out pushed commit and check-run SHA"
+    workflow_dispatch: "github.sha is checked out for snapshot mode but snapshot emits no candidate-scope receipt"
+    forbidden_sources: [pull_request_head_sha_when_checkout_is_merge_sha, caller_input, local_HEAD_inference, branch_name, commit_message, PR_text]
+  task_packet_admission:
+    - "implementation candidate modes infer exactly one newly added work/task-packets/P*.yaml from the NUL-safe diff; modified/deleted historical packets reject and caller cannot choose a packet path"
+    - "packet schema_version is exact normative-template value 0.1-draft, task.type is exact implementation, filename/task ID agree, baseline ID/hash/commit equal the frozen authority and starting_commit_sha equals the authoritative base"
+    - "exclusive_path_lease and scope.allowed_paths are duplicate-free exact-equal closed lists; packet path is included; forbidden/allowed overlap rejects"
+    - "all changed paths and both endpoints of copies/renames are inside allowed_paths and outside forbidden/self-protected paths; file and line budgets are recomputed from Git, never trusted from prose"
+    - "only exact P1.13 at starting commit b157512cf867e834298770c2778da02259fde7b9 may bootstrap the new gate files; after bootstrap, implementation packets cannot modify the gate, its policy/catalog, CI/quality wiring or gate regression tests"
+  completion_attestation_admission:
+    - "a successor/evidence candidate with no implementation packet must add exactly one work/task-attestations/P*.json; caller cannot choose its path and implementation/spec/evaluator/gate source changes are forbidden"
+    - "the strict JSON attestation fields are exactly schema_version=1.0.0, change_type=completion_attestation, task_id, starting_commit_sha, packet_sha256, implementation_commit_sha, evidence_refs, allowed_paths and budgets"
+    - "task ID/filename agree; starting_commit_sha equals the authoritative event base; the referenced historical packet exists unchanged and matches packet_sha256; implementation_commit_sha is the unique ancestor commit that first added those exact packet bytes"
+    - "allowed_paths must exact-equal the actual changed-path set and every path must be in the policy-owned set work/task-attestations/<current>.json, README.md, CHANGELOG.md, docs/PLAN.md and docs/CONTEXT.md; budgets must be exact policy constants max_changed_files=5 and max_diff_lines=800, not caller-selected ceilings"
+    - "evidence_refs exact-equal the policy-owned task evidence catalog and are never optional: P1.4 requires exactly github_ruleset_required_check and github_failing_pr_merge_block; P1.13 requires exactly targeted_tests, full_quality, schema_exact_bytes, strict_g0, staged_scope and independent_reviews"
+    - "each evidence ref is a metadata-only type/URI-or-repository-path/content-SHA tuple; type is at most 64 UTF-8 bytes, URI/path at most 1024 bytes and SHA exact lowercase SHA-256; the protected CI environment variable GITHUB_REPOSITORY is the sole P1.4 repository authority, github_ruleset_required_check must use https://api.github.com/repos/{owner}/{repo}/rulesets/{decimal}, github_failing_pr_merge_block must use https://github.com/{owner}/{repo}/actions/runs/{decimal}, candidate bytes cannot override that authority, and local refs must resolve to unchanged committed bytes"
+    - "no receipt body, secret, source, arbitrary command output or unverifiable PASS default is embedded; unresolved, duplicate, wrong-authority, wrong-cardinality or unhashable evidence rejects"
+    - "the completion route may perform only the exact policy-owned TODO/IN PROGRESS to DONE task-row transition plus evidence-summary wording; it never changes task criteria, dependencies, gate criteria, implementation bytes or accepted baseline"
+    - "this route is the defined post-P1.13 path for the externally verified P1.4 receipts and P1.13 completion successor commit; it records evidence already verified by the Primary Integrator and never treats candidate prose as external verification"
+  protected_change_admission:
+    - "D-026 protected-path changes are never admitted as implementation/completion: a candidate adds exactly one work/change-control/CR-NNN.yaml with schema_version=1.0.0 and change_type=spec, and the filename/change ID, authoritative starting base, exact allowed paths and recomputed budgets must agree"
+    - "the same candidate must add one accepted CR-NNN entry to CHANGELOG.md and one new ADR in docs/DECISIONS.md; review_subject_sha256 binds every proposal-changed path and its exact final bytes after replacing only the YAML scalar value of review_subject_sha256 inside the change packet with exactly 64 ASCII zeroes, and the stored field must equal that canonical digest; reviewed_commit_sha later binds the exact stored digest bytes, while unsupported baseline migration, evaluator mutation, specification mutation, gate-policy mutation or public-contract migration remains rejected by P1.13"
+    - "the only initially supported protected class is gate_evidence for the next open PLAN gate; its prerequisites and checklist criterion IDs come from immutable spec_gate_policy.json, never from candidate PLAN/CONTEXT/prose"
+    - "G1 prerequisites exact-equal P1.1 through P1.13; its policy-owned checklist IDs exact-equal fresh_clone, schema_compatibility, graph_runtime_independence, offline_fake_llm, blocking_ci_quality, blocking_spec_drift and core_security_coverage"
+    - "a gate-evidence proposal creates or revises only artifacts/gates/<current>/checklist.md, benchmark-summary.md, security-review.md, open-risks.md, decision.md and test-results/foundation-validation.md plus its CR/ADR/change packet; all six PLAN-required evidence files exist and a canonical length-prefixed bundle hash covers them"
+    - "proposal decision is exact NO-GO or GO-PROPOSED and can never change PLAN task/gate/phase status; missing/non-PASS criteria force NO-GO, while GO-PROPOSED requires every exact policy criterion PASS, every prerequisite DONE in the authoritative base with its required completion/implementation record, and artifacts/gates/<current>/promotion-manifest.json"
+    - "the strict promotion manifest stores schema_version=1.0.0, gate_id, evidence_bundle_sha256 and the exact policy-owned promotion paths; for each path it stores the SHA-256 of the exact proposal-candidate final bytes that become the immutable pre-promotion base, final SHA-256 and bounded base64 of the exact promotion bytes, plus promotion_subject_sha256 over those decoded final bytes"
+    - "promotion-manifest.json is included in the reviewed proposal subject but not in the six-file evidence bundle; every base/final hash and base64 value is recomputed, every final path is allowed, total decoded bytes are bounded, and no promotion target may change between proposal and promotion"
+    - "a NO-GO or GO-PROPOSED gate directory remains revisable only through a new independently reviewed change_type=spec CR/ADR candidate; an already effective GO gate and every earlier gate tree are byte-immutable"
+    - "proposal allowed paths exact-equal the actual changed set and are limited to one work/change-control/CR-NNN.yaml, the current gate evidence set, CHANGELOG.md, docs/DECISIONS.md and docs/CONTEXT.md; docs/PLAN.md, code, specs, evaluators, CI/quality/gate policy and historical gates are forbidden"
+    - "proposal budgets are policy constants max_changed_files=11 and max_diff_lines=3000; at most 32 prerequisites, exactly six PLAN evidence documents and at most one promotion manifest are accepted"
+  review_attestation_admission:
+    - "one candidate adds exactly one immutable JSON receipt and one Markdown review note under work/change-control/reviews/<gate>/<role>-<review-subject-sha256>/ and changes no other path; role is exactly product_scope, architecture_contracts or security_evaluation and directory/content agree"
+    - "the strict receipt fields are schema_version=1.0.0, change_type=independent_review, gate_id, role, reviewer_identity, reviewed_commit_sha, evidence_bundle_sha256, review_subject_sha256, promotion_subject_sha256, verdict, source_ref and source_ref_sha256; reviewed_commit_sha is the repository-format 40-hex SHA-1 Git object ID, all *_sha256 fields are exact lowercase 64-hex SHA-256 and verdict is PASS or BLOCK"
+    - "reviewed_commit_sha is the authoritative base commit containing unchanged GO-PROPOSED evidence and promotion manifest; evidence, review-subject and promotion-subject hashes are independently recomputed from that commit, source_ref is the sibling repository-relative Markdown note with matching bytes/hash, and the receipt cannot review bytes introduced outside that commit"
+    - "review_subject_sha256 is independently recomputed from every exact proposal-changed path listed by the change packet at reviewed_commit_sha, including docs/CONTEXT.md when present, using the single 64-zero self-hash substitution defined above; promotion_subject_sha256 is distinct and comes only from the verified manifest's decoded final bytes"
+    - "each role/review-subject pair is unique forever; receipts required for promotion are three distinct pre-existing ancestor commits. The validator proves byte provenance and separation, not the truth of a candidate-declared human identity; Primary Integrator review remains mandatory and P1.4 separately proves branch/check enforcement"
+    - "receipt candidates have exact policy budgets max_changed_files=2 and max_diff_lines=800; raw source, secrets, absolute paths, unbounded logs and inline changes to evidence/promotion bytes reject"
+  gate_promotion_admission:
+    - "promotion is a mechanically closed successor candidate: authoritative base already contains one unchanged GO-PROPOSED gate bundle/manifest and exactly three immutable PASS review receipts from three distinct ancestor commits, all bound to the same evidence, review-subject and promotion-subject hashes"
+    - "the candidate changes exactly the promotion paths named by policy/manifest; every current base hash must still match and every candidate final byte sequence must exact-equal the manifest's decoded bytes, including the decision.md GO token and policy-owned PLAN/CHANGELOG/CONTEXT transition"
+    - "promotion_subject_sha256 is recomputed from the actual final candidate bytes and must equal the verified manifest and all three pre-existing receipts; actual paths exact-equal the manifest/policy set and budgets exact-equal max_changed_files=4 and max_diff_lines=400"
+    - "the candidate cannot add/edit receipts, evidence criteria/results, manifest, CR/ADR, task status, code, specs, evaluators or policy; any NO-GO/BLOCK/missing/stale/duplicate-role/same-commit receipt, review/promotion subject mismatch, non-PASS checklist/prerequisite or non-manifest byte rejects"
+    - "P1.13 never infers reviewer independence or truth from candidate-authored rows; it enforces separated immutable provenance and leaves review acceptance to the Primary Integrator under the existing project protocol"
+    - "documentation, specification, evaluator, gate-policy and protected-path changes outside exactly one admitted implementation, completion, protected proposal, review receipt or promotion kind reject with fixed unsupported-change-kind diagnostics"
+  invariants:
+    - "one repository-owned spec gate is authoritative and is called directly by local quality and one mandatory CI job; wrapper failure, cancellation or skip cannot become PASS"
+    - "the validator never writes/generates/normalizes/repairs repository inputs, loads Git configuration/hooks, executes repository content or dynamically imports a schema-named callable"
+    - "all required checks are closed PASS/FAIL; missing provenance/file/catalog entry, unknown version/format, unsupported construct, parse/internal error and resource exhaustion are FAIL"
+    - "diagnostics are deterministic, sorted, bounded, repository-relative and fixed-code; they never echo raw parser exceptions, payloads, secrets/source canaries or absolute host paths"
+    - "all new P1.13 evidence/review/promotion subject digests sort normalized repository-relative UTF-8 paths and hash unsigned 64-bit big-endian path length, path bytes, unsigned 64-bit big-endian content length and exact content bytes for each file; the frozen normative digest remains the immutable validate_g0 path/NUL/content/NUL algorithm and is only recomputed, never redefined"
+    - "the frozen normative content digest is independently recomputed from exact baseline-listed bytes and equals both baseline declaration and frozen predecessor commit"
+    - "accepted normative files contain no critical TBD:/FIXME: token outside fenced code or HTML comments and all local Markdown links resolve inside the repository"
+  parsing:
+    - "JSON rejects duplicate keys, NaN/Infinity, non-UTF-8/BOM, trailing data and inputs beyond fixed byte/depth/node/string limits"
+    - "YAML uses a bounded SafeLoader derivative that rejects duplicate keys, aliases/anchors, explicit/unknown tags, multiple documents, non-scalar keys and inputs beyond fixed byte/depth/node/string limits"
+    - "Markdown requirement definitions use only the exact bullet grammar outside fenced code/HTML comments; IDs in examples, comments, links or prose are references, never definitions"
+  resource_limits:
+    input_file_count: 1024
+    bytes_per_json_yaml_or_task_packet: 1048576
+    bytes_per_markdown: 2097152
+    total_validated_input_bytes: 16777216
+    parsed_depth: 64
+    parsed_nodes_per_document: 100000
+    collection_items_per_node: 100000
+    scalar_utf8_bytes: 262144
+    yaml_aliases_or_anchors: 0
+    git_paths: 4096
+    git_path_utf8_bytes: 4096
+    git_stdout_bytes_per_call: 4194304
+    diagnostics: 256
+    diagnostic_utf8_bytes_each: 512
+    final_receipt_utf8_bytes: 131072
+  schemas_and_examples:
+    - "every baseline-listed JSON Schema has exact Draft 2020-12 dialect, passes its meta-schema, uses only local fragment $ref values and uses only closed known formats date-time and uri"
+    - "FormatChecker is mandatory; rfc3339-validator and rfc3987-syntax are locked so date-time/uri assertions cannot silently become annotations; unknown formats reject"
+    - "all external/network/file/relative-document $ref values and unresolved local fragments reject; validation uses an offline local-only registry"
+    - "every indexed policy/provider positive and negative JSON instance is uniquely indexed, exists, matches its declared schema expectation and cannot trigger remote resolution"
+    - "public generated schemas exactly match all checked-in v0.2.0 filenames/bytes; semantic validation dispatch is a code-owned slug map and never follows x-securecode-semantic-validator text"
+  compatibility:
+    - "current frozen same-version public schema missing/extra/byte drift is blocking"
+    - "the conservative comparator rejects same-version semantic drift, patch validation changes, root/field removal or rename, newly required fields, narrowed enum/range/pattern/type and any unsupported or ambiguous delta"
+    - "synthetic version tests prove unsupported majors reject and future same-major data is carried only by the existing closed extension envelope"
+    - "future breaking change remains rejected until a separately accepted CR/ADR, successor baseline and migration format exist; P1.13 never guesses migration intent"
+  traceability:
+    - "normative definitions come only from baseline-enumerated documents, are unique and use accepted ID grammar; every normative and schema semantic-rule reference resolves"
+    - "source row IDs, task IDs and gate IDs are unique/closed and every source row has non-empty normative/tasks/tests/evidence lists"
+    - "test and evidence IDs must resolve against independent closed catalogs in spec_gate_policy.json; the gate policy is not generated from requirements.yaml"
+    - "each test catalog entry is planned or executable, names one or more existing owner tasks and has no orphan ID; executable entries map to an existing statically parsed test node/command, while planned entries require at least one non-DONE owner"
+    - "each evidence ID maps to exactly one PLAN gate; completed evidence paths must exist, while future gate paths are explicitly planned and cannot be cited as current PASS evidence"
+  self_protection:
+    - "post-bootstrap protected inventory includes specs/**, scripts/validate_g0.py, artifacts/gates/**, .secrets.baseline, scripts/spec_gate.py, scripts/spec_gate_policy.json, scripts/quality.py, scripts/ci_policy.py, .github/workflows/ci.yml, tests/unit/test_spec_gate.py and tests/unit/test_ci_policy.py; the complete baseline bytes and detector configuration are therefore immutable outside an explicitly reviewed protected-change route"
+    - "historical task packets cannot be changed or removed; each future implementation change adds one reviewed packet"
+    - "historical completion/change/review attestations are immutable; gate evidence is revisable only while NO-GO/GO-PROPOSED through a new D-026 CR/ADR candidate, and becomes immutable after effective GO"
+    - "P1.13 proves local logical self-protection and exact CI composition only; external prevention of a malicious candidate weakening candidate-owned workflow/evaluator bytes remains blocking P1.4/G1 evidence"
+  git_security:
+    - "all Git calls use an absolute executable resolved from an absolute PATH entry outside the repository, argument arrays, --no-optional-locks, disabled global/system config, hooks, pagers and prompts, NUL-delimited raw path records, fixed timeouts and no shell interpolation; no bare-name or repository-controlled executable fallback exists"
+    - "candidate and historical blob reads use Git object plumbing that remains unambiguous for long Windows paths and never treats a revision/path expression as a filesystem path"
+    - "candidate diff parses add/modify/delete/copy/rename statuses, inspects both endpoints and rejects invalid encodings, submodules, symlinks for gate inputs, missing objects, shallow history, non-ancestor/wrong-valid-ancestor/self bases and packet ambiguity"
+  privacy:
+    - "no secret/source canary, absolute host path, raw malformed content or exception text appears in output"
+  performance:
+    - "bounded full P1.13 repository validation completes within 60 seconds"
+
+budgets:
+  max_iterations: 12
+  max_tool_calls: 90
+  timeout_seconds: 5400
+  max_output_bytes: 250000
+
+verification:
+  acceptance_commands:
+    - "targeted P1.13 spec-gate and CI-policy tests"
+    - "staged index-candidate gate with exact base b157512cf867e834298770c2778da02259fde7b9"
+    - "project-owned uv 0.12.0 offline canonical quality command including snapshot spec gate"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "project-owned Python strict G0 validator after the dependency lock fix"
+    - "git diff --check, exact packet/allowed-path/budget inventory and zero unstaged changes"
+  negative_cases:
+    - "duplicate/malformed/undefined requirement, traceability, test, task and gate IDs plus executable/planned catalog mismatch"
+    - "baseline byte/digest/frozen-commit mismatch, missing document/link and critical TBD:/FIXME:"
+    - "duplicate/non-finite/oversized/deep JSON and duplicate-key/tag/alias/multi-document/oversized/deep YAML"
+    - "Markdown ID in fenced code/comment/link/prose cannot create a definition"
+    - "malformed/wrong-dialect schema, external/unresolved $ref, unknown/unchecked format and dynamic-import metadata"
+    - "positive example made invalid, negative example made valid, missing/duplicate/unindexed instance"
+    - "missing/extra/same-version public schema drift and conservative breaking/ambiguous compatibility mutations"
+    - "unsupported major and future-minor raw-field bypass"
+    - "candidate without exactly one admitted implementation packet, completion attestation, protected-change proposal, review attestation or promotion; mixed/ambiguous kinds; packet ID/type/version/base/baseline/lease/allowlist/forbidden/budget mutation"
+    - "completion attestation filename/task/base/packet hash/implementation commit/evidence type/cardinality/authority/hash/allowlist/budget/status-transition mutation or any source/spec/evaluator/gate change"
+    - "P1.4 evidence URI from an unrelated repository, wrong endpoint family or candidate-controlled GITHUB_REPOSITORY override"
+    - "protected proposal wrong/non-next gate, CR/ADR absence, candidate-owned prerequisite/checklist authority, missing PLAN evidence file, NO-GO deadlock, historical/effective gate mutation, evidence bundle mismatch, over-budget delta or mixed implementation/spec change"
+    - "review receipt same-candidate subject, mutable/duplicate role, wrong reviewed commit/bundle/subject/source digest, fabricated inline PASS or mixed path; promotion missing/stale/BLOCK/same-commit receipts, subject mismatch or non-mechanical status/decision change"
+    - "implementation diff touching every protected/self-protected class; modified/deleted historical packet"
+    - "add/modify/delete/copy/rename, both rename endpoints, whitespace/quote/newline/non-UTF-8/option-shaped Git paths"
+    - "JSON Pointer malformed percent or UTF-8 encoding, invalid ~ escape and non-canonical array index"
+    - "repository-shadowed Git executable and long Windows review-receipt path"
+    - "temporary committed Git histories exercise completion, GO-PROPOSED proposal, three distinct ancestor review commits and exact mechanical promotion, including parameterized broken-chain variants"
+    - "missing/all-zero/self/non-ancestor/wrong-valid-ancestor/shallow base and event-base/candidate mismatch"
+    - "spec job removed, renamed, made optional, continue-on-error, candidate-as-base fallback, omitted from final gate, skipped or cancelled"
+    - "parser/internal/resource failure and source/secret/path canaries use fixed non-echo diagnostics"
+    - "validator mutation attempt and repository state change during validation"
+    - "dependency index/host/package/version/source/hash/closure drift beyond the exact nine approved distributions"
+  required_evidence:
+    - "reconciled tracked packet SHA-256 and independent preimplementation PASS/PASS/PASS"
+    - "exact staged digest, packet path, allowed/protected inventory and line/file budgets"
+    - "targeted test count/output and adversarial mutation matrix"
+    - "full tests, Ruff/mypy and Core branch coverage"
+    - "schema exact-byte PASS and strict frozen G0 PASS with unchanged normative digest"
+    - "exact dependency diff limited to the three direct and nine total approved distributions"
+    - "product, architecture and security/evaluation PASS/PASS/PASS on one exact staged digest"
+    - "clean post-commit targeted/full/schema/spec-gate/strict-G0 validation"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "spec_conflict"
+  - "protected/frozen/public-contract path change required"
+  - "dependency closure differs from the exact approved set"
+  - "security boundary or G1 criteria change required"
+  - "compatibility or traceability cannot be classified conservatively"
+  - "independent preimplementation review not PASS/PASS/PASS on exact bytes"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.13, SC-DOM-007, SC-DOM-008, SC-CAP-005, SC-EVAL-001]
+  gate_contribution: "Supplies the local spec/compatibility/traceability/task-drift gate and exact CI composition required by G1; G1 remains open until P1.4 proves the external required-check and protected evaluator/workflow enforcement."
+  changelog_required: true
+  adr_required: false

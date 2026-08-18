@@ -33,4 +33,9 @@ Thumbs.db
 work/*
 !work/task-packets/
 !work/task-packets/*.yaml
+!work/task-attestations/
+!work/task-attestations/README.md
+!work/task-attestations/*.json
+!work/change-control/
+!work/change-control/**
 tmp/

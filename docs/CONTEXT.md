@@ -7,7 +7,8 @@
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.12 — internal structured telemetry`,
   implementation commit `5ace16e80730d56f994cb6a24fa4748867a49646`.
-- Следующая задача: `P1.13`; constrained packet ещё не открыт. P2 scope закрыт.
+- Текущая задача: `P1.13 — specification/compatibility/drift gate`,
+  implementation `IN PROGRESS`. P2 scope закрыт.
 - Параллельная внешняя задача: `P1.4` ожидает GitHub
   ruleset/failing-PR receipt.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
@@ -155,8 +156,22 @@
   implementation commit `5ace16e80730d56f994cb6a24fa4748867a49646`
   повторно прошла 162 targeted, Ruff/mypy, все 885 tests, 85,80% Core branch
   coverage, schema check и strict frozen G0. Protected specs/G0/contracts не
-  менялись. `P1.12` — `DONE`; `P1.13` packet не открыт, P2 закрыт, `G1` остаётся
-  открыт из-за `P1.4` и `P1.13`.
+  менялись. `P1.12` — `DONE`; P2 закрыт, `G1` остаётся открыт из-за `P1.4` и
+  `P1.13`.
+- P1.13 packet после remediation repository authority, strict JSON Pointer,
+  trusted Git executable и committed-lifecycle checks имеет exact SHA-256
+  `b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673`
+  и ожидает повторный независимый review.
+  Текущий candidate добавляет deterministic snapshot/index/committed spec gate,
+  exact schema/example/traceability checks, пять закрытых candidate lanes,
+  mandatory CI spec job и три прямые locked quality dependencies с точной
+  девяти-package closure. `.secrets.baseline` механически обновлён только
+  проверенными false-positive hashes с сохранением настроек и прежних findings
+  и включён в post-bootstrap protected inventory. На текущих байтах 136 targeted
+  tests и full quality с 978 tests, Ruff/mypy, 85,80% Core branch coverage и
+  snapshot spec gate, CI policy, schema exact-byte и strict frozen G0 проходят.
+  Exact staged reviews и clean post-commit evidence ещё не выполнены. `P1.13` остаётся
+  `IN PROGRESS`.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -242,8 +257,8 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Открыть constrained packet `P1.13` и пройти его independent preimplementation
-   review до любых изменений spec-drift gate.
+1. Завершить `P1.13` exact staged `PASS/PASS/PASS`, implementation commit и
+   отдельную completion attestation.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.

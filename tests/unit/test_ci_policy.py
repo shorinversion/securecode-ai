@@ -145,6 +145,41 @@ def test_workflow_mutations_fail_closed(mutate: Callable[[dict[str, Any]], None]
     assert POLICY.workflow_errors(workflow)
 
 
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda workflow: workflow["jobs"]["spec"].update(name="renamed-spec"),
+        lambda workflow: workflow["jobs"]["spec"].update({"if": "false"}),
+        lambda workflow: workflow["jobs"]["spec"]["env"].update(
+            BASE_SHA="${{ github.event.before || github.sha }}"
+        ),
+        lambda workflow: workflow["jobs"]["spec"]["env"].update(
+            CANDIDATE_SHA="${{ github.event.pull_request.head.sha }}"
+        ),
+        lambda workflow: workflow["jobs"]["spec"]["env"].update(
+            GITHUB_REPOSITORY="attacker/repository"
+        ),
+        lambda workflow: workflow["jobs"]["spec"]["steps"][0]["with"].update({"fetch-depth": "1"}),
+        lambda workflow: workflow["jobs"]["quality"].update(
+            needs=["policy", "secrets", "dependency"]
+        ),
+        lambda workflow: workflow["jobs"]["gate"].update(
+            needs=["policy", "secrets", "dependency", "quality"]
+        ),
+        lambda workflow: workflow["jobs"]["gate"]["env"].pop("SPEC_RESULT"),
+        lambda workflow: _run_step(workflow, "spec", "scripts/spec_gate.py").update(
+            run="echo bypassed"
+        ),
+    ],
+)
+def test_spec_job_cannot_be_renamed_skipped_or_detached(
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    workflow = _workflow()
+    mutate(workflow)
+    assert POLICY.workflow_errors(workflow)
+
+
 def test_baseline_cannot_self_approve_a_new_finding() -> None:
     baseline = _baseline()
     baseline["results"]["new.py"] = [

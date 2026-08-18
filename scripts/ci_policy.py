@@ -91,12 +91,15 @@ ACTION_REFS: Final = {
 }
 EXPECTED_QUALITY_DEPENDENCIES: Final = {
     "detect-secrets==1.5.0",
+    "jsonschema==4.26.0",
     "mypy==2.3.0",
     "pip-audit==2.10.1",
     "pre-commit==4.6.0",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "pyyaml==6.0.3",
+    "rfc3339-validator==0.1.4",
+    "rfc3987-syntax==1.1.0",
     "ruff==0.15.22",
     "uv==0.12.0",
     "zizmor==1.28.0",
@@ -134,18 +137,19 @@ EXPECTED_VULNERABLE_HASHES: Final = [
     ),
 ]
 EXPECTED_BASELINE_DIGEST: Final = "".join(
-    ("47ac4bdd", "7cc21cd0", "64e18297", "a15d1424", "54af7e18", "d69b2aea", "bf21df23", "bbbdf911")
+    ("3c4e25c7", "84e0434c", "eda41fa3", "9dccbe66", "3400a62c", "af858a8f", "eda03c59", "d08db53b")
 )
-EXPECTED_BASELINE_FINDINGS: Final = 27
+EXPECTED_BASELINE_FINDINGS: Final = 134
 UV_LINUX_SHA256: Final = "".join(
     ("eaf84226", "2aa1c418", "d8ecc560", "5f02ee1e", "bfd36912", "4fa48548", "e85f9481", "a47831a9")
 )
-EXPECTED_JOBS: Final = {"policy", "secrets", "dependency", "quality", "gate"}
+EXPECTED_JOBS: Final = {"policy", "secrets", "dependency", "spec", "quality", "gate"}
 SECRETS_JOB_NAME: Final = "".join(("sec", "rets"))
 EXPECTED_TIMEOUTS: Final = {
     "policy": "15",
     "secrets": "15",
     "dependency": "15",
+    "spec": "15",
     "quality": "20",
     "gate": "2",
 }
@@ -153,6 +157,7 @@ EXPECTED_JOB_NAMES: Final = {
     "policy": "policy",
     SECRETS_JOB_NAME: SECRETS_JOB_NAME,
     "dependency": "dependency",
+    "spec": "spec",
     "quality": "quality / python-${{ matrix.python-version }}",
     "gate": "gate",
 }
@@ -176,13 +181,18 @@ EXPECTED_RUN_COMMANDS: Final = {
         'uv run --locked --offline --no-sync --only-group quality pip-audit --require-hashes --disable-pip --progress-spinner off --requirement "$RUNNER_TEMP/locked-requirements.txt"',
         "uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py audit-negative",
     ),
+    "spec": (
+        "python -I scripts/ci_policy.py lock",
+        "uv sync --locked --only-group quality --no-editable",
+        'uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --github-repository "$GITHUB_REPOSITORY"',
+    ),
     "quality": (
         "python -I scripts/ci_policy.py lock",
         "uv sync --locked --no-editable --group quality",
         "uv run --locked --offline --no-sync --group quality python -I scripts/quality.py",
     ),
     "gate": (
-        "python -c \"import os,sys; names=('POLICY_RESULT','SECRETS_RESULT','DEPENDENCY_RESULT','QUALITY_RESULT'); failed=[name for name in names if os.environ.get(name) != 'success']; print('CI_GATE=' + ('PASS' if not failed else 'FAIL')); sys.exit(bool(failed))\"",
+        "python -c \"import os,sys; names=('POLICY_RESULT','SECRETS_RESULT','DEPENDENCY_RESULT','SPEC_RESULT','QUALITY_RESULT'); failed=[name for name in names if os.environ.get(name) != 'success']; print('CI_GATE=' + ('PASS' if not failed else 'FAIL')); sys.exit(bool(failed))\"",
     ),
 }
 FULL_SHA_PATTERN: Final = re.compile(r"[0-9a-f]{40}\Z")
@@ -337,6 +347,7 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
             "policy": {"name", "runs-on", "timeout-minutes", "steps"},
             "secrets": {"name", "needs", "runs-on", "timeout-minutes", "env", "steps"},
             "dependency": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
+            "spec": {"name", "needs", "runs-on", "timeout-minutes", "env", "steps"},
             "quality": {"name", "needs", "runs-on", "timeout-minutes", "strategy", "steps"},
             "gate": {
                 "name",
@@ -404,7 +415,7 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
             if action == "actions/checkout":
                 expected_checkout = {
                     "persist-credentials": "false",
-                    "fetch-depth": "0" if job_name == "secrets" else "1",
+                    "fetch-depth": "0" if job_name in {"secrets", "spec"} else "1",
                     "lfs": "false",
                     "submodules": "false",
                     "set-safe-directory": "false",
@@ -467,19 +478,20 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
     if strategy.get("fail-fast") != "false" or versions != ["3.12", "3.13", "3.14"]:
         errors.append("quality matrix must be fail-fast:false over Python 3.12, 3.13 and 3.14")
     quality_needs = set(_sequence(quality.get("needs"), "jobs.quality.needs"))
-    if quality_needs != {"policy", "secrets", "dependency"}:
-        errors.append("quality must require policy, secrets and dependency")
+    if quality_needs != {"policy", "secrets", "dependency", "spec"}:
+        errors.append("quality must require policy, secrets, dependency and spec")
 
     gate = _mapping(jobs.get("gate"), "jobs.gate")
     if gate.get("if") != "${{ always() }}":
         errors.append("gate must run under always()")
     gate_needs = set(_sequence(gate.get("needs"), "jobs.gate.needs"))
-    if gate_needs != {"policy", "secrets", "dependency", "quality"}:
+    if gate_needs != {"policy", "secrets", "dependency", "spec", "quality"}:
         errors.append("gate must aggregate every mandatory job")
     expected_gate_environment = {
         "POLICY_RESULT": "${{ needs.policy.result }}",
         "SECRETS_RESULT": "${{ needs.secrets.result }}",
         "DEPENDENCY_RESULT": "${{ needs.dependency.result }}",
+        "SPEC_RESULT": "${{ needs.spec.result }}",
         "QUALITY_RESULT": "${{ needs.quality.result }}",
     }
     if _mapping(gate.get("env"), "jobs.gate.env") != expected_gate_environment:
@@ -493,6 +505,15 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
         errors.append("secrets must require policy success")
     if _mapping(jobs.get("dependency"), "jobs.dependency").get("needs") != ["policy"]:
         errors.append("dependency must require policy success")
+    expected_spec_environment = {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}",
+        "CANDIDATE_SHA": "${{ github.sha }}",
+    }
+    if _mapping(jobs.get("spec"), "jobs.spec").get("env") != expected_spec_environment:
+        errors.append("spec event authority environment differs from the closed mapping")
+    if _mapping(jobs.get("spec"), "jobs.spec").get("needs") != ["policy"]:
+        errors.append("spec must require policy success")
     return sorted(set(errors))
 
 

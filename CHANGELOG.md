@@ -24,6 +24,25 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-18 — открыт `P1.13`: один read-only fail-closed spec gate проверяет
+  frozen baseline/digest, requirement IDs, traceability, Draft 2020-12 schemas,
+  indexed examples, exact public-schema bytes, conservative compatibility и
+  пять закрытых Git candidate lanes. Локальная quality-команда запускает
+  snapshot gate первой, а обязательный CI spec job использует full history и
+  event-authoritative base/candidate SHA; aggregate gate требует его успеха.
+  D-026 admission разделяет implementation, completion, gate-evidence proposal,
+  commit-separated review receipts и byte-exact promotion. Три прямые quality
+  зависимости и их точная девяти-package closure закреплены в `uv.lock`.
+  Механически обновлён `.secrets.baseline`: сохранены detector settings и все
+  прежние findings, добавлены только проверенные false-positive hashes, а сам
+  baseline включён в post-bootstrap protected inventory. Constrained packet
+  SHA-256 `b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673`
+  включает remediation repository authority, strict JSON Pointer, trusted Git
+  executable и committed-lifecycle checks и ожидает повторный независимый
+  review; 136 targeted tests и full quality с 978 tests, Ruff/mypy, 85,80% Core
+  branch coverage, spec snapshot, CI policy, schema exact-byte и strict frozen
+  G0 проходят. Exact staged reviews ещё не выполнены. Implementation пока `IN PROGRESS`,
+  `P1.4/G1` не закрыты и `P2` не разрешён.
 - 2026-08-18 — завершён `P1.12`: internal
   exact-version structured telemetry в Core, HMAC trace authority, closed
   DC1-only event/measurement surface, canonical JSONL, fail-closed multi-sink
