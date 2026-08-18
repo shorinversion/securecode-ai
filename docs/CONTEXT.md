@@ -7,7 +7,10 @@
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.11 — fixture repository factory`,
   implementation commit `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc`.
-- Следующая implementation-задача: `P1.12`; constrained packet ещё не открыт.
+- Текущая задача: `P1.12`; exact internal-only packet SHA
+  `19a00d3842773a0a91b616abe29c87c9ab5f7e1b73ef590d05b872084aa1cbed`
+  получил preimplementation `PASS/PASS/PASS`, implementation candidate локально
+  проходит targeted checks, но staged reviews/commit/post-commit ещё не выполнены.
   P2 scope закрыт.
 - Параллельная внешняя задача: `P1.4` ожидает GitHub
   ruleset/failing-PR receipt.
@@ -129,6 +132,29 @@
   Ruff/mypy, все 739 tests, 89,72% Core branch coverage, schema exact-byte и
   strict frozen G0; protected golden/spec/G0 не изменены. `P1.11` — `DONE`;
   `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
+- P1.12 candidate verification: frozen/public-contract conflict устранён до
+  реализации — telemetry record остаётся exact-version internal Core value,
+  `packages/contracts/**` и public schema не меняются. Process-local HMAC trace
+  authority выдаёт non-zero root/child IDs; emitter строит только closed DC1
+  metadata, один раз рендерит canonical JSONL и fan-out-ит emitter-issued guarded
+  capability. First-party sinks проверяют type/issuer/seal/hash/current canonical
+  record до I/O; raw/forged/copied/mutated payload, TOCTOU, source/clock faults,
+  exception non-echo, short-write/flush и bounded retention покрыты 162 targeted
+  tests. Review remediation дополнительно закрыл module-visible mint helpers,
+  reentrant stream-wiring, nested-draft и retained-authority TOCTOU, а также
+  exact-enum/non-echo boundary errors, concurrent memory-cap/stream-record
+  atomicity, bounded same-thread stream re-entry, flush-time wiring mutation,
+  self-signed/resealed capability forgery через emission-scoped exact-object
+  provenance с real emitter code/globals/builtins resolution, истечение retained
+  payload после fan-out, nested-record render race, mutable retained memory
+  storage и parser exception echo. Это process-local object contract, не Python
+  runtime sandbox: coordinated mutation code/frame/closure cells или resolved
+  runtime objects остаётся вне `P1.12`. Canonical quality проходит Ruff/mypy, все
+  885 repository tests и 85,80%
+  Core branch coverage. Preimplementation product/architecture/security-evaluation reviews дали
+  `PASS/PASS/PASS` на packet SHA `19a00d3842773a0a91b616abe29c87c9ab5f7e1b73ef590d05b872084aa1cbed`.
+  `P1.12` остаётся `IN PROGRESS` до exact staged reviews, implementation commit и
+  clean post-commit verification; `P1.13` packet не открыт, P2 закрыт.
 - Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
   contracts; `G1 Foundation Ready` остаётся открытым.
 
@@ -214,8 +240,9 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Открыть constrained packet `P1.12` для structured telemetry/redaction,
-   выполнить preimplementation `PASS/PASS/PASS` и только затем реализовывать.
+1. Закрыть remediation и повторный exact staged `PASS/PASS/PASS` для `P1.12`,
+   создать implementation commit, повторить clean post-commit verification и
+   только затем открыть constrained packet `P1.13`.
 2. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
    и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
    закрывать G1 до всех доказательств `P1.4–P1.13`.

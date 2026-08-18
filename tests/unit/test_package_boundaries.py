@@ -201,6 +201,15 @@ def test_contract_package_contains_complete_public_schema_inventory() -> None:
     }
 
 
+def test_internal_telemetry_does_not_create_a_public_contract_root() -> None:
+    contracts = importlib.import_module("securecode_ai.contracts")
+    core = importlib.import_module("securecode_ai.core")
+    adapters = importlib.import_module("securecode_ai.adapters")
+    assert not hasattr(contracts, "TelemetryRecord")
+    assert core.TelemetryRecord.__module__ == "securecode_ai.core.telemetry"
+    assert adapters.InMemoryTelemetrySink.__module__ == "securecode_ai.adapters.telemetry"
+
+
 @pytest.mark.parametrize(
     ("source", "expected_fragment"),
     [

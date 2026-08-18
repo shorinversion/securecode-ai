@@ -33,3 +33,17 @@ reason precedence, node-producer admission and replay regeneration, while
 remaining separate from the
 `EvidenceGraph`. It imports no adapter, graph engine, persistence layer,
 provider SDK, `AuditEvent` implementation or specification file.
+
+The `P1.12` candidate adds internal exact-version foundation telemetry values,
+trace/source/clock/sink ports, a process-local HMAC trace authority and a
+fail-closed multi-sink emitter. Its guarded payload is an internal Core
+capability checked by exact object identity inside the active, unchanged
+`TelemetryEmitter.emit` code/globals/builtins environment; it expires when
+synchronous fan-out returns and is not a contracts-package wire root. Core renders one canonical
+DC1-only JSONL snapshot and owns no OpenTelemetry SDK, backend, persistence or
+product instrumentation. This operational `TelemetryRecord` neither replaces
+nor duplicates the immutable `AuditEvent`; workflow/node telemetry begins in
+`P3.8`, while durable and remote observability export remains owned by `P6.10`.
+The process-local object contract is not a Python runtime sandbox; coordinated
+mutation of code objects, frames, closure cells or resolved runtime objects is
+outside `P1.12`.

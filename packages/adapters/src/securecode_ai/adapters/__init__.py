@@ -43,9 +43,16 @@ from .model import (
     parse_model_request,
 )
 from .runtime import LocalWorkflowRuntime, RuntimeClock
+from .telemetry import (
+    BinaryStreamTelemetrySink,
+    InMemoryTelemetrySink,
+    SystemTraceIdSource,
+    SystemUTCClock,
+)
 
 __all__ = [
     "AuthorizedProviderHarness",
+    "BinaryStreamTelemetrySink",
     "ConfigDiagnostic",
     "ConfigDiagnosticCode",
     "ConfigError",
@@ -60,6 +67,7 @@ __all__ = [
     "EndpointError",
     "EphemeralStructuredPayload",
     "HmacContentIdentifier",
+    "InMemoryTelemetrySink",
     "JsonObjectValidator",
     "LocalWorkflowRuntime",
     "ModelBoundaryError",
@@ -75,6 +83,8 @@ __all__ = [
     "ScriptedFakeProvider",
     "SelectionProvenance",
     "StructuredPayloadValidator",
+    "SystemTraceIdSource",
+    "SystemUTCClock",
     "TransportFailure",
     "VerifiedEndpointAuthorization",
     "normalize_provider_attempt",

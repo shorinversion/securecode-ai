@@ -7,8 +7,10 @@ current implementation phase is `P1 — Engineering Foundation`.
 This repository contains the completed specification baseline, reproducible
 Python workspace and quality gate, versioned domain/event/model contracts, the
 completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
-  workflow-runtime substrate, the completed `P1.10` foundation CLI and the
-  completed `P1.11` fixture-repository factory.
+workflow-runtime substrate, the completed `P1.10` foundation CLI and the
+completed `P1.11` fixture-repository factory. The current `P1.12` candidate
+adds internal exact-version structured telemetry without creating a new public
+wire contract.
 `P1.8`
 provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
@@ -120,7 +122,7 @@ securecode-ai-adapters
 
 All three distributions are private pre-alpha packages under the shared
 implicit namespace `securecode_ai`. The contracts package owns stable-ID
-derivation, closed Pydantic v2 models and thirteen checked-in Draft 2020-12 JSON
+derivation, closed Pydantic v2 models and fifteen checked-in Draft 2020-12 JSON
 Schemas: the original domain/event/model roots plus `WorkflowDefinition`,
 `WorkflowRuntimeRequest`, `WorkflowRuntimeResult`, `WorkflowSnapshot` and
 `WorkflowTransitionEvent`; it deliberately imports no provider, SCM, database
@@ -133,6 +135,21 @@ provider fake, native-envelope normalization, endpoint peer checks and the
 lock-backed process-local `LocalWorkflowRuntime`. Live provider HTTP, durable
 persistence and external workflow engines remain outside this increment.
 The exact schema drift command is in the contracts package README.
+
+The locally verified `P1.12` candidate keeps operational telemetry inside
+Core: closed event/measurement enums, authority-issued trace/span IDs,
+canonical DC1-only JSONL, exact result precedence and an emitter-issued guarded
+payload capability. First-party in-memory and binary-stream sinks independently
+validate its exact object identity inside the active, unchanged
+`TelemetryEmitter.emit` execution environment before storage or I/O; the
+capability expires when synchronous fan-out returns. Raw source, prompts, model
+responses, patches, exceptions, credentials, tenant/repository identifiers and
+arbitrary labels have no telemetry input slot. This is structural
+non-disclosure, not semantic taint proof for a valid-shaped numeric value. No
+public schema, OpenTelemetry dependency, network exporter, persistence or P2
+instrumentation is introduced. This process-local object contract is not a
+Python runtime sandbox: coordinated mutation of code objects, frames, closure
+cells or resolved runtime objects is outside `P1.12`.
 
 ## Repository ownership
 
@@ -208,6 +225,11 @@ packages/adapters/
   `f194a1bd66da95642a37487a743144389f229699`; clean post-commit verification on
   `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc` passes 43 targeted and 739 full
   tests, Ruff/mypy, 89.72% Core branch coverage, schema check and strict G0.
+- `P1.12` is an independently specified internal-telemetry candidate. Its
+  14-path packet passed product/architecture/security-evaluation review before
+  implementation; 162 targeted and all 885 repository tests currently pass
+  with Ruff/mypy and 85.80% Core branch coverage, while exact staged-digest
+  reviews and clean post-commit evidence remain required before completion.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 

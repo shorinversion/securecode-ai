@@ -24,6 +24,27 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-14 — подготовлен и локально реализован кандидат `P1.12`: internal
+  exact-version structured telemetry в Core, HMAC trace authority, closed
+  DC1-only event/measurement surface, canonical JSONL, fail-closed multi-sink
+  result precedence и emitter-issued guarded payload capability. First-party
+  bounded memory/binary-stream sinks перепроверяют issuer/type/seal/hash/current
+  canonical record до I/O; direct raw/forged/copied/mutated payloads, source/
+  clock faults, stream short-write/flush failures и exception canaries покрыты
+  adversarial tests. Review remediation дополнительно закрыл module-visible
+  mint helpers, reentrant stream-wiring, nested-draft и retained-authority TOCTOU,
+  exact-enum/non-echo boundary errors, concurrent memory-cap/stream-record
+  atomicity, bounded same-thread stream re-entry, flush-time wiring mutation,
+  self-signed/resealed capability forgery через emission-scoped exact-object
+  provenance с проверкой real emitter code/globals/builtins resolution, истечение
+  retained payload после fan-out, nested-record render race, mutable retained
+  memory storage и parser exception echo.
+  Новый public wire root/schema, raw-content redactor,
+  OpenTelemetry/backend/persistence и P2 instrumentation не добавлены. Packet
+  SHA `19a00d3842773a0a91b616abe29c87c9ab5f7e1b73ef590d05b872084aa1cbed`
+  получил preimplementation `PASS/PASS/PASS`; implementation остаётся
+  кандидатом после 162 targeted и 885 full tests, Ruff/mypy и 85,80% Core branch
+  coverage до exact staged reviews, commit и clean post-commit evidence.
 - 2026-08-14 — завершён `P1.11`: шесть opaque
   non-sensitive Python CWE-89 repository templates, canonical catalog и
   test-only deterministic factory. Evaluator-side case/tree mapping был

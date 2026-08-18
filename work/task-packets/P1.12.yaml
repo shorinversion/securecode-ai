@@ -1,0 +1,257 @@
+schema_version: "0.2-draft"
+
+task:
+  id: "P1.12"
+  type: "implementation"
+  objective: "Implement a provider-neutral, framework-independent structured telemetry boundary with authority-issued trace identifiers, canonical current-writer DC1-only records, deny-by-construction structural redaction, fail-closed multi-sink emission and adversarial non-disclosure tests, without ingesting raw DC2/DC3/DC4 content, instrumenting P2+ workflows or adding a production telemetry backend."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+  baseline_commit_sha: "f5cd4ef2a0f7130d16cb2c206091908be71b0702"
+  starting_commit_sha: "48981ffa5001f1bfe2b2f3a23a0f513304c55eeb"
+  spec_refs: [SC-DATA-003, SC-DATA-004, SC-DATA-005, SC-EGRESS-005, SC-MODEL-004, SC-ENDPOINT-004]
+  decision_refs: [D-015, D-024]
+  preconditions:
+    - "G0 strict validator exits 0 against frozen baseline 0.2.0"
+    - "P1.6 event/stable-ID contracts and P1.11 completion evidence are committed"
+    - "repository worktree is clean at starting_commit_sha except this reviewed implementation packet"
+  non_goals:
+    - "instrumenting scanner, model-agent, workflow-node, sandbox, SCM, API, worker or backend execution; node/replay/cost telemetry begins in P3.8 and service telemetry in P6.10"
+    - "persistent telemetry storage, OTLP/OpenTelemetry SDK/exporter, network collector, database, queue, retry spool, sampling, dashboard, alerting, SLO or incident workflow"
+    - "raw source, prompt, model response, patch, build log, exception text, stack trace, credential, API key, tenant ID, repository ID/path, finding evidence or arbitrary labels in an ordinary telemetry record"
+    - "generic secret detection, raw-content fingerprinting or a DC2/DC3/DC4-to-DC1 downgrade; P1.12 accepts only caller-preclassified DC1 enums, authority-issued trace data and bounded numeric measurements"
+    - "proving that a valid-shaped hash or numeric measurement was not semantically derived from sensitive data; this remains an explicit trusted-caller classification boundary and no absolute encoded-canary claim is made"
+    - "AuditEvent replacement, audit-log persistence or capability-use event production; immutable events remain P1.6 and connected audit export remains P6.10"
+    - "changing existing CLI/provider/runtime observable behavior or claiming product scan readiness"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "telemetry-security-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease: &leased_paths
+    - "CHANGELOG.md"
+    - "README.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/core/README.md"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/src/securecode_ai/core/telemetry.py"
+    - "packages/adapters/README.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/telemetry.py"
+    - "tests/unit/test_package_boundaries.py"
+    - "tests/unit/test_telemetry_contracts.py"
+    - "tests/unit/test_telemetry_emission.py"
+    - "work/task-packets/P1.12.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths: *leased_paths
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/validate_g0.py"
+    - "artifacts/gates/G0/**"
+    - ".github/**"
+    - ".gitattributes"
+    - "pyproject.toml"
+    - "uv.lock"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+    - "examples/**"
+    - "notebooks/**"
+    - "report/**"
+    - "packages/contracts/**"
+    - "packages/core/src/securecode_ai/core/config.py"
+    - "packages/core/src/securecode_ai/core/events.py"
+    - "packages/core/src/securecode_ai/core/model.py"
+    - "packages/core/src/securecode_ai/core/runtime.py"
+    - "packages/adapters/src/securecode_ai/adapters/config.py"
+    - "packages/adapters/src/securecode_ai/adapters/endpoint.py"
+    - "packages/adapters/src/securecode_ai/adapters/model.py"
+    - "packages/adapters/src/securecode_ai/adapters/runtime.py"
+  max_changed_files: 14
+  max_diff_lines: 5000
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted telemetry contract/emission/package-boundary suites"
+    - "project-owned uv 0.12.0 offline canonical quality command"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny"
+  secrets: "deny except fixed synthetic canaries and ephemeral test-only HMAC keys"
+  dependency_changes: "deny"
+
+inputs:
+  artifacts:
+    - "specs/security/data-classification.md SC-DATA-003/004/005, SC-EGRESS-005 and SC-ENDPOINT-004"
+    - "specs/system/architecture.md SC-MODEL-004"
+    - "specs/contracts/events.md owns AuditEvent; P1.12 internal operational telemetry does not copy or replace AuditEvent correlation/causation IDs"
+    - "docs/ARCHITECTURE.md observability and reproducibility section"
+  exact_trace_contract:
+    trace_id: "32 lowercase hexadecimal characters; W3C-compatible all-zero value forbidden"
+    span_id: "16 lowercase hexadecimal characters; W3C-compatible all-zero value forbidden"
+    parent_span_id: "null or 16 lowercase hexadecimal characters; all-zero and equality with span_id forbidden"
+  event_policy:
+    FOUNDATION_STARTED: {severity: INFO, safe_message: "foundation operation started"}
+    FOUNDATION_COMPLETED: {severity: INFO, safe_message: "foundation operation completed"}
+    FOUNDATION_NON_SUCCESS: {severity: WARNING, safe_message: "foundation operation did not complete successfully"}
+    FOUNDATION_DENIED: {severity: WARNING, safe_message: "foundation operation was denied"}
+    FOUNDATION_FAILED: {severity: ERROR, safe_message: "foundation operation failed"}
+  measurement_names: [ATTEMPT, BYTE_COUNT, ELAPSED_MS, ITEM_COUNT, TOKENS_USED, TOOL_CALLS]
+  canonical_json: "UTF-8, sorted keys, separators comma/colon, ensure_ascii=true, one terminal LF; SHA-256 is computed over these exact bytes"
+
+outputs:
+  required_artifacts:
+    - "one immutable internal Core TelemetryRecord implementation model with exact current-version parsing and canonical JSONL; it is not exported from contracts, has no checked-in public JSON Schema and creates no external wire-compatibility promise"
+    - "closed internal TraceContext and TelemetryMeasurement models; no extension envelope, free-form message, mapping, exception, stack, source, credential, tenant, repository, correlation ID or finding field"
+    - "framework-independent Core TraceIdSource/TelemetryClock/TelemetrySink ports, process-local TraceAuthority and fail-closed TelemetryEmitter that constructs current-writer records, verifies trace authorization and seals canonical bytes into an emitter-issued process-local payload capability once before fan-out"
+    - "adapter-side system CSPRNG trace source, UTC clock and bounded in-memory/binary stream sinks; tests inject deterministic Core-port fakes; no raw-data redactor accepts DC2/DC3/DC4 input"
+    - "canonical multi-sink snapshots and canary matrices proving that the telemetry API has no raw-content slot and emits only authority-issued trace IDs, closed DC1 enums/messages and preclassified bounded counts"
+    - "package docs that distinguish operational telemetry from immutable AuditEvent and defer durable/remote observability to P3.8/P6.10"
+  telemetry_record_contract:
+    visibility: "internal Core implementation contract only; not exported from packages/contracts, not a checked-in JSON Schema, not an external wire root and not covered by D-026"
+    root_fields_in_order: [schema_version, record_id, occurred_at, event_code, severity, safe_message, data_class, trace, measurements]
+    schema_version: "internal writer and parser require exact 0.2.0; any other version rejects; additive compatibility requires later explicit change control"
+    record_id: "64 lowercase hex equal to SHA-256 of canonical current-writer fields excluding record_id; recomputed by model and emitter"
+    occurred_at: "timezone-aware UTC datetime; canonical JSON uses RFC3339 Z with exactly six fractional digits"
+    event_code: "closed TelemetryEventCode enum from inputs.event_policy"
+    severity: "closed TelemetrySeverity enum INFO/WARNING/ERROR and exact event_policy match"
+    safe_message: "exact fixed event_policy message; never caller-selected"
+    data_class: "exact literal DC1_INTERNAL_METADATA"
+    trace: "required frozen-slots TraceContext fields in order schema_version, trace_id, span_id, parent_span_id; exact version 0.2.0 only"
+    measurements: "tuple length 0..32 of frozen-slots TelemetryMeasurement fields in order schema_version, name, value; exact version 0.2.0 only; name is closed enum and value is exact int excluding bool in 0..9007199254740991; unique and sorted by name.value"
+    model_policy: "root and nested dataclasses are final/frozen-slots values with explicit exact-type, field and retained-state validation; unknown/missing/coerced fields and any non-current version reject"
+  trace_authority_contract:
+    TraceIdSource: "Core Protocol token_bytes(length: int) -> bytes; exact lengths requested are 32 once by TraceAuthority.create, 16 then 8 by issue_root, and 8 by issue_child; one call per value and no retry"
+    TelemetryClock: "Core Protocol now_utc() -> datetime; emitter calls exactly once after draft/authorization validation and requires exact datetime, timezone-aware UTC"
+    TraceAuthorization: "internal frozen slots dataclass fields context:TraceContext and authorization_sha256:str 64 lowerhex; repr exposes only context and signature, never authority key"
+    TraceAuthority: "final process-local Core class created from one TraceIdSource; stores one 32-byte authority key in a guarded non-rendering slot; issue_root() -> TraceAuthorization, issue_child(parent: TraceAuthorization) -> TraceAuthorization, verify(authorization: TraceAuthorization) -> bool"
+    source_failure: "wrong type including bool/bytearray, wrong length, all-zero bytes or Exception from source maps outside the raw except scope to TelemetryBoundaryError(TRACE_SOURCE_FAILURE); exactly one attempt, no retry"
+    authorization_mac: "HMAC-SHA256 key=authority key, message=ASCII bytes securecode-trace-authorization-v1 then one NUL byte then canonical JSON without LF of {parent_span_id,schema_version,span_id,trace_id}; compare_digest verification"
+    known_answer: "key bytes 00..1f, trace_id 01 repeated 16 bytes, span_id 02 repeated 8 bytes, parent null => 0f96b825bfa4f84abb6a081b56aa2ab36b521b0691e816643ba084fa24870e2e"
+    propagation: "issue_child verifies parent authorization before one source call, preserves trace_id, sets parent_span_id to parent span_id and installs a fresh non-zero span_id distinct from parent; a one-shot source value equal to the parent span maps to fixed TRACE_SOURCE_FAILURE with null cause/context and no retry"
+    system_adapters: "SystemTraceIdSource.token_bytes calls secrets.token_bytes exactly once for an allowed requested length and returns exact bytes; SystemUTCClock.now_utc calls datetime.now(timezone.utc) exactly once; raw/wrong results or exceptions are mapped by Core and never rendered"
+  emission_contract:
+    TelemetryEmitStatus: "closed enum EMITTED, PARTIAL, REJECTED, FAILED"
+    TelemetryDraft: "internal frozen slots dataclass fields event_code:TelemetryEventCode and measurements:tuple[TelemetryMeasurement,...]; no strings, hashes, IDs, datetime, extensions or arbitrary metadata"
+    constructor: "TelemetryEmitter(trace_authority: TraceAuthority, clock: TelemetryClock, sinks: tuple[TelemetrySink,...]); sinks length 0..16; validates exact objects, snapshots clock/authority/sink bound callables in constructor order, rejects duplicate sink object identity, creates one private emitter-owned payload issuer identity, and records a guarded wiring seal; non-tuple, over-limit or accessor/callable failure raises fixed REGISTRY_INVALID before an emitter exists"
+    method: "emit(draft: TelemetryDraft, trace_authorization: TraceAuthorization) -> TelemetryEmitResult; exact draft type/fields and authorization are checked before clock/record construction/sink calls"
+    TelemetryEmitResult: "frozen slots dataclass fields status:TelemetryEmitStatus, record_sha256:str|None, attempted_sink_count:int, emitted_sink_count:int, failed_sink_count:int, reason_code:TelemetryEmitReason; bool is never int; no sink exception/text/identifier/raw record"
+    reason_codes: [NONE, INVALID_WIRING, INVALID_RECORD, INVALID_TRACE_AUTHORIZATION, CLOCK_FAILURE, NO_SINKS, SINK_FAILURE]
+    precedence:
+      - "emitter retained wiring/slot/seal mutation => REJECTED/INVALID_WIRING with record_sha256=null and counts 0/0/0; zero authority/clock/sink calls"
+      - "invalid draft/record retained state => REJECTED/INVALID_RECORD with record_sha256=null and counts 0/0/0; zero authority/clock/sink calls"
+      - "invalid/foreign trace authorization => REJECTED/INVALID_TRACE_AUTHORIZATION with hash null and counts 0/0/0; zero clock/sink calls; a valid parent may intentionally issue multiple sibling spans"
+      - "clock wrong type/naive/non-UTC or Exception => FAILED/CLOCK_FAILURE with hash null and counts 0/0/0; zero sink calls"
+      - "valid constructed record and zero registered sinks => FAILED/NO_SINKS with non-null record hash and counts 0/0/0"
+      - "N>0 sinks all return exact None => EMITTED/NONE with non-null hash and counts N/N/0"
+      - "N>0 sinks with 0<E<N exact-None returns => PARTIAL/SINK_FAILURE with counts N/E/(N-E); every sink attempted once in constructor order"
+      - "N>0 sinks with zero exact-None returns => FAILED/SINK_FAILURE with counts N/0/N"
+    sink_contract: "TelemetrySink.emit(payload: TelemetryPayload) -> None; TelemetryPayload is an internal final guarded-slots process-local capability with no caller-usable constructor, issued only by TelemetryEmitter after authorization/current-record validation and containing exact immutable bytes/hash plus an emitter-owned identity seal; each first-party BinaryStreamTelemetrySink and InMemoryTelemetrySink invokes the shared Core opener, which snapshots exact payload slots once, validates exact type/issuer identity/seal, length 1..16384, SHA-256, strict exact-version TelemetryRecord and byte-for-byte canonical JSONL, then returns immutable local bytes/hash before any I/O/storage; raw bytes, forged/copied/subclassed/mutated capabilities and malformed/hash-mismatched/noncanonical/non-current/oversized inputs raise fixed SINK_PAYLOAD_INVALID with zero I/O/storage; arbitrary third-party TelemetrySink remains an explicitly trusted capability; success requires runtime result is exactly None; False/True/int/bytes/object or Exception after valid admission is one SINK_FAILURE and fan-out continues; KeyboardInterrupt/SystemExit/GeneratorExit propagate immediately without fallback telemetry and remaining sinks are not called"
+    idempotency_scope: "none in P1.12; caller/runtime owns retries and duplicate policy, and sinks make no exactly-once claim"
+  stream_sink_contract:
+    constructor: "BinaryStreamTelemetrySink(stream) reads write and flush accessors inside a guarded block, requires both callable, snapshots only those two bound callables plus a wiring seal and retains no separately consulted stream field; accessor Exception/malformed callable maps outside raw except to TelemetryBoundaryError(STREAM_INVALID)"
+    retained_wiring: "before every emit, exact slots and wiring seal are checked; one-field object.__setattr__ replacement of write/flush/seal raises fixed TelemetryBoundaryError(STREAM_INVALID) before write/flush or alternate I/O; emitter catches it only as typed SINK_FAILURE"
+    writes: "write remaining payload bytes until complete; each result must be exact int excluding bool in 1..remaining length; zero/negative/None/bool/oversized/non-int or Exception fails the sink"
+    flush: "after full payload only, call flush exactly once and require runtime result is exactly None; any other return/Exception fails the sink"
+    effects: "stream sink touches only the supplied stream; it never opens files, stdout/stderr, network, DNS, process, environment, clock or randomness"
+    in_memory_sink: "InMemoryTelemetrySink(max_records: int=128) accepts exact int excluding bool in 1..1024, stores immutable (payload,payload_sha256) pairs up to the cap, then raises a fixed internal sink failure without eviction or alternate output"
+  boundary_error_contract:
+    TelemetryBoundaryErrorCode: "closed enum TRACE_SOURCE_FAILURE, TRACE_AUTHORIZATION_INVALID, REGISTRY_INVALID, SINK_PAYLOAD_INVALID, STREAM_INVALID"
+    messages:
+      TRACE_SOURCE_FAILURE: "trace identifier source failed"
+      TRACE_AUTHORIZATION_INVALID: "trace authorization is invalid"
+      REGISTRY_INVALID: "telemetry sink registry is invalid"
+      SINK_PAYLOAD_INVALID: "telemetry sink payload is invalid"
+      STREAM_INVALID: "telemetry stream is invalid"
+    TelemetryBoundaryError: "final RuntimeError with fields code and safe_message; args exactly (safe_message,), cause/context null, repr/str fixed and no raw source/sink/key value"
+  structured_result_schema: "internal closed Python TelemetryRecord, trace-authorization, payload-capability and emission-result contracts only; no public schema is added"
+  handoff_required_fields: [task_id_and_role, scope_completed, files_changed, commands_and_results, positive_negative_evidence, assumptions, risks, integration_order]
+
+constraints:
+  invariants:
+    - "current-writer emitter output is DC1 only and contains no arbitrary string-bearing field; all rendered messages and enum values come from closed code-owned tables"
+    - "raw source/secret/prompt/response/patch/build-log/exception data has no input or output slot at this boundary and must be classified/handled by its owning artifact pipeline"
+    - "TelemetryRecord is operational output and never substitutes for AuditEvent, Evidence, FindingCase, ModelCallResult or WorkflowTransitionEvent"
+    - "authority-issued trace IDs correlate operations without accepting tenant, repository, path, user, provider host, correlation ID or credential data"
+    - "canonical bytes and SHA-256 opened from the same emitter-issued immutable payload capability are identical across sink count/order and supported Python platforms"
+    - "existing provider/runtime/CLI paths are not instrumented or behaviorally modified in P1.12"
+    - "valid-shaped numeric values can still be misclassified by a trusted caller; P1.12 claims structural non-disclosure and authority-issued IDs, not semantic taint proof"
+  compatibility:
+    - "TelemetryRecord is an internal exact-version Core implementation type, not a contracts-package root; no public schema, additive compatibility or external consumer promise is introduced"
+    - "internal writer/parser/emitter require exact 0.2.0; any version change or public promotion requires later explicit change control"
+    - "Core imports contracts only; adapters depend inward on Core/contracts; no external telemetry framework enters Core"
+  security:
+    - "object.__setattr__/subclass/private/extra-field retained-state mutations of draft, trace authorization, emitter authority/clock/sink callables/seal, emitter-issued payload slots/seal, stream callables/seal or internal record fail according to the exact wiring/record precedence before affected I/O; payload opening snapshots immutable bytes/hash locally before validation and use, so later retained-object mutation cannot alter admitted bytes; arbitrary coordinated memory corruption of value and seal is outside the Python object-level contract"
+    - "sink exceptions containing DC3/DC4/API-key/source canaries never appear in emitter results, emitter-authored output or other well-behaved sink payloads; first-party binary/in-memory sinks independently reject noncanonical direct-call bytes before effects, while P1.12 does not claim to constrain a deliberately malicious third-party sink's own side effects"
+    - "trace authority key is stored only in guarded process-local memory, excluded from repr/str/records/sinks and compared through HMAC compare_digest"
+    - "malformed trace/timestamp/measurement/version input is typed non-success, never best-effort stringification"
+    - "Core issuer/emitter with injected ports may call only its source, clock and registered sinks; system ID adapter may call only bounded OS CSPRNG; stream adapter may call only its supplied stream"
+
+budgets:
+  max_iterations: 7
+  max_tool_calls: 65
+  timeout_seconds: 3600
+  max_output_bytes: 260000
+
+verification:
+  acceptance_commands:
+    - "targeted telemetry contract/emission/package-boundary tests"
+    - "python -m securecode_ai.contracts.schema_export --check"
+    - "canonical quality command"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check plus exact path-budget and protected/out-of-scope drift checks"
+  positive_cases:
+    - "each event-policy row produces exact severity/message, round-trips through the internal exact-version parser and renders canonical UTF-8 JSONL"
+    - "fresh and injected deterministic trace-ID sources produce valid non-zero 32/16-hex context; child span preserves trace_id and records parent span_id"
+    - "one/two/three sinks receive the same emitter-issued payload capability and open byte-identical immutable local payload/hash snapshots; attempted/emitted/failed counts and exact status are deterministic"
+    - "current-writer output contains only fixed policy strings, authority-issued trace data and sorted bounded measurements"
+  negative_cases:
+    - "unknown/extra/missing/coerced/root-subclass/retained-hidden fields, arbitrary safe_message and event-policy mismatch reject with zero sink calls"
+    - "zero/all-zero/wrong-case/wrong-length/non-hex trace IDs, parent==span, naive/non-UTC timestamp and invalid record_id reject"
+    - "duplicate/unsorted/negative/bool/overflow measurement rejects"
+    - "zero sinks, exact None versus False/True/int/bytes/object return, one Exception sink, partial multi-sink, all-sink failure and BaseException propagation follow exact precedence without emitter exception/canary echo"
+    - "direct raw source/API-key/prompt/response/patch/build-log/exception/control-character strings cannot enter any draft/internal current-writer field or emitted snapshot; valid-shaped numeric metadata remains the documented trusted-classification residual, not an encoded-canary claim"
+    - "any non-exact root or nested version rejects; current emitter rejects non-current nested measurement/trace input before clock/sink I/O, and first-party sinks reject non-current root bytes before write/flush/storage"
+    - "wrong/zero/bool/bytearray/short/long/exception source outputs fail after one attempt with fixed non-echo error; a one-shot child span equal to its parent maps to TRACE_SOURCE_FAILURE, while parent authorization tamper/foreign authority maps to TRACE_AUTHORIZATION_INVALID before source/clock/sinks"
+    - "direct-call raw bytes/hash pairs and forged/copied/subclassed/retained-mutated/malformed/hash-mismatched/noncanonical/empty/non-current/oversized payload capabilities fail first-party binary/in-memory sinks with fixed context-free SINK_PAYLOAD_INVALID and zero write/flush/storage; a mutation after the Core opener snapshot cannot change the immutable local bytes used for I/O; binary stream accessor canary/malformed callable fails constructor with fixed context-free STREAM_INVALID; post-construction write/flush/seal mutation performs zero alternate I/O; short/zero/negative/bool/None/oversized/non-int write, write Exception and non-None/Exception flush fail that sink; valid short writes loop to exact complete payload then one flush"
+    - "capability spies prove emitter/issuer/system-source/stream boundaries touch only the exact injected capabilities stated above"
+  required_evidence:
+    - "internal exact-version record round-trip, canonical parser, non-current-version rejection and absence from contracts-package public exports plus checked-in public-schema inventory"
+    - "event-policy Cartesian validation plus exact canonical JSON snapshots"
+    - "trace authority known-answer, root/child propagation including parent-span collision, one-shot source failure and invalid-authorization matrix"
+    - "multi-sink emitter-issued capability identity/output, first-party-sink direct-call forgery/copy/subclass/mutation/TOCTOU admission, exact runtime return, constructor-accessor/short-write/flush, failure-precedence, BaseException, emitter/stream wiring-seal mutation and zero-I/O rejection matrix"
+    - "direct source/secret/API-key/exception structural non-disclosure plus documented valid-shaped numeric residual matrix"
+    - "capability-spy matrix proving Core/source/stream adapters use no undeclared filesystem/network/DNS/process/environment/random/clock/output effects"
+    - "independent product, architecture, and security/evaluation PASS on one exact staged digest"
+    - "post-commit clean worktree with targeted/full/existing-schema-drift/strict-G0 PASS"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "frozen_spec_conflict"
+  - "arbitrary string or raw DC2/DC3/DC4 field required"
+  - "existing product instrumentation or P2+ behavior required"
+  - "protected_path_change_required"
+  - "external dependency, network collector or persistence required"
+  - "budget_exhausted"
+  - "no_new_diagnostic_signal"
+
+completion:
+  definition_of_done_refs: [P1.12]
+  partial_refs:
+    SC-DATA-003: "P1.12 current emitter has no arbitrary raw-content slot and accepts only closed preclassified DC1 enums, authority-issued trace IDs and bounded counts; valid-shaped numbers remain a trusted-caller residual, and complete artifact classification remains P2/P6"
+    SC-DATA-004: "P1.12 supplies structural omission and canary tests for its foundation logs/traces boundary; secret-finding fingerprint creation, product instrumentation and report behavior remain P2.5/P3.8/P6.7/P8.5"
+    SC-DATA-005: "P1.12 current emitter exposes no arbitrary raw-content field and first-party sinks reject noncanonical direct-call bytes; classification/retention of valid-shaped numeric metadata and of prompts, responses, patches, dumps, caches and backups remains the trusted caller and their owning tasks"
+    SC-EGRESS-005: "P1.12 gives its current emitter no arbitrary raw DC4 string/bytes slot, first-party sinks reject noncanonical direct-call bytes, and direct canaries are rejected; semantic classification of valid-shaped numeric values and connected backend/SCM/analytics enforcement remain trusted-caller/P5/P6/P8 boundaries"
+    SC-MODEL-004: "P1.12 supplies the generic logs non-disclosure sink boundary; model DB/workflow-history guarantees remain P1.8/P6"
+    SC-ENDPOINT-004: "P1.12 current emitter has no arbitrary raw credential/API-key string or bytes slot, and first-party sinks admit only its canonical current-writer payload; direct raw canaries are rejected, while valid-shaped numeric misclassification remains a documented trusted-caller residual and credential profile/host/durable-state enforcement remains P1.7/P1.8/P8.5"
+  gate_contribution: "Supplies structured logs, exact trace IDs and multi-sink redaction/non-disclosure evidence required by P1/G1; does not complete G1 while P1.4 and P1.13 remain open."
+  changelog_required: true
+  adr_required: false

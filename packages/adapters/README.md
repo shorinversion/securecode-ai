@@ -38,3 +38,13 @@ cancel/supersede behavior. Public methods reject hidden unvalidated fields and
 cross-operation requests; typed state/CAS/receipt outcomes precede internal
 adapter faults. It has no transport, database, external graph engine
 or durable/restart guarantee; those remain downstream responsibilities.
+
+The `P1.12` candidate adds only a bounded OS-CSPRNG source, UTC clock and
+first-party in-memory/binary-stream telemetry sinks. Both sinks open and
+revalidate the exact emitter-issued Core payload during its synchronous
+emission scope before any storage or I/O; retained payloads expire after fan-out;
+malformed, forged, copied, mutated, non-current or noncanonical direct inputs
+fail closed. There is no network exporter, collector, file opener, retry spool
+or durable telemetry store. These operational adapters do not implement or
+replace immutable `AuditEvent` handling; workflow/node telemetry is deferred to
+`P3.8` and durable/remote observability to `P6.10`.
