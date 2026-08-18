@@ -1,0 +1,50 @@
+{
+  "allowed_paths": [
+    "CHANGELOG.md",
+    "docs/CONTEXT.md",
+    "docs/PLAN.md",
+    "work/task-attestations/P1.13.json"
+  ],
+  "budgets": {
+    "max_changed_files": 5,
+    "max_diff_lines": 800
+  },
+  "change_type": "completion_attestation",
+  "evidence_refs": [
+    {
+      "content_sha256": "341e13db6d0da74503e1394657bbd5b26d4841f631823fa655a8983800150bfe",
+      "source": "tests/README.md",
+      "type": "targeted_tests"
+    },
+    {
+      "content_sha256": "c75d7cb4a9f2ea43dd3f7527aa88ac9cb504e1cee329a599e9f23cd61bc50119",
+      "source": "scripts/quality.py",
+      "type": "full_quality"
+    },
+    {
+      "content_sha256": "7190cc26f6937c131a0d01fbef371d6b25c3c5b84b141c068921162fbb314cb0",
+      "source": "packages/contracts/README.md",
+      "type": "schema_exact_bytes"
+    },
+    {
+      "content_sha256": "074779ddb02a9528a871bcbbb2fa29487bca30c52f37851a5a98c93e3bb67d0b",
+      "source": "specs/baseline.yaml",
+      "type": "strict_g0"
+    },
+    {
+      "content_sha256": "b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673",
+      "source": "work/task-packets/P1.13.yaml",
+      "type": "staged_scope"
+    },
+    {
+      "content_sha256": "6ee3ab2a12664b5841a5bedc3a212ce6632b9e9e787385befbb958bed87f14bf",
+      "source": "work/change-control/README.md",
+      "type": "independent_reviews"
+    }
+  ],
+  "implementation_commit_sha": "307a24a71cea25829c0b5541494bf01e13a2e6ed",
+  "packet_sha256": "b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673",
+  "schema_version": "1.0.0",
+  "starting_commit_sha": "307a24a71cea25829c0b5541494bf01e13a2e6ed",
+  "task_id": "P1.13"
+}

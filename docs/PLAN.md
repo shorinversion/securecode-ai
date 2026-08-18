@@ -200,7 +200,7 @@ Gate пройден, если:
 | `P1.10` | Создать CLI skeleton и стабильные exit codes | P1.2, P1.5 | `securecode --help`, config diagnostics, machine-readable errors | `DONE` |
 | `P1.11` | Создать fixture repository factory | P1.3 | deterministic positive/negative repos и golden files | `DONE` |
 | `P1.12` | Настроить structured logs, tracing IDs и redaction tests | P1.6 | raw code/API keys отсутствуют в telemetry snapshots | `DONE` |
-| `P1.13` | Ввести spec validation, contract compatibility и drift checks | P1.3, P1.5 | CI валидирует IDs, schemas, examples, compatibility, traceability и protected paths | `IN PROGRESS` |
+| `P1.13` | Ввести spec validation, contract compatibility и drift checks | P1.3, P1.5 | CI валидирует IDs, schemas, examples, compatibility, traceability и protected paths | `DONE` |
 
 ### G1 — Foundation Ready
 

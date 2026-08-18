@@ -38,10 +38,13 @@ Changelog отвечает на вопрос «что и когда измени
   baseline включён в post-bootstrap protected inventory. Constrained packet
   SHA-256 `b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673`
   включает remediation repository authority, strict JSON Pointer, trusted Git
-  executable и committed-lifecycle checks и ожидает повторный независимый
-  review; 136 targeted tests и full quality с 978 tests, Ruff/mypy, 85,80% Core
+  executable и committed-lifecycle checks. Exact staged digest
+  `6cf55b7ce6d4db6a51f818e072c403dc4c124d9af352fdfc38b4e3c8ca52de5c`
+  принят product/architecture/security-evaluation `PASS/PASS/PASS`; implementation
+  commit `307a24a71cea25829c0b5541494bf01e13a2e6ed`. 136 targeted tests и clean-HEAD
+  full quality с 978 tests, Ruff/mypy, 85,80% Core
   branch coverage, spec snapshot, CI policy, schema exact-byte и strict frozen
-  G0 проходят. Exact staged reviews ещё не выполнены. Implementation пока `IN PROGRESS`,
+  G0 проходят. `P1.13` — `DONE`,
   `P1.4/G1` не закрыты и `P2` не разрешён.
 - 2026-08-18 — завершён `P1.12`: internal
   exact-version structured telemetry в Core, HMAC trace authority, closed
