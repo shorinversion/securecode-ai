@@ -1,0 +1,30 @@
+{
+  "allowed_paths": [
+    "CHANGELOG.md",
+    "docs/CONTEXT.md",
+    "docs/PLAN.md",
+    "work/task-attestations/P1.4.json"
+  ],
+  "budgets": {
+    "max_changed_files": 5,
+    "max_diff_lines": 800
+  },
+  "change_type": "completion_attestation",
+  "evidence_refs": [
+    {
+      "content_sha256": "d2e9431c2898a6fa98c2db8b646540fde26b8c8b612c6343e3fe8e66320f277b",
+      "source": "https://api.github.com/repos/shorinversion/securecode-ai/rulesets/21006868",
+      "type": "github_ruleset_required_check"
+    },
+    {
+      "content_sha256": "7753e95e36651a3eb49c9b93fede4a4025adbeeefabe3e575ca7b59428095b20",
+      "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32175856948",
+      "type": "github_failing_pr_merge_block"
+    }
+  ],
+  "implementation_commit_sha": "0f89edfd20237f75ae390f17a07bdc090b705370",
+  "packet_sha256": "7d4ff891acaca92879e5f98f17c59e8030bf0e5a0b7ee057a6fe9f342044269e",
+  "schema_version": "1.0.0",
+  "starting_commit_sha": "18e8c4eecf926f81cefff2a39a02b1dda49fd847",
+  "task_id": "P1.4"
+}

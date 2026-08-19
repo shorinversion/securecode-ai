@@ -191,7 +191,7 @@ Gate пройден, если:
 | `P1.1` | Создать repository/monorepo layout | G0 | отдельные Core, CLI, server, integrations, tests, fixtures | `DONE` |
 | `P1.2` | Настроить packaging и locked dependencies | P1.1 | clean install в новой среде по одной инструкции | `DONE` |
 | `P1.3` | Настроить lint, format, type-check, unit tests | P1.1 | единая quality-команда локально и в CI | `DONE` |
-| `P1.4` | Настроить pre-commit и базовый CI | P1.3 | PR с ошибкой гарантированно блокируется | `IN PROGRESS` |
+| `P1.4` | Настроить pre-commit и базовый CI | P1.3 | PR с ошибкой гарантированно блокируется | `DONE` |
 | `P1.5` | Ввести versioned domain contracts | P1.1 | schemas `AuditRun`, `FindingCase`, `Evidence`, `Patch`, `Validation` | `DONE` |
 | `P1.6` | Ввести append-only events и stable IDs | P1.5 | serialization/round-trip/idempotency tests | `DONE` |
 | `P1.7` | Реализовать config и secret-safe env loading | P1.2 | validation, redaction, missing-key diagnostics | `DONE` |
