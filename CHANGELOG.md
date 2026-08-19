@@ -24,6 +24,7 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-19 — opened `CR-019`: bind GitHub pull-request checks to both the event-owned synthetic merge SHA and its exact head SHA. The proposed fail-closed evaluator amendment verifies ordered parents, linear ancestry and identical trees before validating a protected lifecycle on the head chain (`D-032`).
 - 2026-08-19 — принят и интегрирован `CR-017`: repair закрытого P1.4 CI gate
   различает schema-valid completion attestation metadata и секретные значения.
   Только exact SHA-1/SHA-256 поля закрытой attestation-формы исключаются из

@@ -430,6 +430,30 @@
   но не человеческую identity/truth review. Primary Integrator и внешний GitHub
   ruleset остаются отдельными authority layers.
 
+## D-032 — Dual-authority validation of GitHub pull-request merge commits
+
+- Status: accepted (`CR-019`); exact evaluator bytes require protected promotion.
+- Decision: keep `github.sha` as the checked synthetic merge authority and pass
+  `github.event.pull_request.head.sha` as a separate event-owned logical head.
+  Pull-request validation requires the checked commit to have exactly the
+  ordered parents `[base, head]`, requires a linear base-to-head chain, and
+  requires identical synthetic/head tree object IDs. Only then may the existing
+  closed candidate validator inspect the head-side lifecycle.
+- Multi-commit boundary: an ordinary pull request remains one candidate. A
+  multi-commit head is admitted only when its final commit is a validated G1 or
+  POLICY promotion whose existing verifier proves the proposal, three separated
+  reviews, exact bytes and uninterrupted ancestry. Merge-group and push events
+  are never unwrapped as pull requests.
+- Security consequence: the check-run stays bound to the GitHub synthetic SHA;
+  an attacker cannot substitute a head, reorder parents, add merge-only bytes,
+  hide a parallel commit or use a caller-provided ref. Missing, malformed,
+  mismatched or unexpected event authority fails closed.
+- Delivery: the installed evaluator rejects its own synthetic-merge repair.
+  Any bootstrap therefore requires separate explicit authorization for one
+  audited exact promotion, immediate bypass removal, and an ordinary green
+  pull request proving the repaired path. This decision creates no persistent
+  bypass, wildcard exemption or runtime switch.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
