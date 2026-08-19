@@ -24,18 +24,28 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
-- 2026-08-19 — принят `CR-017`: repair закрытого P1.4 CI gate различает
-  schema-valid completion attestation metadata и секретные значения. Только
-  exact SHA-1/SHA-256 поля закрытой attestation-формы исключаются из
+- 2026-08-19 — принят и интегрирован `CR-017`: repair закрытого P1.4 CI gate
+  различает schema-valid completion attestation metadata и секретные значения.
+  Только exact SHA-1/SHA-256 поля закрытой attestation-формы исключаются из
   entropy-сигналов; неизвестный path/schema/key/catalog/order остаётся под
   обычным secret scan. Strict promotion manifests и review receipts аналогично
   различают только typed digests; Base64 final files обязательно декодируются
   и сканируются под исходными target paths. Local pre-commit и CI используют
   один scanner. Для последующих изменений evaluator добавлен
   manifest/review/promotion lane с тремя commit-separated ролями и byte-exact
-  final files (`D-030`). Текущий
-  bootstrap всё ещё требует одного audited ruleset bypass для exact reviewed
-  commit, после чего bypass удаляется и P1.4 повторяется обычным PR.
+  final files (`D-030`). Exact reviewed commit
+  `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` интегрирован одним audited
+  fast-forward admin bypass; bypass немедленно удалён, active ruleset `21006868`
+  восстановлен без bypass actors.
+- 2026-08-19 — завершён `P1.4`: private GitHub repository
+  `shorinversion/securecode-ai` защищён active ruleset `21006868`, который
+  требует pull request и exact status check `gate`, запрещает deletion и
+  non-fast-forward update. Intentional failing PR #1 на commit
+  `703817360a9966cc6858a5dc35cdecc50c76a14b` получил серверный
+  `mergeStateStatus=BLOCKED`; Actions run `32175856948` завершился `failure`,
+  после чего PR закрыт без merge и ветка удалена. External evidence hashes
+  записаны в отдельной completion attestation; G1 ещё требует собственного
+  evidence/review/promotion lifecycle.
 - 2026-08-18 — открыт `P1.13`: один read-only fail-closed spec gate проверяет
   frozen baseline/digest, requirement IDs, traceability, Draft 2020-12 schemas,
   indexed examples, exact public-schema bytes, conservative compatibility и
@@ -178,9 +188,9 @@ Changelog отвечает на вопрос «что и когда измени
 - 2026-08-13 — реализован локально проверенный кандидат `P1.4`: закрытый
   pre-commit launcher на project-owned `uv 0.12.0`, full-SHA GitHub Actions,
   read-only/fork-safe jobs, Python 3.12–3.14 quality matrix, secret-history,
-  dependency-integrity/vulnerability и strict zizmor checks. Задача остаётся
-  открытой до внешнего GitHub ruleset receipt и демонстрации реально
-  заблокированного failing PR; сильная product sandbox isolation не заявляется.
+  dependency-integrity/vulnerability и strict zizmor checks. Внешний ruleset и
+  blocked failing-PR evidence позже приняты 2026-08-19; сильная product sandbox
+  isolation не заявляется.
 - 2026-08-13 — реализован `P1.3`: exact-pinned Ruff/mypy/pytest/pytest-cov,
   единый offline/no-sync quality runner для format/lint/strict typing/tests,
   Core-only branch coverage `>=80%`, закрытые import allow-lists и fail-closed
@@ -386,7 +396,7 @@ Changelog отвечает на вопрос «что и когда измени
 | `CR-014` | 2026-08-12 | Добавить независимый model-native discovery lane с прямым bounded read-only анализом кода наряду с deterministic analyzers | `accepted` | `D-027`, baseline/stage catalogue `0.2.0`, provider/egress/capability/workflow/domain/evaluation/traceability delta; evidence `PA-011–PA-013` |
 | `CR-015` | 2026-08-12 | Восстановить пропущенные обязательные условия сдачи из полной исходной формулировки | `accepted` | Corrected product/plan/traceability; deadline year/timezone and individual approval remain tracked external G9 inputs |
 | `CR-016` | 2026-08-12 | Добавить evaluation lab для synthetic cases и контролируемой офлайн-оптимизации prompt/skill; проверить sandboxed RLM как discovery strategy | `accepted — limited P7 scope` | `D-028`, P7.12–P7.16; not Core/runtime dependency, no production self-modification; evidence `EO-001–EO-006` |
-| `CR-017` | 2026-08-19 | Устранить конфликт completion digest metadata и secret scanner без baseline allowlist; добавить штатную byte-exact evaluator amendment lane | `accepted — implementation under exact review` | `D-030`, P1.4 CI evaluator; one audited bootstrap bypass, then ordinary required-check proof |
+| `CR-017` | 2026-08-19 | Устранить конфликт completion digest metadata и secret scanner без baseline allowlist; добавить штатную byte-exact evaluator amendment lane | `implemented — exact reviewed commit integrated, bootstrap bypass removed` | `D-030`, P1.4 ordinary required-check proof in completion candidate |
 
 ## Release history
 
