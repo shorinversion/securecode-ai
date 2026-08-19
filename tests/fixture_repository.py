@@ -447,7 +447,7 @@ def _write_fixture_file(path: Path, data: bytes) -> _OwnedFile:
             raise OSError
         owned_file = _OwnedFile(path=path, device=opened.st_dev, inode=opened.st_ino)
         if os.name == "posix":
-            os.fchmod(descriptor, 0o644)  # type: ignore[attr-defined]
+            os.fchmod(descriptor, 0o644)  # type: ignore[attr-defined, unused-ignore]
         _write_all(descriptor, data)
         details = os.fstat(descriptor)
         if (details.st_dev, details.st_ino) != (

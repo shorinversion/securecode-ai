@@ -419,7 +419,7 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
             if action == "actions/checkout":
                 expected_checkout = {
                     "persist-credentials": "false",
-                    "fetch-depth": "0" if job_name in {"secrets", "spec"} else "1",
+                    "fetch-depth": "0" if job_name in {"secrets", "spec", "quality"} else "1",
                     "lfs": "false",
                     "submodules": "false",
                     "set-safe-directory": "false",

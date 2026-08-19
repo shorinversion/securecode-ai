@@ -161,6 +161,9 @@ def test_workflow_mutations_fail_closed(mutate: Callable[[dict[str, Any]], None]
             GITHUB_REPOSITORY="attacker/repository"
         ),
         lambda workflow: workflow["jobs"]["spec"]["steps"][0]["with"].update({"fetch-depth": "1"}),
+        lambda workflow: workflow["jobs"]["quality"]["steps"][0]["with"].update(
+            {"fetch-depth": "1"}
+        ),
         lambda workflow: workflow["jobs"]["quality"].update(
             needs=["policy", "secrets", "dependency"]
         ),
