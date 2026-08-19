@@ -1,15 +1,17 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 18 августа 2026 года.
+Последнее обновление: 19 августа 2026 года.
 
 ## Текущая позиция
 
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.13 — specification/compatibility/drift gate`,
   implementation commit `307a24a71cea25829c0b5541494bf01e13a2e6ed`.
-- Текущая внутренняя задача P1 отсутствует; P2 scope закрыт до effective G1.
-- Параллельная внешняя задача: `P1.4` ожидает GitHub
-  ruleset/failing-PR receipt.
+- Текущая change-control задача: accepted `CR-017/D-030` repair P1.4 CI
+  evaluator; P2 scope закрыт до effective G1.
+- GitHub ruleset/failing-PR evidence для `P1.4` получено, но completion PR
+  выявил конфликт digest metadata/secret entropy policy. `P1.4` остаётся
+  `IN PROGRESS` до интеграции ремонта и повторного обычного green PR.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -33,8 +35,25 @@
   reachable-history secret scanning, permanent vulnerable-dependency negative,
   strict zizmor and Python 3.12–3.14 quality matrix pass; independent
   product/architecture/security-evaluation reviews are `PASS/PASS/PASS` on the
-  staged candidate. This proves the local increment only, not the external
-  GitHub ruleset or failing-PR merge-block criterion.
+  staged candidate. External ruleset and failing-PR evidence now exist, but the
+  completion path remains open until CR-017 makes an ordinary PR green.
+- CR-017 candidate: completion SHA-1/SHA-256 исключаются из entropy scan только
+  после exact-path closed-schema/evidence-catalog validation; non-digest fields
+  и invalid/unknown documents продолжают обычный scan. Strict promotion
+  manifest декодирует и сканирует Base64 final bytes под target paths; review
+  receipt suppresses only validated typed digests/OID. Local pre-commit и CI
+  используют общий Git-index/blob scanner, а trusted Git boundary фиксирует
+  `autocrlf=input/eol=lf`; `.secrets.baseline` не изменён.
+  D-030 добавляет policy-owned evaluator amendment proposal с exact final-byte
+  manifest, current-base selector, тремя commit-separated reviews и mechanical
+  promotion; повторный amendment того же target set выбирается по exact
+  base-to-final hashes, а конкурирующий identical-transition proposal
+  fail-closed. Proposal/review/promotion history обязана быть непрерывной
+  single-parent chain без parallel merge assembly или промежуточных commits.
+  Exact full run включает 159 CI/spec policy tests; Ruff/mypy, snapshot spec
+  gate, все 1001 tests и 85,80% Core branch coverage прошли;
+  strict frozen G0 сохраняет normative digest. Exact staged reviews ещё не
+  получены, bootstrap bypass не выполнялся.
 - P1.5 candidate verification: 92 contract/schema tests at 86.54% branch
   coverage; 152 repository tests pass on CPython 3.12/3.13/3.14; deterministic
   schema drift check, strict G0, Ruff/mypy, ECMAScript regex compilation and a
@@ -258,11 +277,12 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Получить от владельца GitHub remote/ruleset authority, потребовать `ci / gate`
-   и зафиксировать failing-PR merge-block evidence для закрытия `P1.4`; не
-   закрывать G1 до всех доказательств `P1.4–P1.13`.
-2. Не начинать P2 до внешней приёмки `P1.4` и
-   эффективного G1.
+1. Зафиксировать exact CR-017 staged bytes/digest и получить независимые
+   product/architecture/security-evaluation `PASS/PASS/PASS`.
+2. Интегрировать только reviewed commit одним audited admin bypass, немедленно
+   убрать bypass и проверить ruleset.
+3. Повторить P1.4 completion обычным PR через required `ci / gate`; не начинать
+   P2 до effective G1.
 
 ## Критические запреты
 

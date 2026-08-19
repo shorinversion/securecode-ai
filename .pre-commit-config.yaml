@@ -15,7 +15,8 @@ repos:
         name: SecureCode staged secret scan
         language: system
         entry: python -I scripts/precommit_entry.py secrets
-        types: [text]
+        pass_filenames: false
+        always_run: true
       - id: securecode-workflow-security
         name: SecureCode workflow security audit
         language: system

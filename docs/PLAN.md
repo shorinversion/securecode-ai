@@ -1,8 +1,8 @@
 # SecureCode AI — master plan
 
-Версия плана: `0.7`  
+Версия плана: `0.8`
 Статус: `active`  
-Последнее обновление: 18 августа 2026 года
+Последнее обновление: 19 августа 2026 года
 Текущая фаза: `P1 — Engineering foundation` — выполняется
 Текущий gate: `G0 — Definition Ready` — пройден
 
@@ -211,6 +211,8 @@ Gate пройден, если:
 - CI блокирует formatting, typing, tests, secret и dependency policy failures;
 - CI блокирует invalid spec/contracts, breaking drift без migration и изменение
   protected spec/evaluator paths implementation-задачей;
+- изменение CI/spec evaluator проходит CR/ADR proposal, три commit-separated
+  exact-byte review и механический policy amendment promotion;
 - минимальное покрытие Core unit tests — `80%`, а policy/security-critical ветви
   имеют отдельные branch и negative tests.
 
@@ -518,20 +520,13 @@ security boundary, набора обязательных языков, blocking 
 ## 18. Текущий фокус
 
 G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation.
-`P1.1–P1.3` завершены. Локальный кандидат `P1.4` проходит pre-commit, CI policy,
-secret/dependency checks и Python 3.12–3.14 matrix, но остаётся `IN PROGRESS`
-до GitHub ruleset и failing-PR merge-block receipt. `P1.5–P1.9` завершены:
-schema/contracts, events/stable IDs, secret-safe config и provider-neutral
-model boundary, а также graph-independent `WorkflowRuntime` прошли полную
-матрицу, independent acceptance и clean post-commit validation. `P1.10` CLI
-  skeleton со стабильными exit codes завершён после трёх independent reviews и
-  clean post-commit verification. `P1.11` fixture repository factory также
-  завершён: evaluator golden был заморожен отдельно до реализации, exact digest
-  принят тремя reviewers, а implementation commit прошёл clean post-commit 43
-  targeted и 739 full tests. `P1.12` internal telemetry завершён: exact staged
-  digest принят product/architecture/security-evaluation reviewers, а
-  implementation commit прошёл clean post-commit 162 targeted и 885 full tests,
-  Ruff/mypy, schema check и strict G0. Затем следует `P1.13` spec-drift gate;
-  `G1` остаётся открыт из-за `P1.4` и `P1.13`.
+`P1.1–P1.3` и `P1.5–P1.13` завершены с independent acceptance и clean
+post-commit verification. Для `P1.4` уже получены GitHub ruleset и failing-PR
+merge-block receipts, но первый completion PR выявил конфликт между
+schema-required digest metadata и entropy secret policy. Поэтому `P1.4`
+остаётся `IN PROGRESS`: accepted `CR-017/D-030` ремонтирует evaluator через
+closed-schema metadata recognition, общий local/CI scanner и штатный
+exact-byte policy amendment lane. `G1` остаётся открыт до интеграции CR-017 и
+повторного обычного green completion PR; P2 до этого не начинается.
 Узкий Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
 строятся до стабилизации Core contracts и deterministic evidence layer.

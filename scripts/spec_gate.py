@@ -54,7 +54,7 @@ DEFINITION_PATTERN: Final = re.compile(
 )
 REFERENCE_PATTERN: Final = re.compile(r"\b[A-Z][A-Z0-9]*-[A-Z]+-[0-9]{3}\b")
 TASK_ROW_PATTERN: Final = re.compile(
-    r"^\| `(?P<id>P[0-9]+(?:\.[0-9]+)?)` \|.*\| `(?P<status>DONE|TODO|IN PROGRESS|BLOCKED)` \|$",
+    r"^\| `(?P<id>P[0-9]+(?:\.[0-9]+)?)` \|.*\| `(?P<status>DONE|TODO|IN PROGRESS|BLOCKED)` \|\r?$",
     re.MULTILINE,
 )
 GATE_HEADING_PATTERN: Final = re.compile(r"^### (?P<id>G[0-9]+) — ", re.MULTILINE)
@@ -413,6 +413,10 @@ def git_bytes(root: Path, *arguments: str) -> bytes:
                 "--no-optional-locks",
                 "-c",
                 "core.fsmonitor=false",
+                "-c",
+                "core.autocrlf=input",
+                "-c",
+                "core.eol=lf",
                 "-c",
                 "core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol",
                 "-c",
@@ -1612,12 +1616,22 @@ class SpecGate:
     ) -> tuple[str, ...]:
         errors: set[str] = set()
         try:
-            if self._base_gate_decision(base) == "GO":
-                raise GateInputError("CHANGE_PACKET_GATE_IMMUTABLE")
             packet = _mapping(
                 strict_yaml_loads(self._candidate_file(mode, candidate, packet_path), self.limits),
                 "CHANGE_PACKET_ROOT",
             )
+            if packet.get("change_type") == "policy_amendment":
+                return self._policy_amendment_proposal_errors(
+                    mode,
+                    base=base,
+                    candidate=candidate,
+                    packet_path=packet_path,
+                    changed=changed,
+                    diff_lines=diff_lines,
+                    packet=packet,
+                )
+            if self._base_gate_decision(base) == "GO":
+                raise GateInputError("CHANGE_PACKET_GATE_IMMUTABLE")
             expected_keys = {
                 "schema_version",
                 "change_type",
@@ -1786,8 +1800,155 @@ class SpecGate:
             errors.add(error.code)
         return tuple(sorted(errors))
 
+    def _policy_amendment_proposal_errors(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        packet_path: str,
+        changed: tuple[str, ...],
+        diff_lines: int,
+        packet: Mapping[str, object],
+    ) -> tuple[str, ...]:
+        """Validate a review-only proposal for later exact evaluator promotion."""
+
+        errors: set[str] = set()
+        try:
+            _strict_keys(
+                packet,
+                {
+                    "schema_version",
+                    "change_type",
+                    "change_id",
+                    "starting_commit_sha",
+                    "protected_class",
+                    "gate_id",
+                    "decision",
+                    "evidence_bundle_sha256",
+                    "review_subject_sha256",
+                    "allowed_paths",
+                    "budgets",
+                },
+                "POLICY_CHANGE_PACKET_KEYS",
+            )
+            change_id = packet.get("change_id")
+            if (
+                packet.get("schema_version") != "1.0.0"
+                or packet.get("change_type") != "policy_amendment"
+                or packet.get("protected_class") != "ci_evaluator"
+                or packet.get("gate_id") != "POLICY"
+                or packet.get("decision") != "CHANGE-PROPOSED"
+            ):
+                errors.add("POLICY_CHANGE_IDENTITY")
+            if (
+                not isinstance(change_id, str)
+                or re.fullmatch(r"CR-[0-9]{3}", change_id) is None
+                or packet_path != f"work/change-control/{change_id}.yaml"
+            ):
+                raise GateInputError("POLICY_CHANGE_FILENAME")
+            if packet.get("starting_commit_sha") != base:
+                errors.add("POLICY_CHANGE_BASE")
+            amendment_policy = _mapping(self.policy.get("policy_amendment"), "POLICY_AMENDMENT")
+            maximum_files = amendment_policy.get("max_changed_files")
+            maximum_lines = amendment_policy.get("max_diff_lines")
+            maximum_targets = amendment_policy.get("max_target_files")
+            budgets = _mapping(packet.get("budgets"), "POLICY_CHANGE_BUDGETS")
+            if budgets != {
+                "max_changed_files": maximum_files,
+                "max_diff_lines": maximum_lines,
+            }:
+                errors.add("POLICY_CHANGE_BUDGETS")
+            if (
+                not isinstance(maximum_files, int)
+                or not isinstance(maximum_lines, int)
+                or len(changed) > maximum_files
+                or diff_lines > maximum_lines
+            ):
+                errors.add("POLICY_CHANGE_ACTUAL_BUDGET")
+            manifest_path = f"work/change-control/amendments/{change_id}-manifest.json"
+            closed_paths = {
+                packet_path,
+                manifest_path,
+                "CHANGELOG.md",
+                "docs/DECISIONS.md",
+            }
+            allowed = _strings(packet.get("allowed_paths"), "POLICY_CHANGE_PATHS")
+            if (
+                changed != tuple(sorted(closed_paths))
+                or tuple(sorted(allowed)) != changed
+                or len(set(allowed)) != len(allowed)
+            ):
+                errors.add("POLICY_CHANGE_CLOSED_PATHS")
+            documents = self._candidate_documents(mode, candidate, changed)
+            for path in ("CHANGELOG.md", "docs/DECISIONS.md"):
+                if (
+                    documents.get(path, b"").count(change_id.encode()) != 1
+                    or self._base_file(base, path).count(change_id.encode()) != 0
+                ):
+                    errors.add("POLICY_CHANGE_CR_ADR")
+            evidence_documents = {
+                path: documents[path] for path in ("CHANGELOG.md", "docs/DECISIONS.md")
+            }
+            evidence_hash = length_prefixed_digest(evidence_documents)
+            if packet.get("evidence_bundle_sha256") != evidence_hash:
+                errors.add("POLICY_CHANGE_EVIDENCE_HASH")
+            stored_review_hash = packet.get("review_subject_sha256")
+            if (
+                not isinstance(stored_review_hash, str)
+                or canonical_review_subject(
+                    documents,
+                    packet_path=packet_path,
+                    stored_hash=stored_review_hash,
+                )
+                != stored_review_hash
+            ):
+                errors.add("POLICY_CHANGE_REVIEW_HASH")
+            allowed_target_values = _strings(
+                amendment_policy.get("target_paths"), "POLICY_AMENDMENT_TARGETS"
+            )
+            if len(set(allowed_target_values)) != len(allowed_target_values):
+                raise GateInputError("POLICY_AMENDMENT_TARGET_POLICY")
+            allowed_targets = set(allowed_target_values)
+            manifest = strict_json_loads(
+                self._candidate_file(mode, candidate, manifest_path), self.limits
+            )
+            manifest_map = _mapping(manifest, "POLICY_PROMOTION_MANIFEST")
+            manifest_files = _sequence(manifest_map.get("files"), "POLICY_PROMOTION_MANIFEST_FILES")
+            target_paths = tuple(
+                sorted(
+                    normalize_repo_path(
+                        str(_mapping(item, "POLICY_PROMOTION_MANIFEST_FILE").get("path"))
+                    )
+                    for item in manifest_files
+                )
+            )
+            if (
+                not isinstance(maximum_targets, int)
+                or not 1 <= len(target_paths) <= maximum_targets
+                or len(set(target_paths)) != len(target_paths)
+                or not set(target_paths).issubset(allowed_targets)
+            ):
+                raise GateInputError("POLICY_AMENDMENT_TARGET_POLICY")
+            base_documents = {path: self._base_file(base, path) for path in target_paths}
+            decoded = dict(
+                _promotion_manifest_errors(
+                    manifest,
+                    gate_id="POLICY",
+                    policy_paths=target_paths,
+                    base_documents=base_documents,
+                )
+            )
+            if manifest_map.get("evidence_bundle_sha256") != evidence_hash:
+                errors.add("POLICY_CHANGE_MANIFEST_EVIDENCE")
+            if any(decoded[path] == base_documents[path] for path in target_paths):
+                errors.add("POLICY_CHANGE_UNCHANGED_TARGET")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
+
     def _reviewed_proposal(
-        self, revision: str, review_hash: str
+        self, revision: str, review_hash: str, gate_id: str = "G1"
     ) -> tuple[Mapping[str, object], Mapping[str, object]]:
         names = git_text(
             self.root,
@@ -1806,10 +1967,14 @@ class SpecGate:
                 strict_yaml_loads(_git_blob(self.root, revision, path), self.limits),
                 "CHANGE_PACKET_ROOT",
             )
+            identity = (packet.get("change_type"), packet.get("decision")) == (
+                ("spec", "GO-PROPOSED")
+                if gate_id == "G1"
+                else ("policy_amendment", "CHANGE-PROPOSED")
+            )
             if (
-                packet.get("change_type") == "spec"
-                and packet.get("gate_id") == "G1"
-                and packet.get("decision") == "GO-PROPOSED"
+                identity
+                and packet.get("gate_id") == gate_id
                 and packet.get("review_subject_sha256") == review_hash
             ):
                 matches.append((path, packet))
@@ -1820,6 +1985,8 @@ class SpecGate:
         if not isinstance(starting_base, str) or not SHA1_PATTERN.fullmatch(starting_base):
             raise GateInputError("REVIEW_PROPOSAL_BASE")
         git_bytes(self.root, "merge-base", "--is-ancestor", starting_base, revision)
+        if self._single_parent(revision) != starting_base:
+            raise GateInputError("REVIEW_PROPOSAL_PARENT")
         additions = git_text(
             self.root,
             "log",
@@ -1851,9 +2018,14 @@ class SpecGate:
         )
         if proposal_errors:
             raise GateInputError("REVIEW_PROPOSAL_INVALID")
+        manifest_path = (
+            "artifacts/gates/G1/promotion-manifest.json"
+            if gate_id == "G1"
+            else f"work/change-control/amendments/{packet.get('change_id')}-manifest.json"
+        )
         manifest = _mapping(
             strict_json_loads(
-                _git_blob(self.root, revision, "artifacts/gates/G1/promotion-manifest.json"),
+                _git_blob(self.root, revision, manifest_path),
                 self.limits,
             ),
             "PROMOTION_MANIFEST_ROOT",
@@ -1872,12 +2044,14 @@ class SpecGate:
     ) -> tuple[str, ...]:
         errors: set[str] = set()
         try:
-            if self._base_gate_decision(base) == "GO":
+            if any(path.startswith("work/change-control/reviews/G1/") for path in changed) and (
+                self._base_gate_decision(base) == "GO"
+            ):
                 raise GateInputError("REVIEW_GATE_IMMUTABLE")
             if (
                 len(changed) != 2
                 or diff_lines > 800
-                or not all(path.startswith("work/change-control/reviews/G1/") for path in changed)
+                or not all(path.startswith("work/change-control/reviews/") for path in changed)
             ):
                 raise GateInputError("REVIEW_PATH_BUDGET")
             if any(record[0] != "A" for record in records):
@@ -1908,13 +2082,14 @@ class SpecGate:
             }
             _strict_keys(receipt, expected_keys, "REVIEW_KEYS")
             role = receipt.get("role")
+            gate_id = receipt.get("gate_id")
             reviewed = receipt.get("reviewed_commit_sha")
             review_hash = receipt.get("review_subject_sha256")
             reviewer_identity = receipt.get("reviewer_identity")
             if (
                 receipt.get("schema_version") != "1.0.0"
                 or receipt.get("change_type") != "independent_review"
-                or receipt.get("gate_id") != "G1"
+                or gate_id not in {"G1", "POLICY"}
                 or role not in {"product_scope", "architecture_contracts", "security_evaluation"}
                 or receipt.get("verdict") not in {"PASS", "BLOCK"}
                 or not isinstance(reviewer_identity, str)
@@ -1930,7 +2105,7 @@ class SpecGate:
             git_bytes(self.root, "merge-base", "--is-ancestor", reviewed, base)
             if not isinstance(review_hash, str) or not SHA256_PATTERN.fullmatch(review_hash):
                 raise GateInputError("REVIEW_SUBJECT_HASH")
-            directory = f"work/change-control/reviews/G1/{role}-{review_hash}"
+            directory = f"work/change-control/reviews/{gate_id}/{role}-{review_hash}"
             if receipt_path != f"{directory}/receipt.json" or note_path != f"{directory}/review.md":
                 errors.add("REVIEW_DIRECTORY")
             if receipt.get("source_ref") != note_path:
@@ -1959,7 +2134,7 @@ class SpecGate:
             ).splitlines()
             if existing:
                 errors.add("REVIEW_DUPLICATE_ROLE")
-            proposal, manifest = self._reviewed_proposal(reviewed, review_hash)
+            proposal, manifest = self._reviewed_proposal(reviewed, review_hash, str(gate_id))
             if manifest.get("evidence_bundle_sha256") != receipt.get("evidence_bundle_sha256"):
                 errors.add("REVIEW_EVIDENCE_HASH")
             if manifest.get("promotion_subject_sha256") != receipt.get("promotion_subject_sha256"):
@@ -1975,6 +2150,24 @@ class SpecGate:
         if len(fields) != 2 or fields[0] != commit:
             raise GateInputError("COMMIT_SINGLE_PARENT")
         return fields[1]
+
+    def _linear_review_chain(
+        self,
+        proposal_commit: str,
+        receipt_commits: set[str],
+        promotion_base: str,
+    ) -> bool:
+        """Require proposal -> three reviews -> promotion base with no merge or gap."""
+
+        remaining = set(receipt_commits)
+        cursor = proposal_commit
+        while remaining:
+            successors = [commit for commit in remaining if self._single_parent(commit) == cursor]
+            if len(successors) != 1:
+                return False
+            cursor = successors[0]
+            remaining.remove(cursor)
+        return cursor == promotion_base
 
     def _promotion_errors(
         self,
@@ -2157,11 +2350,236 @@ class SpecGate:
             ):
                 reviewed = str(next(iter(reviewed_commits)))
                 review_hash = str(next(iter(review_hashes)))
+                if len(commits) == 3 and not self._linear_review_chain(reviewed, commits, base):
+                    errors.add("PROMOTION_RECEIPT_CHAIN")
                 proposal, reviewed_manifest = self._reviewed_proposal(reviewed, review_hash)
                 if reviewed_manifest != manifest or proposal.get(
                     "evidence_bundle_sha256"
                 ) != manifest.get("evidence_bundle_sha256"):
                     errors.add("PROMOTION_PROPOSAL_DRIFT")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
+
+    def _policy_promotion_packet(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        changed: tuple[str, ...],
+    ) -> str | None:
+        """Return the unique amendment for the exact base-to-candidate transition."""
+
+        amendment_policy = _mapping(self.policy.get("policy_amendment"), "POLICY_AMENDMENT")
+        allowed = set(_strings(amendment_policy.get("target_paths"), "POLICY_AMENDMENT_TARGETS"))
+        if not changed or not set(changed).issubset(allowed):
+            return None
+        current_hashes = {
+            path: hashlib.sha256(self._base_file(base, path)).hexdigest() for path in changed
+        }
+        candidate_hashes = {
+            path: hashlib.sha256(self._candidate_file(mode, candidate, path)).hexdigest()
+            for path in changed
+        }
+        names = git_text(
+            self.root, "ls-tree", "-r", "--name-only", base, "--", "work/change-control"
+        ).splitlines()
+        base_matches: list[str] = []
+        exact_matches: list[str] = []
+        for path in names:
+            if re.fullmatch(r"work/change-control/CR-[0-9]{3}\.yaml", path) is None:
+                continue
+            packet = _mapping(
+                strict_yaml_loads(self._base_file(base, path), self.limits),
+                "POLICY_CHANGE_PACKET",
+            )
+            if packet.get("change_type") != "policy_amendment":
+                continue
+            change_id = packet.get("change_id")
+            if not isinstance(change_id, str) or path != f"work/change-control/{change_id}.yaml":
+                raise GateInputError("POLICY_PROMOTION_CHANGE_ID")
+            manifest_path = f"work/change-control/amendments/{change_id}-manifest.json"
+            manifest = _mapping(
+                strict_json_loads(self._base_file(base, manifest_path), self.limits),
+                "POLICY_PROMOTION_MANIFEST",
+            )
+            _strict_keys(
+                manifest,
+                {
+                    "schema_version",
+                    "gate_id",
+                    "evidence_bundle_sha256",
+                    "promotion_subject_sha256",
+                    "files",
+                },
+                "POLICY_PROMOTION_MANIFEST_KEYS",
+            )
+            if manifest.get("schema_version") != "1.0.0" or manifest.get("gate_id") != "POLICY":
+                raise GateInputError("POLICY_PROMOTION_MANIFEST_IDENTITY")
+            manifest_base_hashes: dict[str, str] = {}
+            manifest_final_hashes: dict[str, str] = {}
+            for item in _sequence(manifest.get("files"), "POLICY_PROMOTION_FILES"):
+                entry = _mapping(item, "POLICY_PROMOTION_FILE")
+                _strict_keys(
+                    entry,
+                    {"path", "base_sha256", "final_sha256", "final_base64"},
+                    "POLICY_PROMOTION_FILE_KEYS",
+                )
+                raw_target = entry.get("path")
+                base_hash = entry.get("base_sha256")
+                final_hash = entry.get("final_sha256")
+                if not isinstance(raw_target, str):
+                    raise GateInputError("POLICY_PROMOTION_PATH")
+                target = normalize_repo_path(raw_target)
+                if target in manifest_base_hashes:
+                    raise GateInputError("POLICY_PROMOTION_DUPLICATE_PATH")
+                if not isinstance(base_hash, str) or SHA256_PATTERN.fullmatch(base_hash) is None:
+                    raise GateInputError("POLICY_PROMOTION_BASE_HASH")
+                if not isinstance(final_hash, str) or SHA256_PATTERN.fullmatch(final_hash) is None:
+                    raise GateInputError("POLICY_PROMOTION_FINAL_HASH")
+                manifest_base_hashes[target] = base_hash
+                manifest_final_hashes[target] = final_hash
+            if (
+                tuple(sorted(manifest_base_hashes)) == changed
+                and manifest_base_hashes == current_hashes
+            ):
+                base_matches.append(path)
+                if manifest_final_hashes == candidate_hashes:
+                    exact_matches.append(path)
+        if len(exact_matches) > 1:
+            raise GateInputError("POLICY_PROMOTION_AMBIGUOUS")
+        if exact_matches:
+            return exact_matches[0]
+        if len(base_matches) > 1:
+            raise GateInputError("POLICY_PROMOTION_AMBIGUOUS")
+        return base_matches[0] if base_matches else None
+
+    def _policy_promotion_errors(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        changed: tuple[str, ...],
+        diff_lines: int,
+        packet_path: str,
+    ) -> tuple[str, ...]:
+        """Admit only exact bytes with three pre-existing, separated reviews."""
+
+        errors: set[str] = set()
+        try:
+            if candidate is not None and self._single_parent(candidate) != base:
+                errors.add("POLICY_PROMOTION_PARENT")
+            amendment_policy = _mapping(self.policy.get("policy_amendment"), "POLICY_AMENDMENT")
+            maximum_lines = amendment_policy.get("max_diff_lines")
+            if not isinstance(maximum_lines, int) or diff_lines > maximum_lines:
+                errors.add("POLICY_PROMOTION_LINE_BUDGET")
+            packet = _mapping(
+                strict_yaml_loads(self._base_file(base, packet_path), self.limits),
+                "POLICY_CHANGE_PACKET",
+            )
+            change_id = packet.get("change_id")
+            review_hash = packet.get("review_subject_sha256")
+            if (
+                not isinstance(change_id, str)
+                or not isinstance(review_hash, str)
+                or SHA256_PATTERN.fullmatch(review_hash) is None
+            ):
+                raise GateInputError("POLICY_PROMOTION_PACKET")
+            proposal_commits = git_text(
+                self.root,
+                "log",
+                "--diff-filter=A",
+                "--format=%H",
+                base,
+                "--",
+                packet_path,
+            ).splitlines()
+            if len(proposal_commits) != 1:
+                raise GateInputError("POLICY_PROMOTION_PROPOSAL_PROVENANCE")
+            proposal_commit = proposal_commits[0]
+            reviewed_packet, manifest = self._reviewed_proposal(
+                proposal_commit, review_hash, "POLICY"
+            )
+            if reviewed_packet != packet:
+                errors.add("POLICY_PROMOTION_PACKET_DRIFT")
+            base_documents = {path: self._base_file(base, path) for path in changed}
+            decoded = dict(
+                _promotion_manifest_errors(
+                    manifest,
+                    gate_id="POLICY",
+                    policy_paths=changed,
+                    base_documents=base_documents,
+                )
+            )
+            actual = self._candidate_documents(mode, candidate, changed)
+            if actual != decoded:
+                errors.add("POLICY_PROMOTION_FINAL_BYTES")
+            if length_prefixed_digest(actual) != manifest.get("promotion_subject_sha256"):
+                errors.add("POLICY_PROMOTION_SUBJECT")
+
+            review_root = "work/change-control/reviews/POLICY"
+            receipt_paths = [
+                path
+                for path in git_text(
+                    self.root, "ls-tree", "-r", "--name-only", base, "--", review_root
+                ).splitlines()
+                if path.endswith("/receipt.json")
+            ]
+            receipts: list[tuple[str, Mapping[str, object]]] = []
+            commits: set[str] = set()
+            for path in receipt_paths:
+                receipt = _mapping(
+                    strict_json_loads(self._base_file(base, path), self.limits),
+                    "POLICY_PROMOTION_RECEIPT",
+                )
+                if (
+                    receipt.get("reviewed_commit_sha") != proposal_commit
+                    or receipt.get("review_subject_sha256") != review_hash
+                    or receipt.get("evidence_bundle_sha256")
+                    != manifest.get("evidence_bundle_sha256")
+                    or receipt.get("promotion_subject_sha256")
+                    != manifest.get("promotion_subject_sha256")
+                ):
+                    continue
+                receipts.append((path, receipt))
+                additions = git_text(
+                    self.root, "log", "--diff-filter=A", "--format=%H", base, "--", path
+                ).splitlines()
+                if len(additions) != 1:
+                    errors.add("POLICY_PROMOTION_RECEIPT_PROVENANCE")
+                    continue
+                commit = additions[0]
+                commits.add(commit)
+                parent = self._single_parent(commit)
+                records = self._diff_records("committed-candidate", parent, commit)
+                if self._review_errors(
+                    "committed-candidate",
+                    base=parent,
+                    candidate=commit,
+                    changed=changed_paths(records),
+                    diff_lines=self._diff_lines("committed-candidate", parent, commit),
+                    records=records,
+                ):
+                    errors.add("POLICY_PROMOTION_RECEIPT_INVALID")
+            roles = {receipt.get("role") for _, receipt in receipts}
+            if roles != {"product_scope", "architecture_contracts", "security_evaluation"}:
+                errors.add("POLICY_PROMOTION_RECEIPT_ROLES")
+            if len(receipts) != 3 or len(commits) != 3:
+                errors.add("POLICY_PROMOTION_RECEIPT_SEPARATION")
+            elif not self._linear_review_chain(proposal_commit, commits, base):
+                errors.add("POLICY_PROMOTION_RECEIPT_CHAIN")
+            for path, receipt in receipts:
+                if receipt.get("verdict") != "PASS":
+                    errors.add("POLICY_PROMOTION_RECEIPT_VERDICT")
+                role = receipt.get("role")
+                directory = f"{review_root}/{role}-{review_hash}"
+                if (
+                    path != f"{directory}/receipt.json"
+                    or receipt.get("source_ref") != f"{directory}/review.md"
+                ):
+                    errors.add("POLICY_PROMOTION_RECEIPT_PATH")
         except GateInputError as error:
             errors.add(error.code)
         return tuple(sorted(errors))
@@ -2235,7 +2653,8 @@ class SpecGate:
                 and re.fullmatch(r"work/change-control/CR-[0-9]{3}\.yaml", record[1])
             ]
             review_candidate = len(changed) == 2 and all(
-                record[0] == "A" and record[1].startswith("work/change-control/reviews/G1/")
+                record[0] == "A"
+                and re.match(r"work/change-control/reviews/(?:G1|POLICY)/", record[1])
                 for record in records
             )
             gate_policy = _mapping(
@@ -2244,6 +2663,12 @@ class SpecGate:
             )
             promotion_paths = tuple(
                 sorted(_strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"))
+            )
+            policy_promotion_packet = self._policy_promotion_packet(
+                mode,
+                base=base,
+                candidate=candidate,
+                changed=changed,
             )
             kinds: list[str] = []
             if len(packet_additions) == 1:
@@ -2256,6 +2681,8 @@ class SpecGate:
                 kinds.append("review")
             if changed == promotion_paths:
                 kinds.append("promotion")
+            if policy_promotion_packet is not None:
+                kinds.append("policy_promotion")
             if (
                 len(packet_additions) > 1
                 or len(attestation_additions) > 1
@@ -2314,7 +2741,7 @@ class SpecGate:
                         records=records,
                     )
                 )
-            else:
+            elif kinds[0] == "promotion":
                 self.diagnostics.extend(
                     self._promotion_errors(
                         mode,
@@ -2322,6 +2749,19 @@ class SpecGate:
                         candidate=candidate,
                         changed=changed,
                         diff_lines=diff_lines,
+                    )
+                )
+            else:
+                if policy_promotion_packet is None:
+                    raise GateInputError("POLICY_PROMOTION_PACKET")
+                self.diagnostics.extend(
+                    self._policy_promotion_errors(
+                        mode,
+                        base=base,
+                        candidate=candidate,
+                        changed=changed,
+                        diff_lines=diff_lines,
+                        packet_path=policy_promotion_packet,
                     )
                 )
             historical_attestations = [

@@ -166,6 +166,12 @@ def test_review_subject_rejects_duplicate_or_missing_self_hash() -> None:
         )
 
 
+def test_task_status_rows_are_equivalent_under_lf_and_crlf_checkout() -> None:
+    row = "| `P1.4` | task | P1.3 | result | `IN PROGRESS` |"
+    assert GATE.task_statuses((row + "\n").encode()) == {"P1.4": "IN PROGRESS"}
+    assert GATE.task_statuses((row + "\r\n").encode()) == {"P1.4": "IN PROGRESS"}
+
+
 @pytest.mark.parametrize(
     ("records", "expected"),
     [
@@ -227,6 +233,10 @@ def test_git_environment_keeps_only_the_sanitized_executable_path(
             "--no-optional-locks",
             "-c",
             "core.fsmonitor=false",
+            "-c",
+            "core.autocrlf=input",
+            "-c",
+            "core.eol=lf",
             "-c",
             "core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol",
             "-c",
@@ -411,6 +421,106 @@ def test_promotion_manifest_binds_current_and_exact_final_bytes() -> None:
         GATE._promotion_manifest_errors(
             manifest, gate_id="G1", policy_paths=paths, base_documents=drifted
         )
+
+
+def test_policy_promotion_selector_uses_exact_current_base_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    base = "a" * 40
+    target = "scripts/ci_policy.py"
+    current = b"current evaluator bytes\n"
+    old = b"old evaluator bytes\n"
+    candidate = b"next evaluator bytes\n"
+    old_candidate = b"historical final evaluator bytes\n"
+
+    def manifest(base_bytes: bytes, final_bytes: bytes) -> bytes:
+        value = {
+            "schema_version": "1.0.0",
+            "gate_id": "POLICY",
+            "evidence_bundle_sha256": "b" * 64,
+            "promotion_subject_sha256": "c" * 64,
+            "files": [
+                {
+                    "path": target,
+                    "base_sha256": hashlib.sha256(base_bytes).hexdigest(),
+                    "final_sha256": hashlib.sha256(final_bytes).hexdigest(),
+                    "final_base64": "",
+                }
+            ],
+        }
+        return json.dumps(value).encode()
+
+    documents = {
+        target: current,
+        "work/change-control/CR-997.yaml": b'{"change_type":"policy_amendment","change_id":"CR-997"}',
+        "work/change-control/CR-998.yaml": b'{"change_type":"policy_amendment","change_id":"CR-998"}',
+        "work/change-control/amendments/CR-997-manifest.json": manifest(old, old_candidate),
+        "work/change-control/amendments/CR-998-manifest.json": manifest(current, candidate),
+    }
+    names = "\n".join(
+        (
+            "work/change-control/CR-997.yaml",
+            "work/change-control/CR-998.yaml",
+        )
+    )
+    monkeypatch.setattr(GATE, "git_text", lambda *args: names)
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_base_file",
+        lambda _self, _revision, path: documents[path],
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_candidate_file",
+        lambda _self, _mode, _revision, path: candidate if path == target else b"",
+    )
+    changed = (target,)
+    assert (
+        gate._policy_promotion_packet(
+            "committed-candidate", base=base, candidate="e" * 40, changed=changed
+        )
+        == "work/change-control/CR-998.yaml"
+    )
+
+    documents["work/change-control/amendments/CR-997-manifest.json"] = manifest(
+        current, old_candidate
+    )
+    assert (
+        gate._policy_promotion_packet(
+            "committed-candidate", base=base, candidate="e" * 40, changed=changed
+        )
+        == "work/change-control/CR-998.yaml"
+    )
+    documents["work/change-control/amendments/CR-997-manifest.json"] = manifest(current, candidate)
+    with pytest.raises(GATE.GateInputError, match="POLICY_PROMOTION_AMBIGUOUS"):
+        gate._policy_promotion_packet(
+            "committed-candidate", base=base, candidate="e" * 40, changed=changed
+        )
+
+
+@pytest.mark.parametrize(
+    ("parents", "promotion_base", "expected"),
+    [
+        ({"r1": "p", "r2": "r1", "r3": "r2"}, "r3", True),
+        ({"r1": "p", "r2": "p", "r3": "r2"}, "r3", False),
+        ({"r1": "p", "r2": "r1", "r3": "r2"}, "merge", False),
+        ({"r1": "p", "r2": "gap", "r3": "r2"}, "r3", False),
+    ],
+)
+def test_review_chain_rejects_divergent_merge_and_intermediate_histories(
+    monkeypatch: pytest.MonkeyPatch,
+    parents: dict[str, str],
+    promotion_base: str,
+    expected: bool,
+) -> None:
+    gate = GATE.SpecGate()
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_single_parent",
+        lambda _self, commit: parents[commit],
+    )
+    assert gate._linear_review_chain("p", set(parents), promotion_base) is expected
 
 
 def test_current_packet_is_closed_and_mutations_fail() -> None:
@@ -715,25 +825,31 @@ def _proposal_candidate(
 
 
 def _review_candidate(
-    repository: Path, role: str, proposal: Mapping[str, Any], *, tamper_note: bool = False
+    repository: Path,
+    role: str,
+    proposal: Mapping[str, Any],
+    *,
+    tamper_note: bool = False,
+    gate_id: str = "G1",
+    verdict: str = "PASS",
 ) -> tuple[str, str]:
     base = _run_git(repository, "rev-parse", "HEAD")
     review_hash = proposal["review_subject_sha256"]
-    directory = f"work/change-control/reviews/G1/{role}-{review_hash}"
+    directory = f"work/change-control/reviews/{gate_id}/{role}-{review_hash}"
     note_path = f"{directory}/review.md"
     receipt_path = f"{directory}/receipt.json"
-    note = f"# {role}\n\nVerdict: PASS\n".encode()
+    note = f"# {role}\n\nVerdict: {verdict}\n".encode()
     receipt = {
         "schema_version": "1.0.0",
         "change_type": "independent_review",
-        "gate_id": "G1",
+        "gate_id": gate_id,
         "role": role,
         "reviewer_identity": f"test-{role}",
         "reviewed_commit_sha": proposal["reviewed_commit_sha"],
         "evidence_bundle_sha256": proposal["evidence_bundle_sha256"],
         "review_subject_sha256": review_hash,
         "promotion_subject_sha256": proposal["promotion_subject_sha256"],
-        "verdict": "PASS",
+        "verdict": verdict,
         "source_ref": note_path,
         "source_ref_sha256": hashlib.sha256(note).hexdigest(),
     }
@@ -752,6 +868,83 @@ def _promotion_candidate(
     for path, data in final.items():
         _write_candidate(repository, path, data)
     return base, _commit_all(repository, "Promote G1")
+
+
+def _policy_amendment_proposal(repository: Path) -> tuple[str, str, dict[str, Any]]:
+    base = _run_git(repository, "rev-parse", "HEAD")
+    change_id = "CR-998"
+    packet_path = f"work/change-control/{change_id}.yaml"
+    manifest_path = f"work/change-control/amendments/{change_id}-manifest.json"
+    target = "scripts/ci_policy.py"
+    base_bytes = (repository / target).read_bytes()
+    final_bytes = base_bytes + b"\n# exact reviewed policy amendment\n"
+    changelog = (repository / "CHANGELOG.md").read_bytes() + b"\n- CR-998 amendment\n"
+    decisions = (repository / "docs/DECISIONS.md").read_bytes() + b"\n## CR-998 amendment\n"
+    evidence = {"CHANGELOG.md": changelog, "docs/DECISIONS.md": decisions}
+    evidence_hash = GATE.length_prefixed_digest(evidence)
+    promotion_hash = GATE.length_prefixed_digest({target: final_bytes})
+    manifest = {
+        "schema_version": "1.0.0",
+        "gate_id": "POLICY",
+        "evidence_bundle_sha256": evidence_hash,
+        "promotion_subject_sha256": promotion_hash,
+        "files": [
+            {
+                "path": target,
+                "base_sha256": hashlib.sha256(base_bytes).hexdigest(),
+                "final_sha256": hashlib.sha256(final_bytes).hexdigest(),
+                "final_base64": GATE.base64.b64encode(final_bytes).decode(),
+            }
+        ],
+    }
+    documents = {
+        **evidence,
+        manifest_path: json.dumps(manifest, sort_keys=True).encode() + b"\n",
+    }
+    changed = sorted((*documents, packet_path))
+    packet = {
+        "schema_version": "1.0.0",
+        "change_type": "policy_amendment",
+        "change_id": change_id,
+        "starting_commit_sha": base,
+        "protected_class": "ci_evaluator",
+        "gate_id": "POLICY",
+        "decision": "CHANGE-PROPOSED",
+        "evidence_bundle_sha256": evidence_hash,
+        "review_subject_sha256": "0" * 64,
+        "allowed_paths": changed,
+        "budgets": {"max_changed_files": 4, "max_diff_lines": 6000},
+    }
+    zero_packet = json.dumps(packet, sort_keys=True, indent=2).encode() + b"\n"
+    review_hash = GATE.length_prefixed_digest({**documents, packet_path: zero_packet})
+    packet["review_subject_sha256"] = review_hash
+    documents[packet_path] = json.dumps(packet, sort_keys=True, indent=2).encode() + b"\n"
+    for path, data in documents.items():
+        _write_candidate(repository, path, data)
+    candidate = _commit_all(repository, "Propose policy amendment")
+    return (
+        base,
+        candidate,
+        {
+            "reviewed_commit_sha": candidate,
+            "evidence_bundle_sha256": evidence_hash,
+            "review_subject_sha256": review_hash,
+            "promotion_subject_sha256": promotion_hash,
+            "final": {target: final_bytes},
+        },
+    )
+
+
+def _policy_amendment_promotion(
+    repository: Path, proposal: Mapping[str, Any], *, tamper: bool = False
+) -> tuple[str, str]:
+    base = _run_git(repository, "rev-parse", "HEAD")
+    final = dict(proposal["final"])
+    if tamper:
+        final["scripts/ci_policy.py"] += b"# unreviewed\n"
+    for path, data in final.items():
+        _write_candidate(repository, path, data)
+    return base, _commit_all(repository, "Promote policy amendment")
 
 
 def _committed_errors(repository: Path, base: str, candidate: str) -> tuple[str, ...]:
@@ -844,6 +1037,52 @@ def test_closed_candidate_lifecycle_rejects_cross_lane_bypasses(
     assert "COMMITTED_CANDIDATE" in _committed_errors(
         repository, base, proposal["reviewed_commit_sha"]
     )
+
+
+def test_policy_amendment_requires_proposal_three_reviews_and_exact_promotion(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    base, candidate, proposal = _policy_amendment_proposal(repository)
+    assert _committed_errors(repository, base, candidate) == ()
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        base, candidate = _review_candidate(repository, role, proposal, gate_id="POLICY")
+        assert _committed_errors(repository, base, candidate) == ()
+    base, candidate = _policy_amendment_promotion(repository, proposal)
+    assert _committed_errors(repository, base, candidate) == ()
+
+
+@pytest.mark.parametrize("failure", ["missing-review", "block-review", "tampered-bytes"])
+def test_policy_amendment_rejects_incomplete_blocked_or_tampered_promotion(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    _, _, proposal = _policy_amendment_proposal(repository)
+    roles = ("product_scope", "architecture_contracts", "security_evaluation")
+    for index, role in enumerate(roles):
+        if failure == "missing-review" and index == 2:
+            break
+        _review_candidate(
+            repository,
+            role,
+            proposal,
+            gate_id="POLICY",
+            verdict="BLOCK" if failure == "block-review" and index == 2 else "PASS",
+        )
+    base, candidate = _policy_amendment_promotion(
+        repository, proposal, tamper=failure == "tampered-bytes"
+    )
+    errors = _committed_errors(repository, base, candidate)
+    expected = {
+        "missing-review": "POLICY_PROMOTION_RECEIPT_ROLES",
+        "block-review": "POLICY_PROMOTION_RECEIPT_VERDICT",
+        "tampered-bytes": "POLICY_PROMOTION_FINAL_BYTES",
+    }[failure]
+    assert expected in errors
 
 
 def _staged_implementation_candidate(repository: Path) -> tuple[str, dict[str, Any]]:

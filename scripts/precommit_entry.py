@@ -31,11 +31,10 @@ COMMANDS: Final = {
         "--no-sync",
         "--only-group",
         "quality",
-        "detect-secrets-hook",
-        "--baseline",
-        ".secrets.baseline",
-        "--no-verify",
-        "--",
+        "python",
+        "-I",
+        "scripts/ci_policy.py",
+        "secrets",
     ),
     "workflow": (
         "run",
@@ -94,7 +93,7 @@ def build_command(selection: str, filenames: Sequence[str]) -> tuple[str, ...]:
     arguments = COMMANDS.get(selection)
     if arguments is None:
         raise RuntimeError(f"unknown pre-commit selection: {selection}")
-    if filenames and selection != "secrets":
+    if filenames:
         raise RuntimeError(f"{selection} does not accept file arguments")
     return (str(project_uv()), *arguments, *filenames)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import os
 import sys
 import tomllib
@@ -242,6 +243,145 @@ def test_inline_allowlist_cannot_hide_a_secret() -> None:
     assert ("x.py", "GitHub Token") in findings
 
 
+def _completion_attestation() -> dict[str, Any]:
+    return cast(
+        dict[str, Any],
+        json.loads((REPOSITORY_ROOT / "work/task-attestations/P1.13.json").read_text()),
+    )
+
+
+def test_schema_valid_completion_attestation_digests_are_metadata_not_secrets() -> None:
+    path = "work/task-attestations/P1.13.json"
+    content = json.dumps(_completion_attestation(), sort_keys=True)
+    assert POLICY.scan_text(path, content, _baseline()) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "wrong-path",
+        "extra-field",
+        "wrong-task",
+        "wrong-evidence-order",
+        "bad-digest",
+        "duplicate-key",
+    ],
+)
+def test_completion_attestation_metadata_recognition_fails_closed(mutation: str) -> None:
+    path = "work/task-attestations/P1.13.json"
+    value = _completion_attestation()
+    if mutation == "wrong-path":
+        path = "work/other/P1.13.json"
+    elif mutation == "extra-field":
+        value["unreviewed"] = "field"
+    elif mutation == "wrong-task":
+        value["task_id"] = "P1.4"
+    elif mutation == "wrong-evidence-order":
+        value["evidence_refs"].reverse()
+    elif mutation == "bad-digest":
+        value["packet_sha256"] = "not-a-digest"
+    else:
+        content = json.dumps(value).replace(
+            '"task_id": "P1.13"', '"task_id": "P1.13", "task_id": "P1.13"'
+        )
+        assert POLICY._completion_attestation_scan_view(path, content) == content
+        return
+    content = json.dumps(value, sort_keys=True)
+    assert POLICY._completion_attestation_scan_view(path, content) == content
+
+
+@pytest.mark.parametrize("field", ["source", "type"])
+def test_valid_completion_attestation_still_scans_non_digest_metadata(field: str) -> None:
+    path = "work/task-attestations/P1.13.json"
+    value = _completion_attestation()
+    value["evidence_refs"][0][field] = CANARY
+    if field == "type":
+        policy = cast(dict[str, Any], POLICY._read_json(POLICY.SPEC_GATE_POLICY_PATH))
+        policy["completion_evidence"]["P1.13"][0] = CANARY
+        original = POLICY._read_json
+
+        def fake_read_json(candidate: Path) -> dict[str, Any]:
+            return (
+                policy
+                if candidate == POLICY.SPEC_GATE_POLICY_PATH
+                else cast(dict[str, Any], original(candidate))
+            )
+
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(POLICY, "_read_json", fake_read_json)
+            findings = POLICY.scan_text(path, json.dumps(value), _baseline())
+    else:
+        findings = POLICY.scan_text(path, json.dumps(value), _baseline())
+    assert (path, "GitHub Token") in findings
+
+
+def _promotion_manifest(gate_id: str, final_documents: dict[str, bytes]) -> dict[str, Any]:
+    return {
+        "schema_version": "1.0.0",
+        "gate_id": gate_id,
+        "evidence_bundle_sha256": "a" * 64,
+        "promotion_subject_sha256": POLICY._length_prefixed_digest(final_documents),
+        "files": [
+            {
+                "path": target,
+                "base_sha256": "b" * 64,
+                "final_sha256": POLICY.hashlib.sha256(final_bytes).hexdigest(),
+                "final_base64": POLICY.base64.b64encode(final_bytes).decode(),
+            }
+            for target, final_bytes in sorted(final_documents.items())
+        ],
+    }
+
+
+def test_policy_manifest_decodes_and_scans_final_target_bytes() -> None:
+    path = "work/change-control/amendments/CR-998-manifest.json"
+    final_documents = {"scripts/ci_policy.py": f"TOKEN = '{CANARY}'\n".encode()}
+    manifest = _promotion_manifest("POLICY", final_documents)
+    findings = POLICY.scan_text(path, json.dumps(manifest), _baseline())
+    assert findings == [(path, "GitHub Token")]
+    assert CANARY not in repr(findings)
+
+
+def test_policy_manifest_metadata_is_clean_only_after_exact_validation() -> None:
+    path = "work/change-control/amendments/CR-998-manifest.json"
+    final_documents = {"scripts/ci_policy.py": b"value = 1\n"}
+    manifest = _promotion_manifest("POLICY", final_documents)
+    assert POLICY.scan_text(path, json.dumps(manifest), _baseline()) == []
+    manifest["files"][0]["final_sha256"] = "c" * 64
+    assert POLICY._promotion_manifest_scan_views(path, json.dumps(manifest)) is None
+
+
+def _review_receipt(reviewer_identity: str = "independent-reviewer") -> tuple[str, str]:
+    review_hash = "d" * 64
+    directory = f"work/change-control/reviews/POLICY/product_scope-{review_hash}"
+    path = f"{directory}/receipt.json"
+    receipt = {
+        "schema_version": "1.0.0",
+        "change_type": "independent_review",
+        "gate_id": "POLICY",
+        "role": "product_scope",
+        "reviewer_identity": reviewer_identity,
+        "reviewed_commit_sha": "e" * 40,
+        "evidence_bundle_sha256": "a" * 64,
+        "review_subject_sha256": review_hash,
+        "promotion_subject_sha256": "b" * 64,
+        "verdict": "PASS",
+        "source_ref": f"{directory}/review.md",
+        "source_ref_sha256": "c" * 64,
+    }
+    return path, json.dumps(receipt)
+
+
+def test_schema_valid_review_receipt_digests_are_metadata_not_secrets() -> None:
+    path, content = _review_receipt()
+    assert POLICY.scan_text(path, content, _baseline()) == []
+
+
+def test_schema_valid_review_receipt_still_scans_reviewer_identity() -> None:
+    path, content = _review_receipt(CANARY)
+    assert (path, "GitHub Token") in POLICY.scan_text(path, content, _baseline())
+
+
 def test_git_blob_records_are_nul_safe_and_preserve_symlinks_as_blobs() -> None:
     first = "a" * 40
     second = "b" * 40
@@ -314,8 +454,14 @@ def test_precommit_launcher_uses_the_project_owned_uv_and_closed_commands() -> N
     relative_uv = "Scripts/uv.exe" if os.name == "nt" else "bin/uv"
     assert Path(command[0]).resolve() == (REPOSITORY_ROOT / ".venv" / relative_uv).resolve()
     assert command[1:] == PRECOMMIT.COMMANDS["quality"]
-    secret_command = PRECOMMIT.build_command("secrets", ["--option-shaped.py"])
-    assert secret_command[-2:] == ("--", "--option-shaped.py")
+    assert PRECOMMIT.build_command("secrets", [])[-4:] == (
+        "python",
+        "-I",
+        "scripts/ci_policy.py",
+        "secrets",
+    )
+    with pytest.raises(RuntimeError, match="does not accept"):
+        PRECOMMIT.build_command("secrets", ["--option-shaped.py"])
     with pytest.raises(RuntimeError, match="does not accept"):
         PRECOMMIT.build_command("quality", ["untrusted.py"])
     with pytest.raises(RuntimeError, match="unknown"):

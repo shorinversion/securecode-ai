@@ -132,6 +132,22 @@
     "date-time",
     "uri"
   ],
+  "policy_amendment": {
+    "max_changed_files": 4,
+    "max_diff_lines": 6000,
+    "max_target_files": 10,
+    "target_paths": [
+      ".github/workflows/ci.yml",
+      ".pre-commit-config.yaml",
+      "scripts/ci_policy.py",
+      "scripts/precommit_entry.py",
+      "scripts/quality.py",
+      "scripts/spec_gate.py",
+      "scripts/spec_gate_policy.json",
+      "tests/unit/test_ci_policy.py",
+      "tests/unit/test_spec_gate.py"
+    ]
+  },
   "public_schema_sha256": {
     "audit-event.schema.json": "ed3649fd9047faf392df2d8c0161afa8f99fc8c521be2401c0f835080fcfef97",
     "audit-run.schema.json": "83383c2680c4f1af4adabab78c8146b8f813943608ec1de5d1faed38b0d06de4",
@@ -174,7 +190,9 @@
     "scripts/spec_gate_policy.json",
     "scripts/quality.py",
     "scripts/ci_policy.py",
+    "scripts/precommit_entry.py",
     ".github/workflows/ci.yml",
+    ".pre-commit-config.yaml",
     "tests/unit/test_spec_gate.py",
     "tests/unit/test_ci_policy.py"
   ],

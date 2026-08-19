@@ -390,6 +390,46 @@
   а exact tool/lock + clean-room oracle дают воспроизводимость без второго
   requirements/lock source of truth.
 
+## D-030 — Typed attestation metadata и byte-exact CI evaluator amendments
+
+- Статус: accepted (`CR-017`); bootstrap implementation under exact review.
+- Решение secret scan: криптографический digest не считается секретом только
+  внутри exact-path completion attestation, которая проходит закрытые identity,
+  key, type, budget, evidence-catalog/order и lowercase SHA-1/SHA-256 проверки.
+  Scanner заменяет в своём временном view только typed OID/digest values; все
+  остальные поля сканируются обычными detector plugins. Invalid/unknown input
+  не получает частичного исключения. `.secrets.baseline` не изменяется.
+- Решение local/CI equivalence: pre-commit больше не вызывает отдельный raw
+  hook; он запускает тот же index-blob scanner, что и CI. Scanner читает Git
+  blobs, не checkout path, и сохраняет secret-safe diagnostics. Trusted Git
+  subprocess явно использует check-in normalization `autocrlf=input/eol=lf`,
+  поэтому Windows и CI вычисляют один и тот же candidate diff.
+- Решение manifest/receipt scanning: digest/OID/Base64 поля G1/POLICY promotion
+  manifest и independent-review receipt заменяются во временном scan-view
+  только после exact-path closed-schema и subject/hash validation. Manifest
+  final bytes декодируются и отдельно сканируются под policy-owned target path;
+  invalid manifest не получает частичного исключения.
+- Решение evaluator change control: proposal меняет только один CR packet,
+  promotion manifest, CHANGELOG и ADR. Manifest ограничен policy-owned target
+  paths и содержит base/final hashes и final bytes. Три роли
+  product/architecture/security-evaluation добавляют immutable reviews в трёх
+  отдельных ancestor commits; promotion может воспроизвести только exact
+  manifest bytes. Selector связывает повторные amendments того же target set с
+  exact текущими base hashes и candidate final hashes; два конкурирующих
+  proposal для одного exact byte-transition остаются ambiguous и отклоняются.
+  Proposal, три review additions и promotion base обязаны образовать
+  непрерывную single-parent цепь; parallel reviews, merge assembly и
+  промежуточные commits отклоняются. Missing/BLOCK/stale/tampered/mixed
+  candidates отклоняются.
+- Bootstrap: действующая версия evaluator по определению не может авторизовать
+  новую lane. Поэтому `CR-017` допускает один вручную наблюдаемый ruleset bypass
+  только после PASS/PASS/PASS на exact commit. Bypass удаляется немедленно;
+  следующий P1.4 PR обязан пройти обычный required `ci / gate`. Это не
+  постоянный code path, wildcard allowlist или скрытый runtime switch.
+- Ограничения: локальная механика доказывает scope, bytes, ancestry и separation,
+  но не человеческую identity/truth review. Primary Integrator и внешний GitHub
+  ruleset остаются отдельными authority layers.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1

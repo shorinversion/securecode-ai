@@ -24,6 +24,18 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-19 — принят `CR-017`: repair закрытого P1.4 CI gate различает
+  schema-valid completion attestation metadata и секретные значения. Только
+  exact SHA-1/SHA-256 поля закрытой attestation-формы исключаются из
+  entropy-сигналов; неизвестный path/schema/key/catalog/order остаётся под
+  обычным secret scan. Strict promotion manifests и review receipts аналогично
+  различают только typed digests; Base64 final files обязательно декодируются
+  и сканируются под исходными target paths. Local pre-commit и CI используют
+  один scanner. Для последующих изменений evaluator добавлен
+  manifest/review/promotion lane с тремя commit-separated ролями и byte-exact
+  final files (`D-030`). Текущий
+  bootstrap всё ещё требует одного audited ruleset bypass для exact reviewed
+  commit, после чего bypass удаляется и P1.4 повторяется обычным PR.
 - 2026-08-18 — открыт `P1.13`: один read-only fail-closed spec gate проверяет
   frozen baseline/digest, requirement IDs, traceability, Draft 2020-12 schemas,
   indexed examples, exact public-schema bytes, conservative compatibility и
@@ -374,6 +386,7 @@ Changelog отвечает на вопрос «что и когда измени
 | `CR-014` | 2026-08-12 | Добавить независимый model-native discovery lane с прямым bounded read-only анализом кода наряду с deterministic analyzers | `accepted` | `D-027`, baseline/stage catalogue `0.2.0`, provider/egress/capability/workflow/domain/evaluation/traceability delta; evidence `PA-011–PA-013` |
 | `CR-015` | 2026-08-12 | Восстановить пропущенные обязательные условия сдачи из полной исходной формулировки | `accepted` | Corrected product/plan/traceability; deadline year/timezone and individual approval remain tracked external G9 inputs |
 | `CR-016` | 2026-08-12 | Добавить evaluation lab для synthetic cases и контролируемой офлайн-оптимизации prompt/skill; проверить sandboxed RLM как discovery strategy | `accepted — limited P7 scope` | `D-028`, P7.12–P7.16; not Core/runtime dependency, no production self-modification; evidence `EO-001–EO-006` |
+| `CR-017` | 2026-08-19 | Устранить конфликт completion digest metadata и secret scanner без baseline allowlist; добавить штатную byte-exact evaluator amendment lane | `accepted — implementation under exact review` | `D-030`, P1.4 CI evaluator; one audited bootstrap bypass, then ordinary required-check proof |
 
 ## Release history
 

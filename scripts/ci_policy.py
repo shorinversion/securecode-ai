@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import re
@@ -19,6 +21,7 @@ REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH: Final = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 PRECOMMIT_PATH: Final = REPOSITORY_ROOT / ".pre-commit-config.yaml"
 BASELINE_PATH: Final = REPOSITORY_ROOT / ".secrets.baseline"
+SPEC_GATE_POLICY_PATH: Final = REPOSITORY_ROOT / "scripts" / "spec_gate_policy.json"
 PYPROJECT_PATH: Final = REPOSITORY_ROOT / "pyproject.toml"
 LOCK_PATH: Final = REPOSITORY_ROOT / "uv.lock"
 VULNERABLE_FIXTURE_PATH: Final = (
@@ -279,7 +282,8 @@ def precommit_errors(configuration: Mapping[str, Any]) -> list[str]:
                         "name": "SecureCode staged secret scan",
                         "language": "system",
                         "entry": "python -I scripts/precommit_entry.py secrets",
-                        "types": ["text"],
+                        "pass_filenames": "false",
+                        "always_run": "true",
                     },
                     {
                         "id": "securecode-workflow-security",
@@ -752,6 +756,343 @@ def _approved_secret_keys(baseline: Mapping[str, Any]) -> set[tuple[str, str, st
     return approved
 
 
+class _DuplicateJSONKey(ValueError):
+    """Reject ambiguous metadata before any digest field is suppressed."""
+
+
+def _strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJSONKey(key)
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(value)
+
+
+def _completion_attestation_scan_view(path: str, content: str) -> str:
+    """Suppress only typed digest metadata in one closed completion attestation.
+
+    Invalid, unknown or path-mismatched documents are returned byte-for-byte as
+    text so the ordinary secret detectors remain authoritative.
+    """
+
+    normalized_path = path.replace("\\", "/")
+    match = re.fullmatch(r"work/task-attestations/(P[0-9]+\.[0-9]+)\.json", normalized_path)
+    if match is None:
+        return content
+    try:
+        value = json.loads(
+            content,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        if not isinstance(value, dict) or set(value) != {
+            "schema_version",
+            "change_type",
+            "task_id",
+            "starting_commit_sha",
+            "packet_sha256",
+            "implementation_commit_sha",
+            "evidence_refs",
+            "allowed_paths",
+            "budgets",
+        }:
+            return content
+        task_id = match.group(1)
+        if (
+            value["schema_version"] != "1.0.0"
+            or value["change_type"] != "completion_attestation"
+            or value["task_id"] != task_id
+        ):
+            return content
+        git_oids = (value["starting_commit_sha"], value["implementation_commit_sha"])
+        if any(
+            not isinstance(item, str) or re.fullmatch(r"[0-9a-f]{40}", item) is None
+            for item in git_oids
+        ):
+            return content
+        if (
+            not isinstance(value["packet_sha256"], str)
+            or re.fullmatch(r"[0-9a-f]{64}", value["packet_sha256"]) is None
+        ):
+            return content
+        allowed_paths = value["allowed_paths"]
+        if (
+            not isinstance(allowed_paths, list)
+            or not 1 <= len(allowed_paths) <= 5
+            or any(not isinstance(item, str) or not item for item in allowed_paths)
+            or len(set(allowed_paths)) != len(allowed_paths)
+            or normalized_path not in allowed_paths
+        ):
+            return content
+        if value["budgets"] != {"max_changed_files": 5, "max_diff_lines": 800}:
+            return content
+        policy = _read_json(SPEC_GATE_POLICY_PATH)
+        catalog = _mapping(policy.get("completion_evidence"), "completion_evidence")
+        required = _sequence(catalog.get(task_id), f"completion_evidence.{task_id}")
+        refs = value["evidence_refs"]
+        if not isinstance(refs, list) or not 1 <= len(refs) <= 16:
+            return content
+        observed: list[str] = []
+        for ref in refs:
+            if not isinstance(ref, dict) or set(ref) != {"type", "source", "content_sha256"}:
+                return content
+            ref_type = ref["type"]
+            source = ref["source"]
+            digest = ref["content_sha256"]
+            if (
+                not isinstance(ref_type, str)
+                or not 1 <= len(ref_type.encode("utf-8")) <= 64
+                or not isinstance(source, str)
+                or not 1 <= len(source.encode("utf-8")) <= 1024
+                or not isinstance(digest, str)
+                or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            ):
+                return content
+            observed.append(ref_type)
+        if observed != list(required) or len(set(observed)) != len(observed):
+            return content
+
+        scan_value = json.loads(json.dumps(value))
+        scan_value["starting_commit_sha"] = "typed-git-object-id"
+        scan_value["implementation_commit_sha"] = "typed-git-object-id"
+        scan_value["packet_sha256"] = "typed-sha256-digest"
+        for ref in scan_value["evidence_refs"]:
+            ref["content_sha256"] = "typed-sha256-digest"
+        return json.dumps(scan_value, ensure_ascii=True, sort_keys=True)
+    except (KeyError, PolicyError, TypeError, ValueError, json.JSONDecodeError):
+        return content
+
+
+def _length_prefixed_digest(documents: Mapping[str, bytes]) -> str:
+    digest = hashlib.sha256()
+    for path, content in sorted(documents.items()):
+        path_bytes = path.encode("utf-8")
+        digest.update(len(path_bytes).to_bytes(8, "big", signed=False))
+        digest.update(path_bytes)
+        digest.update(len(content).to_bytes(8, "big", signed=False))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def _promotion_manifest_scan_views(path: str, content: str) -> list[tuple[str, str]] | None:
+    """Return sanitized metadata plus decoded target bytes for a valid manifest."""
+
+    normalized_path = path.replace("\\", "/")
+    gate_id: str
+    if normalized_path == "artifacts/gates/G1/promotion-manifest.json":
+        gate_id = "G1"
+    elif re.fullmatch(
+        r"work/change-control/amendments/CR-[0-9]{3}-manifest\.json", normalized_path
+    ):
+        gate_id = "POLICY"
+    else:
+        return None
+    try:
+        value = json.loads(
+            content,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        if not isinstance(value, dict) or set(value) != {
+            "schema_version",
+            "gate_id",
+            "evidence_bundle_sha256",
+            "promotion_subject_sha256",
+            "files",
+        }:
+            return None
+        if value["schema_version"] != "1.0.0" or value["gate_id"] != gate_id:
+            return None
+        for field in ("evidence_bundle_sha256", "promotion_subject_sha256"):
+            if (
+                not isinstance(value[field], str)
+                or re.fullmatch(r"[0-9a-f]{64}", value[field]) is None
+            ):
+                return None
+
+        policy = _read_json(SPEC_GATE_POLICY_PATH)
+        if gate_id == "G1":
+            gate_policy = _mapping(
+                _mapping(policy.get("gate_policy"), "gate_policy").get("G1"), "G1"
+            )
+            allowed_paths = tuple(_sequence(gate_policy.get("promotion_paths"), "promotion_paths"))
+            require_exact_paths = True
+            maximum_files = len(allowed_paths)
+        else:
+            amendment = _mapping(policy.get("policy_amendment"), "policy_amendment")
+            allowed_paths = tuple(_sequence(amendment.get("target_paths"), "target_paths"))
+            raw_maximum_files = amendment.get("max_target_files")
+            if not isinstance(raw_maximum_files, int) or isinstance(raw_maximum_files, bool):
+                return None
+            maximum_files = raw_maximum_files
+            require_exact_paths = False
+        if any(not isinstance(item, str) or not item for item in allowed_paths) or len(
+            set(allowed_paths)
+        ) != len(allowed_paths):
+            return None
+        allowed = set(allowed_paths)
+        files = value["files"]
+        if (
+            not isinstance(files, list)
+            or not 1 <= len(files) <= maximum_files
+            or len(files) > len(allowed)
+        ):
+            return None
+
+        decoded: dict[str, bytes] = {}
+        total_bytes = 0
+        for raw_entry in files:
+            if not isinstance(raw_entry, dict) or set(raw_entry) != {
+                "path",
+                "base_sha256",
+                "final_sha256",
+                "final_base64",
+            }:
+                return None
+            target = raw_entry["path"]
+            if not isinstance(target, str) or target not in allowed or target in decoded:
+                return None
+            for field in ("base_sha256", "final_sha256"):
+                if (
+                    not isinstance(raw_entry[field], str)
+                    or re.fullmatch(r"[0-9a-f]{64}", raw_entry[field]) is None
+                ):
+                    return None
+            encoded = raw_entry["final_base64"]
+            if not isinstance(encoded, str) or len(encoded) > 4 * 1024 * 1024:
+                return None
+            try:
+                final_bytes = base64.b64decode(encoded, validate=True)
+            except (ValueError, binascii.Error):
+                return None
+            total_bytes += len(final_bytes)
+            if total_bytes > 16 * 1024 * 1024:
+                return None
+            if hashlib.sha256(final_bytes).hexdigest() != raw_entry["final_sha256"]:
+                return None
+            decoded[target] = final_bytes
+        observed_paths = tuple(sorted(decoded))
+        if require_exact_paths:
+            if observed_paths != tuple(sorted(allowed_paths)):
+                return None
+        elif not observed_paths:
+            return None
+        if _length_prefixed_digest(decoded) != value["promotion_subject_sha256"]:
+            return None
+
+        scan_value = json.loads(json.dumps(value))
+        scan_value["evidence_bundle_sha256"] = "typed-sha256-digest"
+        scan_value["promotion_subject_sha256"] = "typed-sha256-digest"
+        for entry in scan_value["files"]:
+            entry["base_sha256"] = "typed-sha256-digest"
+            entry["final_sha256"] = "typed-sha256-digest"
+            entry["final_base64"] = "decoded-and-scanned-target-bytes"
+        views = [(normalized_path, json.dumps(scan_value, ensure_ascii=True, sort_keys=True))]
+        views.extend(
+            (target, final_bytes.decode("utf-8", "replace"))
+            for target, final_bytes in sorted(decoded.items())
+        )
+        return views
+    except (KeyError, PolicyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _review_receipt_scan_view(path: str, content: str) -> str:
+    """Suppress only closed-schema receipt identity digests and Git object IDs."""
+
+    normalized_path = path.replace("\\", "/")
+    match = re.fullmatch(
+        r"work/change-control/reviews/(G1|POLICY)/"
+        r"(product_scope|architecture_contracts|security_evaluation)-([0-9a-f]{64})/receipt\.json",
+        normalized_path,
+    )
+    if match is None:
+        return content
+    try:
+        value = json.loads(
+            content,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        if not isinstance(value, dict) or set(value) != {
+            "schema_version",
+            "change_type",
+            "gate_id",
+            "role",
+            "reviewer_identity",
+            "reviewed_commit_sha",
+            "evidence_bundle_sha256",
+            "review_subject_sha256",
+            "promotion_subject_sha256",
+            "verdict",
+            "source_ref",
+            "source_ref_sha256",
+        }:
+            return content
+        gate_id, role, review_hash = match.groups()
+        source_ref = normalized_path.removesuffix("receipt.json") + "review.md"
+        if (
+            value["schema_version"] != "1.0.0"
+            or value["change_type"] != "independent_review"
+            or value["gate_id"] != gate_id
+            or value["role"] != role
+            or value["review_subject_sha256"] != review_hash
+            or value["verdict"] not in {"PASS", "BLOCK"}
+            or value["source_ref"] != source_ref
+        ):
+            return content
+        reviewer = value["reviewer_identity"]
+        if (
+            not isinstance(reviewer, str)
+            or not 1 <= len(reviewer.encode("utf-8")) <= 256
+            or any(character.isspace() and character not in {" ", "\t"} for character in reviewer)
+        ):
+            return content
+        if (
+            not isinstance(value["reviewed_commit_sha"], str)
+            or re.fullmatch(r"[0-9a-f]{40}", value["reviewed_commit_sha"]) is None
+        ):
+            return content
+        for field in (
+            "evidence_bundle_sha256",
+            "review_subject_sha256",
+            "promotion_subject_sha256",
+            "source_ref_sha256",
+        ):
+            if (
+                not isinstance(value[field], str)
+                or re.fullmatch(r"[0-9a-f]{64}", value[field]) is None
+            ):
+                return content
+
+        scan_value = json.loads(json.dumps(value))
+        scan_value["reviewed_commit_sha"] = "typed-git-object-id"
+        for field in (
+            "evidence_bundle_sha256",
+            "review_subject_sha256",
+            "promotion_subject_sha256",
+            "source_ref_sha256",
+        ):
+            scan_value[field] = "typed-sha256-digest"
+        scan_value["source_ref"] = "typed-review-note-path"
+        return json.dumps(scan_value, ensure_ascii=True, sort_keys=True)
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return content
+
+
+def _secret_scan_views(path: str, content: str) -> list[tuple[str, str]]:
+    manifest_views = _promotion_manifest_scan_views(path, content)
+    if manifest_views is not None:
+        return manifest_views
+    attestation_view = _completion_attestation_scan_view(path, content)
+    return [(path, _review_receipt_scan_view(path, attestation_view))]
+
+
 def scan_text(
     path: str,
     content: str,
@@ -765,12 +1106,13 @@ def scan_text(
     approved = _approved_secret_keys(baseline)
     findings: set[tuple[str, str]] = set()
     with transient_settings(dict(baseline)):
-        lines = list(enumerate(content.splitlines(), start=1))
-        for candidate in _process_line_based_plugins(lines, filename=path):
-            normalized_path = path.replace("\\", "/")
-            key = (normalized_path, candidate.type, candidate.secret_hash)
-            if key not in approved:
-                findings.add((normalized_path, candidate.type))
+        normalized_path = path.replace("\\", "/")
+        for scan_path, scan_view in _secret_scan_views(path, content):
+            lines = list(enumerate(scan_view.splitlines(), start=1))
+            for candidate in _process_line_based_plugins(lines, filename=scan_path):
+                approved_key = (scan_path.replace("\\", "/"), candidate.type, candidate.secret_hash)
+                if approved_key not in approved:
+                    findings.add((normalized_path, candidate.type))
     return sorted(findings)
 
 
