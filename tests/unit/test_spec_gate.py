@@ -1004,6 +1004,181 @@ def test_closed_candidate_lifecycle_accepts_exact_committed_chain(
     )
 
 
+def _synthetic_merge_commit(
+    repository: Path,
+    *,
+    tree: str,
+    parents: tuple[str, ...],
+) -> str:
+    completed = subprocess.run(
+        ["git", "commit-tree", tree, *(argument for parent in parents for argument in ("-p", parent))],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+        input="Synthetic pull request merge\n",
+    )
+    return completed.stdout.strip()
+
+
+def test_pull_request_synthetic_merge_validates_bound_head_chain(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    for task_id in ("P1.4", "P1.13"):
+        _complete_task(repository, task_id)
+    pr_base, _, proposal = _proposal_candidate(repository)
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        _review_candidate(repository, role, proposal)
+    _, logical_head = _promotion_candidate(repository, proposal)
+    logical_tree = _run_git(repository, "rev-parse", f"{logical_head}^{{tree}}")
+    synthetic = _synthetic_merge_commit(
+        repository,
+        tree=logical_tree,
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", synthetic)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=synthetic,
+        pull_request_head=logical_head,
+    ) == ()
+
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=synthetic,
+        pull_request_head=proposal["reviewed_commit_sha"],
+    ) == ("PR_SYNTHETIC_PARENTS",)
+
+    swapped = _synthetic_merge_commit(
+        repository,
+        tree=logical_tree,
+        parents=(logical_head, pr_base),
+    )
+    _run_git(repository, "switch", "--detach", swapped)
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=swapped,
+        pull_request_head=logical_head,
+    ) == ("PR_SYNTHETIC_PARENTS",)
+
+    wrong_tree = _synthetic_merge_commit(
+        repository,
+        tree=f"{pr_base}^{{tree}}",
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", wrong_tree)
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=wrong_tree,
+        pull_request_head=logical_head,
+    ) == ("PR_SYNTHETIC_TREE",)
+
+    _run_git(repository, "switch", "--detach", logical_head)
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=synthetic,
+        pull_request_head=logical_head,
+    ) == ("COMMITTED_CANDIDATE",)
+
+
+def test_pull_request_synthetic_merge_rejects_unprotected_multi_commit_chain(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    for task_id in ("P1.4", "P1.13"):
+        _complete_task(repository, task_id)
+    pr_base = _run_git(repository, "rev-parse", "HEAD")
+    (repository / "README.md").write_bytes(b"unprotected intermediate\n")
+    _commit_all(repository, "Add unprotected intermediate commit")
+    _, logical_head, _ = _proposal_candidate(repository)
+    synthetic = _synthetic_merge_commit(
+        repository,
+        tree=_run_git(repository, "rev-parse", f"{logical_head}^{{tree}}"),
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", synthetic)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=synthetic,
+        pull_request_head=logical_head,
+    ) == ("PR_HEAD_CHAIN_KIND",)
+
+
+def test_pull_request_synthetic_merge_rejects_extra_commit_before_promotion(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    for task_id in ("P1.4", "P1.13"):
+        _complete_task(repository, task_id)
+    pr_base, _, proposal = _proposal_candidate(repository)
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        _review_candidate(repository, role, proposal)
+    (repository / "README.md").write_bytes(b"unreviewed gap\n")
+    _commit_all(repository, "Insert unreviewed gap")
+    _, logical_head = _promotion_candidate(repository, proposal)
+    synthetic = _synthetic_merge_commit(
+        repository,
+        tree=_run_git(repository, "rev-parse", f"{logical_head}^{{tree}}"),
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", synthetic)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    assert "PROMOTION_RECEIPT_CHAIN" in gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=synthetic,
+        pull_request_head=logical_head,
+    )
+
+
+def test_pull_request_synthetic_merge_accepts_policy_promotion_chain(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    pr_base, _, proposal = _policy_amendment_proposal(repository)
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        _review_candidate(repository, role, proposal, gate_id="POLICY")
+    _, logical_head = _policy_amendment_promotion(repository, proposal)
+    synthetic = _synthetic_merge_commit(
+        repository,
+        tree=_run_git(repository, "rev-parse", f"{logical_head}^{{tree}}"),
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", synthetic)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    assert gate.validate_pull_request_candidate(
+        base=pr_base,
+        synthetic_candidate=synthetic,
+        pull_request_head=logical_head,
+    ) == ()
+
+
 def test_closed_candidate_lifecycle_rejects_cross_lane_bypasses(
     lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1204,6 +1379,34 @@ def test_cli_exception_receipt_is_fixed_and_non_echo(
     rendered = capsys.readouterr().err
     assert "INTERNAL_FAILURE" in rendered
     assert CANARY not in rendered
+
+
+@pytest.mark.parametrize("event", ["merge_group", "push"])
+def test_non_pull_request_ci_events_reject_pull_request_head(
+    event: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert (
+        GATE.main(
+            [
+                "ci",
+                "--event",
+                event,
+                "--base",
+                "a" * 40,
+                "--candidate",
+                "b" * 40,
+                "--pull-request-head",
+                "c" * 40,
+                "--github-repository",
+                "example/repo",
+            ]
+        )
+        == 1
+    )
+    assert (
+        capsys.readouterr().err
+        == "SPEC_GATE=FAIL mode=ci errors=1 codes=CI_PR_HEAD_UNEXPECTED\n"
+    )
 
 
 @pytest.mark.parametrize(

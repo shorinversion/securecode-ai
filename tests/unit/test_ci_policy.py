@@ -158,6 +158,10 @@ def test_workflow_mutations_fail_closed(mutate: Callable[[dict[str, Any]], None]
             CANDIDATE_SHA="${{ github.event.pull_request.head.sha }}"
         ),
         lambda workflow: workflow["jobs"]["spec"]["env"].update(
+            PULL_REQUEST_HEAD_SHA="${{ github.sha }}"
+        ),
+        lambda workflow: workflow["jobs"]["spec"]["env"].pop("PULL_REQUEST_HEAD_SHA"),
+        lambda workflow: workflow["jobs"]["spec"]["env"].update(
             GITHUB_REPOSITORY="attacker/repository"
         ),
         lambda workflow: workflow["jobs"]["spec"]["steps"][0]["with"].update({"fetch-depth": "1"}),

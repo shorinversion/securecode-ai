@@ -187,7 +187,7 @@ EXPECTED_RUN_COMMANDS: Final = {
     "spec": (
         "python -I scripts/ci_policy.py lock",
         "uv sync --locked --only-group quality --no-editable",
-        'uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --github-repository "$GITHUB_REPOSITORY"',
+        'uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --pull-request-head "$PULL_REQUEST_HEAD_SHA" --github-repository "$GITHUB_REPOSITORY"',
     ),
     "quality": (
         "python -I scripts/ci_policy.py lock",
@@ -513,6 +513,7 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
         "EVENT_NAME": "${{ github.event_name }}",
         "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}",
         "CANDIDATE_SHA": "${{ github.sha }}",
+        "PULL_REQUEST_HEAD_SHA": "${{ github.event.pull_request.head.sha || '' }}",
     }
     if _mapping(jobs.get("spec"), "jobs.spec").get("env") != expected_spec_environment:
         errors.append("spec event authority environment differs from the closed mapping")

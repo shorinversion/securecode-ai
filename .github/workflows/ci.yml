@@ -132,6 +132,7 @@ jobs:
       EVENT_NAME: ${{ github.event_name }}
       BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
       CANDIDATE_SHA: ${{ github.sha }}
+      PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
     steps:
       - name: Checkout exact candidate and authoritative history
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -158,7 +159,7 @@ jobs:
       - name: Provision exact specification tools
         run: uv sync --locked --only-group quality --no-editable
       - name: Validate exact event candidate or dispatch snapshot
-        run: uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --github-repository "$GITHUB_REPOSITORY"
+        run: uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --pull-request-head "$PULL_REQUEST_HEAD_SHA" --github-repository "$GITHUB_REPOSITORY"
 
   quality:
     name: quality / python-${{ matrix.python-version }}

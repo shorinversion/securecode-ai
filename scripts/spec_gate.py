@@ -2584,7 +2584,99 @@ class SpecGate:
             errors.add(error.code)
         return tuple(sorted(errors))
 
-    def validate_candidate(self, mode: str, *, base: str, candidate: str | None) -> tuple[str, ...]:
+    def validate_pull_request_candidate(
+        self,
+        *,
+        base: str,
+        synthetic_candidate: str,
+        pull_request_head: str,
+    ) -> tuple[str, ...]:
+        """Validate a GitHub PR merge SHA while dispatching on its bound head chain."""
+
+        try:
+            for value, code in (
+                (base, "BASE_FORMAT"),
+                (synthetic_candidate, "PR_SYNTHETIC_FORMAT"),
+                (pull_request_head, "PR_HEAD_FORMAT"),
+            ):
+                if not SHA1_PATTERN.fullmatch(value) or value == "0" * 40:
+                    raise GateInputError(code)
+            head = git_text(self.root, "rev-parse", "HEAD").strip()
+            if head != synthetic_candidate:
+                raise GateInputError("COMMITTED_CANDIDATE")
+            for value in (base, synthetic_candidate, pull_request_head):
+                git_bytes(self.root, "cat-file", "-e", f"{value}^{{commit}}")
+            parents = git_text(
+                self.root, "rev-list", "--parents", "-n", "1", synthetic_candidate
+            ).split()
+            if parents != [synthetic_candidate, base, pull_request_head]:
+                raise GateInputError("PR_SYNTHETIC_PARENTS")
+            git_bytes(self.root, "merge-base", "--is-ancestor", base, pull_request_head)
+            synthetic_tree = git_text(
+                self.root, "rev-parse", f"{synthetic_candidate}^{{tree}}"
+            ).strip()
+            head_tree = git_text(self.root, "rev-parse", f"{pull_request_head}^{{tree}}").strip()
+            if synthetic_tree != head_tree:
+                raise GateInputError("PR_SYNTHETIC_TREE")
+            commits = git_text(
+                self.root,
+                "rev-list",
+                "--reverse",
+                "--topo-order",
+                f"{base}..{pull_request_head}",
+            ).splitlines()
+            if not commits or commits[-1] != pull_request_head:
+                raise GateInputError("PR_HEAD_CHAIN")
+            previous = base
+            for commit in commits:
+                if self._single_parent(commit) != previous:
+                    raise GateInputError("PR_HEAD_CHAIN")
+                previous = commit
+            logical_base = base if len(commits) == 1 else self._single_parent(pull_request_head)
+            if len(commits) > 1:
+                records = self._diff_records(
+                    "committed-candidate", logical_base, pull_request_head
+                )
+                changed = changed_paths(records)
+                gate_policy = _mapping(
+                    _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
+                    "POLICY_G1",
+                )
+                promotion_paths = tuple(
+                    sorted(
+                        _strings(
+                            gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"
+                        )
+                    )
+                )
+                protected_promotions = int(changed == promotion_paths) + int(
+                    self._policy_promotion_packet(
+                        "committed-candidate",
+                        base=logical_base,
+                        candidate=pull_request_head,
+                        changed=changed,
+                    )
+                    is not None
+                )
+                if protected_promotions != 1:
+                    raise GateInputError("PR_HEAD_CHAIN_KIND")
+        except GateInputError as error:
+            return (error.code,)
+        return self.validate_candidate(
+            "committed-candidate",
+            base=logical_base,
+            candidate=pull_request_head,
+            expected_checkout=synthetic_candidate,
+        )
+
+    def validate_candidate(
+        self,
+        mode: str,
+        *,
+        base: str,
+        candidate: str | None,
+        expected_checkout: str | None = None,
+    ) -> tuple[str, ...]:
         self.diagnostics = Diagnostics(self.limits)
         try:
             if mode not in {"index-candidate", "committed-candidate"}:
@@ -2596,6 +2688,8 @@ class SpecGate:
             git_bytes(self.root, "cat-file", "-e", f"{base}^{{commit}}")
             head = git_text(self.root, "rev-parse", "HEAD").strip()
             if mode == "index-candidate":
+                if expected_checkout is not None:
+                    raise GateInputError("CANDIDATE_MODE")
                 if head != base:
                     raise GateInputError("INDEX_HEAD_BASE")
                 if git_bytes(self.root, "diff", "--name-only", "-z") or git_bytes(
@@ -2604,14 +2698,19 @@ class SpecGate:
                     raise GateInputError("INDEX_UNSTAGED")
                 git_bytes(self.root, "diff", "--cached", "--check", base)
             else:
+                checkout_candidate = expected_checkout or candidate
                 if (
                     candidate is None
                     or not SHA1_PATTERN.fullmatch(candidate)
                     or candidate == "0" * 40
-                    or head != candidate
+                    or checkout_candidate is None
+                    or not SHA1_PATTERN.fullmatch(checkout_candidate)
+                    or checkout_candidate == "0" * 40
+                    or head != checkout_candidate
                 ):
                     raise GateInputError("COMMITTED_CANDIDATE")
                 git_bytes(self.root, "cat-file", "-e", f"{candidate}^{{commit}}")
+                git_bytes(self.root, "cat-file", "-e", f"{checkout_candidate}^{{commit}}")
                 git_bytes(self.root, "merge-base", "--is-ancestor", base, candidate)
                 if base == candidate:
                     raise GateInputError("BASE_SELF")
@@ -2821,6 +2920,7 @@ def _parser() -> argparse.ArgumentParser:
     ci.add_argument("--event", required=True)
     ci.add_argument("--base", default="")
     ci.add_argument("--candidate", required=True)
+    ci.add_argument("--pull-request-head", required=True)
     ci.add_argument("--github-repository", required=True)
     return parser
 
@@ -2846,9 +2946,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             errors = gate.validate_snapshot()
         elif arguments.mode == "ci":
             if arguments.event == "workflow_dispatch":
-                errors = gate.validate_snapshot()
+                errors = (
+                    ("CI_PR_HEAD_UNEXPECTED",)
+                    if arguments.pull_request_head
+                    else gate.validate_snapshot()
+                )
                 receipt_mode = "snapshot"
-            elif arguments.event in {"pull_request", "merge_group", "push"}:
+            elif arguments.event == "pull_request":
+                errors = gate.validate_pull_request_candidate(
+                    base=arguments.base,
+                    synthetic_candidate=arguments.candidate,
+                    pull_request_head=arguments.pull_request_head,
+                )
+                receipt_mode = "committed-candidate"
+            elif arguments.event in {"merge_group", "push"}:
+                if arguments.pull_request_head:
+                    raise GateInputError("CI_PR_HEAD_UNEXPECTED")
                 errors = gate.validate_candidate(
                     "committed-candidate",
                     base=arguments.base,
