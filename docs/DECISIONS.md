@@ -454,6 +454,19 @@
   pull request proving the repaired path. This decision creates no persistent
   bypass, wildcard exemption or runtime switch.
 
+## D-033 — Typed change-control packet identities in secret scanning
+
+- Status: accepted (`CR-020`); exact evaluator bytes require protected promotion.
+- Decision: suppress Git object IDs and SHA-256 identities only after a
+  change-control packet passes exact path, duplicate-key, schema, identity,
+  allowed-path, budget, and policy-catalog validation.
+- Fail-closed boundary: unknown fields, malformed hashes, mismatched CR paths,
+  unsupported change types, wrong gate decisions, changed budgets, or expanded
+  path sets fall back to the ordinary secret detectors unchanged.
+- Scope: this recognizes typed metadata only. Non-identity fields remain scanned,
+  manifests still decode and scan their target bytes, and no baseline finding,
+  gate criterion, specification, or runtime behavior is weakened.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
