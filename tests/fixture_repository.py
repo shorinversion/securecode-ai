@@ -465,6 +465,7 @@ def _write_fixture_file(path: Path, data: bytes) -> _OwnedFile:
                 os.close(descriptor)
             except Exception:
                 failed = True
+                owned_file = None
     if failed or owned_file is None:
         raise _WriteFailure(owned_file)
     return owned_file
