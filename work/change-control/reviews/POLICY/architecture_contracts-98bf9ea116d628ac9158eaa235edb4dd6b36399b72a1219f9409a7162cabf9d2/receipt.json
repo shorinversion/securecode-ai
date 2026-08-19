@@ -1,0 +1,14 @@
+{
+  "change_type": "independent_review",
+  "evidence_bundle_sha256": "ec2a095b4a62b85c7e727f6f5ea525bc35b80f9c03ba9e743c2b496cca4366c3",
+  "gate_id": "POLICY",
+  "promotion_subject_sha256": "35638d66a311cf27e90b594bf0ced54ac4cc8078b056047f72b533226d711bba",
+  "review_subject_sha256": "98bf9ea116d628ac9158eaa235edb4dd6b36399b72a1219f9409a7162cabf9d2",
+  "reviewed_commit_sha": "39c4a3e285d340568376ce146b49edeaf52f5126",
+  "reviewer_identity": "Fermat (internal Codex AI reviewer)",
+  "role": "architecture_contracts",
+  "schema_version": "1.0.0",
+  "source_ref": "work/change-control/reviews/POLICY/architecture_contracts-98bf9ea116d628ac9158eaa235edb4dd6b36399b72a1219f9409a7162cabf9d2/review.md",
+  "source_ref_sha256": "38ae6128c167246a4c8c65bf92ffd8e9ac4fd1cf43565876af7b184812c7030e",
+  "verdict": "PASS"
+}
