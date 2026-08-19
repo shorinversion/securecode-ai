@@ -7,11 +7,12 @@
 - Фаза: `P1 — Engineering foundation` выполняется.
 - Последняя завершённая задача: `P1.13 — specification/compatibility/drift gate`,
   implementation commit `307a24a71cea25829c0b5541494bf01e13a2e6ed`.
-- Текущая change-control задача: accepted `CR-017/D-030` repair P1.4 CI
-  evaluator; P2 scope закрыт до effective G1.
-- GitHub ruleset/failing-PR evidence для `P1.4` получено, но completion PR
-  выявил конфликт digest metadata/secret entropy policy. `P1.4` остаётся
-  `IN PROGRESS` до интеграции ремонта и повторного обычного green PR.
+- Все задачи `P1.1–P1.13` завершены; P2 scope закрыт до effective G1.
+- `CR-017/D-030` evaluator repair интегрирован exact commit
+  `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
+  admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
+  bypass actors.
+- Текущая задача: independently reviewed G1 evidence и mechanical promotion.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -31,15 +32,19 @@
   import allow-lists; Core-only branch coverage floor; sanitized child env;
   static-preflight, low-coverage, zero-test and repository-mutation negatives;
   independent architecture and security/evaluation reviews `PASS/PASS`.
-- P1.4 local candidate verification: closed pre-commit/CI policy, staged and
+- P1.4 completion verification: closed pre-commit/CI policy, staged and
   reachable-history secret scanning, permanent vulnerable-dependency negative,
   strict zizmor and Python 3.12–3.14 quality matrix pass; independent
   product/architecture/security-evaluation reviews are `PASS/PASS/PASS` on the
-  staged candidate. External ruleset and failing-PR evidence now exist, but the
-  completion path remains open until CR-017 makes an ordinary PR green.
-- CR-017 candidate: completion SHA-1/SHA-256 исключаются из entropy scan только
-  после exact-path closed-schema/evidence-catalog validation; non-digest fields
-  и invalid/unknown documents продолжают обычный scan. Strict promotion
+  staged candidate. Private repository `shorinversion/securecode-ai` имеет
+  active ruleset `21006868` с required `ci / gate`; intentional failing PR #1
+  на commit `703817360a9966cc6858a5dc35cdecc50c76a14b` получил
+  `mergeStateStatus=BLOCKED`, Actions run `32175856948` завершился failure и PR
+  закрыт без merge. Текущий completion candidate должен подтвердить ordinary
+  green required `ci / gate` без bypass; после этого `P1.4` — `DONE`.
+- CR-017 implementation: completion SHA-1/SHA-256 исключаются из entropy scan
+  только после exact-path closed-schema/evidence-catalog validation; non-digest
+  fields и invalid/unknown documents продолжают обычный scan. Strict promotion
   manifest декодирует и сканирует Base64 final bytes под target paths; review
   receipt suppresses only validated typed digests/OID. Local pre-commit и CI
   используют общий Git-index/blob scanner, а trusted Git boundary фиксирует
@@ -51,9 +56,9 @@
   fail-closed. Proposal/review/promotion history обязана быть непрерывной
   single-parent chain без parallel merge assembly или промежуточных commits.
   Exact full run включает 159 CI/spec policy tests; Ruff/mypy, snapshot spec
-  gate, все 1001 tests и 85,80% Core branch coverage прошли;
-  strict frozen G0 сохраняет normative digest. Exact staged reviews ещё не
-  получены, bootstrap bypass не выполнялся.
+  gate, все 1001 tests и 85,80% Core branch coverage прошли; strict frozen G0
+  сохраняет normative digest. Exact staged reviews дали `PASS/PASS/PASS`;
+  bootstrap bypass выполнен и удалён.
 - P1.5 candidate verification: 92 contract/schema tests at 86.54% branch
   coverage; 152 repository tests pass on CPython 3.12/3.13/3.14; deterministic
   schema drift check, strict G0, Ruff/mypy, ECMAScript regex compilation and a
@@ -277,12 +282,10 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Зафиксировать exact CR-017 staged bytes/digest и получить независимые
-   product/architecture/security-evaluation `PASS/PASS/PASS`.
-2. Интегрировать только reviewed commit одним audited admin bypass, немедленно
-   убрать bypass и проверить ruleset.
-3. Повторить P1.4 completion обычным PR через required `ci / gate`; не начинать
-   P2 до effective G1.
+1. Завершить P1.4 completion обычным PR через required `ci / gate` без bypass.
+2. Сформировать G1 evidence packet и GO-PROPOSED change-control candidate.
+3. Получить три commit-separated independent PASS receipts, выполнить exact
+   mechanical G1 promotion и не начинать P2 до effective G1.
 
 ## Критические запреты
 
