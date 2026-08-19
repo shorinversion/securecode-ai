@@ -322,6 +322,42 @@ def test_valid_completion_attestation_still_scans_non_digest_metadata(field: str
     assert (path, "GitHub Token") in findings
 
 
+def _policy_change_packet() -> tuple[str, dict[str, Any]]:
+    path = "work/change-control/CR-019.yaml"
+    return path, cast(dict[str, Any], json.loads((REPOSITORY_ROOT / path).read_text()))
+
+
+def test_schema_valid_change_packet_digests_are_metadata_not_secrets() -> None:
+    path, packet = _policy_change_packet()
+    assert POLICY.scan_text(path, json.dumps(packet), _baseline()) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["wrong-path", "extra-field", "bad-decision", "bad-paths", "bad-digest", "duplicate-key"],
+)
+def test_change_packet_metadata_recognition_fails_closed(mutation: str) -> None:
+    path, packet = _policy_change_packet()
+    if mutation == "wrong-path":
+        path = "work/change-control/CR-998.yaml"
+    elif mutation == "extra-field":
+        packet["unreviewed"] = "field"
+    elif mutation == "bad-decision":
+        packet["decision"] = "GO"
+    elif mutation == "bad-paths":
+        packet["allowed_paths"].append("unreviewed.txt")
+    elif mutation == "bad-digest":
+        packet["review_subject_sha256"] = "not-a-digest"
+    else:
+        content = json.dumps(packet).replace(
+            '"change_id": "CR-019"', '"change_id": "CR-019", "change_id": "CR-019"'
+        )
+        assert POLICY._change_packet_scan_view(path, content) == content
+        return
+    content = json.dumps(packet, sort_keys=True)
+    assert POLICY._change_packet_scan_view(path, content) == content
+
+
 def _promotion_manifest(gate_id: str, final_documents: dict[str, bytes]) -> dict[str, Any]:
     return {
         "schema_version": "1.0.0",

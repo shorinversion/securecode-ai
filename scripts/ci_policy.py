@@ -1086,11 +1086,117 @@ def _review_receipt_scan_view(path: str, content: str) -> str:
         return content
 
 
+def _change_packet_scan_view(path: str, content: str) -> str:
+    """Suppress only typed identities in one exact closed change packet."""
+
+    normalized_path = path.replace("\\", "/")
+    match = re.fullmatch(r"work/change-control/(CR-[0-9]{3})\.yaml", normalized_path)
+    if match is None:
+        return content
+    try:
+        value = json.loads(
+            content,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+        if not isinstance(value, dict) or set(value) != {
+            "schema_version",
+            "change_type",
+            "change_id",
+            "starting_commit_sha",
+            "protected_class",
+            "gate_id",
+            "decision",
+            "evidence_bundle_sha256",
+            "review_subject_sha256",
+            "allowed_paths",
+            "budgets",
+        }:
+            return content
+        change_id = match.group(1)
+        if value["schema_version"] != "1.0.0" or value["change_id"] != change_id:
+            return content
+        if (
+            not isinstance(value["starting_commit_sha"], str)
+            or re.fullmatch(r"[0-9a-f]{40}", value["starting_commit_sha"]) is None
+        ):
+            return content
+        for field in ("evidence_bundle_sha256", "review_subject_sha256"):
+            if (
+                not isinstance(value[field], str)
+                or re.fullmatch(r"[0-9a-f]{64}", value[field]) is None
+            ):
+                return content
+        allowed_paths = value["allowed_paths"]
+        if (
+            not isinstance(allowed_paths, list)
+            or any(not isinstance(item, str) or not item for item in allowed_paths)
+            or len(set(allowed_paths)) != len(allowed_paths)
+        ):
+            return content
+        policy = _read_json(SPEC_GATE_POLICY_PATH)
+        if value["change_type"] == "spec":
+            gate_policy = _mapping(
+                _mapping(policy.get("gate_policy"), "gate_policy").get("G1"), "G1"
+            )
+            evidence_files = _sequence(gate_policy.get("evidence_files"), "evidence_files")
+            expected_paths = {
+                "CHANGELOG.md",
+                "docs/CONTEXT.md",
+                "docs/DECISIONS.md",
+                normalized_path,
+                "artifacts/gates/G1/promotion-manifest.json",
+                *(f"artifacts/gates/G1/{item}" for item in evidence_files),
+            }
+            expected_identity = ("gate_evidence", "G1", "GO-PROPOSED")
+            expected_budgets = {"max_changed_files": 11, "max_diff_lines": 3000}
+        elif value["change_type"] == "policy_amendment":
+            amendment = _mapping(policy.get("policy_amendment"), "policy_amendment")
+            maximum_files = amendment.get("max_changed_files")
+            maximum_lines = amendment.get("max_diff_lines")
+            if (
+                not isinstance(maximum_files, int)
+                or isinstance(maximum_files, bool)
+                or not isinstance(maximum_lines, int)
+                or isinstance(maximum_lines, bool)
+            ):
+                return content
+            expected_paths = {
+                "CHANGELOG.md",
+                "docs/DECISIONS.md",
+                normalized_path,
+                f"work/change-control/amendments/{change_id}-manifest.json",
+            }
+            expected_identity = ("ci_evaluator", "POLICY", "CHANGE-PROPOSED")
+            expected_budgets = {
+                "max_changed_files": maximum_files,
+                "max_diff_lines": maximum_lines,
+            }
+        else:
+            return content
+        if (
+            (value["protected_class"], value["gate_id"], value["decision"])
+            != expected_identity
+            or set(allowed_paths) != expected_paths
+            or value["budgets"] != expected_budgets
+        ):
+            return content
+
+        scan_value = json.loads(json.dumps(value))
+        scan_value["starting_commit_sha"] = "typed-git-object-id"
+        scan_value["evidence_bundle_sha256"] = "typed-sha256-digest"
+        scan_value["review_subject_sha256"] = "typed-sha256-digest"
+        return json.dumps(scan_value, ensure_ascii=True, sort_keys=True)
+    except (KeyError, PolicyError, TypeError, ValueError, json.JSONDecodeError):
+        return content
+
+
 def _secret_scan_views(path: str, content: str) -> list[tuple[str, str]]:
     manifest_views = _promotion_manifest_scan_views(path, content)
     if manifest_views is not None:
         return manifest_views
-    attestation_view = _completion_attestation_scan_view(path, content)
+    packet_view = _change_packet_scan_view(path, content)
+    attestation_view = _completion_attestation_scan_view(path, packet_view)
     return [(path, _review_receipt_scan_view(path, attestation_view))]
 
 
