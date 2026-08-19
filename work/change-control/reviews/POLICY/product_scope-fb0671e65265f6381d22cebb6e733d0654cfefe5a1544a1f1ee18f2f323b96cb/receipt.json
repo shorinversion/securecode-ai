@@ -1,0 +1,14 @@
+{
+  "change_type": "independent_review",
+  "evidence_bundle_sha256": "667b464e2ea2bf51299662d2d6dd81364062c67e3c7314582f8d3cab6468c861",
+  "gate_id": "POLICY",
+  "promotion_subject_sha256": "7f2d3b2db99965dc237e5c6a3562bfc9fe50207eea37c5ec4018ec80d5d06930",
+  "review_subject_sha256": "fb0671e65265f6381d22cebb6e733d0654cfefe5a1544a1f1ee18f2f323b96cb",
+  "reviewed_commit_sha": "5bcece191afca13302460de470a0660a86d84efb",
+  "reviewer_identity": "Faraday (internal Codex AI reviewer)",
+  "role": "product_scope",
+  "schema_version": "1.0.0",
+  "source_ref": "work/change-control/reviews/POLICY/product_scope-fb0671e65265f6381d22cebb6e733d0654cfefe5a1544a1f1ee18f2f323b96cb/review.md",
+  "source_ref_sha256": "5eb6413e123c33ce54e0713ea1425cb70392f0da641d4a157a58bb4895c44874",
+  "verdict": "PASS"
+}
