@@ -2663,6 +2663,37 @@ class SpecGate:
             expected_checkout=synthetic_candidate,
         )
 
+    def validate_push_candidate(self, *, base: str, candidate: str) -> tuple[str, ...]:
+        """Validate a direct push or an exact protected merge pushed to the base branch."""
+
+        try:
+            if not SHA1_PATTERN.fullmatch(candidate) or candidate == "0" * 40:
+                raise GateInputError("CANDIDATE_FORMAT")
+            parents = git_text(self.root, "rev-list", "--parents", "-n", "1", candidate).split()
+            if len(parents) == 2:
+                return self.validate_candidate(
+                    "committed-candidate",
+                    base=base,
+                    candidate=candidate,
+                )
+            if len(parents) != 3 or parents[1] != base:
+                raise GateInputError("PUSH_MERGE_PARENTS")
+            errors = self.validate_pull_request_candidate(
+                base=base,
+                synthetic_candidate=candidate,
+                pull_request_head=parents[2],
+            )
+            translations = {
+                "PR_SYNTHETIC_FORMAT": "PUSH_MERGE_FORMAT",
+                "PR_SYNTHETIC_PARENTS": "PUSH_MERGE_PARENTS",
+                "PR_SYNTHETIC_TREE": "PUSH_MERGE_TREE",
+                "PR_HEAD_CHAIN": "PUSH_MERGE_HEAD_CHAIN",
+                "PR_HEAD_CHAIN_KIND": "PUSH_MERGE_HEAD_CHAIN_KIND",
+            }
+            return tuple(translations.get(error, error) for error in errors)
+        except GateInputError as error:
+            return (error.code,)
+
     def validate_candidate(
         self,
         mode: str,
@@ -2956,11 +2987,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             elif arguments.event in {"merge_group", "push"}:
                 if arguments.pull_request_head:
                     raise GateInputError("CI_PR_HEAD_UNEXPECTED")
-                errors = gate.validate_candidate(
-                    "committed-candidate",
-                    base=arguments.base,
-                    candidate=arguments.candidate,
-                )
+                if arguments.event == "push":
+                    errors = gate.validate_push_candidate(
+                        base=arguments.base,
+                        candidate=arguments.candidate,
+                    )
+                else:
+                    errors = gate.validate_candidate(
+                        "committed-candidate",
+                        base=arguments.base,
+                        candidate=arguments.candidate,
+                    )
                 receipt_mode = "committed-candidate"
             else:
                 errors = ("CI_EVENT",)

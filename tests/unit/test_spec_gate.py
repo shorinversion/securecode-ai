@@ -1190,6 +1190,83 @@ def test_pull_request_synthetic_merge_accepts_policy_promotion_chain(
     )
 
 
+def test_push_merge_validates_bound_policy_promotion_chain(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    push_base, _, proposal = _policy_amendment_proposal(repository)
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        _review_candidate(repository, role, proposal, gate_id="POLICY")
+    _, logical_head = _policy_amendment_promotion(repository, proposal)
+    logical_tree = _run_git(repository, "rev-parse", f"{logical_head}^{{tree}}")
+    merge_commit = _synthetic_merge_commit(
+        repository,
+        tree=logical_tree,
+        parents=(push_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", merge_commit)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    assert gate.validate_push_candidate(base=push_base, candidate=merge_commit) == ()
+
+    wrong_tree = _synthetic_merge_commit(
+        repository,
+        tree=f"{push_base}^{{tree}}",
+        parents=(push_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", wrong_tree)
+    assert gate.validate_push_candidate(base=push_base, candidate=wrong_tree) == (
+        "PUSH_MERGE_TREE",
+    )
+
+    swapped = _synthetic_merge_commit(
+        repository,
+        tree=logical_tree,
+        parents=(logical_head, push_base),
+    )
+    _run_git(repository, "switch", "--detach", swapped)
+    assert gate.validate_push_candidate(base=push_base, candidate=swapped) == (
+        "PUSH_MERGE_PARENTS",
+    )
+
+    three_parent = _synthetic_merge_commit(
+        repository,
+        tree=logical_tree,
+        parents=(push_base, logical_head, proposal["reviewed_commit_sha"]),
+    )
+    _run_git(repository, "switch", "--detach", three_parent)
+    assert gate.validate_push_candidate(base=push_base, candidate=three_parent) == (
+        "PUSH_MERGE_PARENTS",
+    )
+
+
+def test_push_direct_commit_keeps_closed_candidate_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = "b" * 40
+    monkeypatch.setattr(
+        GATE,
+        "git_text",
+        lambda root, *arguments: f"{candidate} {'a' * 40}" if arguments[0] == "rev-list" else "",
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "validate_candidate",
+        lambda self, mode, *, base, candidate: (mode, base, candidate),
+    )
+    gate = GATE.SpecGate()
+    assert gate.validate_push_candidate(base="a" * 40, candidate=candidate) == (
+        "committed-candidate",
+        "a" * 40,
+        candidate,
+    )
+
+
 def test_closed_candidate_lifecycle_rejects_cross_lane_bypasses(
     lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
