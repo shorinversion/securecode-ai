@@ -1,0 +1,14 @@
+{
+  "change_type": "independent_review",
+  "evidence_bundle_sha256": "781e258212a41841a4e52b2c3141dbf144373698a38e051cd8668411054b47b6",
+  "gate_id": "POLICY",
+  "promotion_subject_sha256": "a0c98e7a01f6dd7a753aa04650e089ac55ba5739f42971921ee974663944fb43",
+  "review_subject_sha256": "cf79c61f2748833fae9f653a36529c03447665fabfe3a2a095e2ef93075b2167",
+  "reviewed_commit_sha": "0d9571fe5856ff5f39abec07d9bddd7a0c67f8af",
+  "reviewer_identity": "Goodall (internal Codex AI reviewer)",
+  "role": "security_evaluation",
+  "schema_version": "1.0.0",
+  "source_ref": "work/change-control/reviews/POLICY/security_evaluation-cf79c61f2748833fae9f653a36529c03447665fabfe3a2a095e2ef93075b2167/review.md",
+  "source_ref_sha256": "802e3f3f2b1b4bd8476bfde0ecc04d208cabe3d1cc66c5663913fe880d31d383",
+  "verdict": "PASS"
+}
