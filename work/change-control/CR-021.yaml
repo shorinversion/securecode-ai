@@ -1,0 +1,21 @@
+{
+  "allowed_paths": [
+    "CHANGELOG.md",
+    "docs/DECISIONS.md",
+    "work/change-control/CR-021.yaml",
+    "work/change-control/amendments/CR-021-manifest.json"
+  ],
+  "budgets": {
+    "max_changed_files": 4,
+    "max_diff_lines": 6000
+  },
+  "change_id": "CR-021",
+  "change_type": "policy_amendment",
+  "decision": "CHANGE-PROPOSED",
+  "evidence_bundle_sha256": "781e258212a41841a4e52b2c3141dbf144373698a38e051cd8668411054b47b6",
+  "gate_id": "POLICY",
+  "protected_class": "ci_evaluator",
+  "review_subject_sha256": "cf79c61f2748833fae9f653a36529c03447665fabfe3a2a095e2ef93075b2167",
+  "schema_version": "1.0.0",
+  "starting_commit_sha": "6ae6014776be3c2cb09eeca42b48ed7bd2ff384f"
+}

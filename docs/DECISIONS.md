@@ -467,6 +467,21 @@
   manifests still decode and scan their target bytes, and no baseline finding,
   gate criterion, specification, or runtime behavior is weakened.
 
+## D-034 — Canonical formatting is part of evaluator acceptance
+
+- Status: accepted (`CR-021`); exact formatting bytes require protected
+  promotion.
+- Decision: apply the repository-pinned Ruff formatter to the three evaluator
+  files reported by the ordinary Python 3.12–3.14 quality matrix. The resulting
+  diff is limited to line wrapping and preserves the parsed Python syntax and
+  evaluator behavior.
+- Delivery: use the existing POLICY proposal, three independent sequential
+  reviews, exact manifest promotion, and an ordinary pull request. No ruleset
+  bypass is required or authorized for this formatting repair.
+- Consequence: future evaluator evidence must include both `ruff check` and
+  `ruff format --check`; a lint-only result is insufficient for quality-gate
+  acceptance.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
