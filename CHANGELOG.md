@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-20 — opened `CR-021`: restore canonical Ruff formatting for the
+  protected CI/spec evaluator sources installed by the preceding amendments.
+  The byte-only repair changes no evaluator behavior or policy contract and is
+  delivered through the ordinary protected POLICY promotion lane (`D-034`).
 - 2026-08-20 — opened `CR-020`: classify SHA identities in exact closed
   change-control packets as typed metadata during secret scanning. Unknown,
   malformed, path-mismatched, or policy-mismatched packets remain subject to

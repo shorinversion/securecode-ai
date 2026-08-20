@@ -1175,8 +1175,7 @@ def _change_packet_scan_view(path: str, content: str) -> str:
         else:
             return content
         if (
-            (value["protected_class"], value["gate_id"], value["decision"])
-            != expected_identity
+            (value["protected_class"], value["gate_id"], value["decision"]) != expected_identity
             or set(allowed_paths) != expected_paths
             or value["budgets"] != expected_budgets
         ):
