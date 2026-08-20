@@ -492,6 +492,23 @@
   `ruff format --check`; a lint-only result is insufficient for quality-gate
   acceptance.
 
+## D-035 — Dual-authority validation of protected push merge commits
+
+- Status: proposed (`CR-022`); exact evaluator bytes require protected
+  promotion.
+- Decision: keep ordinary single-parent push validation unchanged. For an exact
+  two-parent push merge, require the event `before` SHA as parent one, derive
+  parent two only from the checked commit object, require the merge tree to
+  equal that head tree, and reuse the closed linear lifecycle validator on the
+  head chain.
+- Fail-closed boundary: malformed or extra parents, swapped base, tree drift,
+  non-linear ancestry, an ordinary multi-commit chain, missing/BLOCK reviews,
+  receipt gaps, or altered promotion bytes reject the push. Pull requests and
+  merge groups retain their existing event-authority behavior.
+- Consequence: a protected merge no longer reinterprets proposal, three reviews
+  and promotion as one mixed candidate; the post-merge push run can attest the
+  same exact chain already accepted by the required PR gate.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1

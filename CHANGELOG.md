@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-20 — opened `CR-022`: make protected `push` validation understand an
+  exact two-parent merge commit without aggregating its already reviewed
+  proposal/review/promotion chain. Direct pushes remain unchanged; merge
+  admission fails closed on parent order, tree identity, ancestry, lifecycle
+  kind, receipts, or final-byte drift (`D-035`).
 - 2026-08-20 — opened `CR-018`: all `P1.1–P1.13` work is complete and the
   current protected `master` passed the full Python 3.12–3.14 foundation
   matrix. The G1 evidence proposal awaits three independent sequential reviews
