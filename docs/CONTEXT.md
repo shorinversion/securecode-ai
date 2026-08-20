@@ -1,6 +1,6 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 19 августа 2026 года.
+Последнее обновление: 20 августа 2026 года.
 
 ## Текущая позиция
 
@@ -13,6 +13,11 @@
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
 - Текущая задача: independently reviewed G1 evidence и mechanical promotion.
+- Current protected `master` is `15a369962387cea1ee8c9c3213e6e1a001d27611`.
+  Ordinary PR #9 merged without bypass, and exact-master workflow run
+  `32338594426` passed the required gate, Python 3.12–3.14 quality matrix,
+  1017 tests per interpreter and 85.80% Core branch coverage. Ruleset
+  `21006868` is active with no bypass actors.
 - Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
@@ -282,10 +287,11 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Завершить P1.4 completion обычным PR через required `gate` без bypass.
-2. Сформировать G1 evidence packet и GO-PROPOSED change-control candidate.
-3. Получить три commit-separated independent PASS receipts, выполнить exact
-   mechanical G1 promotion и не начинать P2 до effective G1.
+1. Obtain three commit-separated independent PASS receipts for the exact fresh
+   G1 evidence subject.
+2. Apply the exact mechanical G1 promotion and update PR #8.
+3. Merge only after the ordinary required `gate` passes; do not start P2 before
+   effective G1.
 
 ## Критические запреты
 

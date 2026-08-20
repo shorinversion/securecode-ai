@@ -430,6 +430,16 @@
   но не человеческую identity/truth review. Primary Integrator и внешний GitHub
   ruleset остаются отдельными authority layers.
 
+## D-031 — G1 Foundation Ready promotion
+
+- Status: proposed (`CR-018`); not effective before exact promotion.
+- Decision: G1 becomes `GO` only when P1.1-P1.13 are DONE, seven criteria have
+  current evidence, and three independent roles accept one exact subject in
+  sequential commits.
+- Promotion changes only the decision, CHANGELOG, PLAN and CONTEXT to manifest
+  bytes; BLOCK, missing receipt, ancestry gap or drift is rejected.
+- Effective GO permits P2.1 without weakening frozen G0 or later gates.
+
 ## D-032 — Dual-authority validation of GitHub pull-request merge commits
 
 - Status: accepted (`CR-019`); exact evaluator bytes require protected promotion.

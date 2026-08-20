@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-20 — opened `CR-018`: all `P1.1–P1.13` work is complete and the
+  current protected `master` passed the full Python 3.12–3.14 foundation
+  matrix. The G1 evidence proposal awaits three independent sequential reviews
+  and exact mechanical promotion (`D-031`).
 - 2026-08-20 — opened `CR-021`: restore canonical Ruff formatting for the
   protected CI/spec evaluator sources installed by the preceding amendments.
   The byte-only repair changes no evaluator behavior or policy contract and is

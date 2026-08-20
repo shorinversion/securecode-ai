@@ -1,0 +1,28 @@
+{
+  "allowed_paths": [
+    "CHANGELOG.md",
+    "artifacts/gates/G1/benchmark-summary.md",
+    "artifacts/gates/G1/checklist.md",
+    "artifacts/gates/G1/open-risks.md",
+    "artifacts/gates/G1/security-review.md",
+    "artifacts/gates/G1/test-results/foundation-validation.md",
+    "artifacts/gates/G1/decision.md",
+    "artifacts/gates/G1/promotion-manifest.json",
+    "docs/CONTEXT.md",
+    "docs/DECISIONS.md",
+    "work/change-control/CR-018.yaml"
+  ],
+  "budgets": {
+    "max_changed_files": 11,
+    "max_diff_lines": 3000
+  },
+  "change_id": "CR-018",
+  "change_type": "spec",
+  "decision": "GO-PROPOSED",
+  "evidence_bundle_sha256": "0ee83f5ab31ee7d8b611bbecfbb586e7e6bd806a9c1ae8102bef0b00ec605055",
+  "gate_id": "G1",
+  "protected_class": "gate_evidence",
+  "review_subject_sha256": "8d5b71d338b766828910bfd7c996079fc830f727fe1616c95addf18a65cf5a15",
+  "schema_version": "1.0.0",
+  "starting_commit_sha": "15a369962387cea1ee8c9c3213e6e1a001d27611"
+}
