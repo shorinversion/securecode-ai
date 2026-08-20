@@ -1011,7 +1011,12 @@ def _synthetic_merge_commit(
     parents: tuple[str, ...],
 ) -> str:
     completed = subprocess.run(
-        ["git", "commit-tree", tree, *(argument for parent in parents for argument in ("-p", parent))],
+        [
+            "git",
+            "commit-tree",
+            tree,
+            *(argument for parent in parents for argument in ("-p", parent)),
+        ],
         cwd=repository,
         check=True,
         capture_output=True,
@@ -1045,11 +1050,14 @@ def test_pull_request_synthetic_merge_validates_bound_head_chain(
         policy_path=GATE.POLICY_PATH,
         github_repository=("example", "repo"),
     )
-    assert gate.validate_pull_request_candidate(
-        base=pr_base,
-        synthetic_candidate=synthetic,
-        pull_request_head=logical_head,
-    ) == ()
+    assert (
+        gate.validate_pull_request_candidate(
+            base=pr_base,
+            synthetic_candidate=synthetic,
+            pull_request_head=logical_head,
+        )
+        == ()
+    )
 
     assert gate.validate_pull_request_candidate(
         base=pr_base,
@@ -1172,11 +1180,14 @@ def test_pull_request_synthetic_merge_accepts_policy_promotion_chain(
         policy_path=GATE.POLICY_PATH,
         github_repository=("example", "repo"),
     )
-    assert gate.validate_pull_request_candidate(
-        base=pr_base,
-        synthetic_candidate=synthetic,
-        pull_request_head=logical_head,
-    ) == ()
+    assert (
+        gate.validate_pull_request_candidate(
+            base=pr_base,
+            synthetic_candidate=synthetic,
+            pull_request_head=logical_head,
+        )
+        == ()
+    )
 
 
 def test_closed_candidate_lifecycle_rejects_cross_lane_bypasses(
@@ -1404,8 +1415,7 @@ def test_non_pull_request_ci_events_reject_pull_request_head(
         == 1
     )
     assert (
-        capsys.readouterr().err
-        == "SPEC_GATE=FAIL mode=ci errors=1 codes=CI_PR_HEAD_UNEXPECTED\n"
+        capsys.readouterr().err == "SPEC_GATE=FAIL mode=ci errors=1 codes=CI_PR_HEAD_UNEXPECTED\n"
     )
 
 

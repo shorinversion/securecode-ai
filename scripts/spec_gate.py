@@ -2634,20 +2634,14 @@ class SpecGate:
                 previous = commit
             logical_base = base if len(commits) == 1 else self._single_parent(pull_request_head)
             if len(commits) > 1:
-                records = self._diff_records(
-                    "committed-candidate", logical_base, pull_request_head
-                )
+                records = self._diff_records("committed-candidate", logical_base, pull_request_head)
                 changed = changed_paths(records)
                 gate_policy = _mapping(
                     _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
                     "POLICY_G1",
                 )
                 promotion_paths = tuple(
-                    sorted(
-                        _strings(
-                            gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"
-                        )
-                    )
+                    sorted(_strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"))
                 )
                 protected_promotions = int(changed == promotion_paths) + int(
                     self._policy_promotion_packet(
