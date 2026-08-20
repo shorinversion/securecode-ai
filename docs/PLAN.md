@@ -3,8 +3,8 @@
 Версия плана: `0.8`
 Статус: `active`  
 Последнее обновление: 19 августа 2026 года
-Текущая фаза: `P1 — Engineering foundation` — выполняется
-Текущий gate: `G0 — Definition Ready` — пройден
+Current phase: `P2 - Deterministic analysis and reporting` - authorized to start.
+Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G2`.
 
 Этот файл является каноническим планом проекта от исходной постановки до
 релиза и закрытия. Он задаёт порядок работ, зависимости, проверяемые результаты
@@ -215,6 +215,8 @@ Gate пройден, если:
   exact-byte review и механический policy amendment promotion;
 - минимальное покрытие Core unit tests — `80%`, а policy/security-critical ветви
   имеют отдельные branch и negative tests.
+
+G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 
 ## 8. P2 — Deterministic analysis and reporting
 
@@ -520,13 +522,10 @@ security boundary, набора обязательных языков, blocking 
 ## 18. Текущий фокус
 
 G0 закрыт immutable baseline `0.2.0` и отдельной effective attestation.
-`P1.1–P1.3` и `P1.5–P1.13` завершены с independent acceptance и clean
-post-commit verification. Для `P1.4` уже получены GitHub ruleset и failing-PR
-merge-block receipts, но первый completion PR выявил конфликт между
-schema-required digest metadata и entropy secret policy. Поэтому `P1.4`
-остаётся `IN PROGRESS`: accepted `CR-017/D-030` ремонтирует evaluator через
-closed-schema metadata recognition, общий local/CI scanner и штатный
-exact-byte policy amendment lane. `G1` остаётся открыт до интеграции CR-017 и
-повторного обычного green completion PR; P2 до этого не начинается.
-Узкий Python CWE-89 vertical slice начинается после G1. Enterprise adapters не
-строятся до стабилизации Core contracts и deterministic evidence layer.
+`P1.1–P1.13` завершены с independent acceptance и clean post-commit
+verification; ordinary PR #7 прошёл required `gate` на Python 3.12–3.14 и
+слит без bypass. `CR-017/D-030` evaluator repair интегрирован, а active ruleset
+не содержит bypass actors. `G1 Foundation Ready` имеет effective `GO`, поэтому
+текущий фокус — `P2.1` (узкий Python CWE-89 vertical slice) с сохранением
+frozen G0 contracts и G1 security/quality инвариантов. `G2 Core Ready` остаётся
+следующим enforced gate; P3+ и Enterprise adapters до него не начинаются.

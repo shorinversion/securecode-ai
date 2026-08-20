@@ -1,24 +1,20 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 20 августа 2026 года.
+Последнее обновление: 19 августа 2026 года.
 
 ## Текущая позиция
 
-- Фаза: `P1 — Engineering foundation` выполняется.
+- Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
 - Последняя завершённая задача: `P1.13 — specification/compatibility/drift gate`,
   implementation commit `307a24a71cea25829c0b5541494bf01e13a2e6ed`.
-- Все задачи `P1.1–P1.13` завершены; P2 scope закрыт до effective G1.
+- P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Текущая задача: independently reviewed G1 evidence и mechanical promotion.
-- Current protected `master` is `15a369962387cea1ee8c9c3213e6e1a001d27611`.
-  Ordinary PR #9 merged without bypass, and exact-master workflow run
-  `32338594426` passed the required gate, Python 3.12–3.14 quality matrix,
-  1017 tests per interpreter and 85.80% Core branch coverage. Ruleset
-  `21006868` is active with no bypass actors.
-- Gate: `G0 Definition Ready` эффективен; strict validator `PASS`.
+- Current task: begin P2.1 under effective G1.
+- G1 effective: `GO` through validated exact-byte promotion.
+- Gate: `G1 Foundation Ready` is effective `GO`; G0 remains frozen and valid, and G2 is next.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
   `f5cd4ef2a0f7130d16cb2c206091908be71b0702`.
 - Normal validator: `PASS`; normative hash
@@ -45,8 +41,8 @@
   active ruleset `21006868` с required `gate`; intentional failing PR #1
   на commit `703817360a9966cc6858a5dc35cdecc50c76a14b` получил
   `mergeStateStatus=BLOCKED`, Actions run `32175856948` завершился failure и PR
-  закрыт без merge. Текущий completion candidate должен подтвердить ordinary
-  green required `gate` без bypass; после этого `P1.4` — `DONE`.
+  закрыт без merge. Позднее ordinary PR #7 подтвердил green required `gate`
+  без bypass; после этого `P1.4` стал `DONE`.
 - CR-017 implementation: completion SHA-1/SHA-256 исключаются из entropy scan
   только после exact-path closed-schema/evidence-catalog validation; non-digest
   fields и invalid/unknown documents продолжают обычный scan. Strict promotion
@@ -91,7 +87,7 @@
   `PASS/PASS/PASS` on exact digest
   `8065e67898e9d75bf69203afabb5846fb3fb1510`; clean post-commit targeted,
   schema and strict-G0 verification passes on commit
-  `2b21356f29df2d9d95e1a0155cdfd16f9ecfcf13`. `G1` remains open.
+  `2b21356f29df2d9d95e1a0155cdfd16f9ecfcf13`. На тот момент `G1` оставался open.
 - P1.8 completion verification: public model request/result schemas, exact
   provider/egress authorization, profile-owned budget/dialect enforcement,
   manifest-bound provider attempts and payload snapshots, safe native
@@ -106,8 +102,8 @@
   `841fbdfc36a92d0de77d96083bc1d349990f1304`. Clean post-commit verification on
   `030fad9f4567f59def348387d9484a0b4a5eea29` passed 174 targeted tests, all 459
   repository tests, schema drift and strict frozen G0. `P1.8` is `DONE`; after
-  completion of `P1.11`, `G1` remains open because `P1.4` and `P1.12–P1.13` are
-  not complete.
+  completion of `P1.11`, на тот момент `G1` оставался open, потому что `P1.4` и
+  `P1.12–P1.13` ещё не были завершены.
 - P1.9 completion verification: пять новых public workflow schema roots,
   exact-definition graph-independent state machine, обязательный dual-lane
   fan-out/fan-in, bounded investigation/repair loops, replay-complete transition
@@ -127,7 +123,7 @@
   implementation commit `0431ba66f2a288ee1978950fb01e77e5430c5f04`
   прошла расширенные 249 targeted tests, все 603 repository tests, Ruff/mypy,
   schema exact-byte, 13-schema wheel inventory и strict frozen G0. `P1.9` —
-  `DONE`; `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
+  `DONE`; на тот момент `G1` оставался открыт из-за `P1.4` и `P1.12–P1.13`.
 - P1.10 completion verification: installable first-party `securecode`
   package, exact human/machine grammar, stable exit/error mapping, два public CLI
   schema roots и source-free foundation `doctor` проходят 165 targeted tests.
@@ -144,7 +140,7 @@
   implementation commit `a0dd7849db3e372ca5cc396706f3a166329a1f8a`
   повторно прошла 165 targeted, все 696 tests, schema/CI/strict-G0, offline
   build, 15-schema wheel и clean offline entrypoint smoke. `P1.10` — `DONE`;
-  `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
+  на тот момент `G1` оставался открыт из-за `P1.4` и `P1.12–P1.13`.
 - P1.11 completion verification: evaluator-owned six-case tree golden заморожен
   до реализации в commit `ad84f403224af55db19b8e2e2e3374e8f178f669`, а
   path-specific LF policy в `46f24297fe76c274b88bb228febe3f3289198f17`
@@ -156,7 +152,7 @@
   `f2bb7cbbcfe3e1e80e1c236300c755315fa561bc` повторно прошла 43 targeted,
   Ruff/mypy, все 739 tests, 89,72% Core branch coverage, schema exact-byte и
   strict frozen G0; protected golden/spec/G0 не изменены. `P1.11` — `DONE`;
-  `G1` остаётся открыт из-за `P1.4` и `P1.12–P1.13`.
+  на тот момент `G1` оставался открыт из-за `P1.4` и `P1.12–P1.13`.
 - P1.12 completion verification: frozen/public-contract conflict устранён до
   реализации — telemetry record остаётся exact-version internal Core value,
   `packages/contracts/**` и public schema не меняются. Process-local HMAC trace
@@ -184,8 +180,8 @@
   implementation commit `5ace16e80730d56f994cb6a24fa4748867a49646`
   повторно прошла 162 targeted, Ruff/mypy, все 885 tests, 85,80% Core branch
   coverage, schema check и strict frozen G0. Protected specs/G0/contracts не
-  менялись. `P1.12` — `DONE`; P2 закрыт, `G1` остаётся открыт из-за `P1.4` и
-  `P1.13`.
+  менялись. `P1.12` — `DONE`; на тот момент P2 был закрыт, а `G1` оставался
+  открыт из-за `P1.4` и `P1.13`.
 - P1.13 packet после remediation repository authority, strict JSON Pointer,
   trusted Git executable и committed-lifecycle checks имеет exact SHA-256
   `b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673`
@@ -202,8 +198,8 @@
   snapshot spec gate, CI policy, schema exact-byte и strict frozen G0 проходят,
   включая clean implementation HEAD `307a24a71cea25829c0b5541494bf01e13a2e6ed`.
   `P1.13` — `DONE`; completion attestation находится в отдельном successor commit.
-- Решение `GO FOR P1 ONLY` не разрешает начинать P2+ или ослаблять frozen
-  contracts; `G1 Foundation Ready` остаётся открытым.
+- Историческое решение `GO FOR P1 ONLY` действовало до G1 promotion и не
+  ослабляло frozen contracts; оно superseded эффективным `G1 Foundation Ready: GO`.
 
 ## Принятые последние изменения
 
@@ -287,11 +283,9 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Obtain three commit-separated independent PASS receipts for the exact fresh
-   G1 evidence subject.
-2. Apply the exact mechanical G1 promotion and update PR #8.
-3. Merge only after the ordinary required `gate` passes; do not start P2 before
-   effective G1.
+1. Начать `P2.1` по canonical `docs/PLAN.md` под эффективным `G1: GO`.
+2. Сохранить frozen G0 contracts и все G1 security/quality инварианты.
+3. Собирать evidence для `G2 Core Ready`; P3+ не начинать до effective G2.
 
 ## Критические запреты
 

@@ -1,5 +1,5 @@
 # G1 decision proposal
 
-decision: GO-PROPOSED
+decision: GO
 
-All seven criteria have executable evidence. This proposal is not effective until required independent receipts exist and the exact manifest bytes are promoted.
+All seven criteria have executable evidence. This GO is effective because the promotion validator accepted required receipts, ancestry and exact manifest bytes.
