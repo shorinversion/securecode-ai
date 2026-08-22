@@ -24,6 +24,12 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-037` after product review blocked CR-036 because its
+  proposed external-evidence scan view did not bind source URL, repository and
+  run identity and admitted whitespace branch names. The successor adds exact
+  source/repository/run binding, protected-branch and merge-head consistency,
+  timestamp shape checks and negative regressions before typed-hash
+  sanitization (`D-038`).
 - 2026-08-22 — opened `CR-035` after protected PR #16 passed policy, spec,
   dependency and secret-history checks but correctly rejected the new test-only
   identity constants on Ruff formatting. The successor changes only the

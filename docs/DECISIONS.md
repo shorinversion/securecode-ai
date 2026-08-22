@@ -530,6 +530,23 @@
 - Delivery: POLICY proposal, three separated reviews, exact promotion, ordinary
   protected PR and green post-merge CI. No bypass.
 
+## D-038 — Identity-bound external-evidence scan view
+
+- Status: proposed (`CR-037`). CR-036 was blocked by product review before any
+  review receipt, promotion, publication or merge.
+- Decision: recognize P2.1/P2.14 external evidence only after the complete
+  type-dependent key set, exact GitHub Actions source/repository/run identity,
+  whitespace-free branch, event, conclusion, workflow, typed Git object IDs,
+  protected-master post-run, merge-to-post-head consistency and GitHub UTC
+  timestamp shapes validate. Only then replace typed digests and Git OIDs in
+  the detector view.
+- Fail-closed boundary: any missing, extra, malformed, cross-reference-mismatched
+  or value-incompatible field returns the original document to ordinary secret
+  detection. Baseline, detectors, thresholds, completion catalog, external API
+  validation and merge policy are unchanged.
+- Delivery: POLICY proposal, sequential product/architecture/security reviews,
+  exact-byte promotion, ordinary protected PR and green post-merge CI.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
