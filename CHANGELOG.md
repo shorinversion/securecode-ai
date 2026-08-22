@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-042`: extend the closed completion-evidence catalog
+  to P2.2–P2.13 and derive protected-run enforcement from that catalog instead
+  of a second hard-coded task list. The proposed evaluator amendment keeps the
+  existing five evidence classes, exact GitHub authority checks and ordinary
+  protected delivery for every P2 completion (`D-040`).
 - 2026-08-22 — opened `P2.2` from exact master commit `e1f88f3` with a
   constrained implementation packet. The candidate adds policy-owned bounded
   ignore rules, explicit Python/JavaScript/TypeScript/Go coverage discovery,

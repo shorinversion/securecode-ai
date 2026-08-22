@@ -567,6 +567,27 @@
   LF promotion subject, then exact promotion and ordinary protected PR with
   green post-merge CI. No bypass.
 
+## D-040 — Catalog-derived protected completion evidence for P2
+
+- Status: proposed (`CR-042`); exact evaluator bytes require protected
+  promotion.
+- Decision: predeclare P2.2–P2.13 in the policy-owned completion catalog with
+  the same targeted-test, full-quality, independent-review, protected-PR and
+  post-merge evidence required for P2.1/P2.14. Derive the protected-run task
+  set from paired external evidence types in that closed catalog rather than a
+  separate hard-coded set.
+- Fail-closed boundary: an unpaired protected-PR or post-merge evidence type is
+  invalid policy; unknown tasks remain rejected; GitHub repository, immutable
+  run attempt, successful required gate, exact merge parents/tree, ancestry and
+  protected-master push validation remain unchanged.
+- Scope: policy catalog, completion evaluator and focused policy self-tests
+  only. Product implementation, accepted specifications, gate evidence,
+  evidence schemas, credentials, permissions and secret scanning do not
+  change.
+- Delivery: POLICY proposal, sequential product/architecture/security reviews,
+  exact-byte promotion, ordinary protected PR and green post-merge CI. No
+  bypass.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
