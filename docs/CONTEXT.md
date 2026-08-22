@@ -5,19 +5,24 @@
 ## Текущая позиция
 
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- Последняя завершённая задача: `P1.13 — specification/compatibility/drift gate`,
-  implementation commit `307a24a71cea25829c0b5541494bf01e13a2e6ed`.
+- Latest completed task: `P2.14 — P2.1 security remediation and completion
+  enablement`, implementation commit `e44fe9032701352665061e2488e0de3ac7fc5e21`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: complete P2.14 remediation and exact independent re-review so
-  P2.1 can be attested; P2.2 remains blocked on both tasks.
+- Current task: attest P2.1 on the same protected evidence; P2.2 remains blocked
+  until that successor completion is merged.
 - P2.1 implementation was merged through protected PR #11 at `6765520` and its
   post-merge Python 3.12–3.14 run passed. Independent review then found release
   blockers in path/object binding, bounded traversal, link-alias handling and
   adversarial coverage; P2.14 is the constrained remediation lane.
+- P2.14 remediation and task packet were merged through protected PR #12 at
+  `b45a4b8`; PR run `32564092644` and post-merge run `32564227372` passed.
+- Completion evidence scanning and lifecycle self-tests were repaired through
+  protected PR #19 (`be9d5c1`) and PR #21 (`c2dcd99`). Post-merge runs
+  `32578667057` and `32582315319` passed without bypass.
 - G1 effective: `GO` through validated exact-byte promotion.
 - Gate: `G1 Foundation Ready` is effective `GO`; G0 remains frozen and valid, and G2 is next.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit
