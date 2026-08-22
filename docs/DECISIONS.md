@@ -590,6 +590,28 @@
 
 <!-- OPEN_DECISIONS -->
 
+## D-041 — Closed Tree-sitter dependency admission for P2.3
+
+- Status: proposed (`CR-043`); exact evaluator bytes require protected
+  promotion.
+- Decision: admit only `tree-sitter>=0.25,<0.26` and
+  `tree-sitter-python>=0.25,<0.26` beside the existing exact Core dependency in
+  the adapters package. Keep the exact legacy Core-only dependency list valid
+  during the policy-first transition so the evaluator amendment can be
+  delivered before P2.3; all other additions, alternate sources, build hooks
+  and metadata drift remain rejected.
+- Rationale: P2.3 requires a real CST runtime and Python grammar, while the CI
+  workspace metadata evaluator correctly rejects dependency changes that were
+  not independently reviewed. A closed two-state transition avoids bypass and
+  does not authorize JavaScript, TypeScript, Go or repository-selected grammar
+  packages.
+- Scope: `scripts/ci_policy.py` and focused CI-policy self-tests only. Accepted
+  specifications, application packages, lockfile, workflows, permissions,
+  secret scanning and gate criteria do not change in this amendment.
+- Delivery: POLICY proposal, sequential product/architecture/security reviews,
+  exact-byte promotion, ordinary protected PR and green post-merge CI. No
+  bypass.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).

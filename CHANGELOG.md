@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-043`: extend the closed adapters dependency policy
+  with the bounded Tree-sitter Python runtime and grammar ranges required by
+  P2.3. The amendment preserves the legacy dependency set only for the atomic
+  policy-to-implementation transition, rejects every other adapter dependency,
+  and changes no package bytes until exact reviewed promotion (`D-041`).
 - 2026-08-22 — completed `CR-042`: the P2 completion catalog and
   catalog-derived protected-run enforcement passed three exact-byte reviews,
   protected PR #25 and post-merge run `32589272475`. All P2.1–P2.14 tasks now
