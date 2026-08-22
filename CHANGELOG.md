@@ -24,11 +24,21 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — completed `CR-042`: the P2 completion catalog and
+  catalog-derived protected-run enforcement passed three exact-byte reviews,
+  protected PR #25 and post-merge run `32589272475`. All P2.1–P2.14 tasks now
+  require the same closed five-class completion evidence without bypass.
 - 2026-08-22 — opened `CR-042`: extend the closed completion-evidence catalog
   to P2.2–P2.13 and derive protected-run enforcement from that catalog instead
   of a second hard-coded task list. The proposed evaluator amendment keeps the
   existing five evidence classes, exact GitHub authority checks and ordinary
   protected delivery for every P2 completion (`D-040`).
+- 2026-08-22 — completed `P2.2`: deterministic policy-owned ignore filtering,
+  explicit language and dependency-manifest discovery, and immutable complete
+  base-to-head changed-file mapping passed three independent reviews, protected
+  PR #24 and post-merge run `32586165054`. The completion attestation binds the
+  exact packet, implementation commit and green delivery evidence. No bypass
+  was used; P2.3 is now the next sequential Core task.
 - 2026-08-22 — opened `P2.2` from exact master commit `e1f88f3` with a
   constrained implementation packet. The candidate adds policy-owned bounded
   ignore rules, explicit Python/JavaScript/TypeScript/Go coverage discovery,

@@ -1,0 +1,28 @@
+{
+  "allowed_paths": ["CHANGELOG.md", "docs/CONTEXT.md", "docs/PLAN.md", "work/task-attestations/P2.2.json"],
+  "budgets": {"max_changed_files": 5, "max_diff_lines": 800},
+  "change_type": "completion_attestation",
+  "evidence_refs": [
+    {"content_sha256": "77612b6a1cec8530c7eb4e7ec6807fec496170a92f6c4341b262296177674f7f", "source": "tests/unit/test_repository_discovery.py", "type": "targeted_tests"},
+    {"content_sha256": "d5901cd7d2bcab9c51a979d6c5c44e4f1a0ee13dc0ac440fa53f40ed914f7aec", "source": "scripts/quality.py", "type": "full_quality"},
+    {"content_sha256": "bd43622c700e7768100db4b80e72fb491e58b81180183c2f00fc680b7d88ec1c", "source": "work/change-control/README.md", "type": "independent_reviews"},
+    {
+      "conclusion": "success", "content_sha256": "f3c8a854c462306cb979c5276e3e6deefaba264c7b7c92fb8636e80f03dcb9fc", "event": "pull_request",
+      "gate_completed_at": "2026-08-22T16:55:03Z", "head_branch": "codex/p22-ignore-language-dependencies", "head_sha": "03906ea3b39ab027399f7ad3de6cb042fabf28de",
+      "merge_commit_sha": "457a02b9987b6d9b2007bed62c3a6e59b60f690c", "merged_at": "2026-08-22T16:55:17Z", "pull_request_number": 24,
+      "repository": "shorinversion/securecode-ai", "required_check": "gate", "run_attempt": 1, "run_id": 32585989207,
+      "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32585989207", "type": "protected_pr_gate", "workflow_path": ".github/workflows/ci.yml"
+    },
+    {
+      "conclusion": "success", "content_sha256": "2239235cfa4b036a03ac8505c03523db40ad9d5271bd4d4f0d783baea1680576", "event": "push",
+      "head_branch": "master", "head_sha": "457a02b9987b6d9b2007bed62c3a6e59b60f690c", "repository": "shorinversion/securecode-ai",
+      "run_attempt": 1, "run_id": 32586165054, "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32586165054",
+      "type": "post_merge_gate", "workflow_path": ".github/workflows/ci.yml"
+    }
+  ],
+  "implementation_commit_sha": "03906ea3b39ab027399f7ad3de6cb042fabf28de",
+  "packet_sha256": "8313c1c524dd86e5d5277fbeb4c50ff98a1c569e50657bb1227470dc0e55130c",
+  "schema_version": "1.0.0",
+  "starting_commit_sha": "abe4061d0b02b67362709f1a3186f11c8d22d594",
+  "task_id": "P2.2"
+}
