@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-034` after the canonical CR-033 history scan exposed
+  three additional public commit identities repeated in GitHub test fixtures.
+  The successor centralizes them as exact constants assembled only from fixed
+  eight-character fragments; no scanner, baseline or evaluator exemption is
+  added, and a fresh POLICY lifecycle is mandatory (`D-036`).
 - 2026-08-22 — opened `P2.14` to remediate the independent P2.1 repository
   intake review findings. The candidate binds traversal to filesystem objects,
   enforces pre-materialization entry and depth ceilings, rejects link aliases,
