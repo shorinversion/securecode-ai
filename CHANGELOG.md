@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-23 — opened `CR-044`: repair the CR-043 dependency-policy self-test
+  so it constructs the legacy and reviewed Tree-sitter states explicitly
+  instead of duplicating dependencies after P2.3 updates workspace metadata.
+  Evaluator behavior and the closed dependency sets remain unchanged (`D-042`).
 - 2026-08-22 — opened `CR-043`: extend the closed adapters dependency policy
   with the bounded Tree-sitter Python runtime and grammar ranges required by
   P2.3. The amendment preserves the legacy dependency set only for the atomic

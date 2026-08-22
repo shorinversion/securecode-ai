@@ -590,6 +590,23 @@
 
 <!-- OPEN_DECISIONS -->
 
+## D-042 — State-independent CR-043 dependency-policy self-test
+
+- Status: proposed (`CR-044`); exact test bytes require protected promotion.
+- Decision: make the focused CR-043 regression construct both admitted adapter
+  dependency lists explicitly before assertion, then add one unreviewed grammar
+  and require rejection. Do not change evaluator code, admitted dependencies or
+  lock/source/integrity rules.
+- Rationale: the original test extended whatever workspace metadata was
+  currently present. It passed during policy-first delivery but duplicated both
+  Tree-sitter requirements after P2.3 adopted them, causing a false failure.
+- Scope: `tests/unit/test_ci_policy.py` only. Specifications, evaluator behavior,
+  package metadata, lockfile, workflows, permissions and gate criteria remain
+  unchanged.
+- Delivery: POLICY proposal, sequential product/architecture/security reviews,
+  exact-byte promotion, ordinary protected PR and green post-merge CI. No
+  bypass.
+
 ## D-041 — Closed Tree-sitter dependency admission for P2.3
 
 - Status: proposed (`CR-043`); exact evaluator bytes require protected
