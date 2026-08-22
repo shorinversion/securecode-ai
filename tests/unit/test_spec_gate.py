@@ -807,6 +807,18 @@ def _complete_task(
     return base, _commit_all(repository, f"Complete {task_id}")
 
 
+def test_protected_run_evidence_tasks_are_derived_from_closed_policy_catalog() -> None:
+    policy = GATE.SpecGate().policy
+    assert GATE.completion_run_evidence_tasks(policy) == frozenset(
+        {f"P2.{index}" for index in range(1, 15)}
+    )
+
+    invalid = copy.deepcopy(policy)
+    invalid["completion_evidence"]["P2.2"].remove("post_merge_gate")
+    with pytest.raises(GATE.GateInputError, match="POLICY_GITHUB_RUN_EVIDENCE_PAIR"):
+        GATE.completion_run_evidence_tasks(invalid)
+
+
 P2_IMPLEMENTATION_SHA = "".join(("e44fe903", "27013526", "65061e24", "88e0de3a", "c7fc5e21"))
 P2_MERGE_SHA = "".join(("b45a4b83", "01f0898a", "02d8a14e", "9d269f9b", "646268a3"))
 P2_BASE_SHA = "".join(("67655208", "3cd6e647", "442b1e0f", "e943ff4b", "68874745"))
