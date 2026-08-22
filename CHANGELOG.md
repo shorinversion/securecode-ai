@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-035` after protected PR #16 passed policy, spec,
+  dependency and secret-history checks but correctly rejected the new test-only
+  identity constants on Ruff formatting. The successor changes only the
+  mechanical formatting of that test refactor and repeats the complete POLICY
+  lifecycle and protected delivery without bypass (`D-036`).
 - 2026-08-22 — opened `P2.14` to remediate the independent P2.1 repository
   intake review findings. The candidate binds traversal to filesystem objects,
   enforces pre-materialization entry and depth ceilings, rejects link aliases,
