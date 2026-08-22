@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `P2.14` to remediate the independent P2.1 repository
+  intake review findings. The candidate binds traversal to filesystem objects,
+  enforces pre-materialization entry and depth ceilings, rejects link aliases,
+  and adds adversarial replacement and mutation tests before P2.2 may start.
 - 2026-08-20 — opened `CR-022`: make protected `push` validation understand an
   exact two-parent merge commit without aggregating its already reviewed
   proposal/review/promotion chain. Direct pushes remain unchanged; merge

@@ -1,6 +1,6 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 19 августа 2026 года.
+Последнее обновление: 22 августа 2026 года.
 
 ## Текущая позиция
 
@@ -12,7 +12,12 @@
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: begin P2.1 under effective G1.
+- Current task: complete P2.14 remediation and exact independent re-review so
+  P2.1 can be attested; P2.2 remains blocked on both tasks.
+- P2.1 implementation was merged through protected PR #11 at `6765520` and its
+  post-merge Python 3.12–3.14 run passed. Independent review then found release
+  blockers in path/object binding, bounded traversal, link-alias handling and
+  adversarial coverage; P2.14 is the constrained remediation lane.
 - G1 effective: `GO` through validated exact-byte promotion.
 - Gate: `G1 Foundation Ready` is effective `GO`; G0 remains frozen and valid, and G2 is next.
 - Normative baseline: `0.2.0`, lifecycle `frozen`; immutable commit

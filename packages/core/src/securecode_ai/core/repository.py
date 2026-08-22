@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 from dataclasses import dataclass
 from enum import StrEnum
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_MAX_INVENTORY_DEPTH = 256
 
 
 class RepositoryIntakeErrorCode(StrEnum):
@@ -17,6 +19,7 @@ class RepositoryIntakeErrorCode(StrEnum):
     PATH_LIMIT = "PATH_LIMIT"
     DEPTH_LIMIT = "DEPTH_LIMIT"
     DIRECTORY_LIMIT = "DIRECTORY_LIMIT"
+    ENTRY_LIMIT = "ENTRY_LIMIT"
     FILE_LIMIT = "FILE_LIMIT"
     FILE_SIZE_LIMIT = "FILE_SIZE_LIMIT"
     TOTAL_SIZE_LIMIT = "TOTAL_SIZE_LIMIT"
@@ -62,6 +65,8 @@ class InventoryLimits:
         )
         if any(type(value) is not int or value <= 0 for value in values):
             raise ValueError("inventory limits are invalid")
+        if self.max_depth > _MAX_INVENTORY_DEPTH:
+            raise ValueError("inventory limits are invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,12 +76,30 @@ class RepositoryFile:
     content_sha256: str
 
     def __post_init__(self) -> None:
-        if type(self.path) is not str or not self.path or self.path.startswith("/"):
+        if type(self.path) is not str or not _valid_repository_path(self.path):
             raise ValueError("repository file is invalid")
         if type(self.size_bytes) is not int or self.size_bytes < 0:
             raise ValueError("repository file is invalid")
         if type(self.content_sha256) is not str or not _SHA256.fullmatch(self.content_sha256):
             raise ValueError("repository file is invalid")
+
+
+def _valid_repository_path(path: str) -> bool:
+    if (
+        not path
+        or path.startswith("/")
+        or "\\" in path
+        or (len(path) >= 2 and path[0].isascii() and path[0].isalpha() and path[1] == ":")
+    ):
+        return False
+    parts = path.split("/")
+    return all(
+        part
+        and part not in {".", ".."}
+        and unicodedata.normalize("NFC", part) == part
+        and not any(ord(character) < 32 or ord(character) == 127 for character in part)
+        for part in parts
+    )
 
 
 def repository_tree_sha256(files: tuple[RepositoryFile, ...]) -> str:

@@ -1,0 +1,140 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.14"
+  type: "implementation"
+  objective: "Remediate the independent P2.1 review findings by enforcing repository-relative paths in Core, bounding directory enumeration before materialization, inspecting ignored Git metadata, binding traversal and file reads to locked or descriptor-relative filesystem objects, and adding deterministic adversarial mutation evidence before P2.2 starts."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"
+  starting_commit_sha: "\x36\x37\x36\x35\x35\x32\x30\x38\x33\x63\x64\x36\x65\x36\x34\x37\x34\x34\x32\x62\x31\x65\x30\x66\x65\x39\x34\x33\x66\x66\x34\x62\x36\x38\x38\x37\x34\x37\x34\x35"
+  spec_refs: [SC-PROD-003, SC-DOM-006, SC-SYS-001, SC-SYS-004, SC-SBX-005]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "P2.1 implementation is merged by protected PR 11 at the exact starting commit"
+    - "independent P2.1 product, architecture and security/evaluation reviews all returned FAIL with reproducible blocking findings"
+    - "post-merge run 32561880351 passed before remediation"
+  non_goals:
+    - "ignore policy, language or dependency discovery, parsing, scanners, findings, reports, model calls or workflow integration"
+    - "archive extraction, Git ref resolution, remote clone/fetch, submodule initialization or lifecycle execution"
+    - "resistance to a compromised kernel, filesystem driver, process memory or an attacker that can alter this process"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "repository-intake-remediator"
+  mode: "direct"
+  parent_task_id: "P2.1"
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/core/src/securecode_ai/core/repository.py"
+    - "packages/adapters/src/securecode_ai/adapters/repository.py"
+    - "tests/unit/test_repository_intake.py"
+    - "work/task-attestations/P2.14.json"
+    - "work/task-packets/P2.14.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/core/src/securecode_ai/core/repository.py"
+    - "packages/adapters/src/securecode_ai/adapters/repository.py"
+    - "tests/unit/test_repository_intake.py"
+    - "work/task-attestations/P2.14.json"
+    - "work/task-packets/P2.14.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - ".github/**"
+    - "artifacts/gates/**"
+    - "packages/contracts/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 8
+  max_diff_lines: 3600
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted repository intake"
+    - "python scripts/quality.py"
+    - "python scripts/spec_gate.py snapshot/index-candidate"
+    - "python scripts/ci_policy.py validate"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny except authorized GitHub publication after completed local validation"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "strict shared Core repository-relative POSIX path invariant"
+    - "bounded streaming directory enumeration before sorting"
+    - "root Git metadata type inspection before exclusion"
+    - "POSIX descriptor-relative no-follow traversal and file opens"
+    - "Windows directory/file handles that deny replacement during enumeration/read"
+    - "post-read path binding, repeated-content stability and adversarial mutation tests"
+
+constraints:
+  invariants:
+    - "no repository bytes or names are obtained through a path that can escape the admitted root"
+    - "directory entries are counted and bounded while consumed, before collection or sorting"
+    - "accepted file content is read twice under one stable object binding and must match"
+    - "every Core RepositoryFile path is normalized, relative and POSIX-style regardless of producer"
+  compatibility:
+    - "P2.1 value names and successful inventory behavior remain compatible"
+    - "no dependency, accepted specification, evaluator or public contract changes"
+  security:
+    - "all ambiguous replacements, unsupported objects, links/reparse points, enumeration overflow or inconsistent reads reject the whole inventory"
+    - "fixed non-echo diagnostics remain the only failure surface"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 90
+  timeout_seconds: 5400
+  max_output_bytes: 320000
+
+verification:
+  acceptance_commands:
+    - "targeted repository intake tests on Windows and Linux CI"
+    - "canonical quality command"
+    - "python scripts/spec_gate.py snapshot"
+    - "python scripts/ci_policy.py validate"
+    - "python scripts/validate_g0.py --require-frozen"
+  positive_cases:
+    - "ordinary empty, text, binary, nested and root Git-metadata repositories retain deterministic inventory bytes"
+  negative_cases:
+    - "unsafe direct Core paths"
+    - "root Git metadata link or reparse point"
+    - "enumerator produces more entries than the derived closed entry budget"
+    - "directory replacement between validation and enumeration"
+    - "file path replacement during read"
+    - "same-size content mutation with restored metadata"
+  required_evidence:
+    - "failing-before and passing-after adversarial tests"
+    - "full quality, snapshot, CI policy and strict G0 PASS"
+    - "independent product, architecture and security/evaluation PASS on exact remediation bytes"
+    - "ordinary protected PR and green post-merge run"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "accepted specification or public contract change required"
+  - "protected evaluator or gate-evidence change required"
+  - "safe platform implementation would require an external runtime dependency"
+
+completion:
+  definition_of_done_refs: [P2.1, P2.14]
+  partial_refs:
+    SC-PROD-003: "Completes safe local repository intake only; discovery and parsing remain later P2 tasks"
+    SC-SYS-004: "Closes pre-budget enumeration and stable-read resource loopholes"
+  gate_contribution: "Repairs the P2.1 repository intake evidence contribution to G2; does not complete G2."
+  changelog_required: true
+  adr_required: false

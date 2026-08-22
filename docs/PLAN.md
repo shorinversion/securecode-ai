@@ -224,11 +224,12 @@ G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
-| `P2.1` | Repository intake и безопасный file inventory | G1 | symlink/path traversal/size-limit tests | `TODO` |
-| `P2.2` | Ignore policy, language и dependency discovery | P2.1 | корректные manifests и changed-files map | `TODO` |
+| `P2.1` | Repository intake и безопасный file inventory | G1 | implementation merged by PR #11; independent review found blocking path-binding and pre-budget enumeration defects | `IN PROGRESS` |
+| `P2.14` | P2.1 security remediation and completion enablement | P2.1 implementation | descriptor/handle-bound traversal, bounded enumeration and adversarial mutation tests | `IN PROGRESS` |
+| `P2.2` | Ignore policy, language и dependency discovery | P2.1, P2.14 | корректные manifests и changed-files map | `TODO` |
 | `P2.3` | Tree-sitter/CST adapter и symbol index | P2.2 | location-stable symbols на fixtures | `TODO` |
 | `P2.4` | Python `ast` adapter | P2.2 | syntax/error recovery tests | `TODO` |
-| `P2.5` | Собственный secret detector + approved external adapter | P2.1 | positive/negative/entropy fixtures, redacted output | `TODO` |
+| `P2.5` | Собственный secret detector + approved external adapter | P2.1, P2.14 | positive/negative/entropy fixtures, redacted output | `TODO` |
 | `P2.6` | Dependency scanner adapter и OSV normalization | P2.2 | pinned vulnerable/safe manifests | `TODO` |
 | `P2.7` | Первый semantic rule: Python CWE-89 | P2.3, P2.4 | source → interpolation → SQL sink evidence | `TODO` |
 | `P2.8` | Scanner plugin contract и time/resource budgets | P2.5–P2.7 | timeout/crash isolation tests | `TODO` |
