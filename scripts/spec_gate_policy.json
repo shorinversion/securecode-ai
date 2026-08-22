@@ -18,7 +18,33 @@
     "P1.4": [
       "github_ruleset_required_check",
       "github_failing_pr_merge_block"
+    ],
+    "P2.1": [
+      "targeted_tests",
+      "full_quality",
+      "independent_reviews",
+      "protected_pr_gate",
+      "post_merge_gate"
+    ],
+    "P2.14": [
+      "targeted_tests",
+      "full_quality",
+      "independent_reviews",
+      "protected_pr_gate",
+      "post_merge_gate"
     ]
+  },
+  "github_actions_run_evidence": {
+    "provider": "github",
+    "api_host": "api.github.com",
+    "token_environment": "GITHUB_TOKEN",
+    "workflow_path": ".github/workflows/ci.yml",
+    "protected_branch": "master",
+    "required_check": "gate",
+    "evidence_events": {
+      "protected_pr_gate": "pull_request",
+      "post_merge_gate": "push"
+    }
   },
   "github_repository_authority": {
     "provider": "github",
@@ -1099,7 +1125,8 @@
       "owners": [
         "P2.1"
       ],
-      "state": "planned"
+      "state": "executable",
+      "command": "python scripts/quality.py"
     },
     "path_tamper": {
       "owners": [

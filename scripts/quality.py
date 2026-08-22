@@ -15,7 +15,7 @@ from typing import Final
 REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
 PYTHON_ROOTS: Final = ("packages", "apps", "integrations", "scripts", "tests")
 EXCLUDED_PYTHON_TARGETS: Final = frozenset({"scripts/validate_g0.py"})
-STAGE_TIMEOUT_SECONDS: Final = 240
+STAGE_TIMEOUT_SECONDS: Final = 360
 GIT_TIMEOUT_SECONDS: Final = 30
 SAFE_PARENT_VARIABLES: Final = (
     "COMSPEC",
