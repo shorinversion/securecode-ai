@@ -56,7 +56,11 @@ WORKSPACE_PROJECTS: Final = {
     ),
     "packages/adapters/pyproject.toml": (
         "securecode-ai-adapters",
-        ["securecode-ai-core==0.1.0a0"],
+        [
+            "securecode-ai-core==0.1.0a0",
+            "tree-sitter>=0.25,<0.26",
+            "tree-sitter-python>=0.25,<0.26",
+        ],
         {"securecode-ai-core": {"workspace": True}},
         "securecode_ai.adapters",
     ),
@@ -64,6 +68,7 @@ WORKSPACE_PROJECTS: Final = {
 WORKSPACE_CONSOLE_SCRIPTS: Final = {
     "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"}
 }
+LEGACY_ADAPTER_DEPENDENCIES: Final = ["securecode-ai-core==0.1.0a0"]
 PYPI_INDEX: Final = "https://pypi.org/simple"
 PYPI_ARTIFACT_HOST: Final = "files.pythonhosted.org"
 ACTION_REFS: Final = {
@@ -747,11 +752,16 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
             expected_project_keys.add("scripts")
         if set(project) != expected_project_keys:
             errors.append(f"{path}: project metadata keys differ from the closed set")
+        project_dependencies = project.get("dependencies")
+        dependencies_match = project_dependencies == dependencies or (
+            path == "packages/adapters/pyproject.toml"
+            and project_dependencies == LEGACY_ADAPTER_DEPENDENCIES
+        )
         if (
             project.get("name") != name
             or project.get("version") != "0.1.0a0"
             or project.get("requires-python") != ">=3.12,<3.15"
-            or project.get("dependencies") != dependencies
+            or not dependencies_match
         ):
             errors.append(f"{path}: identity or dependencies differ from the reviewed values")
         if (
