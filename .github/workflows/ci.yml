@@ -126,6 +126,10 @@ jobs:
   spec:
     name: spec
     needs: [policy]
+    permissions:
+      actions: read # Read immutable workflow attempts and required gate jobs.
+      contents: read
+      pull-requests: read # Bind evidence to the exact merged pull request.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -159,6 +163,8 @@ jobs:
       - name: Provision exact specification tools
         run: uv sync --locked --only-group quality --no-editable
       - name: Validate exact event candidate or dispatch snapshot
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --pull-request-head "$PULL_REQUEST_HEAD_SHA" --github-repository "$GITHUB_REPOSITORY"
 
   quality:

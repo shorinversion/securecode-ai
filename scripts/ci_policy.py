@@ -351,7 +351,15 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
             "policy": {"name", "runs-on", "timeout-minutes", "steps"},
             "secrets": {"name", "needs", "runs-on", "timeout-minutes", "env", "steps"},
             "dependency": {"name", "needs", "runs-on", "timeout-minutes", "steps"},
-            "spec": {"name", "needs", "runs-on", "timeout-minutes", "env", "steps"},
+            "spec": {
+                "name",
+                "needs",
+                "permissions",
+                "runs-on",
+                "timeout-minutes",
+                "env",
+                "steps",
+            },
             "quality": {"name", "needs", "runs-on", "timeout-minutes", "strategy", "steps"},
             "gate": {
                 "name",
@@ -376,7 +384,18 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
         if job.get("continue-on-error") == "true":
             errors.append(f"{job_name}: continue-on-error is forbidden")
         job_permissions = job.get("permissions")
-        if job_permissions is not None:
+        if job_name == "spec":
+            parsed_permissions = _mapping(job_permissions, "jobs.spec.permissions")
+            if parsed_permissions != {
+                "actions": "read",
+                "contents": "read",
+                "pull-requests": "read",
+            }:
+                errors.append(
+                    "spec: permissions must be exactly actions:read, contents:read, "
+                    "and pull-requests:read"
+                )
+        elif job_permissions is not None:
             parsed_permissions = _mapping(job_permissions, f"jobs.{job_name}.permissions")
             for permission, level in parsed_permissions.items():
                 if level != "read" and level != "none":
@@ -393,12 +412,21 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
         action_sequence: list[str] = []
         for index, raw_step in enumerate(steps):
             step = _mapping(raw_step, f"jobs.{job_name}.steps[{index}]")
-            expected_step_keys = {"name", "uses", "with"} if "uses" in step else {"name", "run"}
+            run = step.get("run")
+            spec_gate_step = job_name == "spec" and run == EXPECTED_RUN_COMMANDS["spec"][-1]
+            expected_step_keys = (
+                {"name", "uses", "with"}
+                if "uses" in step
+                else ({"name", "env", "run"} if spec_gate_step else {"name", "run"})
+            )
             if set(step) != expected_step_keys:
                 errors.append(f"{job_name}[{index}]: step keys differ from the closed set")
+            if spec_gate_step and _mapping(
+                step.get("env"), f"jobs.{job_name}.steps[{index}].env"
+            ) != {"GITHUB_TOKEN": "${{ github.token }}"}:
+                errors.append(f"{job_name}[{index}]: GitHub API authority differs")
             if step.get("continue-on-error") == "true":
                 errors.append(f"{job_name}[{index}]: continue-on-error is forbidden")
-            run = step.get("run")
             if isinstance(run, str) and "${{" in run:
                 errors.append(f"{job_name}[{index}]: expressions are forbidden in run scripts")
             uses = step.get("uses")
@@ -463,7 +491,6 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
         "workflow_run",
         "self-hosted",
         "${{ secrets.",
-        "${{ github.token",
         "id-token",
         "actions/cache",
         "restore-cache",

@@ -509,6 +509,27 @@
   and promotion as one mixed candidate; the post-merge push run can attest the
   same exact chain already accepted by the required PR gate.
 
+## D-036 — Read-only protected-merge authority for P2 completion
+
+- Status: proposed (`CR-035`); exact evaluator bytes require protected
+  promotion. CR-023 through CR-034 were rejected, failed review/preflight or
+  failed protected audit; none was merged. PR #16 was closed without bypass.
+- Decision: preserve CR-030's P2.1/P2.14-only completion catalog, immutable
+  attempt, successful gate-before-merge, exact merged PR/parents/protected push,
+  ancestry, fixed-host bounded transport and true end-to-end 15-second deadline.
+- Least authority: only `spec` has exact `actions: read`, `contents: read` and
+  `pull-requests: read`; only its validator step receives `${{ github.token }}`.
+  No write or ruleset-administration authority is admitted.
+- Secret-scan compatibility: five public test-only identities are assembled
+  from fixed eight-character fragments; three repeated GitHub identities use
+  constants. Scanner code, baseline, suppression and resulting values are
+  unchanged. The delta from CR-034 is Ruff formatting only.
+- Fail-closed boundary: CR-030 substitution, timing, transport, permission and
+  P1 invariants remain unchanged. PR #16 proved policy/spec/dependency/secrets
+  green; full formatted quality and protected gate remain mandatory.
+- Delivery: POLICY proposal, three separated reviews, exact promotion, ordinary
+  protected PR and green post-merge CI. No bypass.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
