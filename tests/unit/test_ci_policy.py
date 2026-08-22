@@ -256,6 +256,17 @@ def test_workspace_metadata_rejects_a_malicious_build_backend() -> None:
     assert POLICY.workspace_metadata_errors(documents)
 
 
+def test_workspace_metadata_accepts_only_reviewed_tree_sitter_dependencies() -> None:
+    documents = _workspace_inputs()
+    assert POLICY.workspace_metadata_errors(documents) == []
+    adapter_dependencies = documents["packages/adapters/pyproject.toml"]["project"]["dependencies"]
+    adapter_dependencies.extend(["tree-sitter>=0.25,<0.26", "tree-sitter-python>=0.25,<0.26"])
+    assert POLICY.workspace_metadata_errors(documents) == []
+
+    adapter_dependencies.append("tree-sitter-javascript>=0.25,<0.26")
+    assert POLICY.workspace_metadata_errors(documents)
+
+
 @pytest.mark.parametrize("path", ["x.py", 'space and "quote".py', "line\nbreak.py"])
 def test_intermediate_commit_canary_is_detected_without_returning_its_value(path: str) -> None:
     assert detect_secrets_scan.scan_line is not None
