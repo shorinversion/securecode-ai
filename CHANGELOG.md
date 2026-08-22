@@ -24,6 +24,13 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `P2.2` from exact master commit `e1f88f3` with a
+  constrained implementation packet. The candidate adds policy-owned bounded
+  ignore rules, explicit Python/JavaScript/TypeScript/Go coverage discovery,
+  dependency-manifest classification and complete deterministic base-to-head
+  file mapping without reading repository content or trusting `.gitignore` as
+  execution policy. P2.2 remains in progress pending independent reviews,
+  protected delivery and completion evidence.
 - 2026-08-22 — completed `P2.1`: safe repository intake, exact remediation and
   completion enablement are now bound to the independently reviewed task packet,
   protected PR #12 and its green post-merge run. P2.14 is already `DONE`, so

@@ -13,8 +13,11 @@
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: begin P2.2 ignore policy, language and dependency discovery from
-  its accepted contracts and a constrained task packet.
+- Current task: complete `P2.2` ignore policy, language/dependency discovery and
+  base-to-head changed-file mapping. Its constrained packet starts from exact
+  master `e1f88f362e44d581774fde2e5181cb96644b2f35`; the local candidate and
+  targeted tests exist, while independent reviews and protected delivery remain
+  pending.
 - P2.1 implementation was merged through protected PR #11 at `6765520` and its
   post-merge Python 3.12–3.14 run passed. Independent review then found release
   blockers in path/object binding, bounded traversal, link-alias handling and
@@ -294,9 +297,9 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Начать `P2.1` по canonical `docs/PLAN.md` под эффективным `G1: GO`.
-2. Сохранить frozen G0 contracts и все G1 security/quality инварианты.
-3. Собирать evidence для `G2 Core Ready`; P3+ не начинать до effective G2.
+1. Complete integrated P2.2 validation and sequential independent reviews.
+2. Deliver P2.2 through the ordinary protected PR gate and verify post-merge CI.
+3. Continue P2 tasks in dependency order; do not begin P3 before effective G2 GO.
 
 ## Критические запреты
 

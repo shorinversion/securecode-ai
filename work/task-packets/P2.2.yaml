@@ -1,0 +1,149 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.2"
+  type: "implementation"
+  objective: "Implement deterministic policy-owned ignore filtering, Python/JavaScript/TypeScript/Go language discovery, dependency-manifest discovery and immutable base-to-head changed-file mapping over admitted repository inventories."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"
+  starting_commit_sha: "\x65\x31\x66\x38\x38\x66\x33\x36\x32\x65\x34\x34\x64\x35\x38\x31\x37\x37\x34\x66\x64\x65\x32\x65\x35\x31\x38\x31\x63\x62\x39\x36\x36\x34\x34\x62\x32\x66\x33\x35"
+  spec_refs: [SC-PROD-002, SC-PROD-003, SC-DOM-005, SC-DOM-006, SC-WF-019, SC-WF-020]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.1 and P2.14 completion attestations are merged on the exact starting commit"
+    - "the P2.1 post-merge protected run is green"
+    - "snapshot spec gate and CI policy pass at starting_commit_sha"
+  non_goals:
+    - "source parsing, symbol indexing, dependency file parsing, package resolution, advisory lookup or vulnerability verdicts"
+    - "reading repository-owned ignore configuration as trusted policy or allowing ignored source to suppress mandatory language coverage"
+    - "filesystem traversal, Git command execution, ref resolution, rename inference, model calls, reports or workflow execution"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "repository-discovery-implementer"
+  mode: "direct"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/src/securecode_ai/core/discovery.py"
+    - "tests/unit/test_repository_discovery.py"
+    - "work/task-attestations/P2.2.json"
+    - "work/task-packets/P2.2.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/core/src/securecode_ai/core/discovery.py"
+    - "tests/unit/test_repository_discovery.py"
+    - "work/task-attestations/P2.2.json"
+    - "work/task-packets/P2.2.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - ".github/**"
+    - "artifacts/gates/**"
+    - "packages/contracts/**"
+    - "packages/adapters/**"
+    - "apps/**"
+    - "integrations/**"
+    - "deploy/**"
+  max_changed_files: 8
+  max_diff_lines: 3000
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted repository discovery and package boundary suites"
+    - "python scripts/quality.py"
+    - "python scripts/spec_gate.py snapshot/index-candidate/committed-candidate"
+    - "python scripts/ci_policy.py validate"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny except authorized GitHub publication after completed local validation"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "closed immutable IgnorePolicy and deterministic policy content hash"
+    - "immutable DiscoveryManifest with analyzed, ignored, language and dependency-manifest entries"
+    - "explicit Python support and JavaScript/TypeScript/Go unsupported coverage declarations"
+    - "immutable deterministic ChangedFilesMap with added, modified, deleted and unchanged entries, including explicit ignore decisions"
+    - "fixed non-echo discovery validation failures"
+
+constraints:
+  invariants:
+    - "discovery consumes only immutable RepositoryInventory metadata and never opens, executes or renders repository content"
+    - "repository-owned files cannot alter policy; every ignore decision binds to the exact policy hash and matching rule"
+    - "all paths remain normalized repository-relative POSIX paths and retain admitted content hashes"
+    - "identical inventory and policy bytes produce identical sorted manifests and hashes"
+    - "recognized unsupported JS/TS/Go source remains explicit and cannot be reported as supported or absent"
+    - "changed-file status is derived for every admitted path only from exact path and content hash; ignore metadata is preserved and no unproven rename is inferred"
+  compatibility:
+    - "new values are internal Core Python contracts, not public packages/contracts schema roots"
+    - "no dependency or accepted specification changes"
+  security:
+    - "ignore rules use a closed bounded grammar with no regex or repository-controlled evaluation"
+    - "invalid, duplicate or over-budget declarations reject the complete discovery result"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 90
+  timeout_seconds: 5400
+  max_output_bytes: 320000
+
+verification:
+  acceptance_commands:
+    - "targeted repository discovery and package boundary tests"
+    - "canonical quality command"
+    - "python scripts/spec_gate.py snapshot"
+    - "python scripts/ci_policy.py validate"
+    - "python scripts/validate_g0.py --require-frozen"
+    - "git diff --check and exact packet scope validation"
+  positive_cases:
+    - "mixed Python/JavaScript/TypeScript/Go inventory produces stable explicit per-language entries"
+    - "known Python, JavaScript/TypeScript and Go dependency manifests are classified without parsing content"
+    - "same base/head inventory produces an all-unchanged map and repeated runs have identical hashes"
+    - "added, modified and deleted analyzed/ignored paths are sorted and classified deterministically"
+  negative_cases:
+    - "repository .gitignore content is never interpreted as policy"
+    - "invalid or over-budget ignore rule and path inputs"
+    - "case or Unicode-conflicting policy rules and duplicate manifest declarations"
+    - "ignored dependency manifest cannot appear as analyzed"
+    - "unsupported source cannot disappear from explicit coverage through extension aliasing"
+    - "tree/hash/size-inconsistent inventory is rejected by the existing intake contract before discovery"
+  required_evidence:
+    - "targeted positive/negative tests"
+    - "full quality, snapshot, CI policy and strict G0 PASS"
+    - "independent product, architecture and security/evaluation PASS on one exact staged digest"
+    - "post-commit clean verification and ordinary protected PR gate"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "accepted specification or public contract change required"
+  - "dependency parsing, network advisory access or repository content execution required"
+  - "protected evaluator or gate-evidence change required"
+  - "no new diagnostic signal"
+
+completion:
+  definition_of_done_refs: [P2.2]
+  partial_refs:
+    SC-PROD-002: "Discovers Python, JavaScript/TypeScript and Go source and explicitly marks Core-MVP unsupported languages; semantic adapters remain P2.3-P2.4 and beta tasks"
+    SC-PROD-003: "Discovers dependency manifests only; parsing, package normalization and advisory matching remain P2.6"
+    SC-WF-019: "Provides deterministic inventory-derived applicability inputs; workflow catalogue application remains later P2/P3 integration"
+  gate_contribution: "Supplies mixed-language coverage, dependency-manifest inventory and deterministic base-to-head changed-file evidence toward G2; does not complete G2."
+  changelog_required: true
+  adr_required: false
