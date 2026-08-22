@@ -866,12 +866,39 @@ def _completion_attestation_scan_view(path: str, content: str) -> str:
         if not isinstance(refs, list) or not 1 <= len(refs) <= 16:
             return content
         observed: list[str] = []
+        external_types = {"protected_pr_gate", "post_merge_gate"}
         for ref in refs:
-            if not isinstance(ref, dict) or set(ref) != {"type", "source", "content_sha256"}:
+            if not isinstance(ref, dict):
                 return content
-            ref_type = ref["type"]
-            source = ref["source"]
-            digest = ref["content_sha256"]
+            ref_type = ref.get("type")
+            expected_ref_keys = {"type", "source", "content_sha256"}
+            if ref_type in external_types:
+                expected_ref_keys.update(
+                    {
+                        "repository",
+                        "run_id",
+                        "run_attempt",
+                        "event",
+                        "conclusion",
+                        "head_branch",
+                        "head_sha",
+                        "workflow_path",
+                    }
+                )
+                if ref_type == "protected_pr_gate":
+                    expected_ref_keys.update(
+                        {
+                            "pull_request_number",
+                            "merge_commit_sha",
+                            "required_check",
+                            "gate_completed_at",
+                            "merged_at",
+                        }
+                    )
+            if set(ref) != expected_ref_keys:
+                return content
+            source = ref.get("source")
+            digest = ref.get("content_sha256")
             if (
                 not isinstance(ref_type, str)
                 or not 1 <= len(ref_type.encode("utf-8")) <= 64
@@ -881,9 +908,63 @@ def _completion_attestation_scan_view(path: str, content: str) -> str:
                 or re.fullmatch(r"[0-9a-f]{64}", digest) is None
             ):
                 return content
+            if ref_type in external_types:
+                expected_event = "pull_request" if ref_type == "protected_pr_gate" else "push"
+                repository = ref.get("repository")
+                run_id = ref.get("run_id")
+                repository_parts = repository.split("/") if isinstance(repository, str) else []
+                safe_repository_part = re.compile(r"[A-Za-z0-9_.-]{1,100}\Z")
+                if (
+                    len(repository_parts) != 2
+                    or any(
+                        safe_repository_part.fullmatch(part) is None or part in {".", ".."}
+                        for part in repository_parts
+                    )
+                    or repository_parts[1].lower().endswith(".git")
+                    or not isinstance(run_id, int)
+                    or run_id <= 0
+                    or source.lower()
+                    != f"https://github.com/{repository}/actions/runs/{run_id}".lower()
+                    or not isinstance(ref.get("run_attempt"), int)
+                    or ref["run_attempt"] <= 0
+                    or ref.get("event") != expected_event
+                    or ref.get("conclusion") != "success"
+                    or not isinstance(ref.get("head_branch"), str)
+                    or not 1 <= len(ref["head_branch"].encode("utf-8")) <= 255
+                    or any(character.isspace() for character in ref["head_branch"])
+                    or not isinstance(ref.get("head_sha"), str)
+                    or re.fullmatch(r"[0-9a-f]{40}", ref["head_sha"]) is None
+                    or ref.get("workflow_path") != ".github/workflows/ci.yml"
+                ):
+                    return content
+                if ref_type == "protected_pr_gate" and (
+                    not isinstance(ref.get("pull_request_number"), int)
+                    or ref["pull_request_number"] <= 0
+                    or not isinstance(ref.get("merge_commit_sha"), str)
+                    or re.fullmatch(r"[0-9a-f]{40}", ref["merge_commit_sha"]) is None
+                    or ref.get("required_check") != "gate"
+                    or any(
+                        not isinstance(ref.get(field), str)
+                        or re.fullmatch(
+                            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", ref[field]
+                        )
+                        is None
+                        for field in ("gate_completed_at", "merged_at")
+                    )
+                ):
+                    return content
             observed.append(ref_type)
         if observed != list(required) or len(set(observed)) != len(observed):
             return content
+        if external_types.issubset(observed):
+            protected = next(ref for ref in refs if ref["type"] == "protected_pr_gate")
+            post_merge = next(ref for ref in refs if ref["type"] == "post_merge_gate")
+            if (
+                post_merge["head_branch"] != "master"
+                or protected["repository"].lower() != post_merge["repository"].lower()
+                or protected["merge_commit_sha"] != post_merge["head_sha"]
+            ):
+                return content
 
         scan_value = json.loads(json.dumps(value))
         scan_value["starting_commit_sha"] = "typed-git-object-id"
@@ -891,6 +972,10 @@ def _completion_attestation_scan_view(path: str, content: str) -> str:
         scan_value["packet_sha256"] = "typed-sha256-digest"
         for ref in scan_value["evidence_refs"]:
             ref["content_sha256"] = "typed-sha256-digest"
+            if ref["type"] in external_types:
+                ref["head_sha"] = "typed-git-object-id"
+                if ref["type"] == "protected_pr_gate":
+                    ref["merge_commit_sha"] = "typed-git-object-id"
         return json.dumps(scan_value, ensure_ascii=True, sort_keys=True)
     except (KeyError, PolicyError, TypeError, ValueError, json.JSONDecodeError):
         return content
