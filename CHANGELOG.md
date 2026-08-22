@@ -24,6 +24,12 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-041` after CR-040 passed three reviews but its exact
+  promotion preflight rejected a Windows working-copy CRLF manifest against the
+  canonical LF Git index bytes. No CR-040 promotion commit was created. The
+  successor keeps the reviewed pre-attestation fixture behavior and binds its
+  manifest to the exact LF bytes that Git can publish (`D-039`). CR-038 through
+  CR-040 and PR #20 remain unmerged.
 - 2026-08-22 — opened `CR-037` after product review blocked CR-036 because its
   proposed external-evidence scan view did not bind source URL, repository and
   run identity and admitted whitespace branch names. The successor adds exact
