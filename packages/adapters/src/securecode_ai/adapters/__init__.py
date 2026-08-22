@@ -42,6 +42,7 @@ from .model import (
     parse_model_call_result,
     parse_model_request,
 )
+from .repository import FileSystemRepositoryIntake
 from .runtime import LocalWorkflowRuntime, RuntimeClock
 from .telemetry import (
     BinaryStreamTelemetrySink,
@@ -66,6 +67,7 @@ __all__ = [
     "EndpointAuthorizationIssuer",
     "EndpointError",
     "EphemeralStructuredPayload",
+    "FileSystemRepositoryIntake",
     "HmacContentIdentifier",
     "InMemoryTelemetrySink",
     "JsonObjectValidator",

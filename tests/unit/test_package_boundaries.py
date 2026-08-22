@@ -210,6 +210,15 @@ def test_internal_telemetry_does_not_create_a_public_contract_root() -> None:
     assert adapters.InMemoryTelemetrySink.__module__ == "securecode_ai.adapters.telemetry"
 
 
+def test_repository_intake_contract_stays_internal_and_adapter_owned() -> None:
+    contracts = importlib.import_module("securecode_ai.contracts")
+    core = importlib.import_module("securecode_ai.core")
+    adapters = importlib.import_module("securecode_ai.adapters")
+    assert not hasattr(contracts, "RepositoryInventory")
+    assert core.RepositoryInventory.__module__ == "securecode_ai.core.repository"
+    assert adapters.FileSystemRepositoryIntake.__module__ == "securecode_ai.adapters.repository"
+
+
 @pytest.mark.parametrize(
     ("source", "expected_fragment"),
     [

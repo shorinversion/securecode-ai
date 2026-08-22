@@ -64,6 +64,14 @@ from .model import (
     StructuredPayloadValidator,
     canonical_model_request_hash,
 )
+from .repository import (
+    InventoryLimits,
+    RepositoryFile,
+    RepositoryIntakeError,
+    RepositoryIntakeErrorCode,
+    RepositoryInventory,
+    repository_tree_sha256,
+)
 from .runtime import (
     DEFAULT_POLICY_PIN,
     DEFAULT_STAGE_CATALOGUE_PIN,
@@ -131,6 +139,7 @@ __all__ = [
     "EventConflict",
     "EventConflictCode",
     "EventStream",
+    "InventoryLimits",
     "ModelAuthorizationIssuer",
     "ModelCallResult",
     "ModelCallStatus",
@@ -151,6 +160,10 @@ __all__ = [
     "PreflightNextAction",
     "ProviderKind",
     "ProviderProfile",
+    "RepositoryFile",
+    "RepositoryIntakeError",
+    "RepositoryIntakeErrorCode",
+    "RepositoryInventory",
     "RunExecutionIdentity",
     "RunProjection",
     "StructuredPayloadValidator",
@@ -201,6 +214,7 @@ __all__ = [
     "parse_telemetry_bytes",
     "rebuild_projection",
     "replay_workflow_journal",
+    "repository_tree_sha256",
     "signal_workflow",
     "start_workflow",
     "validate_workflow_signal_preconditions",
