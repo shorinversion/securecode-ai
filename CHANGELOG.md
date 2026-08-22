@@ -24,6 +24,12 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-030` after CR-029 security review found that its
+  advertised total network deadline began only after response headers. The
+  successor reapplies the remaining 15-second budget before request, before
+  and after header receipt, and before every body read, with delayed-request
+  and delayed-header adversarial tests. CR-023 through CR-029 were not
+  promoted, pushed, or merged (`D-036`).
 - 2026-08-22 — opened `P2.14` to remediate the independent P2.1 repository
   intake review findings. The candidate binds traversal to filesystem objects,
   enforces pre-materialization entry and depth ceilings, rejects link aliases,

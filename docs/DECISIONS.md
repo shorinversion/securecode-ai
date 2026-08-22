@@ -509,6 +509,48 @@
   and promotion as one mixed candidate; the post-merge push run can attest the
   same exact chain already accepted by the required PR gate.
 
+## D-036 — Read-only protected-merge authority for P2 completion
+
+- Status: proposed (`CR-030`); exact evaluator bytes require protected
+  promotion. CR-023 through CR-029 were rejected during separated review and
+  none was promoted, pushed, or merged.
+- Rejected alternatives: ruleset history was removed because it requires
+  administration write authority; a body-read-only deadline was removed
+  because request and response-header phases could each consume another socket
+  timeout. CI receives neither administrative nor other write capability.
+- Decision: admit completion attestations only for `P2.1` and `P2.14`, using
+  targeted tests, full quality, independent reviews, protected PR gate and
+  post-merge gate. The P2.1 path-security test becomes executable.
+- Protected merge authority: attempt-specific run and jobs records bind one
+  successful `gate` on the PR head. Its API/attested completion timestamp must
+  be no later than API/attested `merged_at`. The closed merged PR must target
+  `master`; its base/head are the exact ordered parents of the declared merge;
+  that merge is the successful protected-branch push head. A bypass capability
+  cannot substitute for the green gate evidence used by this specific merge.
+- Least authority: only `spec` has exact `actions: read`, `contents: read` and
+  `pull-requests: read`; only its validator step receives `${{ github.token }}`.
+  The first completion PR is the production-permission integration oracle.
+- Total network deadline: each fixed-host HTTPS fetch computes one monotonic
+  deadline. Remaining time is applied to the connection before request, to the
+  socket before response headers, checked immediately after headers, and
+  reapplied before every bounded body read. Redirects, pagination, non-JSON,
+  malformed or over-one-MiB responses fail closed without token/error echo.
+- Fail-closed boundary: local/cross-repository/latest-run substitution, attempt
+  drift, failed/missing/late gate, unmerged/wrong-base PR, parent/order/direct
+  push mismatch, response drift, any phase deadline exhaustion and ancestry
+  gaps reject completion. P1 behavior and accepted contracts remain unchanged.
+- Evidence: P2.14 head `e44fe9032701352665061e2488e0de3ac7fc5e21`
+  passed PR run `32564092644` attempt 1; `gate` completed at
+  `2026-08-22T09:10:05Z`; PR #12 merged at `2026-08-22T09:10:26Z` as
+  `b45a4b8301f0898a02d8a14e9d269f9b646268a3`, which passed push run
+  `32564227372` attempt 1. Live protected digest:
+  `e14b5ef292cb4e4b96540c96e2e1484dbb30bd7903f4ba3a57a7f74dc17d590c`.
+- Verification: 113 spec-validator tests, 81 CI-policy tests and full quality
+  with 1069 passes, five documented platform skips and 85.92 percent Core
+  branch coverage pass on proposed bytes.
+- Delivery: POLICY proposal, three separated independent reviews, exact
+  promotion, ordinary protected PR and green post-merge CI. No bypass.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
