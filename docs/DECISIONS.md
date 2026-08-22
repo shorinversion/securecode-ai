@@ -547,6 +547,26 @@
 - Delivery: POLICY proposal, sequential product/architecture/security reviews,
   exact-byte promotion, ordinary protected PR and green post-merge CI.
 
+## D-039 — Canonical-LF pre-attestation fixture promotion
+
+- Status: proposed (`CR-041`). CR-038 and CR-039 were blocked before complete
+  reviews. CR-040 passed all three reviews, but exact promotion preflight
+  rejected its CRLF working-copy target against Git's canonical LF index; no
+  promotion commit, publication or merge occurred. PR #20 remains unmerged.
+- Decision: preserve CR-040's reviewed fixture behavior while deriving manifest
+  final bytes from the normalized Git index. For each P2.14 and P2.1 assertion,
+  the isolated clone anchors at the parent of the unique task-attestation
+  addition, requires `IN PROGRESS` with no attestation, completes the task and
+  verifies an exact Git `A` addition before unchanged validation.
+- Fail-closed boundary: exact manifest/index byte mismatch, zero or multiple
+  additions, missing or non-`IN PROGRESS` task state, surviving attestation,
+  non-addition diff status and any completion error reject the lifecycle.
+- Scope: only `tests/unit/test_spec_gate.py` changes. Production evaluator,
+  specifications, catalogs, CI policy and gate semantics remain unchanged.
+- Delivery: repeat sequential product/architecture/security reviews on the new
+  LF promotion subject, then exact promotion and ordinary protected PR with
+  green post-merge CI. No bypass.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
