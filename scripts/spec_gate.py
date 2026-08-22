@@ -897,6 +897,22 @@ def validate_completion_attestation(
     return tuple(sorted(errors))
 
 
+def completion_run_evidence_tasks(policy: Mapping[str, object]) -> frozenset[str]:
+    """Derive tasks requiring protected PR and post-merge evidence from policy."""
+
+    catalog = _mapping(policy.get("completion_evidence"), "POLICY_COMPLETION_EVIDENCE")
+    result: set[str] = set()
+    external = {"protected_pr_gate", "post_merge_gate"}
+    for task_id, raw_required in catalog.items():
+        required = _strings(raw_required, f"POLICY_COMPLETION_TASK.{task_id}")
+        observed = external.intersection(required)
+        if observed and observed != external:
+            raise GateInputError("POLICY_GITHUB_RUN_EVIDENCE_PAIR")
+        if observed:
+            result.add(task_id)
+    return frozenset(result)
+
+
 def _promotion_manifest_errors(
     value: object,
     *,
@@ -1793,7 +1809,7 @@ class SpecGate:
             protected_merge_sha: str | None = None
             protected_base_sha: str | None = None
             github_policy: Mapping[str, object] | None = None
-            run_evidence_tasks = {"P2.1", "P2.14"}
+            run_evidence_tasks = completion_run_evidence_tasks(self.policy)
             if task_id == "P1.4" or task_id in run_evidence_tasks:
                 github_policy = _mapping(
                     self.policy.get("github_repository_authority"),
