@@ -5,19 +5,22 @@
 ## Текущая позиция
 
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- Latest completed task: `P2.1 — repository intake and safe file inventory`,
-  implementation packet commit `72917e172e2e8bc82d4b52fa6a524adfe9fecc93`
-  plus remediation commit `e44fe9032701352665061e2488e0de3ac7fc5e21`.
+- Latest completed task: `P2.2 — ignore policy, language/dependency discovery
+  and changed-file mapping`, implementation commit
+  `03906ea3b39ab027399f7ad3de6cb042fabf28de`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: complete `P2.2` ignore policy, language/dependency discovery and
-  base-to-head changed-file mapping. Its constrained packet starts from exact
-  master `e1f88f362e44d581774fde2e5181cb96644b2f35`; the local candidate and
-  targeted tests exist, while independent reviews and protected delivery remain
-  pending.
+- Current task: begin `P2.3` Tree-sitter/CST adapter and location-stable symbol
+  index from the completed P2.2 foundation.
+- P2.2 passed product, architecture and security/evaluation review on the exact
+  accepted tree. Protected PR #24 merged as `457a02b`; PR run `32585989207`
+  and post-merge run `32586165054` passed every mandatory job without bypass.
+- CR-042 completed through protected PR #25 at `abe4061`; post-merge run
+  `32589272475` passed. The evaluator now applies the same closed protected-run
+  completion evidence to every P2.1–P2.14 task from one policy catalog.
 - P2.1 implementation was merged through protected PR #11 at `6765520` and its
   post-merge Python 3.12–3.14 run passed. Independent review then found release
   blockers in path/object binding, bounded traversal, link-alias handling and
@@ -297,8 +300,8 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Complete integrated P2.2 validation and sequential independent reviews.
-2. Deliver P2.2 through the ordinary protected PR gate and verify post-merge CI.
+1. Open the constrained P2.3 task packet from the exact completed P2.2 master.
+2. Implement and verify the Tree-sitter/CST adapter and stable symbol index.
 3. Continue P2 tasks in dependency order; do not begin P3 before effective G2 GO.
 
 ## Критические запреты
