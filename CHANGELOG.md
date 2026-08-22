@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-031` after protected PR #14 correctly failed strict
+  workflow audit because the new read-only permissions lacked inline rationale.
+  The successor preserves CR-030 semantics and adds exact zizmor-compatible
+  explanations; offline strict audit, closed CI policy and 81 policy tests pass.
+  PR #14 was closed without merge or bypass (`D-036`).
 - 2026-08-22 — opened `P2.14` to remediate the independent P2.1 repository
   intake review findings. The candidate binds traversal to filesystem objects,
   enforces pre-materialization entry and depth ceilings, rejects link aliases,
