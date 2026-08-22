@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — completed `P2.14`: the independently reviewed repository-intake
+  remediation passed its protected PR gate and post-merge run. CR-035 then
+  repaired fail-closed validation of the real two-parent merge commit through
+  protected PR #17 and a fully green post-merge run, without bypass.
 - 2026-08-22 — opened `CR-035` after protected PR #16 passed policy, spec,
   dependency and secret-history checks but correctly rejected the new test-only
   identity constants on Ruff formatting. The successor changes only the
