@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — completed `P2.14`: the independently reviewed repository-intake
+  remediation passed protected PR #12 and its post-merge gate. CR-035 repaired
+  two-parent merge-commit validation through protected PR #17, and CR-037
+  repaired identity-bound external completion-evidence scanning through
+  protected PR #19; both post-merge gates passed without bypass.
 - 2026-08-22 — opened `CR-037` after product review blocked CR-036 because its
   proposed external-evidence scan view did not bind source URL, repository and
   run identity and admitted whitespace branch names. The successor adds exact
