@@ -5,15 +5,16 @@
 ## Текущая позиция
 
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- Latest completed task: `P2.14 — P2.1 security remediation and completion
-  enablement`, implementation commit `e44fe9032701352665061e2488e0de3ac7fc5e21`.
+- Latest completed task: `P2.1 — repository intake and safe file inventory`,
+  implementation packet commit `72917e172e2e8bc82d4b52fa6a524adfe9fecc93`
+  plus remediation commit `e44fe9032701352665061e2488e0de3ac7fc5e21`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: attest P2.1 on the same protected evidence; P2.2 remains blocked
-  until that successor completion is merged.
+- Current task: begin P2.2 ignore policy, language and dependency discovery from
+  its accepted contracts and a constrained task packet.
 - P2.1 implementation was merged through protected PR #11 at `6765520` and its
   post-merge Python 3.12–3.14 run passed. Independent review then found release
   blockers in path/object binding, bounded traversal, link-alias handling and
