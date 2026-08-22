@@ -24,6 +24,9 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — opened `CR-023`: extend the closed completion-evidence catalog
+  only to `P2.1` and `P2.14`, with fixed ordered evidence kinds and regression
+  coverage proving unknown P2 tasks remain ineligible (`D-036`).
 - 2026-08-22 — opened `P2.14` to remediate the independent P2.1 repository
   intake review findings. The candidate binds traversal to filesystem objects,
   enforces pre-materialization entry and depth ceilings, rejects link aliases,

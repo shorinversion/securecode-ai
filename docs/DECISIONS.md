@@ -509,6 +509,29 @@
   and promotion as one mixed candidate; the post-merge push run can attest the
   same exact chain already accepted by the required PR gate.
 
+## D-036 — Closed P2 repository-intake completion catalog
+
+- Status: proposed (`CR-023`); exact policy bytes require protected promotion.
+- Decision: authorize completion attestations only for `P2.1` and `P2.14` in
+  addition to the two existing P1 tasks. Both P2 tasks require the same fixed,
+  ordered evidence kinds: targeted tests, full quality, independent reviews,
+  protected PR gate, and post-merge gate. No wildcard or task-prefix matching
+  is introduced.
+- Evidence authority: P2.1 implementation merged through PR #11 and P2.14
+  remediation merged through PR #12 at `b45a4b8301f0898a02d8a14e9d269f9b646268a3`.
+  Exact-byte product, architecture, and security/evaluation reviews returned
+  `PASS/PASS/PASS`; PR run `32564092644` and post-merge run `32564227372`
+  passed policy, secrets, dependency, specification, Python 3.12–3.14 quality,
+  and final gate jobs. The remediation includes executable POSIX and Windows
+  adversarial intake tests.
+- Fail-closed boundary: `P2.2` and every other uncatalogued task remain
+  ineligible; attestations still bind the historical packet addition, exact
+  implementation commit, immutable repository evidence bytes, two-path status
+  transition, budgets, and ordered unique evidence types.
+- Delivery: use the existing POLICY proposal, three commit-separated reviews,
+  exact manifest promotion, ordinary protected PR, and green post-merge CI.
+  No ruleset bypass is authorized.
+
 <!-- OPEN_DECISIONS -->
 
 ## Открытые решения, не блокирующие P1
