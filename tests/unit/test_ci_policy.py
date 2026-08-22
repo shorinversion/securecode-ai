@@ -284,6 +284,137 @@ def test_schema_valid_completion_attestation_digests_are_metadata_not_secrets() 
     assert POLICY.scan_text(path, content, _baseline()) == []
 
 
+def _external_completion_attestation() -> tuple[str, dict[str, Any]]:
+    path = "work/task-attestations/P2.14.json"
+    digest = "".join(
+        (
+            "5f04f819",
+            "a5a388d2",
+            "dfe4aa1c",
+            "11afc82f",
+            "c68cf363",
+            "1d569714",
+            "ec2bb60c",
+            "5be5cc99",
+        )
+    )
+    head = "".join(("e44fe903", "27013526", "65061e24", "88e0de3a", "c7fc5e21"))
+    merge = "".join(("b45a4b83", "01f0898a", "02d8a14e", "9d269f9b", "646268a3"))
+    value = {
+        "allowed_paths": [path, "docs/PLAN.md"],
+        "budgets": {"max_changed_files": 5, "max_diff_lines": 800},
+        "change_type": "completion_attestation",
+        "evidence_refs": [
+            {
+                "content_sha256": digest,
+                "source": "tests/unit/test_repository_intake.py",
+                "type": "targeted_tests",
+            },
+            {"content_sha256": digest, "source": "scripts/quality.py", "type": "full_quality"},
+            {
+                "content_sha256": digest,
+                "source": "work/change-control/README.md",
+                "type": "independent_reviews",
+            },
+            {
+                "conclusion": "success",
+                "content_sha256": digest,
+                "event": "pull_request",
+                "gate_completed_at": "2026-08-22T09:10:05Z",
+                "head_branch": "codex/p2-1-attestation",
+                "head_sha": head,
+                "merge_commit_sha": merge,
+                "merged_at": "2026-08-22T09:10:26Z",
+                "pull_request_number": 12,
+                "repository": "shorinversion/securecode-ai",
+                "required_check": "gate",
+                "run_attempt": 1,
+                "run_id": 32564092644,
+                "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32564092644",
+                "type": "protected_pr_gate",
+                "workflow_path": ".github/workflows/ci.yml",
+            },
+            {
+                "conclusion": "success",
+                "content_sha256": digest,
+                "event": "push",
+                "head_branch": "master",
+                "head_sha": merge,
+                "repository": "shorinversion/securecode-ai",
+                "run_attempt": 1,
+                "run_id": 32564227372,
+                "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32564227372",
+                "type": "post_merge_gate",
+                "workflow_path": ".github/workflows/ci.yml",
+            },
+        ],
+        "implementation_commit_sha": head,
+        "packet_sha256": digest,
+        "schema_version": "1.0.0",
+        "starting_commit_sha": merge,
+        "task_id": "P2.14",
+    }
+    return path, value
+
+
+def test_external_completion_attestation_typed_hashes_are_not_secrets() -> None:
+    path, value = _external_completion_attestation()
+    assert POLICY.scan_text(path, json.dumps(value, sort_keys=True), _baseline()) == []
+
+
+@pytest.mark.parametrize(
+    ("reference", "mutation"),
+    [
+        (3, "extra-field"),
+        (3, "bad-head"),
+        (3, "bad-event"),
+        (3, "bad-check"),
+        (3, "whitespace-branch"),
+        (3, "local-source"),
+        (3, "wrong-run-source"),
+        (3, "source-repository-mismatch"),
+        (3, "bad-time"),
+        (4, "missing-run"),
+        (4, "bad-workflow"),
+        (4, "wrong-protected-branch"),
+        (4, "merge-head-mismatch"),
+    ],
+)
+def test_external_completion_attestation_recognition_fails_closed(
+    reference: int, mutation: str
+) -> None:
+    path, value = _external_completion_attestation()
+    ref = value["evidence_refs"][reference]
+    if mutation == "extra-field":
+        ref["unreviewed"] = "field"
+    elif mutation == "bad-head":
+        ref["head_sha"] = "not-an-object-id"
+    elif mutation == "bad-event":
+        ref["event"] = "push"
+    elif mutation == "bad-check":
+        ref["required_check"] = "other"
+    elif mutation == "whitespace-branch":
+        ref["head_branch"] = "codex/unsafe branch"
+    elif mutation == "local-source":
+        ref["source"] = "work/evidence/run.json"
+    elif mutation == "wrong-run-source":
+        ref["source"] = "https://github.com/shorinversion/securecode-ai/actions/runs/1"
+    elif mutation == "source-repository-mismatch":
+        ref["repository"] = "other/securecode-ai"
+    elif mutation == "bad-time":
+        ref["merged_at"] = "not-a-time"
+    elif mutation == "missing-run":
+        ref.pop("run_id")
+    elif mutation == "bad-workflow":
+        ref["workflow_path"] = ".github/workflows/other.yml"
+    elif mutation == "wrong-protected-branch":
+        ref["head_branch"] = "other"
+    else:
+        ref["head_sha"] = value["implementation_commit_sha"]
+    content = json.dumps(value, sort_keys=True)
+    assert POLICY._completion_attestation_scan_view(path, content) == content
+
+
 @pytest.mark.parametrize(
     "mutation",
     [
