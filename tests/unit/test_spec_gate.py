@@ -674,6 +674,31 @@ def _replace_task_status(repository: Path, task_id: str) -> None:
     path.write_bytes(updated)
 
 
+def _prepare_task_completion_fixture(repository: Path, task_id: str) -> None:
+    """Anchor the clone at the unique pre-attestation task state."""
+
+    attestation_path = f"work/task-attestations/{task_id}.json"
+    if not (repository / attestation_path).exists():
+        _replace_task_status(repository, task_id)
+        _write_candidate(repository, attestation_path, b"{}\n")
+        _commit_all(repository, f"Simulate completed {task_id} source state")
+    additions = _run_git(
+        repository,
+        "log",
+        "--diff-filter=A",
+        "--format=%H",
+        "HEAD",
+        "--",
+        attestation_path,
+    ).splitlines()
+    assert len(additions) == 1
+    pre_completion = _run_git(repository, "rev-parse", f"{additions[0]}^")
+    _run_git(repository, "reset", "--hard", pre_completion)
+    assert not (repository / attestation_path).exists()
+    statuses = GATE.task_statuses((repository / "docs/PLAN.md").read_bytes())
+    assert statuses[task_id] == "IN PROGRESS"
+
+
 def _complete_task(
     repository: Path, task_id: str, *, evidence_repository: str = "example/repo"
 ) -> tuple[str, str]:
@@ -1615,7 +1640,14 @@ def test_p2_completion_requires_authoritative_bound_github_runs(
     _run_git(repository, "config", "user.name", "Spec Gate Test")
     _run_git(repository, "config", "user.email", "spec-gate@example.invalid")
     _run_git(repository, "config", "core.autocrlf", "false")
+    _prepare_task_completion_fixture(repository, task_id)
     base, candidate = _complete_task(repository, task_id)
+    assert (
+        "A",
+        f"work/task-attestations/{task_id}.json",
+    ) in GATE.SpecGate(root=repository, policy_path=GATE.POLICY_PATH)._diff_records(
+        "committed-candidate", base, candidate
+    )
 
     def fetched_run(
         self: Any, owner: str, name: str, run_id: int, run_attempt: int
@@ -1754,7 +1786,14 @@ def test_p2_completion_requires_authoritative_bound_github_runs(
 
     _run_git(repository, "reset", "--hard", candidate)
     monkeypatch.setattr(GATE.SpecGate, "_github_actions_run", fetched_run)
+    _prepare_task_completion_fixture(repository, "P2.1")
     p21_base, p21_candidate = _complete_task(repository, "P2.1")
+    assert (
+        "A",
+        "work/task-attestations/P2.1.json",
+    ) in GATE.SpecGate(root=repository, policy_path=GATE.POLICY_PATH)._diff_records(
+        "committed-candidate", p21_base, p21_candidate
+    )
     p21_gate = GATE.SpecGate(
         root=repository,
         policy_path=GATE.POLICY_PATH,
