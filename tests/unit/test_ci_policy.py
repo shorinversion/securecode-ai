@@ -129,6 +129,27 @@ def test_accepted_ci_policy_inputs_pass() -> None:
         lambda workflow: workflow["jobs"]["quality"].update(
             env={"GITHUB_TOKEN": "${{ github.token }}"}
         ),
+        lambda workflow: workflow["jobs"]["spec"].update(permissions={"contents": "read"}),
+        lambda workflow: workflow["jobs"]["spec"].update(
+            permissions={
+                "actions": "write",
+                "contents": "read",
+                "pull-requests": "read",
+            }
+        ),
+        lambda workflow: workflow["jobs"]["dependency"].update(
+            permissions={
+                "actions": "read",
+                "contents": "read",
+                "pull-requests": "write",
+            }
+        ),
+        lambda workflow: _run_step(workflow, "spec", "scripts/spec_gate.py").update(
+            env={"GITHUB_TOKEN": "${{ secrets.CI_TOKEN }}"}
+        ),
+        lambda workflow: _run_step(workflow, "dependency", "audit-negative").update(
+            env={"GITHUB_TOKEN": "${{ github.token }}"}
+        ),
         lambda workflow: workflow["jobs"]["quality"].update(
             container={"image": "attacker/image:latest"}
         ),

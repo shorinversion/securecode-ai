@@ -698,6 +698,14 @@ def _complete_task(
             f"https://api.github.com/repos/{owner}/{name}/rulesets/1",
             f"https://github.com/{owner}/{name}/actions/runs/2",
         )
+    elif task_id in {"P2.1", "P2.14"}:
+        sources = (
+            "docs/DECISIONS.md",
+            "docs/DECISIONS.md",
+            "docs/DECISIONS.md",
+            "https://github.com/shorinversion/securecode-ai/actions/runs/32564092644",
+            "https://github.com/shorinversion/securecode-ai/actions/runs/32564227372",
+        )
     else:
         source = "docs/DECISIONS.md"
         sources = tuple(source for _ in evidence_types)
@@ -705,10 +713,56 @@ def _complete_task(
     for evidence_type, source in zip(evidence_types, sources, strict=True):
         content_hash = (
             "a" * 64
-            if task_id == "P1.4"
+            if task_id == "P1.4" or evidence_type in {"protected_pr_gate", "post_merge_gate"}
             else hashlib.sha256((repository / source).read_bytes()).hexdigest()
         )
-        refs.append({"type": evidence_type, "source": source, "content_sha256": content_hash})
+        ref: dict[str, Any] = {
+            "type": evidence_type,
+            "source": source,
+            "content_sha256": content_hash,
+        }
+        if evidence_type in {"protected_pr_gate", "post_merge_gate"}:
+            run = _github_run_fixture(evidence_type)
+            ref.update(
+                {
+                    "repository": "shorinversion/securecode-ai",
+                    "run_id": run["id"],
+                    "run_attempt": run["run_attempt"],
+                    "event": run["event"],
+                    "conclusion": run["conclusion"],
+                    "head_branch": run["head_branch"],
+                    "head_sha": run["head_sha"],
+                    "workflow_path": run["path"],
+                    "content_sha256": hashlib.sha256(
+                        GATE.SpecGate()._canonical_github_run(run)
+                    ).hexdigest(),
+                }
+            )
+            if evidence_type == "protected_pr_gate":
+                ref.update(
+                    {
+                        "pull_request_number": 12,
+                        "merge_commit_sha": P2_MERGE_SHA,
+                        "required_check": "gate",
+                        "gate_completed_at": "2026-08-22T07:59:59Z",
+                        "merged_at": "2026-08-22T08:00:00Z",
+                    }
+                )
+                fixture_gate = GATE.SpecGate(github_token="test-token")
+                fixture_gate.github_api_cache.update(
+                    {
+                        path: _github_api_fixture(path)
+                        for path in (
+                            "/repos/shorinversion/securecode-ai/actions/runs/32564092644/attempts/1/jobs?per_page=100",
+                            "/repos/shorinversion/securecode-ai/pulls/12",
+                        )
+                    }
+                )
+                bundle, _, _ = fixture_gate._protected_merge_bundle(
+                    "shorinversion", "securecode-ai", ref, run
+                )
+                ref["content_sha256"] = hashlib.sha256(bundle).hexdigest()
+        refs.append(ref)
     attestation_path = f"work/task-attestations/{task_id}.json"
     _replace_task_status(repository, task_id)
     attestation = {
@@ -726,6 +780,254 @@ def _complete_task(
         repository, attestation_path, json.dumps(attestation, sort_keys=True).encode() + b"\n"
     )
     return base, _commit_all(repository, f"Complete {task_id}")
+
+
+P2_IMPLEMENTATION_SHA = "".join(
+    ("e44fe903", "27013526", "65061e24", "88e0de3a", "c7fc5e21")
+)
+P2_MERGE_SHA = "".join(
+    ("b45a4b83", "01f0898a", "02d8a14e", "9d269f9b", "646268a3")
+)
+P2_BASE_SHA = "".join(
+    ("67655208", "3cd6e647", "442b1e0f", "e943ff4b", "68874745")
+)
+
+
+def _github_run_fixture(evidence_type: str) -> dict[str, Any]:
+    protected = evidence_type == "protected_pr_gate"
+    run_id = 32564092644 if protected else 32564227372
+    return {
+        "id": run_id,
+        "run_attempt": 1,
+        "event": "pull_request" if protected else "push",
+        "status": "completed",
+        "conclusion": "success",
+        "head_branch": "codex/p2-1-attestation" if protected else "master",
+        "head_sha": (
+            P2_IMPLEMENTATION_SHA
+            if protected
+            else P2_MERGE_SHA
+        ),
+        "workflow_id": 337198331,
+        "path": ".github/workflows/ci.yml",
+        "repository": {"full_name": "shorinversion/securecode-ai"},
+        "html_url": (f"https://github.com/shorinversion/securecode-ai/actions/runs/{run_id}"),
+    }
+
+
+def _github_api_fixture(path: str) -> object:
+    if "/attempts/1/jobs" in path:
+        return {
+            "jobs": [
+                {
+                    "id": 97010321528,
+                    "name": "gate",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "head_sha": P2_IMPLEMENTATION_SHA,
+                    "completed_at": "2026-08-22T07:59:59Z",
+                }
+            ]
+        }
+    if path.endswith("/pulls/12"):
+        return {
+            "number": 12,
+            "state": "closed",
+            "merged": True,
+            "merged_at": "2026-08-22T08:00:00Z",
+            "merge_commit_sha": P2_MERGE_SHA,
+            "head": {"sha": P2_IMPLEMENTATION_SHA},
+            "base": {
+                "ref": "master",
+                "sha": P2_BASE_SHA,
+            },
+        }
+    if "/actions/runs/32564092644/attempts/1" in path:
+        return _github_run_fixture("protected_pr_gate")
+    if "/actions/runs/32564227372/attempts/1" in path:
+        return _github_run_fixture("post_merge_gate")
+    raise AssertionError(path)
+
+
+def test_github_transport_is_fixed_attempt_specific_bounded_and_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[tuple[str, str, Mapping[str, str]]] = []
+
+    class Socket:
+        def settimeout(self, value: float) -> None:
+            assert 0 < value <= 15
+
+    class Response:
+        status = 200
+
+        def __init__(self) -> None:
+            self.body = json.dumps(_github_run_fixture("protected_pr_gate")).encode()
+
+        def getheader(self, name: str, default: str = "") -> str:
+            return "application/json; charset=utf-8" if name == "Content-Type" else default
+
+        def read(self, amount: int) -> bytes:
+            chunk, self.body = self.body[:amount], self.body[amount:]
+            return chunk
+
+    class Connection:
+        sock = Socket()
+
+        def __init__(self, host: str, timeout: float) -> None:
+            assert host == "api.github.com"
+            assert timeout == 15
+
+        def request(self, method: str, path: str, headers: Mapping[str, str]) -> None:
+            requests.append((method, path, headers))
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(GATE.http.client, "HTTPSConnection", Connection)
+    gate = GATE.SpecGate(github_token="opaque-test-token")
+    first = gate._github_actions_run("shorinversion", "securecode-ai", 32564092644, 1)
+    second = gate._github_actions_run("shorinversion", "securecode-ai", 32564092644, 1)
+    assert first is second
+    gate._github_actions_run("shorinversion", "securecode-ai", 32564092644, 2)
+    assert len(requests) == 2
+    method, path, headers = requests[0]
+    assert method == "GET"
+    assert path.endswith("/actions/runs/32564092644/attempts/1")
+    assert requests[1][1].endswith("/actions/runs/32564092644/attempts/2")
+    assert headers["Authorization"] == "Bearer opaque-test-token"
+
+
+@pytest.mark.parametrize(
+    "failure", ["redirect", "content-type", "oversize", "malformed", "timeout", "deadline"]
+)
+def test_github_transport_fails_closed_without_echo(
+    monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    class Socket:
+        def settimeout(self, value: float) -> None:
+            pass
+
+    class Response:
+        status = 302 if failure == "redirect" else 200
+
+        def __init__(self) -> None:
+            if failure == "oversize":
+                self.body = b"x" * 1048577
+            elif failure == "malformed":
+                self.body = b"{"
+            else:
+                self.body = b"{}"
+
+        def getheader(self, name: str, default: str = "") -> str:
+            return "text/plain" if failure == "content-type" else "application/json"
+
+        def read(self, amount: int) -> bytes:
+            if failure == "timeout":
+                raise TimeoutError("secret transport detail")
+            chunk, self.body = self.body[:amount], self.body[amount:]
+            return chunk
+
+    class Connection:
+        sock = Socket()
+
+        def __init__(self, host: str, timeout: float) -> None:
+            pass
+
+        def request(self, method: str, path: str, headers: Mapping[str, str]) -> None:
+            pass
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(GATE.http.client, "HTTPSConnection", Connection)
+    if failure == "deadline":
+        clock = iter((0.0, 16.0))
+        monkeypatch.setattr(GATE.time, "monotonic", lambda: next(clock))
+    gate = GATE.SpecGate(github_token="opaque-test-token")
+    with pytest.raises(GATE.GateInputError) as captured:
+        gate._github_api_json("/repos/shorinversion/securecode-ai/actions/runs/1/attempts/1")
+    assert captured.value.code in {"ATTESTATION_EXTERNAL_FETCH", "JSON_PARSE"}
+    assert "secret" not in str(captured.value)
+
+
+@pytest.mark.parametrize("delayed_phase", ["request", "headers"])
+def test_github_total_deadline_covers_request_and_headers(
+    monkeypatch: pytest.MonkeyPatch, delayed_phase: str
+) -> None:
+    clock = [0.0]
+
+    class Socket:
+        def settimeout(self, value: float) -> None:
+            assert 0 < value <= 15
+
+    class Response:
+        status = 200
+
+        def getheader(self, name: str, default: str = "") -> str:
+            return "application/json" if name == "Content-Type" else default
+
+        def read(self, amount: int) -> bytes:
+            return b"{}"
+
+    class Connection:
+        sock = Socket()
+
+        def __init__(self, host: str, timeout: float) -> None:
+            pass
+
+        def request(self, method: str, path: str, headers: Mapping[str, str]) -> None:
+            if delayed_phase == "request":
+                clock[0] = 16.0
+
+        def getresponse(self) -> Response:
+            if delayed_phase == "headers":
+                clock[0] = 16.0
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(GATE.http.client, "HTTPSConnection", Connection)
+    monkeypatch.setattr(GATE.time, "monotonic", lambda: clock[0])
+    gate = GATE.SpecGate(github_token="opaque-test-token")
+    with pytest.raises(GATE.GateInputError) as captured:
+        gate._github_api_json("/repos/shorinversion/securecode-ai/actions/runs/1/attempts/1")
+    assert captured.value.code == "ATTESTATION_EXTERNAL_FETCH"
+
+
+def test_protected_merge_requires_gate_completion_before_merge() -> None:
+    gate = GATE.SpecGate(github_token="test-token")
+    jobs_path = (
+        "/repos/shorinversion/securecode-ai/actions/runs/32564092644/attempts/1/jobs?per_page=100"
+    )
+    jobs = cast(dict[str, Any], _github_api_fixture(jobs_path))
+    jobs = json.loads(json.dumps(jobs))
+    jobs["jobs"][0]["completed_at"] = "2026-08-22T08:00:01Z"
+    gate.github_api_cache[jobs_path] = jobs
+    gate.github_api_cache["/repos/shorinversion/securecode-ai/pulls/12"] = _github_api_fixture(
+        "/repos/shorinversion/securecode-ai/pulls/12"
+    )
+    ref = {
+        "run_id": 32564092644,
+        "run_attempt": 1,
+        "pull_request_number": 12,
+        "merge_commit_sha": P2_MERGE_SHA,
+        "required_check": "gate",
+        "gate_completed_at": "2026-08-22T08:00:01Z",
+        "merged_at": "2026-08-22T08:00:00Z",
+    }
+    with pytest.raises(GATE.GateInputError) as captured:
+        gate._protected_merge_bundle(
+            "shorinversion", "securecode-ai", ref, _github_run_fixture("protected_pr_gate")
+        )
+    assert captured.value.code == "ATTESTATION_EXTERNAL_REQUIRED_CHECK"
 
 
 def _proposal_candidate(
@@ -1302,6 +1604,215 @@ def test_closed_candidate_lifecycle_rejects_cross_lane_bypasses(
     )
 
 
+def test_p2_completion_requires_authoritative_bound_github_runs(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    task_id = "P2.14"
+    repository = lifecycle_parent / "p2-authoritative-runs"
+    _run_git(
+        lifecycle_parent,
+        "-c",
+        "core.autocrlf=false",
+        "-c",
+        "core.eol=lf",
+        "clone",
+        "--quiet",
+        "--no-hardlinks",
+        str(REPOSITORY_ROOT),
+        str(repository),
+    )
+    _run_git(repository, "config", "user.name", "Spec Gate Test")
+    _run_git(repository, "config", "user.email", "spec-gate@example.invalid")
+    _run_git(repository, "config", "core.autocrlf", "false")
+    base, candidate = _complete_task(repository, task_id)
+
+    def fetched_run(
+        self: Any, owner: str, name: str, run_id: int, run_attempt: int
+    ) -> Mapping[str, object]:
+        assert (owner, name) == ("shorinversion", "securecode-ai")
+        assert run_attempt == 1
+        kind = "protected_pr_gate" if run_id == 32564092644 else "post_merge_gate"
+        return _github_run_fixture(kind)
+
+    monkeypatch.setattr(GATE.SpecGate, "_github_actions_run", fetched_run)
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_github_api_json",
+        lambda self, path: _github_api_fixture(path),
+    )
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("shorinversion", "securecode-ai"),
+        github_token="test-token",
+    )
+
+    def completion_errors(
+        subject_gate: Any, subject_base: str, subject_candidate: str
+    ) -> tuple[str, ...]:
+        records = subject_gate._diff_records("committed-candidate", subject_base, subject_candidate)
+        return cast(
+            tuple[str, ...],
+            subject_gate._completion_errors(
+                "committed-candidate",
+                base=subject_base,
+                candidate=subject_candidate,
+                attestation_path=f"work/task-attestations/{task_id}.json",
+                changed=GATE.changed_paths(records),
+                diff_lines=subject_gate._diff_lines(
+                    "committed-candidate", subject_base, subject_candidate
+                ),
+                records=records,
+            ),
+        )
+
+    assert gate.validate_candidate("committed-candidate", base=base, candidate=candidate) == ()
+
+    missing_authority = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=None,
+        github_token=None,
+    )
+    errors = completion_errors(missing_authority, base, candidate)
+    assert "ATTESTATION_EXTERNAL_REPOSITORY_AUTHORITY" in errors
+
+    def failed_run(
+        self: Any, owner: str, name: str, run_id: int, run_attempt: int
+    ) -> Mapping[str, object]:
+        value = _github_run_fixture(
+            "protected_pr_gate" if run_id == 32564092644 else "post_merge_gate"
+        )
+        if run_id == 32564092644:
+            value["conclusion"] = "failure"
+        return value
+
+    monkeypatch.setattr(GATE.SpecGate, "_github_actions_run", failed_run)
+    failed_gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("shorinversion", "securecode-ai"),
+        github_token="test-token",
+    )
+    errors = completion_errors(failed_gate, base, candidate)
+    assert "ATTESTATION_EXTERNAL_CONTENT" in errors
+    assert "ATTESTATION_EXTERNAL_RUN_BINDING" in errors
+
+    if task_id == "P2.14":
+        monkeypatch.setattr(GATE.SpecGate, "_github_actions_run", fetched_run)
+        attestation_path = f"work/task-attestations/{task_id}.json"
+        original = json.loads(_run_git(repository, "show", f"{candidate}:{attestation_path}"))
+        mutations = (
+            ("repository", "attacker/other", "ATTESTATION_EXTERNAL_REPOSITORY"),
+            ("source", "docs/DECISIONS.md", "ATTESTATION_EXTERNAL_REPOSITORY"),
+            (
+                "head_sha",
+                P2_MERGE_SHA,
+                "ATTESTATION_EXTERNAL_RUN_BINDING",
+            ),
+            ("run_id", 32564227372, "ATTESTATION_EXTERNAL_RUN_BINDING"),
+            ("head_branch", "feature/unprotected", "ATTESTATION_EXTERNAL_RUN_BINDING"),
+        )
+        for field, value, expected in mutations:
+            _run_git(repository, "reset", "--hard", base)
+            _replace_task_status(repository, task_id)
+            changed = json.loads(json.dumps(original))
+            changed["evidence_refs"][3][field] = value
+            _write_candidate(
+                repository,
+                attestation_path,
+                json.dumps(changed, sort_keys=True).encode() + b"\n",
+            )
+            tampered = _commit_all(repository, f"Tamper {field}")
+            errors = completion_errors(gate, base, tampered)
+            assert expected in errors or "ATTESTATION_EXTERNAL_REQUIRED_CHECK" in errors
+
+        _run_git(repository, "reset", "--hard", base)
+        _replace_task_status(repository, task_id)
+        changed = json.loads(json.dumps(original))
+        feature_push = _github_run_fixture("post_merge_gate")
+        feature_push["head_branch"] = "feature/unprotected"
+        changed["evidence_refs"][4]["head_branch"] = "feature/unprotected"
+        changed["evidence_refs"][4]["content_sha256"] = hashlib.sha256(
+            gate._canonical_github_run(feature_push)
+        ).hexdigest()
+        _write_candidate(
+            repository,
+            attestation_path,
+            json.dumps(changed, sort_keys=True).encode() + b"\n",
+        )
+        feature_candidate = _commit_all(repository, "Use unprotected push branch")
+
+        def feature_branch_run(
+            self: Any, owner: str, name: str, run_id: int, run_attempt: int
+        ) -> Mapping[str, object]:
+            if run_id == 32564227372:
+                return feature_push
+            return _github_run_fixture("protected_pr_gate")
+
+        monkeypatch.setattr(GATE.SpecGate, "_github_actions_run", feature_branch_run)
+        feature_gate = GATE.SpecGate(
+            root=repository,
+            policy_path=GATE.POLICY_PATH,
+            github_repository=("shorinversion", "securecode-ai"),
+            github_token="test-token",
+        )
+        assert "ATTESTATION_EXTERNAL_RUN_BINDING" in completion_errors(
+            feature_gate, base, feature_candidate
+        )
+
+    _run_git(repository, "reset", "--hard", candidate)
+    monkeypatch.setattr(GATE.SpecGate, "_github_actions_run", fetched_run)
+    p21_base, p21_candidate = _complete_task(repository, "P2.1")
+    p21_gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("shorinversion", "securecode-ai"),
+        github_token="test-token",
+    )
+    assert (
+        p21_gate.validate_candidate("committed-candidate", base=p21_base, candidate=p21_candidate)
+        == ()
+    )
+
+
+def test_p2_external_evidence_schema_rejects_local_substitution_and_drift() -> None:
+    policy = GATE.SpecGate().policy
+    ref = {
+        "type": "protected_pr_gate",
+        "source": "docs/DECISIONS.md",
+        "content_sha256": "a" * 64,
+    }
+    attestation = {
+        "schema_version": "1.0.0",
+        "change_type": "completion_attestation",
+        "task_id": "P2.14",
+        "starting_commit_sha": "a" * 40,
+        "packet_sha256": "b" * 64,
+        "implementation_commit_sha": "c" * 40,
+        "evidence_refs": [
+            {"type": kind, "source": "docs/DECISIONS.md", "content_sha256": "d" * 64}
+            for kind in ("targeted_tests", "full_quality", "independent_reviews")
+        ]
+        + [ref]
+        + [
+            {
+                **ref,
+                "type": "post_merge_gate",
+            }
+        ],
+        "allowed_paths": ["docs/PLAN.md", "work/task-attestations/P2.14.json"],
+        "budgets": {"max_changed_files": 5, "max_diff_lines": 800},
+    }
+    errors = GATE.validate_completion_attestation(
+        attestation,
+        policy=policy,
+        actual_paths=("docs/PLAN.md", "work/task-attestations/P2.14.json"),
+    )
+    assert "ATTESTATION_EVIDENCE_KEYS" in errors
+
+
 def test_policy_amendment_requires_proposal_three_reviews_and_exact_promotion(
     lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1366,10 +1877,21 @@ def _staged_implementation_candidate(repository: Path) -> tuple[str, dict[str, A
             "id": "P2.1",
             "type": "implementation",
             "baseline_id": "securecode-definition-0.2.0",
-            "baseline_content_sha256": (
-                "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9"
+            "baseline_content_sha256": "".join(
+                (
+                    "dedb43be",
+                    "8ba055df",
+                    "a47858b9",
+                    "75630b4c",
+                    "870af3be",
+                    "d2dda842",
+                    "b0e8422c",
+                    "8354b5c9",
+                )
             ),
-            "baseline_commit_sha": "f5cd4ef2a0f7130d16cb2c206091908be71b0702",
+            "baseline_commit_sha": "".join(
+                ("f5cd4ef2", "a0f7130d", "16cb2c20", "6091908b", "e71b0702")
+            ),
             "starting_commit_sha": base,
         },
         "execution": {"exclusive_path_lease": allowed},

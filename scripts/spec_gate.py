@@ -7,14 +7,17 @@ import base64
 import binascii
 import fnmatch
 import hashlib
+import http.client
 import json
 import math
 import os
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Final, NoReturn, cast
 from urllib.parse import unquote, unquote_to_bytes, urlparse, urlsplit
@@ -803,10 +806,35 @@ def validate_completion_attestation(
         required = _strings(catalog.get(str(task_id)), "POLICY_COMPLETION_TASK")
         refs = _sequence(data.get("evidence_refs"), "ATTESTATION_EVIDENCE")
         observed: list[str] = []
+        external_types = {"protected_pr_gate", "post_merge_gate"}
         for raw_ref in refs:
             ref = _mapping(raw_ref, "ATTESTATION_EVIDENCE_REF")
-            _strict_keys(ref, {"type", "source", "content_sha256"}, "ATTESTATION_EVIDENCE_KEYS")
             ref_type = ref.get("type")
+            expected_ref_keys = {"type", "source", "content_sha256"}
+            if ref_type in external_types:
+                expected_ref_keys.update(
+                    {
+                        "repository",
+                        "run_id",
+                        "run_attempt",
+                        "event",
+                        "conclusion",
+                        "head_branch",
+                        "head_sha",
+                        "workflow_path",
+                    }
+                )
+                if ref_type == "protected_pr_gate":
+                    expected_ref_keys.update(
+                        {
+                            "pull_request_number",
+                            "merge_commit_sha",
+                            "required_check",
+                            "gate_completed_at",
+                            "merged_at",
+                        }
+                    )
+            _strict_keys(ref, expected_ref_keys, "ATTESTATION_EVIDENCE_KEYS")
             source = ref.get("source")
             content_hash = ref.get("content_sha256")
             if not isinstance(ref_type, str) or len(ref_type.encode()) > 64:
@@ -817,6 +845,51 @@ def validate_completion_attestation(
                 errors.add("ATTESTATION_EVIDENCE_SOURCE")
             if not isinstance(content_hash, str) or not SHA256_PATTERN.fullmatch(content_hash):
                 errors.add("ATTESTATION_EVIDENCE_HASH")
+            if ref_type in external_types:
+                repository_value = ref.get("repository")
+                run_id_value = ref.get("run_id")
+                run_attempt_value = ref.get("run_attempt")
+                if (
+                    not isinstance(repository_value, str)
+                    or repository_identity(repository_value) is None
+                ):
+                    errors.add("ATTESTATION_EXTERNAL_REPOSITORY")
+                if not isinstance(run_id_value, int) or run_id_value <= 0:
+                    errors.add("ATTESTATION_EXTERNAL_RUN")
+                if not isinstance(run_attempt_value, int) or run_attempt_value <= 0:
+                    errors.add("ATTESTATION_EXTERNAL_RUN")
+                if ref.get("event") not in {"pull_request", "push"}:
+                    errors.add("ATTESTATION_EXTERNAL_EVENT")
+                if ref.get("conclusion") != "success":
+                    errors.add("ATTESTATION_EXTERNAL_CONCLUSION")
+                head_branch_value = ref.get("head_branch")
+                if (
+                    not isinstance(head_branch_value, str)
+                    or not 1 <= len(head_branch_value.encode("utf-8")) <= 255
+                    or any(character.isspace() for character in head_branch_value)
+                ):
+                    errors.add("ATTESTATION_EXTERNAL_BRANCH")
+                if not isinstance(ref.get("head_sha"), str) or not SHA1_PATTERN.fullmatch(
+                    str(ref.get("head_sha"))
+                ):
+                    errors.add("ATTESTATION_EXTERNAL_COMMIT")
+                if ref.get("workflow_path") != ".github/workflows/ci.yml":
+                    errors.add("ATTESTATION_EXTERNAL_WORKFLOW")
+                if ref_type == "protected_pr_gate":
+                    for field_name in ("pull_request_number",):
+                        field_value = ref.get(field_name)
+                        if not isinstance(field_value, int) or field_value <= 0:
+                            errors.add("ATTESTATION_EXTERNAL_MERGE")
+                    if not isinstance(
+                        ref.get("merge_commit_sha"), str
+                    ) or not SHA1_PATTERN.fullmatch(str(ref.get("merge_commit_sha"))):
+                        errors.add("ATTESTATION_EXTERNAL_MERGE")
+                    if ref.get("required_check") != "gate":
+                        errors.add("ATTESTATION_EXTERNAL_MERGE")
+                    for field_name in ("gate_completed_at", "merged_at"):
+                        field_value = ref.get(field_name)
+                        if not isinstance(field_value, str) or len(field_value.encode()) > 64:
+                            errors.add("ATTESTATION_EXTERNAL_MERGE")
         if tuple(observed) != required or len(set(observed)) != len(observed):
             errors.add("ATTESTATION_EVIDENCE_CATALOG")
     except GateInputError as error:
@@ -952,10 +1025,15 @@ class SpecGate:
     root: Path = REPOSITORY_ROOT
     policy_path: Path = POLICY_PATH
     github_repository: tuple[str, str] | None = None
+    github_token: str | None = None
     policy: Mapping[str, object] = field(init=False)
     limits: Limits = field(init=False)
     diagnostics: Diagnostics = field(init=False)
     budget: ReadBudget = field(init=False)
+    github_run_cache: dict[tuple[str, str, int, int], Mapping[str, object]] = field(
+        init=False, default_factory=dict
+    )
+    github_api_cache: dict[str, object] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         raw = self.policy_path.read_bytes()
@@ -1389,6 +1467,220 @@ class SpecGate:
     ) -> dict[str, bytes]:
         return {path: self._candidate_file(mode, candidate, path) for path in sorted(set(paths))}
 
+    def _github_api_json(self, path: str) -> object:
+        cached = self.github_api_cache.get(path)
+        if cached is not None:
+            return cached
+        if not path.startswith("/repos/") or any(character in path for character in "\r\n#"):
+            raise GateInputError("ATTESTATION_EXTERNAL_AUTHORITY")
+        token = self.github_token
+        if (
+            not isinstance(token, str)
+            or not 1 <= len(token.encode("utf-8")) <= 4096
+            or "\r" in token
+            or "\n" in token
+        ):
+            raise GateInputError("ATTESTATION_EXTERNAL_AUTHORITY")
+        deadline = time.monotonic() + 15.0
+        connection = http.client.HTTPSConnection("api.github.com", timeout=15)
+
+        def apply_remaining_deadline() -> None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise GateInputError("ATTESTATION_EXTERNAL_FETCH")
+            connection.timeout = remaining
+            if connection.sock is not None:
+                connection.sock.settimeout(remaining)
+
+        try:
+            apply_remaining_deadline()
+            connection.request(
+                "GET",
+                path,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": "securecode-ai-spec-gate",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            apply_remaining_deadline()
+            response = connection.getresponse()
+            apply_remaining_deadline()
+            content_type = response.getheader("Content-Type", "")
+            link = response.getheader("Link", "")
+            if (
+                response.status != 200
+                or not content_type.lower().startswith("application/json")
+                or 'rel="next"' in link
+            ):
+                raise GateInputError("ATTESTATION_EXTERNAL_FETCH")
+            chunks: list[bytes] = []
+            size = 0
+            while True:
+                apply_remaining_deadline()
+                chunk = response.read(min(65536, 1048577 - size))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                size += len(chunk)
+                if size > 1048576:
+                    raise GateInputError("ATTESTATION_EXTERNAL_FETCH")
+            body = b"".join(chunks)
+        except (OSError, http.client.HTTPException) as error:
+            raise GateInputError("ATTESTATION_EXTERNAL_FETCH") from error
+        finally:
+            connection.close()
+        value = strict_json_loads(body, self.limits)
+        self.github_api_cache[path] = value
+        return value
+
+    def _github_actions_run(
+        self, owner: str, repository: str, run_id: int, run_attempt: int
+    ) -> Mapping[str, object]:
+        identity = (owner, repository, run_id, run_attempt)
+        cached = self.github_run_cache.get(identity)
+        if cached is not None:
+            return cached
+        value = _mapping(
+            self._github_api_json(
+                f"/repos/{owner}/{repository}/actions/runs/{run_id}/attempts/{run_attempt}"
+            ),
+            "GITHUB_RUN_ROOT",
+        )
+        self.github_run_cache[identity] = value
+        return value
+
+    def _canonical_github_run(self, value: Mapping[str, object]) -> bytes:
+        repository = _mapping(value.get("repository"), "GITHUB_RUN_REPOSITORY")
+        projection = {
+            "conclusion": value.get("conclusion"),
+            "event": value.get("event"),
+            "head_branch": value.get("head_branch"),
+            "head_sha": value.get("head_sha"),
+            "html_url": value.get("html_url"),
+            "id": value.get("id"),
+            "path": value.get("path"),
+            "repository": repository.get("full_name"),
+            "run_attempt": value.get("run_attempt"),
+            "status": value.get("status"),
+            "workflow_id": value.get("workflow_id"),
+        }
+        if (
+            not isinstance(projection["id"], int)
+            or not isinstance(projection["run_attempt"], int)
+            or not isinstance(projection["workflow_id"], int)
+            or any(
+                not isinstance(projection[key], str)
+                for key in (
+                    "conclusion",
+                    "event",
+                    "head_branch",
+                    "head_sha",
+                    "html_url",
+                    "path",
+                    "repository",
+                    "status",
+                )
+            )
+        ):
+            raise GateInputError("ATTESTATION_EXTERNAL_RESPONSE")
+        return json.dumps(projection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def _protected_merge_bundle(
+        self,
+        owner: str,
+        repository: str,
+        ref: Mapping[str, object],
+        run: Mapping[str, object],
+    ) -> tuple[bytes, str, str]:
+        run_id = cast(int, ref.get("run_id"))
+        run_attempt = cast(int, ref.get("run_attempt"))
+        pull_number = cast(int, ref.get("pull_request_number"))
+        jobs_root = _mapping(
+            self._github_api_json(
+                f"/repos/{owner}/{repository}/actions/runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100"
+            ),
+            "GITHUB_JOBS_ROOT",
+        )
+        jobs = _sequence(jobs_root.get("jobs"), "GITHUB_JOBS")
+        gate_jobs = [
+            _mapping(job, "GITHUB_JOB")
+            for job in jobs
+            if isinstance(job, Mapping) and job.get("name") == ref.get("required_check")
+        ]
+        if len(gate_jobs) != 1:
+            raise GateInputError("ATTESTATION_EXTERNAL_REQUIRED_CHECK")
+        gate_job = gate_jobs[0]
+        gate_completed_at = gate_job.get("completed_at")
+        if (
+            gate_job.get("status") != "completed"
+            or gate_job.get("conclusion") != "success"
+            or gate_job.get("head_sha") != run.get("head_sha")
+            or gate_completed_at != ref.get("gate_completed_at")
+            or not isinstance(gate_completed_at, str)
+        ):
+            raise GateInputError("ATTESTATION_EXTERNAL_REQUIRED_CHECK")
+
+        pull = _mapping(
+            self._github_api_json(f"/repos/{owner}/{repository}/pulls/{pull_number}"),
+            "GITHUB_PULL_ROOT",
+        )
+        pull_head = _mapping(pull.get("head"), "GITHUB_PULL_HEAD")
+        pull_base = _mapping(pull.get("base"), "GITHUB_PULL_BASE")
+        base_sha = pull_base.get("sha")
+        merge_sha = pull.get("merge_commit_sha")
+        merged_at = pull.get("merged_at")
+        if (
+            pull.get("number") != pull_number
+            or pull.get("state") != "closed"
+            or pull.get("merged") is not True
+            or pull_head.get("sha") != run.get("head_sha")
+            or pull_base.get("ref") != "master"
+            or not isinstance(base_sha, str)
+            or not SHA1_PATTERN.fullmatch(base_sha)
+            or merge_sha != ref.get("merge_commit_sha")
+            or not isinstance(merge_sha, str)
+            or not SHA1_PATTERN.fullmatch(merge_sha)
+            or merged_at != ref.get("merged_at")
+            or not isinstance(merged_at, str)
+        ):
+            raise GateInputError("ATTESTATION_EXTERNAL_MERGE")
+        try:
+            merge_time = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
+            gate_time = datetime.fromisoformat(gate_completed_at.replace("Z", "+00:00"))
+        except ValueError as error:
+            raise GateInputError("ATTESTATION_EXTERNAL_MERGE") from error
+        if gate_time > merge_time:
+            raise GateInputError("ATTESTATION_EXTERNAL_REQUIRED_CHECK")
+
+        bundle = {
+            "gate_job": {
+                "conclusion": gate_job.get("conclusion"),
+                "head_sha": gate_job.get("head_sha"),
+                "id": gate_job.get("id"),
+                "name": gate_job.get("name"),
+                "status": gate_job.get("status"),
+                "completed_at": gate_completed_at,
+            },
+            "pull_request": {
+                "base_ref": pull_base.get("ref"),
+                "base_sha": pull_base.get("sha"),
+                "head_sha": pull_head.get("sha"),
+                "merge_commit_sha": merge_sha,
+                "merged": pull.get("merged"),
+                "merged_at": merged_at,
+                "number": pull.get("number"),
+                "state": pull.get("state"),
+            },
+            "run": json.loads(self._canonical_github_run(run)),
+        }
+        return (
+            json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+            merge_sha,
+            base_sha,
+        )
+
     def _completion_errors(
         self,
         mode: str,
@@ -1497,8 +1789,12 @@ class SpecGate:
 
             refs = _sequence(attestation.get("evidence_refs"), "ATTESTATION_EVIDENCE")
             external_identities: set[tuple[str, str]] = set()
+            run_heads: dict[str, str] = {}
+            protected_merge_sha: str | None = None
+            protected_base_sha: str | None = None
             github_policy: Mapping[str, object] | None = None
-            if task_id == "P1.4":
+            run_evidence_tasks = {"P2.1", "P2.14"}
+            if task_id == "P1.4" or task_id in run_evidence_tasks:
                 github_policy = _mapping(
                     self.policy.get("github_repository_authority"),
                     "POLICY_GITHUB_REPOSITORY_AUTHORITY",
@@ -1526,6 +1822,36 @@ class SpecGate:
                     raise GateInputError("POLICY_GITHUB_EVIDENCE")
                 if self.github_repository is None:
                     errors.add("ATTESTATION_EXTERNAL_REPOSITORY_AUTHORITY")
+            run_policy: Mapping[str, object] | None = None
+            if task_id in run_evidence_tasks:
+                run_policy = _mapping(
+                    self.policy.get("github_actions_run_evidence"),
+                    "POLICY_GITHUB_RUN_EVIDENCE",
+                )
+                _strict_keys(
+                    run_policy,
+                    {
+                        "provider",
+                        "api_host",
+                        "token_environment",
+                        "workflow_path",
+                        "protected_branch",
+                        "required_check",
+                        "evidence_events",
+                    },
+                    "POLICY_GITHUB_RUN_EVIDENCE_KEYS",
+                )
+                if (
+                    run_policy.get("provider") != "github"
+                    or run_policy.get("api_host") != "api.github.com"
+                    or run_policy.get("token_environment") != "GITHUB_TOKEN"
+                    or run_policy.get("workflow_path") != ".github/workflows/ci.yml"
+                    or run_policy.get("protected_branch") != "master"
+                    or run_policy.get("required_check") != "gate"
+                    or _mapping(run_policy.get("evidence_events"), "POLICY_GITHUB_RUN_EVENTS")
+                    != {"protected_pr_gate": "pull_request", "post_merge_gate": "push"}
+                ):
+                    raise GateInputError("POLICY_GITHUB_RUN_EVIDENCE")
             for raw_ref in refs:
                 ref = _mapping(raw_ref, "ATTESTATION_EVIDENCE_REF")
                 ref_type = ref.get("type")
@@ -1545,6 +1871,90 @@ class SpecGate:
                         external_identities.add(identity)
                         if identity != self.github_repository:
                             errors.add("ATTESTATION_EXTERNAL_REPOSITORY")
+                elif task_id in run_evidence_tasks and ref_type in {
+                    "protected_pr_gate",
+                    "post_merge_gate",
+                }:
+                    try:
+                        identity = github_evidence_identity(source, "github_failing_pr_merge_block")
+                        declared_repository = ref.get("repository")
+                        declared_identity = (
+                            repository_identity(declared_repository)
+                            if isinstance(declared_repository, str)
+                            else None
+                        )
+                        run_id = ref.get("run_id")
+                        run_attempt = ref.get("run_attempt")
+                        head_sha = ref.get("head_sha")
+                        expected_event = (
+                            "pull_request" if ref_type == "protected_pr_gate" else "push"
+                        )
+                        if (
+                            identity is None
+                            or declared_identity is None
+                            or identity != declared_identity
+                            or identity != self.github_repository
+                        ):
+                            errors.add("ATTESTATION_EXTERNAL_REPOSITORY")
+                            continue
+                        if not isinstance(run_id, int) or run_id <= 0:
+                            errors.add("ATTESTATION_EXTERNAL_RUN")
+                            continue
+                        if not isinstance(run_attempt, int) or run_attempt <= 0:
+                            errors.add("ATTESTATION_EXTERNAL_RUN")
+                            continue
+                        run = self._github_actions_run(
+                            identity[0], identity[1], run_id, run_attempt
+                        )
+                        canonical = self._canonical_github_run(run)
+                        if ref_type == "protected_pr_gate":
+                            (
+                                canonical,
+                                protected_merge_sha,
+                                protected_base_sha,
+                            ) = self._protected_merge_bundle(identity[0], identity[1], ref, run)
+                        if hashlib.sha256(canonical).hexdigest() != content_hash:
+                            errors.add("ATTESTATION_EXTERNAL_CONTENT")
+                        expected_url = (
+                            f"https://github.com/{identity[0]}/{identity[1]}/actions/runs/{run_id}"
+                        )
+                        repository_value = _mapping(
+                            run.get("repository"), "GITHUB_RUN_REPOSITORY"
+                        ).get("full_name")
+                        if run_policy is None:
+                            raise GateInputError("POLICY_GITHUB_RUN_EVIDENCE")
+                        if (
+                            run.get("id") != run_id
+                            or run.get("run_attempt") != run_attempt
+                            or run.get("event") != expected_event
+                            or ref.get("event") != expected_event
+                            or run.get("status") != "completed"
+                            or run.get("conclusion") != "success"
+                            or ref.get("conclusion") != "success"
+                            or run.get("head_branch") != ref.get("head_branch")
+                            or (
+                                ref_type == "post_merge_gate"
+                                and run.get("head_branch") != run_policy.get("protected_branch")
+                            )
+                            or run.get("head_sha") != head_sha
+                            or run.get("path") != run_policy.get("workflow_path")
+                            or ref.get("workflow_path") != run_policy.get("workflow_path")
+                            or str(repository_value).lower()
+                            != f"{identity[0]}/{identity[1]}".lower()
+                            or run.get("html_url") != expected_url
+                            or source.lower() != expected_url.lower()
+                        ):
+                            errors.add("ATTESTATION_EXTERNAL_RUN_BINDING")
+                        if not isinstance(head_sha, str) or not SHA1_PATTERN.fullmatch(head_sha):
+                            errors.add("ATTESTATION_EXTERNAL_COMMIT")
+                            continue
+                        git_bytes(
+                            self.root, "merge-base", "--is-ancestor", implementation, head_sha
+                        )
+                        git_bytes(self.root, "merge-base", "--is-ancestor", head_sha, base)
+                        run_heads[ref_type] = head_sha
+                    except GateInputError as error:
+                        errors.add(error.code)
                 else:
                     try:
                         normalized = normalize_repo_path(source)
@@ -1557,6 +1967,37 @@ class SpecGate:
                         errors.add("ATTESTATION_EVIDENCE_AUTHORITY")
             if task_id == "P1.4" and len(external_identities) != 1:
                 errors.add("ATTESTATION_EXTERNAL_REPOSITORY")
+            if task_id in run_evidence_tasks:
+                if set(run_heads) != {"protected_pr_gate", "post_merge_gate"}:
+                    errors.add("ATTESTATION_EXTERNAL_RUN_SET")
+                else:
+                    try:
+                        if protected_merge_sha != run_heads["post_merge_gate"]:
+                            raise GateInputError("ATTESTATION_EXTERNAL_MERGE")
+                        parents = git_text(
+                            self.root,
+                            "rev-list",
+                            "--parents",
+                            "-n",
+                            "1",
+                            protected_merge_sha,
+                        ).split()
+                        if (
+                            len(parents) != 3
+                            or parents[0] != protected_merge_sha
+                            or parents[1] != protected_base_sha
+                            or parents[2] != run_heads["protected_pr_gate"]
+                        ):
+                            raise GateInputError("ATTESTATION_EXTERNAL_MERGE")
+                        git_bytes(
+                            self.root,
+                            "merge-base",
+                            "--is-ancestor",
+                            run_heads["protected_pr_gate"],
+                            run_heads["post_merge_gate"],
+                        )
+                    except GateInputError:
+                        errors.add("ATTESTATION_EXTERNAL_RUN_ANCESTRY")
         except GateInputError as error:
             errors.add(error.code)
         return tuple(sorted(errors))
@@ -2966,7 +3407,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parsed_repository = repository_identity(repository_value) if repository_value else None
         if repository_value and parsed_repository is None:
             raise GateInputError("CI_REPOSITORY")
-        gate = SpecGate(github_repository=parsed_repository)
+        gate = SpecGate(
+            github_repository=parsed_repository,
+            github_token=os.environ.get("GITHUB_TOKEN"),
+        )
         if arguments.mode == "snapshot":
             errors = gate.validate_snapshot()
         elif arguments.mode == "ci":
