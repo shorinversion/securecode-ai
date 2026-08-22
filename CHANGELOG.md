@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — completed `P2.1`: safe repository intake, exact remediation and
+  completion enablement are now bound to the independently reviewed task packet,
+  protected PR #12 and its green post-merge run. P2.14 is already `DONE`, so
+  P2.2 becomes the next sequential Core task. No bypass was used.
 - 2026-08-22 — completed `P2.14`: repository-intake remediation and its task
   packet passed protected PR #12 plus post-merge CI. CR-035 and CR-037 repaired
   merge-commit validation and identity-bound evidence scanning; CR-041 then made
