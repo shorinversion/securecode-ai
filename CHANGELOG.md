@@ -24,6 +24,12 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-22 — completed `P2.14`: repository-intake remediation and its task
+  packet passed protected PR #12 plus post-merge CI. CR-035 and CR-037 repaired
+  merge-commit validation and identity-bound evidence scanning; CR-041 then made
+  completion self-tests lifecycle-independent through protected PR #21 and a
+  green post-merge run. All delivery used the ordinary protected gate without
+  bypass.
 - 2026-08-22 — opened `CR-041` after CR-040 passed three reviews but its exact
   promotion preflight rejected a Windows working-copy CRLF manifest against the
   canonical LF Git index bytes. No CR-040 promotion commit was created. The
