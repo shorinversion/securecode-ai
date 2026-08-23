@@ -228,7 +228,7 @@ G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 | `P2.14` | P2.1 security remediation and completion enablement | P2.1 implementation | descriptor/handle-bound traversal, bounded enumeration and adversarial mutation tests | `DONE` |
 | `P2.2` | Ignore policy, language и dependency discovery | P2.1, P2.14 | корректные manifests и changed-files map | `DONE` |
 | `P2.3` | Tree-sitter/CST adapter и symbol index | P2.2 | location-stable symbols на fixtures | `DONE` |
-| `P2.4` | Python `ast` adapter | P2.2 | syntax/error recovery tests | `IN PROGRESS` |
+| `P2.4` | Python `ast` adapter | P2.2 | syntax/error recovery tests | `DONE` |
 | `P2.5` | Собственный secret detector + approved external adapter | P2.1, P2.14 | positive/negative/entropy fixtures, redacted output | `TODO` |
 | `P2.6` | Dependency scanner adapter и OSV normalization | P2.2 | pinned vulnerable/safe manifests | `TODO` |
 | `P2.7` | Первый semantic rule: Python CWE-89 | P2.3, P2.4 | source → interpolation → SQL sink evidence | `TODO` |
