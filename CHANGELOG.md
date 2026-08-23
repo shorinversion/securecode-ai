@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-23 — opened `P2.4` from exact completed P2.3 master `0e085ff` with
+  a constrained implementation packet. The candidate adds a bounded CPython
+  `ast` adapter over the exact P2.3 source-bound index, typed syntax-error
+  recovery, isolated tree access and fixed non-echo failures; semantic rules,
+  filesystem access and source execution remain outside scope.
 - 2026-08-23 — completed `P2.3`: the bounded Python Tree-sitter/CST adapter
   and source-bound stable symbol index passed sequential product, architecture
   and security/evaluation reviews on exact tree
