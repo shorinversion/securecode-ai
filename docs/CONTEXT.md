@@ -5,18 +5,23 @@
 ## Текущая позиция
 
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- Latest completed task: `P2.3 — bounded Python Tree-sitter/CST adapter and
-  source-bound location-stable symbol index`, implementation commit
-  `2bb7061ad5372185daf5227526919912678f20d8`.
+- Latest completed task: `P2.4 — bounded CPython ast adapter`, implementation
+  commit `cbd29a60386e04cd7358f49d7add287832f580f7`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: `P2.4` Python `ast` adapter is `IN PROGRESS` from exact
-  completed P2.3 master `0e085ff`; its constrained packet permits only bounded
-  parsing of the exact source retained by an accepted P2.3 symbol index. P3
-  remains blocked until effective G2 GO.
+- Current task: publish the `P2.4` successor completion attestation from exact
+  implementation merge `2c62e20`, then open constrained `P2.5`. P3 remains
+  blocked until effective G2 GO.
+- P2.4 passed exact-tree product, architecture and security/evaluation review
+  after closing cyclic-tree exception leakage and the validation/copy race.
+  Protected PR #31 merged as `2c62e20`; PR run `32621529046` and post-merge run
+  `32621680247` passed every mandatory job on Python 3.12–3.14 without bypass.
+  The adapter revalidates the sealed P2.3 source index, represents syntax
+  errors explicitly, enforces hard source/node/depth ceilings and exposes only
+  isolated exact-snapshot-validated AST copies.
 - P2.3 passed exact-tree product, architecture and security/evaluation review.
   Protected PR #29 merged as `e88b730`; PR run `32619424110` and post-merge run
   `32619578595` passed every mandatory job on Python 3.12–3.14 without bypass.
@@ -314,11 +319,11 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Open a constrained P2.4 packet from exact completed P2.3 master.
-2. Implement and verify the Python `ast` adapter with explicit syntax/error
-   recovery behavior and three sequential independent reviews.
-3. Deliver P2.4 through the ordinary protected gate, then continue P2 in order;
-   do not begin P3 before effective G2 GO.
+1. Publish and merge the `P2.4` completion attestation through the ordinary
+   protected gate and require its green post-merge run.
+2. Open constrained `P2.5` from the exact completed P2.4 master and implement
+   the secret detector plus approved external adapter.
+3. Continue P2 in order; do not begin P3 before effective G2 GO.
 
 ## Критические запреты
 

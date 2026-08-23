@@ -1,0 +1,28 @@
+{
+  "allowed_paths": ["CHANGELOG.md", "docs/CONTEXT.md", "docs/PLAN.md", "work/task-attestations/P2.4.json"],
+  "budgets": {"max_changed_files": 5, "max_diff_lines": 800},
+  "change_type": "completion_attestation",
+  "evidence_refs": [
+    {"content_sha256": "af9c30378a94efa25dc7b888a0f4cad6f1e1fea7e79c24fab1c1eaa901aa588b", "source": "tests/unit/test_python_ast_adapter.py", "type": "targeted_tests"},
+    {"content_sha256": "d5901cd7d2bcab9c51a979d6c5c44e4f1a0ee13dc0ac440fa53f40ed914f7aec", "source": "scripts/quality.py", "type": "full_quality"},
+    {"content_sha256": "bd43622c700e7768100db4b80e72fb491e58b81180183c2f00fc680b7d88ec1c", "source": "work/change-control/README.md", "type": "independent_reviews"},
+    {
+      "conclusion": "success", "content_sha256": "60d3170a5932d9f95050c70a6a5bbbcd5f16557a3d375019a4e96c95108a59fa", "event": "pull_request",
+      "gate_completed_at": "2026-08-23T05:57:39Z", "head_branch": "codex/p24-python-ast", "head_sha": "cbd29a60386e04cd7358f49d7add287832f580f7",
+      "merge_commit_sha": "2c62e202c409e408e98a7d7d3bf76b3bf096f1ab", "merged_at": "2026-08-23T05:57:58Z", "pull_request_number": 31,
+      "repository": "shorinversion/securecode-ai", "required_check": "gate", "run_attempt": 1, "run_id": 32621529046,
+      "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32621529046", "type": "protected_pr_gate", "workflow_path": ".github/workflows/ci.yml"
+    },
+    {
+      "conclusion": "success", "content_sha256": "932c8cc6f9f189ba0cf2a3ac77e2b5ea09456e0ae872fed78289d867d427a4fd", "event": "push",
+      "head_branch": "master", "head_sha": "2c62e202c409e408e98a7d7d3bf76b3bf096f1ab", "repository": "shorinversion/securecode-ai",
+      "run_attempt": 1, "run_id": 32621680247, "source": "https://github.com/shorinversion/securecode-ai/actions/runs/32621680247",
+      "type": "post_merge_gate", "workflow_path": ".github/workflows/ci.yml"
+    }
+  ],
+  "implementation_commit_sha": "cbd29a60386e04cd7358f49d7add287832f580f7",
+  "packet_sha256": "66ade2eb5ad53bff75b472f5bfb7f5d416fd14944d88c5569b52a4b6e0122a7e",
+  "schema_version": "1.0.0",
+  "starting_commit_sha": "2c62e202c409e408e98a7d7d3bf76b3bf096f1ab",
+  "task_id": "P2.4"
+}

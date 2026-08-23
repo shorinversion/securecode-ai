@@ -24,6 +24,14 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-23 — completed `P2.4`: the bounded CPython `ast` adapter passed
+  sequential product, architecture and security/evaluation reviews on exact
+  tree `d78d3827cb9f976598b86868e756f393153f5784` after remediation made isolated
+  AST access copy-first and exact-snapshot validated. Protected PR #31 merged
+  as `2c62e20`; PR run `32621529046` and post-merge run `32621680247` passed
+  every mandatory job on Python 3.12–3.14 without bypass. The completion
+  attestation binds the exact packet, implementation commit and protected
+  delivery; `P2.5` is next.
 - 2026-08-23 — opened `P2.4` from exact completed P2.3 master `0e085ff` with
   a constrained implementation packet. The candidate adds a bounded CPython
   `ast` adapter over the exact P2.3 source-bound index, typed syntax-error
