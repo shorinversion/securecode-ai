@@ -13,8 +13,10 @@
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: prepare `P2.4` Python `ast` adapter from exact completed P2.3
-  master `e88b730`; P3 remains blocked until effective G2 GO.
+- Current task: `P2.4` Python `ast` adapter is `IN PROGRESS` from exact
+  completed P2.3 master `0e085ff`; its constrained packet permits only bounded
+  parsing of the exact source retained by an accepted P2.3 symbol index. P3
+  remains blocked until effective G2 GO.
 - P2.3 passed exact-tree product, architecture and security/evaluation review.
   Protected PR #29 merged as `e88b730`; PR run `32619424110` and post-merge run
   `32619578595` passed every mandatory job on Python 3.12–3.14 without bypass.

@@ -49,6 +49,18 @@ from .model import (
     parse_model_call_result,
     parse_model_request,
 )
+from .python_ast import (
+    DEFAULT_PYTHON_AST_LIMITS,
+    PythonAstAnalysis,
+    PythonAstDiagnostic,
+    PythonAstDiagnosticCode,
+    PythonAstError,
+    PythonAstErrorCode,
+    PythonAstLimits,
+    PythonAstStatus,
+    analyze_python_ast,
+    open_python_ast,
+)
 from .repository import FileSystemRepositoryIntake
 from .runtime import LocalWorkflowRuntime, RuntimeClock
 from .telemetry import (
@@ -60,6 +72,7 @@ from .telemetry import (
 
 __all__ = [
     "DEFAULT_CST_LIMITS",
+    "DEFAULT_PYTHON_AST_LIMITS",
     "AuthorizedProviderHarness",
     "BinaryStreamTelemetrySink",
     "ConfigDiagnostic",
@@ -91,6 +104,13 @@ __all__ = [
     "ProviderAttemptBinding",
     "ProviderProfileRegistry",
     "ProviderStreamState",
+    "PythonAstAnalysis",
+    "PythonAstDiagnostic",
+    "PythonAstDiagnosticCode",
+    "PythonAstError",
+    "PythonAstErrorCode",
+    "PythonAstLimits",
+    "PythonAstStatus",
     "Resolver",
     "RuntimeClock",
     "ScriptedFakeProvider",
@@ -100,8 +120,10 @@ __all__ = [
     "SystemUTCClock",
     "TransportFailure",
     "VerifiedEndpointAuthorization",
+    "analyze_python_ast",
     "build_python_symbol_index",
     "normalize_provider_attempt",
+    "open_python_ast",
     "parse_model_call_result",
     "parse_model_request",
     "parse_provider_profile",
