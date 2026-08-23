@@ -24,6 +24,14 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-23 — completed `P2.3`: the bounded Python Tree-sitter/CST adapter
+  and source-bound stable symbol index passed sequential product, architecture
+  and security/evaluation reviews on exact tree
+  `f69939da5220ae93097653ce78f4bca48c095c0a`. Protected PR #29 merged as
+  `e88b730`; PR run `32619424110` and post-merge run `32619578595` passed every
+  mandatory job on Python 3.12–3.14 without bypass. The completion attestation
+  binds the exact packet, implementation commit and protected delivery; P2.4 is
+  the next sequential Core task.
 - 2026-08-23 — completed `CR-044`: the state-independent dependency-policy
   self-test passed three sequential reviews, protected PR #28 and post-merge
   run `32593519555`. Evaluator behavior remained unchanged and no bypass was
