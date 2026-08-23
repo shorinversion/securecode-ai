@@ -39,7 +39,14 @@ POLICIES = (
     PackagePolicy(
         REPOSITORY_ROOT / "packages" / "adapters" / "src",
         "securecode_ai.adapters",
-        frozenset({"securecode_ai.adapters", "securecode_ai.core"}),
+        frozenset(
+            {
+                "securecode_ai.adapters",
+                "securecode_ai.core",
+                "tree_sitter",
+                "tree_sitter_python",
+            }
+        ),
     ),
     PackagePolicy(
         REPOSITORY_ROOT / "packages" / "contracts" / "src",
@@ -155,7 +162,14 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
 @pytest.mark.parametrize(
     ("distribution", "expected_dependency"),
     [
-        ("securecode-ai-adapters", "securecode-ai-core==0.1.0a0"),
+        (
+            "securecode-ai-adapters",
+            (
+                "securecode-ai-core==0.1.0a0",
+                "tree-sitter>=0.25,<0.26",
+                "tree-sitter-python>=0.25,<0.26",
+            ),
+        ),
         (
             "securecode-ai-cli",
             (
@@ -217,6 +231,15 @@ def test_repository_intake_contract_stays_internal_and_adapter_owned() -> None:
     assert not hasattr(contracts, "RepositoryInventory")
     assert core.RepositoryInventory.__module__ == "securecode_ai.core.repository"
     assert adapters.FileSystemRepositoryIntake.__module__ == "securecode_ai.adapters.repository"
+
+
+def test_symbol_index_contract_stays_internal_and_adapter_owned() -> None:
+    contracts = importlib.import_module("securecode_ai.contracts")
+    core = importlib.import_module("securecode_ai.core")
+    adapters = importlib.import_module("securecode_ai.adapters")
+    assert not hasattr(contracts, "SymbolIndex")
+    assert core.SymbolIndex.__module__ == "securecode_ai.core.symbols"
+    assert adapters.build_python_symbol_index.__module__ == "securecode_ai.adapters.cst"
 
 
 @pytest.mark.parametrize(

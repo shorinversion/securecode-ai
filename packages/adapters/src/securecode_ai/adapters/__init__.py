@@ -13,6 +13,13 @@ from .config import (
     resolve_configuration,
     resolve_environment_credential,
 )
+from .cst import (
+    DEFAULT_CST_LIMITS,
+    CstAdapterError,
+    CstAdapterErrorCode,
+    CstLimits,
+    build_python_symbol_index,
+)
 from .endpoint import (
     EndpointAuthorization,
     EndpointAuthorizationIssuer,
@@ -52,6 +59,7 @@ from .telemetry import (
 )
 
 __all__ = [
+    "DEFAULT_CST_LIMITS",
     "AuthorizedProviderHarness",
     "BinaryStreamTelemetrySink",
     "ConfigDiagnostic",
@@ -62,6 +70,9 @@ __all__ = [
     "ContextBuilder",
     "CredentialLease",
     "CredentialSupplier",
+    "CstAdapterError",
+    "CstAdapterErrorCode",
+    "CstLimits",
     "EffectiveConfiguration",
     "EndpointAuthorization",
     "EndpointAuthorizationIssuer",
@@ -89,6 +100,7 @@ __all__ = [
     "SystemUTCClock",
     "TransportFailure",
     "VerifiedEndpointAuthorization",
+    "build_python_symbol_index",
     "normalize_provider_attempt",
     "parse_model_call_result",
     "parse_model_request",

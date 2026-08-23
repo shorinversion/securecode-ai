@@ -1,6 +1,6 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 22 августа 2026 года.
+Последнее обновление: 23 августа 2026 года.
 
 ## Текущая позиция
 
@@ -13,8 +13,27 @@
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: begin `P2.3` Tree-sitter/CST adapter and location-stable symbol
-  index from the completed P2.2 foundation.
+- Current task: `P2.3` Tree-sitter/CST adapter and location-stable symbol index
+  is `IN PROGRESS` from exact master `13d2b70`; its constrained packet permits
+  only bounded Python parsing over caller-admitted exact bytes. First product
+  review found missing forged-range evidence; remediation now binds the index
+  to exact source geometry, revalidates semantic IDs and rejects sibling
+  declaration overlap. Architecture review then demonstrated an in-bounds
+  forged name range; the internal immutable index now retains the admitted
+  bytes, revalidates their digest and checks every byte/point range and symbol
+  name slice against them. Security review then demonstrated public semantic
+  reconstruction and unbounded caller limit overrides; the public builder is
+  now removed, adapter-issued indexes carry a process-local integrity seal,
+  module identity is path-bound and every configurable budget has a hard
+  ceiling. Final security review found raw dependency exceptions reachable via
+  Python `__context__`; every sanitized adapter failure is now raised outside
+  the handled exception scope and direct canary tests require both cause and
+  context to be absent before the exact candidate is reviewed again.
+- `CR-043/D-041` passed three sequential reviews, protected PR #27 and green
+  post-merge run `32592043366`; the closed dependency policy now admits only
+  the legacy adapters set or Core plus the two reviewed Tree-sitter packages.
+- `CR-044/D-042` repaired the transition-state self-test through protected PR
+  #28; post-merge run `32593519555` passed without changing evaluator behavior.
 - P2.2 passed product, architecture and security/evaluation review on the exact
   accepted tree. Protected PR #24 merged as `457a02b`; PR run `32585989207`
   and post-merge run `32586165054` passed every mandatory job without bypass.
@@ -300,9 +319,11 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Open the constrained P2.3 task packet from the exact completed P2.2 master.
-2. Implement and verify the Tree-sitter/CST adapter and stable symbol index.
-3. Continue P2 tasks in dependency order; do not begin P3 before effective G2 GO.
+1. Implement the P2.3 Tree-sitter/CST adapter and stable symbol index under its
+   constrained packet.
+2. Run targeted/full verification and three sequential independent reviews.
+3. Deliver P2.3 through the ordinary protected gate, then continue P2 in order;
+   do not begin P3 before effective G2 GO.
 
 ## Критические запреты
 
