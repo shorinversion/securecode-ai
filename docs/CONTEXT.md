@@ -5,30 +5,23 @@
 ## Текущая позиция
 
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- Latest completed task: `P2.2 — ignore policy, language/dependency discovery
-  and changed-file mapping`, implementation commit
-  `03906ea3b39ab027399f7ad3de6cb042fabf28de`.
+- Latest completed task: `P2.3 — bounded Python Tree-sitter/CST adapter and
+  source-bound location-stable symbol index`, implementation commit
+  `2bb7061ad5372185daf5227526919912678f20d8`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: `P2.3` Tree-sitter/CST adapter and location-stable symbol index
-  is `IN PROGRESS` from exact master `13d2b70`; its constrained packet permits
-  only bounded Python parsing over caller-admitted exact bytes. First product
-  review found missing forged-range evidence; remediation now binds the index
-  to exact source geometry, revalidates semantic IDs and rejects sibling
-  declaration overlap. Architecture review then demonstrated an in-bounds
-  forged name range; the internal immutable index now retains the admitted
-  bytes, revalidates their digest and checks every byte/point range and symbol
-  name slice against them. Security review then demonstrated public semantic
-  reconstruction and unbounded caller limit overrides; the public builder is
-  now removed, adapter-issued indexes carry a process-local integrity seal,
-  module identity is path-bound and every configurable budget has a hard
-  ceiling. Final security review found raw dependency exceptions reachable via
-  Python `__context__`; every sanitized adapter failure is now raised outside
-  the handled exception scope and direct canary tests require both cause and
-  context to be absent before the exact candidate is reviewed again.
+- Current task: prepare `P2.4` Python `ast` adapter from exact completed P2.3
+  master `e88b730`; P3 remains blocked until effective G2 GO.
+- P2.3 passed exact-tree product, architecture and security/evaluation review.
+  Protected PR #29 merged as `e88b730`; PR run `32619424110` and post-merge run
+  `32619578595` passed every mandatory job on Python 3.12–3.14 without bypass.
+  The accepted internal index binds exact source bytes, byte/point geometry,
+  names, path-derived module identity, hard parser ceilings and non-echo errors;
+  direct public semantic reconstruction is sealed off inside the trusted
+  first-party process boundary.
 - `CR-043/D-041` passed three sequential reviews, protected PR #27 and green
   post-merge run `32592043366`; the closed dependency policy now admits only
   the legacy adapters set or Core plus the two reviewed Tree-sitter packages.
@@ -319,10 +312,10 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Implement the P2.3 Tree-sitter/CST adapter and stable symbol index under its
-   constrained packet.
-2. Run targeted/full verification and three sequential independent reviews.
-3. Deliver P2.3 through the ordinary protected gate, then continue P2 in order;
+1. Open a constrained P2.4 packet from exact completed P2.3 master.
+2. Implement and verify the Python `ast` adapter with explicit syntax/error
+   recovery behavior and three sequential independent reviews.
+3. Deliver P2.4 through the ordinary protected gate, then continue P2 in order;
    do not begin P3 before effective G2 GO.
 
 ## Критические запреты
