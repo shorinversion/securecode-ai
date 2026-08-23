@@ -24,15 +24,39 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-08-23 — completed `CR-044`: the state-independent dependency-policy
+  self-test passed three sequential reviews, protected PR #28 and post-merge
+  run `32593519555`. Evaluator behavior remained unchanged and no bypass was
+  used.
 - 2026-08-23 — opened `CR-044`: repair the CR-043 dependency-policy self-test
   so it constructs the legacy and reviewed Tree-sitter states explicitly
   instead of duplicating dependencies after P2.3 updates workspace metadata.
   Evaluator behavior and the closed dependency sets remain unchanged (`D-042`).
+- 2026-08-22 — completed `CR-043`: the exact two-state adapters dependency
+  policy passed three sequential independent reviews, protected PR #27 and
+  post-merge run `32592043366`. Tree-sitter Python dependencies can now enter
+  through the ordinary P2.3 task gate; no bypass was used.
 - 2026-08-22 — opened `CR-043`: extend the closed adapters dependency policy
   with the bounded Tree-sitter Python runtime and grammar ranges required by
   P2.3. The amendment preserves the legacy dependency set only for the atomic
   policy-to-implementation transition, rejects every other adapter dependency,
   and changes no package bytes until exact reviewed promotion (`D-041`).
+- 2026-08-23 — opened `P2.3` from exact post-CR-044 master commit `13d2b70`
+  with a constrained implementation packet. The task adds a bounded
+  Python Tree-sitter/CST adapter and immutable location-stable symbol index over
+  caller-admitted exact bytes; Python `ast` semantics, rules, other languages,
+  filesystem access and execution remain outside scope. Product-review
+  remediation binds every range to exact source geometry, recomputes semantic
+  symbol identities and rejects overlapping sibling declarations. Architecture
+  remediation retains the immutable admitted bytes inside the internal index
+  (excluded from its representation), revalidates their digest and proves each
+  byte/point range plus symbol-name slice against those exact bytes. Security
+  remediation removes the semantic index builder from the public Core API,
+  seals adapter-issued indexes with process-local authority, binds module names
+  to paths and enforces immutable maximum ceilings on every parser budget.
+  Final security remediation raises sanitized boundary failures only after raw
+  dependency exceptions leave scope, preventing source-derived messages from
+  remaining reachable through Python exception context.
 - 2026-08-22 — completed `CR-042`: the P2 completion catalog and
   catalog-derived protected-run enforcement passed three exact-byte reviews,
   protected PR #25 and post-merge run `32589272475`. All P2.1–P2.14 tasks now
