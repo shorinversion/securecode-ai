@@ -54,62 +54,6 @@
       "protected_pr_gate",
       "post_merge_gate"
     ],
-    "P2.6": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.7": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.8": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.9": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.10": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.11": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.12": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
-    "P2.13": [
-      "targeted_tests",
-      "full_quality",
-      "independent_reviews",
-      "protected_pr_gate",
-      "post_merge_gate"
-    ],
     "P2.14": [
       "targeted_tests",
       "full_quality",
@@ -235,7 +179,257 @@
         "CHANGELOG.md",
         "docs/PLAN.md",
         "docs/CONTEXT.md"
-      ]
+      ],
+      "integrated_task_scope": {},
+      "completion_tasks": [],
+      "review_required": true,
+      "max_changed_files": 11,
+      "max_diff_lines": 3000,
+      "checkpoint_chain_max_changed_files": 11,
+      "checkpoint_chain_max_diff_lines": 3000,
+      "promotion_max_diff_lines": 400
+    },
+    "G2": {
+      "checklist_ids": [
+        "deterministic_positive_negative",
+        "repeatable_normalization",
+        "rawsignal_provenance",
+        "repository_containment",
+        "safe_reporting",
+        "first_party_scanners",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/deterministic-core-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P2.1",
+        "P2.14",
+        "P2.2",
+        "P2.3",
+        "P2.4",
+        "P2.5",
+        "P2.6",
+        "P2.7",
+        "P2.8",
+        "P2.9",
+        "P2.10",
+        "P2.11",
+        "P2.12",
+        "P2.13"
+      ],
+      "completion_tasks": [
+        "P2.6",
+        "P2.7",
+        "P2.8",
+        "P2.9",
+        "P2.10",
+        "P2.11",
+        "P2.12",
+        "P2.13"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G2/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {
+        "P2.6": {
+          "packet_allowed_paths": [
+            "CHANGELOG.md",
+            "docs/CONTEXT.md",
+            "docs/PLAN.md",
+            "packages/adapters/src/securecode_ai/adapters/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py",
+            "tests/fixtures/p2_6/safe-requirements.txt",
+            "tests/fixtures/p2_6/vulnerable-requirements.txt",
+            "tests/unit/test_dependency_scanning.py",
+            "work/task-packets/P2.6.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py",
+            "tests/fixtures/p2_6/safe-requirements.txt",
+            "tests/fixtures/p2_6/vulnerable-requirements.txt",
+            "tests/unit/test_dependency_scanning.py",
+            "work/task-packets/P2.6.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 10,
+            "max_diff_lines": 2600
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 6,
+            "max_diff_lines": 2600
+          }
+        },
+        "P2.7": {
+          "packet_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/cwe89.py",
+            "tests/unit/test_cwe89_adapter.py",
+            "work/task-packets/P2.7.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/cwe89.py",
+            "tests/unit/test_cwe89_adapter.py",
+            "work/task-packets/P2.7.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 4,
+            "max_diff_lines": 2500
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 4,
+            "max_diff_lines": 2500
+          }
+        },
+        "P2.8": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/scanning.py",
+            "packages/core/src/securecode_ai/core/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/scanner_plugin.py",
+            "tests/unit/test_scanner_plugin.py",
+            "tests/__init__.py",
+            "tests/unit/__init__.py",
+            "work/task-packets/P2.8.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/scanning.py",
+            "packages/core/src/securecode_ai/core/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/scanner_plugin.py",
+            "tests/unit/test_scanner_plugin.py",
+            "tests/__init__.py",
+            "tests/unit/__init__.py",
+            "work/task-packets/P2.8.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 2200
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 2200
+          }
+        },
+        "P2.9": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/normalization.py",
+            "tests/unit/test_signal_normalization.py",
+            "work/task-packets/P2.9.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/normalization.py",
+            "tests/unit/test_signal_normalization.py",
+            "work/task-packets/P2.9.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1800
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1800
+          }
+        },
+        "P2.10": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/evidence_graph.py",
+            "tests/unit/test_evidence_graph.py",
+            "work/task-packets/P2.10.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/evidence_graph.py",
+            "tests/unit/test_evidence_graph.py",
+            "work/task-packets/P2.10.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 2200
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 2200
+          }
+        },
+        "P2.11": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/classification.py",
+            "tests/unit/test_classification.py",
+            "work/task-packets/P2.11.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/classification.py",
+            "tests/unit/test_classification.py",
+            "work/task-packets/P2.11.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 700
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 700
+          }
+        },
+        "P2.12": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/reports.py",
+            "tests/unit/test_reports.py",
+            "work/task-packets/P2.12.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/reports.py",
+            "tests/unit/test_reports.py",
+            "work/task-packets/P2.12.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1600
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1600
+          }
+        },
+        "P2.13": {
+          "packet_allowed_paths": [
+            "apps/cli/src/securecode_ai/cli/application.py",
+            "apps/cli/src/securecode_ai/cli/diagnostic.py",
+            "apps/cli/src/securecode_ai/cli/__init__.py",
+            "tests/unit/test_cli_diagnostic.py",
+            "work/task-packets/P2.13.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "apps/cli/src/securecode_ai/cli/application.py",
+            "apps/cli/src/securecode_ai/cli/diagnostic.py",
+            "apps/cli/src/securecode_ai/cli/__init__.py",
+            "tests/unit/test_cli_diagnostic.py",
+            "work/task-packets/P2.13.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 5,
+            "max_diff_lines": 1800
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 5,
+            "max_diff_lines": 1800
+          }
+        }
+      },
+      "max_changed_files": 48,
+      "max_diff_lines": 40000,
+      "checkpoint_chain_max_changed_files": 64,
+      "checkpoint_chain_max_diff_lines": 12000,
+      "promotion_max_diff_lines": 800
     }
   },
   "known_formats": [

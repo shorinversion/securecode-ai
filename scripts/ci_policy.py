@@ -999,8 +999,9 @@ def _promotion_manifest_scan_views(path: str, content: str) -> list[tuple[str, s
 
     normalized_path = path.replace("\\", "/")
     gate_id: str
-    if normalized_path == "artifacts/gates/G1/promotion-manifest.json":
-        gate_id = "G1"
+    match = re.fullmatch(r"artifacts/gates/(G[1-9])/promotion-manifest\.json", normalized_path)
+    if match is not None:
+        gate_id = match.group(1)
     elif re.fullmatch(
         r"work/change-control/amendments/CR-[0-9]{3}-manifest\.json", normalized_path
     ):
@@ -1031,9 +1032,9 @@ def _promotion_manifest_scan_views(path: str, content: str) -> list[tuple[str, s
                 return None
 
         policy = _read_json(SPEC_GATE_POLICY_PATH)
-        if gate_id == "G1":
+        if gate_id.startswith("G"):
             gate_policy = _mapping(
-                _mapping(policy.get("gate_policy"), "gate_policy").get("G1"), "G1"
+                _mapping(policy.get("gate_policy"), "gate_policy").get(gate_id), gate_id
             )
             allowed_paths = tuple(_sequence(gate_policy.get("promotion_paths"), "promotion_paths"))
             require_exact_paths = True
@@ -1122,7 +1123,7 @@ def _review_receipt_scan_view(path: str, content: str) -> str:
 
     normalized_path = path.replace("\\", "/")
     match = re.fullmatch(
-        r"work/change-control/reviews/(G1|POLICY)/"
+        r"work/change-control/reviews/(G[1-9]|POLICY)/"
         r"(product_scope|architecture_contracts|security_evaluation)-([0-9a-f]{64})/receipt\.json",
         normalized_path,
     )
@@ -1264,6 +1265,30 @@ def _change_packet_scan_view(path: str, content: str) -> str:
             }
             expected_identity = ("gate_evidence", "G1", "GO-PROPOSED")
             expected_budgets = {"max_changed_files": 11, "max_diff_lines": 3000}
+        elif value["change_type"] == "integrated_gate_candidate":
+            gate_id = value["gate_id"]
+            if not isinstance(gate_id, str) or re.fullmatch(r"G[1-9]", gate_id) is None:
+                return content
+            gate_policy = _mapping(
+                _mapping(policy.get("gate_policy"), "gate_policy").get(gate_id), gate_id
+            )
+            evidence_files = _sequence(gate_policy.get("evidence_files"), "evidence_files")
+            maximum_files = gate_policy.get("max_changed_files")
+            maximum_lines = gate_policy.get("max_diff_lines")
+            if not isinstance(maximum_files, int) or not isinstance(maximum_lines, int):
+                return content
+            expected_paths = {
+                "CHANGELOG.md",
+                "docs/CONTEXT.md",
+                normalized_path,
+                *(f"artifacts/gates/{gate_id}/{item}" for item in evidence_files),
+                f"artifacts/gates/{gate_id}/promotion-manifest.json",
+            }
+            expected_identity = ("gate_evidence", gate_id, "GO-PROPOSED")
+            expected_budgets = {
+                "max_changed_files": maximum_files,
+                "max_diff_lines": maximum_lines,
+            }
         elif value["change_type"] == "policy_amendment":
             amendment = _mapping(policy.get("policy_amendment"), "policy_amendment")
             maximum_files = amendment.get("max_changed_files")
@@ -1290,7 +1315,11 @@ def _change_packet_scan_view(path: str, content: str) -> str:
             return content
         if (
             (value["protected_class"], value["gate_id"], value["decision"]) != expected_identity
-            or set(allowed_paths) != expected_paths
+            or (
+                not expected_paths.issubset(allowed_paths)
+                if value["change_type"] == "integrated_gate_candidate"
+                else set(allowed_paths) != expected_paths
+            )
             or value["budgets"] != expected_budgets
         ):
             return content
