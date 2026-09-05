@@ -285,14 +285,14 @@ G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 | `P2.3` | Tree-sitter/CST adapter и symbol index | P2.2 | location-stable symbols на fixtures | `DONE` |
 | `P2.4` | Python `ast` adapter | P2.2 | syntax/error recovery tests | `DONE` |
 | `P2.5` | Собственный secret detector + approved external adapter | P2.1, P2.14 | positive/negative/entropy fixtures, redacted output | `DONE` |
-| `P2.6` | Dependency scanner adapter и OSV normalization | P2.2 | pinned vulnerable/safe manifests | `TODO` |
-| `P2.7` | Первый semantic rule: Python CWE-89 | P2.3, P2.4 | source → interpolation → SQL sink evidence | `TODO` |
-| `P2.8` | Scanner plugin contract и time/resource budgets | P2.5–P2.7 | timeout/crash isolation tests | `TODO` |
-| `P2.9` | Normalize, fingerprint и deduplicate `RawSignal`/candidates | P2.8 | stable root-cause IDs, preserved lane lineage and origin across unchanged lines/commits | `TODO` |
-| `P2.10` | Evidence graph v1 | P2.3, P2.9 | typed nodes/edges and provenance validation | `TODO` |
-| `P2.11` | Severity/confidence/CWE/OWASP mapping | P2.9 | deterministic mapping fixtures | `TODO` |
-| `P2.12` | JSON, Markdown/HTML и SARIF reporters | P2.9–P2.11 | schema validation и golden snapshots | `TODO` |
-| `P2.13` | CLI deterministic diagnostic/evaluation mode | P2.12 | end-to-end facts/report tests без LLM; mode не выдаёт product `PASS` | `TODO` |
+| `P2.6` | Dependency scanner adapter и OSV normalization | P2.2 | pinned vulnerable/safe manifests | `DONE` |
+| `P2.7` | Первый semantic rule: Python CWE-89 | P2.3, P2.4 | source → interpolation → SQL sink evidence | `DONE` |
+| `P2.8` | Scanner plugin contract и time/resource budgets | P2.5–P2.7 | timeout/crash isolation tests | `DONE` |
+| `P2.9` | Normalize, fingerprint и deduplicate `RawSignal`/candidates | P2.8 | stable root-cause IDs, preserved lane lineage and origin across unchanged lines/commits | `DONE` |
+| `P2.10` | Evidence graph v1 | P2.3, P2.9 | typed nodes/edges and provenance validation | `DONE` |
+| `P2.11` | Severity/confidence/CWE/OWASP mapping | P2.9 | deterministic mapping fixtures | `DONE` |
+| `P2.12` | JSON, Markdown/HTML и SARIF reporters | P2.9–P2.11 | schema validation и golden snapshots | `DONE` |
+| `P2.13` | CLI deterministic diagnostic/evaluation mode | P2.12 | end-to-end facts/report tests без LLM; mode не выдаёт product `PASS` | `DONE` |
 
 `P2.5` implementation note (updated 2026-09-05): CR-047 first restored the
 mandatory evaluator path through protected PR #33 (`d61d3d5`) without weakening

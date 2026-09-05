@@ -17,12 +17,12 @@
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- G2 candidate P2.6-P2.13 is integrated at implementation checkpoint
-  `eb849b555ef8ff7e96b45baf866f2300d56d3b4c`. Its canonical local gate cycle
-  passed with 1296 tests passed, 5 Windows-only POSIX/FIFO skips, 86.80% Core
-  branch coverage and `QUALITY=PASS`. The gate remains `GO-PROPOSED` until
-  exact-byte promotion, protected PR/CI and post-merge verification complete;
-  P3 has not started.
+- G2 `Deterministic Core Ready` is `GO`: P2.6-P2.13 are complete through
+  exact-byte promotion of implementation checkpoint
+  `eb849b555ef8ff7e96b45baf866f2300d56d3b4c`. Its canonical gate cycle passed
+  with 1296 tests passed, 5 Windows-only POSIX/FIFO skips, 86.80% Core
+  branch coverage and `QUALITY=PASS`. P3 is authorized after ordinary
+  protected delivery confirms the promoted bytes.
 - Latest completed task: `P2.5 — bounded secret detection`, implementation
   commit `34154148faef5281a2e4ddb8170b87294d1e4024`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
