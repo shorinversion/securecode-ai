@@ -1423,6 +1423,33 @@ class SpecGate:
                 total += int(field_value)
         return total
 
+    def _diff_lines_for_paths(self, base: str, candidate: str, paths: Sequence[str]) -> int:
+        """Count the final integrated subject's retained diff within one closed task scope."""
+
+        if not paths:
+            return 0
+        raw = git_bytes(
+            self.root,
+            "diff",
+            "--numstat",
+            "-z",
+            f"{base}..{candidate}",
+            "--",
+            *paths,
+        )
+        total = 0
+        for record in raw.split(b"\0"):
+            if not record:
+                continue
+            fields = record.split(b"\t", 2)
+            if len(fields) != 3:
+                raise GateInputError("GIT_NUMSTAT")
+            for field_value in fields[:2]:
+                if field_value == b"-" or not field_value.isdigit():
+                    raise GateInputError("GIT_BINARY_OR_NUMSTAT")
+                total += int(field_value)
+        return total
+
     def _candidate_file(self, mode: str, candidate: str | None, path: str) -> bytes:
         if mode == "index-candidate":
             return git_bytes(self.root, "cat-file", "blob", f":{path}")
@@ -2048,8 +2075,258 @@ class SpecGate:
         except GateInputError as error:
             return (error.code,)
 
-    def _base_gate_decision(self, base: str) -> str | None:
-        path = "artifacts/gates/G1/decision.md"
+    def _gate_policy(self, gate_id: str) -> Mapping[str, object]:
+        policies = _mapping(self.policy.get("gate_policy"), "POLICY_GATE")
+        policy = _mapping(policies.get(gate_id), f"POLICY_{gate_id}")
+        _strict_keys(
+            policy,
+            {
+                "checklist_ids",
+                "evidence_files",
+                "prerequisite_tasks",
+                "completion_tasks",
+                "review_required",
+                "promotion_paths",
+                "integrated_task_scope",
+                "max_changed_files",
+                "max_diff_lines",
+                "checkpoint_chain_max_changed_files",
+                "checkpoint_chain_max_diff_lines",
+                "promotion_max_diff_lines",
+            },
+            f"POLICY_{gate_id}_KEYS",
+        )
+        return policy
+
+    def _gate_completion_tasks(self, gate_id: str) -> tuple[str, ...]:
+        policy = self._gate_policy(gate_id)
+        prerequisites = _strings(policy.get("prerequisite_tasks"), "POLICY_GATE_PREREQUISITES")
+        completion = _strings(policy.get("completion_tasks"), "POLICY_GATE_COMPLETION_TASKS")
+        if len(set(prerequisites)) != len(prerequisites) or len(set(completion)) != len(completion):
+            raise GateInputError("POLICY_GATE_TASK_DUPLICATE")
+        if not set(completion).issubset(prerequisites):
+            raise GateInputError("POLICY_GATE_COMPLETION_SCOPE")
+        return completion
+
+    def _integrated_task_scopes(
+        self, gate_id: str, completion_tasks: tuple[str, ...]
+    ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...]]]:
+        """Load policy-owned packet and checkpoint paths for an integrated gate."""
+
+        policy = self._gate_policy(gate_id)
+        configured = _mapping(policy.get("integrated_task_scope"), "INTEGRATED_TASK_POLICY")
+        if set(configured) != set(completion_tasks):
+            raise GateInputError("INTEGRATED_TASK_POLICY_SCOPE")
+        protected = _strings(self.policy.get("self_protected_paths"), "POLICY_PROTECTED")
+        scopes: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
+        for task_id in completion_tasks:
+            entry = _mapping(configured[task_id], "INTEGRATED_TASK_POLICY_ENTRY")
+            _strict_keys(
+                entry,
+                {
+                    "packet_allowed_paths",
+                    "checkpoint_allowed_paths",
+                    "packet_budget",
+                    "checkpoint_budget",
+                },
+                "INTEGRATED_TASK_POLICY_KEYS",
+            )
+            packet_paths = _strings(
+                entry.get("packet_allowed_paths"), "INTEGRATED_TASK_PACKET_POLICY_PATHS"
+            )
+            checkpoint_paths = _strings(
+                entry.get("checkpoint_allowed_paths"), "INTEGRATED_CHECKPOINT_POLICY_PATHS"
+            )
+            if (
+                not packet_paths
+                or not checkpoint_paths
+                or len(set(packet_paths)) != len(packet_paths)
+                or len(set(checkpoint_paths)) != len(checkpoint_paths)
+                or not set(checkpoint_paths).issubset(packet_paths)
+                or f"work/task-packets/{task_id}.yaml" not in packet_paths
+                or f"work/task-packets/{task_id}.yaml" not in checkpoint_paths
+                or any(_path_matches(path, protected) for path in packet_paths)
+                or any(_path_matches(path, protected) for path in checkpoint_paths)
+            ):
+                raise GateInputError("INTEGRATED_TASK_POLICY_PATHS")
+            for path in (*packet_paths, *checkpoint_paths):
+                normalize_repo_path(path)
+            scopes[task_id] = (packet_paths, checkpoint_paths)
+        return scopes
+
+    def _integrated_task_budgets(
+        self, gate_id: str, completion_tasks: tuple[str, ...]
+    ) -> dict[str, tuple[Mapping[str, int], Mapping[str, int]]]:
+        """Load closed packet and cumulative-checkpoint budgets from policy."""
+
+        configured = _mapping(
+            self._gate_policy(gate_id).get("integrated_task_scope"), "INTEGRATED_TASK_POLICY"
+        )
+        if set(configured) != set(completion_tasks):
+            raise GateInputError("INTEGRATED_TASK_POLICY_SCOPE")
+        budgets: dict[str, tuple[Mapping[str, int], Mapping[str, int]]] = {}
+        for task_id in completion_tasks:
+            entry = _mapping(configured[task_id], "INTEGRATED_TASK_POLICY_ENTRY")
+            packet_budget = _mapping(entry.get("packet_budget"), "INTEGRATED_TASK_PACKET_BUDGET")
+            checkpoint_budget = _mapping(
+                entry.get("checkpoint_budget"), "INTEGRATED_CHECKPOINT_BUDGET"
+            )
+            for budget, code in (
+                (packet_budget, "INTEGRATED_TASK_PACKET_BUDGET"),
+                (checkpoint_budget, "INTEGRATED_CHECKPOINT_BUDGET"),
+            ):
+                _strict_keys(budget, {"max_changed_files", "max_diff_lines"}, code)
+                for _budget_name, value in budget.items():
+                    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                        raise GateInputError(code)
+            budgets[task_id] = (
+                cast(Mapping[str, int], packet_budget),
+                cast(Mapping[str, int], checkpoint_budget),
+            )
+        return budgets
+
+    def _validate_integrated_task_packets(
+        self,
+        *,
+        base: str,
+        candidate: str,
+        scopes: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]],
+        gate_id: str = "G2",
+    ) -> None:
+        """Accept candidate-only packets only when their authority and scope match policy."""
+
+        budgets = self._integrated_task_budgets(gate_id=gate_id, completion_tasks=tuple(scopes))
+        for task_id, (packet_paths, _) in scopes.items():
+            packet_path = f"work/task-packets/{task_id}.yaml"
+            if git_text(self.root, "ls-tree", "--name-only", base, "--", packet_path).splitlines():
+                raise GateInputError("INTEGRATED_TASK_PACKET_BASE_AUTHORITY")
+            packet = strict_yaml_loads(_git_blob(self.root, candidate, packet_path), self.limits)
+            packet_errors = validate_task_packet(
+                packet,
+                packet_path=packet_path,
+                base_sha=base,
+                changed=packet_paths,
+                diff_lines=self._diff_lines_for_paths(base, candidate, packet_paths),
+                policy=self.policy,
+            )
+            if packet_errors:
+                raise GateInputError(f"INTEGRATED_TASK_PACKET_{packet_errors[0]}")
+            mapping = _mapping(packet, "INTEGRATED_TASK_PACKET")
+            execution = _mapping(mapping.get("execution"), "INTEGRATED_TASK_EXECUTION")
+            scope = _mapping(mapping.get("scope"), "INTEGRATED_TASK_SCOPE")
+            packet_budget, _ = budgets[task_id]
+            if (
+                _strings(execution.get("exclusive_path_lease"), "INTEGRATED_TASK_LEASE")
+                != packet_paths
+                or _strings(scope.get("allowed_paths"), "INTEGRATED_TASK_PATHS") != packet_paths
+                or scope.get("max_changed_files") != packet_budget["max_changed_files"]
+                or scope.get("max_diff_lines") != packet_budget["max_diff_lines"]
+            ):
+                raise GateInputError("INTEGRATED_TASK_PACKET_SCOPE")
+
+    def _validate_integrated_checkpoint_deltas(
+        self,
+        *,
+        base: str,
+        commits: Sequence[str],
+        subject_index: int,
+        scopes: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]],
+        gate_id: str = "G2",
+    ) -> None:
+        """Reject an out-of-scope checkpoint even if its final-tree trace was removed."""
+
+        checkpoint_paths = {path for _, paths in scopes.values() for path in paths}
+        budgets = self._integrated_task_budgets(gate_id=gate_id, completion_tasks=tuple(scopes))
+        cumulative = {task_id: [0, 0] for task_id in scopes}
+        packet_paths = {f"work/task-packets/{task_id}.yaml" for task_id in scopes}
+        introduced: dict[str, int] = dict.fromkeys(packet_paths, 0)
+        protected = _strings(self.policy.get("self_protected_paths"), "POLICY_PROTECTED")
+        previous = base
+        for index, commit in enumerate(commits[: subject_index + 1]):
+            if self._single_parent(commit) != previous:
+                raise GateInputError("INTEGRATED_CHAIN_PARENT")
+            records = self._diff_records("committed-candidate", previous, commit)
+            self._validate_git_modes(
+                "committed-candidate", base=previous, candidate=commit, records=records
+            )
+            changed = changed_paths(records)
+            if index != subject_index:
+                if any(_path_matches(path, protected) for path in changed):
+                    raise GateInputError("INTEGRATED_CHECKPOINT_SELF_PROTECTED")
+                if not changed or not set(changed).issubset(checkpoint_paths):
+                    raise GateInputError("INTEGRATED_CHECKPOINT_SCOPE")
+                for task_id, (_, task_paths) in scopes.items():
+                    task_changed = tuple(sorted(set(changed).intersection(task_paths)))
+                    if task_changed:
+                        cumulative[task_id][0] += len(task_changed)
+                        cumulative[task_id][1] += self._diff_lines_for_paths(
+                            previous, commit, task_changed
+                        )
+            for record in records:
+                for path in record[1:]:
+                    if path in packet_paths:
+                        if record[0] != "A" or record[1] != path:
+                            raise GateInputError("INTEGRATED_TASK_PACKET_IMMUTABLE")
+                        introduced[path] += 1
+            previous = commit
+        if any(count != 1 for count in introduced.values()):
+            raise GateInputError("INTEGRATED_TASK_PACKET_HISTORY")
+        for task_id, (changed_files, changed_lines) in cumulative.items():
+            _, checkpoint_budget = budgets[task_id]
+            if (
+                changed_files > checkpoint_budget["max_changed_files"]
+                or changed_lines > checkpoint_budget["max_diff_lines"]
+            ):
+                raise GateInputError("INTEGRATED_CHECKPOINT_BUDGET")
+
+    def _validate_integrated_chain_budget(
+        self, base: str, commits: Sequence[str], gate_id: str
+    ) -> None:
+        """Charge every immutable chain delta, including transient and review commits."""
+
+        policy = self._gate_policy(gate_id)
+        maximum_files = policy.get("checkpoint_chain_max_changed_files")
+        maximum_lines = policy.get("checkpoint_chain_max_diff_lines")
+        if (
+            type(maximum_files) is not int
+            or maximum_files <= 0
+            or type(maximum_lines) is not int
+            or maximum_lines <= 0
+        ):
+            raise GateInputError("INTEGRATED_CHAIN_BUDGET_POLICY")
+        previous = base
+        changed_files = 0
+        changed_lines = 0
+        for commit in commits:
+            records = self._diff_records("committed-candidate", previous, commit)
+            changed_files += len(changed_paths(records))
+            changed_lines += self._diff_lines("committed-candidate", previous, commit)
+            previous = commit
+        if changed_files > maximum_files or changed_lines > maximum_lines:
+            raise GateInputError("INTEGRATED_CHAIN_BUDGET")
+
+    def _promotion_gate_id(self, changed: tuple[str, ...]) -> str | None:
+        policies = _mapping(self.policy.get("gate_policy"), "POLICY_GATE")
+        matches = [
+            gate_id
+            for gate_id in policies
+            if isinstance(gate_id, str)
+            and changed
+            == tuple(
+                sorted(
+                    _strings(
+                        self._gate_policy(gate_id).get("promotion_paths"),
+                        "POLICY_PROMOTION_PATHS",
+                    )
+                )
+            )
+        ]
+        if len(matches) > 1:
+            raise GateInputError("POLICY_PROMOTION_PATH_AMBIGUOUS")
+        return matches[0] if matches else None
+
+    def _base_gate_decision(self, base: str, gate_id: str = "G1") -> str | None:
+        path = f"artifacts/gates/{gate_id}/decision.md"
         names = git_text(self.root, "ls-tree", "--name-only", base, "--", path).splitlines()
         if not names:
             return None
@@ -2060,6 +2337,391 @@ class SpecGate:
         if len(decisions) != 1:
             raise GateInputError("GATE_BASE_DECISION")
         return cast(str, decisions[0])
+
+    def _completed_gate_plan(self, base_plan: bytes, completion_tasks: tuple[str, ...]) -> bytes:
+        text = _text_from_bytes(base_plan, kind="MARKDOWN")
+        for task_id in completion_tasks:
+            matches = [
+                match for match in TASK_ROW_PATTERN.finditer(text) if match.group("id") == task_id
+            ]
+            if len(matches) != 1 or matches[0].group("status") not in {"TODO", "IN PROGRESS"}:
+                raise GateInputError("PROMOTION_COMPLETION_STATUS")
+            match = matches[0]
+            text = text[: match.start("status")] + "DONE" + text[match.end("status") :]
+        return text.encode("utf-8")
+
+    def _integrated_packet_path(self, revision: str, base: str | None = None) -> str | None:
+        names = (
+            [
+                record[1]
+                for record in self._diff_records("committed-candidate", base, revision)
+                if record[0] == "A"
+            ]
+            if base is not None
+            else git_text(
+                self.root, "ls-tree", "-r", "--name-only", revision, "--", "work/change-control"
+            ).splitlines()
+        )
+        matches: list[str] = []
+        for path in names:
+            if re.fullmatch(r"work/change-control/CR-[0-9]{3}\.yaml", path) is None:
+                continue
+            packet = _mapping(
+                strict_yaml_loads(_git_blob(self.root, revision, path), self.limits),
+                "INTEGRATED_PACKET",
+            )
+            if packet.get("change_type") == "integrated_gate_candidate":
+                matches.append(path)
+        if len(matches) > 1:
+            raise GateInputError("INTEGRATED_PACKET_AMBIGUOUS")
+        return matches[0] if matches else None
+
+    def _integrated_gate_packet_errors(
+        self, base: str, candidate: str, packet_path: str, changed: tuple[str, ...], diff_lines: int
+    ) -> tuple[str, str, str, Mapping[str, object]]:
+        """Validate the single code-and-evidence commit at the root of an integrated gate PR."""
+
+        packet = _mapping(
+            strict_yaml_loads(_git_blob(self.root, candidate, packet_path), self.limits),
+            "INTEGRATED_PACKET",
+        )
+        _strict_keys(
+            packet,
+            {
+                "schema_version",
+                "change_type",
+                "change_id",
+                "starting_commit_sha",
+                "protected_class",
+                "gate_id",
+                "decision",
+                "evidence_bundle_sha256",
+                "review_subject_sha256",
+                "allowed_paths",
+                "budgets",
+            },
+            "INTEGRATED_PACKET_KEYS",
+        )
+        gate_id = packet.get("gate_id")
+        if not isinstance(gate_id, str):
+            raise GateInputError("INTEGRATED_GATE_ID")
+        if self._base_gate_decision(base, gate_id) == "GO":
+            raise GateInputError("INTEGRATED_GATE_IMMUTABLE")
+        policy = self._gate_policy(gate_id)
+        if (
+            packet.get("schema_version") != "1.0.0"
+            or packet.get("change_type") != "integrated_gate_candidate"
+            or not isinstance(packet.get("change_id"), str)
+            or packet_path != f"work/change-control/{packet.get('change_id')}.yaml"
+            or packet.get("starting_commit_sha") != base
+            or packet.get("protected_class") != "gate_evidence"
+            or packet.get("decision") != "GO-PROPOSED"
+        ):
+            raise GateInputError("INTEGRATED_IDENTITY")
+        allowed = _strings(packet.get("allowed_paths"), "G2_INTEGRATED_PATHS")
+        if tuple(sorted(allowed)) != changed or len(set(allowed)) != len(allowed):
+            raise GateInputError("INTEGRATED_PATH_SET")
+        maximum_files = policy.get("max_changed_files")
+        maximum_lines = policy.get("max_diff_lines")
+        budgets = _mapping(packet.get("budgets"), "G2_INTEGRATED_BUDGETS")
+        if (
+            budgets != {"max_changed_files": maximum_files, "max_diff_lines": maximum_lines}
+            or not isinstance(maximum_files, int)
+            or not isinstance(maximum_lines, int)
+            or len(changed) > maximum_files
+            or diff_lines > maximum_lines
+        ):
+            raise GateInputError("INTEGRATED_BUDGET")
+        evidence_paths = tuple(
+            f"artifacts/gates/{gate_id}/{name}"
+            for name in _strings(policy.get("evidence_files"), "POLICY_GATE_EVIDENCE")
+        )
+        required = {
+            packet_path,
+            *evidence_paths,
+            f"artifacts/gates/{gate_id}/promotion-manifest.json",
+            "CHANGELOG.md",
+            "docs/CONTEXT.md",
+        }
+        completion_tasks = self._gate_completion_tasks(gate_id)
+        integrated_scopes = self._integrated_task_scopes(gate_id, completion_tasks)
+        self._validate_integrated_task_packets(
+            base=base, candidate=candidate, scopes=integrated_scopes, gate_id=gate_id
+        )
+        prerequisites = _strings(policy.get("prerequisite_tasks"), "POLICY_GATE_PREREQUISITES")
+        statuses = task_statuses(self._base_file(base, "docs/PLAN.md"))
+        completed_prerequisites = set(prerequisites).difference(completion_tasks)
+        if any(statuses.get(task_id) != "DONE" for task_id in completed_prerequisites) or any(
+            statuses.get(task_id) not in {"TODO", "IN PROGRESS"} for task_id in completion_tasks
+        ):
+            raise GateInputError("INTEGRATED_PREREQUISITES")
+        completion_catalog = _mapping(
+            self.policy.get("completion_evidence"), "POLICY_COMPLETION_EVIDENCE"
+        )
+        for task_id in completed_prerequisites:
+            if task_id in completion_catalog and self._historical_completion_errors(base, task_id):
+                raise GateInputError("INTEGRATED_COMPLETION_RECORD")
+        permitted = set(required)
+        for packet_paths, _ in integrated_scopes.values():
+            permitted.update(packet_paths)
+        if not required.issubset(changed) or not set(changed).issubset(permitted):
+            raise GateInputError("INTEGRATED_SCOPE")
+        documents = self._candidate_documents("committed-candidate", candidate, changed)
+        evidence = {path: documents[path] for path in evidence_paths}
+        if packet.get("evidence_bundle_sha256") != length_prefixed_digest(evidence):
+            raise GateInputError("INTEGRATED_EVIDENCE")
+        review_hash = packet.get("review_subject_sha256")
+        if (
+            not isinstance(review_hash, str)
+            or canonical_review_subject(documents, packet_path=packet_path, stored_hash=review_hash)
+            != review_hash
+        ):
+            raise GateInputError("INTEGRATED_REVIEW_HASH")
+        checklist = _text_from_bytes(
+            evidence[f"artifacts/gates/{gate_id}/checklist.md"], kind="MARKDOWN"
+        )
+        observed = [
+            match.groups()
+            for line in checklist.splitlines()
+            if (match := re.fullmatch(r"- `([a-z][a-z0-9_]*)`: `(PASS|FAIL)`", line))
+        ]
+        expected = _strings(policy.get("checklist_ids"), "POLICY_GATE_CRITERIA")
+        if tuple(name for name, _ in observed) != expected or any(
+            result != "PASS" for _, result in observed
+        ):
+            raise GateInputError("INTEGRATED_CHECKLIST")
+        if re.findall(
+            r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$",
+            _text_from_bytes(evidence[f"artifacts/gates/{gate_id}/decision.md"], kind="MARKDOWN"),
+        ) != ["GO-PROPOSED"]:
+            raise GateInputError("INTEGRATED_DECISION")
+        if documents.get("docs/PLAN.md") is not None:
+            raise GateInputError("INTEGRATED_PLAN_EARLY")
+        promotion_paths = _strings(policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS")
+        promotion_base = {
+            path: documents.get(path, self._base_file(base, path)) for path in promotion_paths
+        }
+        manifest = strict_json_loads(
+            documents[f"artifacts/gates/{gate_id}/promotion-manifest.json"], self.limits
+        )
+        manifest_mapping = _mapping(manifest, "INTEGRATED_PROMOTION_MANIFEST")
+        if manifest_mapping.get("evidence_bundle_sha256") != packet.get("evidence_bundle_sha256"):
+            raise GateInputError("INTEGRATED_PROMOTION_EVIDENCE")
+        final_documents = dict(
+            _promotion_manifest_errors(
+                manifest,
+                gate_id=gate_id,
+                policy_paths=promotion_paths,
+                base_documents=promotion_base,
+            )
+        )
+        if final_documents["docs/PLAN.md"] != self._completed_gate_plan(
+            promotion_base["docs/PLAN.md"], completion_tasks
+        ):
+            raise GateInputError("INTEGRATED_PLAN")
+        promotion_hash = manifest_mapping.get("promotion_subject_sha256")
+        if not isinstance(promotion_hash, str) or not SHA256_PATTERN.fullmatch(promotion_hash):
+            raise GateInputError("INTEGRATED_PROMOTION_HASH")
+        return gate_id, review_hash, promotion_hash, packet
+
+    def _validate_integrated_pull_request_chain(
+        self, base: str, pull_request_head: str
+    ) -> tuple[str, ...]:
+        """Require checkpoint commits, one subject, optional reviews, and promotion."""
+
+        errors: set[str] = set()
+        try:
+            state_before = git_bytes(
+                self.root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
+            )
+            errors.update(self.validate_snapshot())
+        except GateInputError as error:
+            return (error.code,)
+        try:
+            commits = git_text(
+                self.root, "rev-list", "--reverse", "--topo-order", f"{base}..{pull_request_head}"
+            ).splitlines()
+            if not commits:
+                raise GateInputError("INTEGRATED_CHAIN_LENGTH")
+            packet_candidates = [
+                (
+                    index,
+                    self._integrated_packet_path(
+                        commit, base if index == 0 else commits[index - 1]
+                    ),
+                )
+                for index, commit in enumerate(commits)
+            ]
+            packet_matches = [
+                (index, path) for index, path in packet_candidates if path is not None
+            ]
+            if len(packet_matches) != 1:
+                raise GateInputError("INTEGRATED_PACKET_MISSING")
+            subject_index, packet_path = packet_matches[0]
+            packet_preview = _mapping(
+                strict_yaml_loads(
+                    _git_blob(self.root, commits[subject_index], packet_path), self.limits
+                ),
+                "INTEGRATED_PACKET",
+            )
+            preview_gate_id = packet_preview.get("gate_id")
+            if not isinstance(preview_gate_id, str):
+                raise GateInputError("INTEGRATED_GATE_ID")
+            review_required = self._gate_policy(preview_gate_id).get("review_required")
+            if not isinstance(review_required, bool):
+                raise GateInputError("POLICY_GATE_REVIEW_MODE")
+            review_count = 3 if review_required else 0
+            if subject_index != len(commits) - 2 - review_count:
+                raise GateInputError("INTEGRATED_CHAIN_LENGTH")
+            previous = base
+            for commit in commits:
+                if self._single_parent(commit) != previous:
+                    raise GateInputError("INTEGRATED_CHAIN_PARENT")
+                previous = commit
+            subject = commits[subject_index]
+            subject_records = self._diff_records("committed-candidate", base, subject)
+            gate_id, review_hash, promotion_hash, packet = self._integrated_gate_packet_errors(
+                base,
+                subject,
+                packet_path,
+                changed_paths(subject_records),
+                self._diff_lines("committed-candidate", base, subject),
+            )
+            self._validate_integrated_checkpoint_deltas(
+                base=base,
+                commits=commits,
+                subject_index=subject_index,
+                scopes=self._integrated_task_scopes(gate_id, self._gate_completion_tasks(gate_id)),
+                gate_id=gate_id,
+            )
+            self._validate_integrated_chain_budget(base, commits, gate_id)
+            evidence_hash = packet.get("evidence_bundle_sha256")
+            roles: set[str] = set()
+            identities: set[str] = set()
+            for commit in commits[subject_index + 1 : subject_index + 1 + review_count]:
+                parent = self._single_parent(commit)
+                records = self._diff_records("committed-candidate", parent, commit)
+                self._validate_git_modes(
+                    "committed-candidate", base=parent, candidate=commit, records=records
+                )
+                changed = changed_paths(records)
+                if len(changed) != 2 or any(record[0] != "A" for record in records):
+                    raise GateInputError("INTEGRATED_REVIEW_SCOPE")
+                receipt_path = next(
+                    (path for path in changed if path.endswith("/receipt.json")), None
+                )
+                note_path = next((path for path in changed if path.endswith("/review.md")), None)
+                if receipt_path is None or note_path is None:
+                    raise GateInputError("INTEGRATED_REVIEW_FILES")
+                receipt = _mapping(
+                    strict_json_loads(_git_blob(self.root, commit, receipt_path), self.limits),
+                    "INTEGRATED_REVIEW_RECEIPT",
+                )
+                _strict_keys(
+                    receipt,
+                    {
+                        "schema_version",
+                        "change_type",
+                        "gate_id",
+                        "role",
+                        "reviewer_identity",
+                        "reviewed_commit_sha",
+                        "evidence_bundle_sha256",
+                        "review_subject_sha256",
+                        "promotion_subject_sha256",
+                        "verdict",
+                        "source_ref",
+                        "source_ref_sha256",
+                    },
+                    "INTEGRATED_REVIEW_KEYS",
+                )
+                role = receipt.get("role")
+                identity = receipt.get("reviewer_identity")
+                if (
+                    receipt.get("schema_version") != "1.0.0"
+                    or receipt.get("change_type") != "independent_review"
+                    or receipt.get("gate_id") != gate_id
+                    or role
+                    not in {"product_scope", "architecture_contracts", "security_evaluation"}
+                    or not isinstance(identity, str)
+                    or not identity
+                    or receipt.get("reviewed_commit_sha") != subject
+                    or receipt.get("evidence_bundle_sha256") != evidence_hash
+                    or receipt.get("review_subject_sha256") != review_hash
+                    or receipt.get("promotion_subject_sha256") != promotion_hash
+                    or receipt.get("verdict") != "PASS"
+                ):
+                    raise GateInputError("INTEGRATED_REVIEW_RECEIPT")
+                directory = f"work/change-control/reviews/{gate_id}/{role}-{review_hash}"
+                note = _git_blob(self.root, commit, note_path)
+                if (
+                    receipt_path != f"{directory}/receipt.json"
+                    or note_path != f"{directory}/review.md"
+                    or receipt.get("source_ref") != note_path
+                    or hashlib.sha256(note).hexdigest() != receipt.get("source_ref_sha256")
+                ):
+                    raise GateInputError("INTEGRATED_REVIEW_BINDING")
+                roles.add(role)
+                identities.add(identity)
+            if review_required and (
+                roles != {"product_scope", "architecture_contracts", "security_evaluation"}
+                or len(identities) != 3
+            ):
+                raise GateInputError("INTEGRATED_REVIEW_INDEPENDENCE")
+            promotion = commits[-1]
+            promotion_parent = self._single_parent(promotion)
+            promotion_records = self._diff_records(
+                "committed-candidate", promotion_parent, promotion
+            )
+            self._validate_git_modes(
+                "committed-candidate",
+                base=promotion_parent,
+                candidate=promotion,
+                records=promotion_records,
+            )
+            promotion_paths = tuple(
+                sorted(
+                    _strings(
+                        self._gate_policy(gate_id).get("promotion_paths"), "POLICY_PROMOTION_PATHS"
+                    )
+                )
+            )
+            if changed_paths(promotion_records) != promotion_paths:
+                raise GateInputError("INTEGRATED_PROMOTION_SCOPE")
+            manifest = strict_json_loads(
+                _git_blob(self.root, subject, f"artifacts/gates/{gate_id}/promotion-manifest.json"),
+                self.limits,
+            )
+            promotion_base = {
+                path: _git_blob(self.root, promotion_parent, path) for path in promotion_paths
+            }
+            expected = dict(
+                _promotion_manifest_errors(
+                    manifest,
+                    gate_id=gate_id,
+                    policy_paths=promotion_paths,
+                    base_documents=promotion_base,
+                )
+            )
+            actual = {path: _git_blob(self.root, promotion, path) for path in promotion_paths}
+            if actual != expected or length_prefixed_digest(actual) != promotion_hash:
+                raise GateInputError("INTEGRATED_PROMOTION_BYTES")
+            if re.findall(
+                r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$",
+                _text_from_bytes(actual[f"artifacts/gates/{gate_id}/decision.md"], kind="MARKDOWN"),
+            ) != ["GO"]:
+                raise GateInputError("INTEGRATED_PROMOTION_DECISION")
+        except GateInputError as error:
+            errors.add(error.code)
+        try:
+            state_after = git_bytes(
+                self.root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
+            )
+            if state_after != state_before:
+                errors.add("REPOSITORY_MUTATION")
+        except GateInputError as error:
+            errors.add(error.code)
+        return tuple(sorted(errors))
 
     def _proposal_errors(
         self,
@@ -2087,7 +2749,10 @@ class SpecGate:
                     diff_lines=diff_lines,
                     packet=packet,
                 )
-            if self._base_gate_decision(base) == "GO":
+            gate_id = packet.get("gate_id")
+            if gate_id != "G1":
+                raise GateInputError("CHANGE_PACKET_GATE_DECISION")
+            if self._base_gate_decision(base, gate_id) == "GO":
                 raise GateInputError("CHANGE_PACKET_GATE_IMMUTABLE")
             expected_keys = {
                 "schema_version",
@@ -2104,7 +2769,6 @@ class SpecGate:
             }
             _strict_keys(packet, expected_keys, "CHANGE_PACKET_KEYS")
             change_id = packet.get("change_id")
-            gate_id = packet.get("gate_id")
             decision = packet.get("decision")
             if (
                 packet.get("schema_version") != "1.0.0"
@@ -2120,14 +2784,11 @@ class SpecGate:
                 errors.add("CHANGE_PACKET_FILENAME")
             if packet.get("starting_commit_sha") != base:
                 errors.add("CHANGE_PACKET_BASE")
-            if gate_id != "G1" or decision not in {"NO-GO", "GO-PROPOSED"}:
+            if decision not in {"NO-GO", "GO-PROPOSED"}:
                 errors.add("CHANGE_PACKET_GATE_DECISION")
-            gate_policy = _mapping(
-                _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
-                "POLICY_G1",
-            )
+            gate_policy = self._gate_policy(gate_id)
             evidence_files = tuple(
-                f"artifacts/gates/G1/{path}"
+                f"artifacts/gates/{gate_id}/{path}"
                 for path in _strings(gate_policy.get("evidence_files"), "POLICY_GATE_EVIDENCE")
             )
             allowed = _strings(packet.get("allowed_paths"), "CHANGE_PACKET_PATHS")
@@ -2136,23 +2797,34 @@ class SpecGate:
             closed_allowed = {
                 packet_path,
                 *evidence_files,
-                "artifacts/gates/G1/promotion-manifest.json",
+                f"artifacts/gates/{gate_id}/promotion-manifest.json",
                 "CHANGELOG.md",
                 "docs/DECISIONS.md",
                 "docs/CONTEXT.md",
             }
             required_changed = {
                 packet_path,
-                "artifacts/gates/G1/decision.md",
+                f"artifacts/gates/{gate_id}/decision.md",
                 "CHANGELOG.md",
                 "docs/DECISIONS.md",
             }
             if not set(changed).issubset(closed_allowed) or not required_changed.issubset(changed):
                 errors.add("CHANGE_PACKET_CLOSED_PATHS")
             budgets = _mapping(packet.get("budgets"), "CHANGE_PACKET_BUDGETS")
-            if budgets != {"max_changed_files": 11, "max_diff_lines": 3000}:
+            expected_budgets = {
+                "max_changed_files": gate_policy.get("max_changed_files"),
+                "max_diff_lines": gate_policy.get("max_diff_lines"),
+            }
+            if budgets != expected_budgets:
                 errors.add("CHANGE_PACKET_BUDGETS")
-            if len(changed) > 11 or diff_lines > 3000:
+            maximum_files = gate_policy.get("max_changed_files")
+            maximum_lines = gate_policy.get("max_diff_lines")
+            if (
+                type(maximum_files) is not int
+                or type(maximum_lines) is not int
+                or len(changed) > maximum_files
+                or diff_lines > maximum_lines
+            ):
                 errors.add("CHANGE_PACKET_ACTUAL_BUDGET")
             documents = self._candidate_documents(mode, candidate, changed)
             if isinstance(change_id, str):
@@ -2178,7 +2850,7 @@ class SpecGate:
             ):
                 errors.add("CHANGE_PACKET_REVIEW_HASH")
             checklist = _text_from_bytes(
-                evidence_documents["artifacts/gates/G1/checklist.md"], kind="MARKDOWN"
+                evidence_documents[f"artifacts/gates/{gate_id}/checklist.md"], kind="MARKDOWN"
             )
             expected_criteria = _strings(gate_policy.get("checklist_ids"), "POLICY_GATE_CRITERIA")
             observed_criteria: list[tuple[str, str]] = []
@@ -2193,7 +2865,7 @@ class SpecGate:
             ):
                 errors.add("CHANGE_PACKET_CHECKLIST_RESULT")
             decision_text = _text_from_bytes(
-                evidence_documents["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+                evidence_documents[f"artifacts/gates/{gate_id}/decision.md"], kind="MARKDOWN"
             )
             decision_rows = re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", decision_text)
             if decision_rows != [decision]:
@@ -2202,8 +2874,15 @@ class SpecGate:
                 prerequisites = _strings(
                     gate_policy.get("prerequisite_tasks"), "POLICY_GATE_PREREQUISITES"
                 )
+                completion_tasks = self._gate_completion_tasks(gate_id)
                 statuses = task_statuses(self._base_file(base, "docs/PLAN.md"))
-                if any(statuses.get(task_id) != "DONE" for task_id in prerequisites):
+                completed_prerequisites = set(prerequisites).difference(completion_tasks)
+                if any(
+                    statuses.get(task_id) != "DONE" for task_id in completed_prerequisites
+                ) or any(
+                    statuses.get(task_id) not in {"TODO", "IN PROGRESS"}
+                    for task_id in completion_tasks
+                ):
                     errors.add("CHANGE_PACKET_PREREQUISITES")
                 for task_id in prerequisites:
                     task_packet_path = f"work/task-packets/{task_id}.yaml"
@@ -2219,8 +2898,13 @@ class SpecGate:
                     ).splitlines()
                     if len(additions) != 1:
                         errors.add("CHANGE_PACKET_PREREQUISITE_RECORD")
-                for task_id in ("P1.4", "P1.13"):
-                    if self._historical_completion_errors(base, task_id):
+                completion_catalog = _mapping(
+                    self.policy.get("completion_evidence"), "POLICY_COMPLETION_EVIDENCE"
+                )
+                for task_id in completed_prerequisites:
+                    if task_id in completion_catalog and self._historical_completion_errors(
+                        base, task_id
+                    ):
                         errors.add("CHANGE_PACKET_COMPLETION_RECORD")
                 promotion_paths = _strings(
                     gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"
@@ -2230,13 +2914,13 @@ class SpecGate:
                 )
                 manifest = strict_json_loads(
                     self._candidate_file(
-                        mode, candidate, "artifacts/gates/G1/promotion-manifest.json"
+                        mode, candidate, f"artifacts/gates/{gate_id}/promotion-manifest.json"
                     ),
                     self.limits,
                 )
                 decoded = _promotion_manifest_errors(
                     manifest,
-                    gate_id="G1",
+                    gate_id=gate_id,
                     policy_paths=promotion_paths,
                     base_documents=promotion_base_documents,
                 )
@@ -2245,13 +2929,20 @@ class SpecGate:
                     errors.add("PROMOTION_MANIFEST_EVIDENCE_HASH")
                 final_documents = dict(decoded)
                 final_decision = _text_from_bytes(
-                    final_documents["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+                    final_documents[f"artifacts/gates/{gate_id}/decision.md"], kind="MARKDOWN"
                 )
                 if re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", final_decision) != ["GO"]:
                     errors.add("PROMOTION_MANIFEST_DECISION")
-                if task_statuses(final_documents["docs/PLAN.md"]) != statuses:
+                expected_plan = self._completed_gate_plan(
+                    self._base_file(base, "docs/PLAN.md"), completion_tasks
+                )
+                if (
+                    final_documents["docs/PLAN.md"] != expected_plan
+                    if completion_tasks
+                    else task_statuses(final_documents["docs/PLAN.md"]) != statuses
+                ):
                     errors.add("PROMOTION_MANIFEST_TASK_STATUS")
-            elif "artifacts/gates/G1/promotion-manifest.json" in changed:
+            elif f"artifacts/gates/{gate_id}/promotion-manifest.json" in changed:
                 errors.add("CHANGE_PACKET_NO_GO_MANIFEST")
         except GateInputError as error:
             errors.add(error.code)
@@ -2426,7 +3117,7 @@ class SpecGate:
             )
             identity = (packet.get("change_type"), packet.get("decision")) == (
                 ("spec", "GO-PROPOSED")
-                if gate_id == "G1"
+                if gate_id in {"G1", "G2"}
                 else ("policy_amendment", "CHANGE-PROPOSED")
             )
             if (
@@ -2476,8 +3167,8 @@ class SpecGate:
         if proposal_errors:
             raise GateInputError("REVIEW_PROPOSAL_INVALID")
         manifest_path = (
-            "artifacts/gates/G1/promotion-manifest.json"
-            if gate_id == "G1"
+            f"artifacts/gates/{gate_id}/promotion-manifest.json"
+            if gate_id in {"G1", "G2"}
             else f"work/change-control/amendments/{packet.get('change_id')}-manifest.json"
         )
         manifest = _mapping(
@@ -2501,8 +3192,15 @@ class SpecGate:
     ) -> tuple[str, ...]:
         errors: set[str] = set()
         try:
-            if any(path.startswith("work/change-control/reviews/G1/") for path in changed) and (
-                self._base_gate_decision(base) == "GO"
+            reviewed_gate_ids = {
+                gate_id
+                for gate_id in ("G1", "G2")
+                if any(
+                    path.startswith(f"work/change-control/reviews/{gate_id}/") for path in changed
+                )
+            }
+            if any(
+                self._base_gate_decision(base, gate_id) == "GO" for gate_id in reviewed_gate_ids
             ):
                 raise GateInputError("REVIEW_GATE_IMMUTABLE")
             if (
@@ -2546,7 +3244,7 @@ class SpecGate:
             if (
                 receipt.get("schema_version") != "1.0.0"
                 or receipt.get("change_type") != "independent_review"
-                or gate_id not in {"G1", "POLICY"}
+                or gate_id not in {"G1", "G2", "POLICY"}
                 or role not in {"product_scope", "architecture_contracts", "security_evaluation"}
                 or receipt.get("verdict") not in {"PASS", "BLOCK"}
                 or not isinstance(reviewer_identity, str)
@@ -2637,16 +3335,21 @@ class SpecGate:
     ) -> tuple[str, ...]:
         errors: set[str] = set()
         try:
-            gate_policy = _mapping(
-                _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
-                "POLICY_G1",
-            )
+            gate_id = self._promotion_gate_id(changed)
+            if gate_id is None:
+                raise GateInputError("PROMOTION_PATH_BUDGET")
+            gate_policy = self._gate_policy(gate_id)
             promotion_paths = _strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS")
-            if changed != tuple(sorted(promotion_paths)) or diff_lines > 400:
+            promotion_maximum = gate_policy.get("promotion_max_diff_lines")
+            if (
+                changed != tuple(sorted(promotion_paths))
+                or not isinstance(promotion_maximum, int)
+                or diff_lines > promotion_maximum
+            ):
                 raise GateInputError("PROMOTION_PATH_BUDGET")
             manifest = _mapping(
                 strict_json_loads(
-                    self._base_file(base, "artifacts/gates/G1/promotion-manifest.json"),
+                    self._base_file(base, f"artifacts/gates/{gate_id}/promotion-manifest.json"),
                     self.limits,
                 ),
                 "PROMOTION_MANIFEST_ROOT",
@@ -2655,7 +3358,7 @@ class SpecGate:
             decoded = dict(
                 _promotion_manifest_errors(
                     manifest,
-                    gate_id="G1",
+                    gate_id=gate_id,
                     policy_paths=promotion_paths,
                     base_documents=base_documents,
                 )
@@ -2666,14 +3369,14 @@ class SpecGate:
             if length_prefixed_digest(actual) != manifest.get("promotion_subject_sha256"):
                 errors.add("PROMOTION_SUBJECT_HASH")
             evidence_files = tuple(
-                f"artifacts/gates/G1/{path}"
+                f"artifacts/gates/{gate_id}/{path}"
                 for path in _strings(gate_policy.get("evidence_files"), "POLICY_GATE_EVIDENCE")
             )
             evidence_documents = {path: self._base_file(base, path) for path in evidence_files}
             if length_prefixed_digest(evidence_documents) != manifest.get("evidence_bundle_sha256"):
                 errors.add("PROMOTION_EVIDENCE_HASH")
             checklist = _text_from_bytes(
-                evidence_documents["artifacts/gates/G1/checklist.md"], kind="MARKDOWN"
+                evidence_documents[f"artifacts/gates/{gate_id}/checklist.md"], kind="MARKDOWN"
             )
             observed = [
                 match.groups()
@@ -2686,10 +3389,10 @@ class SpecGate:
             ):
                 errors.add("PROMOTION_CHECKLIST")
             base_decision = _text_from_bytes(
-                evidence_documents["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+                evidence_documents[f"artifacts/gates/{gate_id}/decision.md"], kind="MARKDOWN"
             )
             final_decision = _text_from_bytes(
-                actual["artifacts/gates/G1/decision.md"], kind="MARKDOWN"
+                actual[f"artifacts/gates/{gate_id}/decision.md"], kind="MARKDOWN"
             )
             if re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", base_decision) != [
                 "GO-PROPOSED"
@@ -2698,10 +3401,24 @@ class SpecGate:
             prerequisites = _strings(
                 gate_policy.get("prerequisite_tasks"), "POLICY_GATE_PREREQUISITES"
             )
+            completion_tasks = self._gate_completion_tasks(gate_id)
             base_statuses = task_statuses(self._base_file(base, "docs/PLAN.md"))
-            if any(base_statuses.get(task_id) != "DONE" for task_id in prerequisites):
+            completed_prerequisites = set(prerequisites).difference(completion_tasks)
+            if any(
+                base_statuses.get(task_id) != "DONE" for task_id in completed_prerequisites
+            ) or any(
+                base_statuses.get(task_id) not in {"TODO", "IN PROGRESS"}
+                for task_id in completion_tasks
+            ):
                 errors.add("PROMOTION_PREREQUISITES")
-            if task_statuses(actual["docs/PLAN.md"]) != base_statuses:
+            expected_plan = self._completed_gate_plan(
+                self._base_file(base, "docs/PLAN.md"), completion_tasks
+            )
+            if (
+                actual["docs/PLAN.md"] != expected_plan
+                if completion_tasks
+                else task_statuses(actual["docs/PLAN.md"]) != base_statuses
+            ):
                 errors.add("PROMOTION_TASK_STATUS")
             review_paths = git_text(
                 self.root,
@@ -2710,7 +3427,7 @@ class SpecGate:
                 "--name-only",
                 base,
                 "--",
-                "work/change-control/reviews/G1",
+                f"work/change-control/reviews/{gate_id}",
             ).splitlines()
             receipts: list[tuple[str, Mapping[str, object]]] = []
             commits: set[str] = set()
@@ -2789,7 +3506,7 @@ class SpecGate:
                     errors.add("PROMOTION_RECEIPT_VERDICT")
                 role = receipt.get("role")
                 review_hash = receipt.get("review_subject_sha256")
-                expected_directory = f"work/change-control/reviews/G1/{role}-{review_hash}"
+                expected_directory = f"work/change-control/reviews/{gate_id}/{role}-{review_hash}"
                 if path != f"{expected_directory}/receipt.json":
                     errors.add("PROMOTION_RECEIPT_PATH")
                 note_path = receipt.get("source_ref")
@@ -2809,7 +3526,9 @@ class SpecGate:
                 review_hash = str(next(iter(review_hashes)))
                 if len(commits) == 3 and not self._linear_review_chain(reviewed, commits, base):
                     errors.add("PROMOTION_RECEIPT_CHAIN")
-                proposal, reviewed_manifest = self._reviewed_proposal(reviewed, review_hash)
+                proposal, reviewed_manifest = self._reviewed_proposal(
+                    reviewed, review_hash, gate_id
+                )
                 if reviewed_manifest != manifest or proposal.get(
                     "evidence_bundle_sha256"
                 ) != manifest.get("evidence_bundle_sha256"):
@@ -3089,18 +3808,17 @@ class SpecGate:
                 if self._single_parent(commit) != previous:
                     raise GateInputError("PR_HEAD_CHAIN")
                 previous = commit
+            if any(
+                self._integrated_packet_path(commit, base if index == 0 else commits[index - 1])
+                is not None
+                for index, commit in enumerate(commits)
+            ):
+                return self._validate_integrated_pull_request_chain(base, pull_request_head)
             logical_base = base if len(commits) == 1 else self._single_parent(pull_request_head)
             if len(commits) > 1:
                 records = self._diff_records("committed-candidate", logical_base, pull_request_head)
                 changed = changed_paths(records)
-                gate_policy = _mapping(
-                    _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
-                    "POLICY_G1",
-                )
-                promotion_paths = tuple(
-                    sorted(_strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"))
-                )
-                protected_promotions = int(changed == promotion_paths) + int(
+                protected_promotions = int(self._promotion_gate_id(changed) is not None) + int(
                     self._policy_promotion_packet(
                         "committed-candidate",
                         base=logical_base,
@@ -3235,16 +3953,10 @@ class SpecGate:
             ]
             review_candidate = len(changed) == 2 and all(
                 record[0] == "A"
-                and re.match(r"work/change-control/reviews/(?:G1|POLICY)/", record[1])
+                and re.match(r"work/change-control/reviews/(?:G1|G2|POLICY)/", record[1])
                 for record in records
             )
-            gate_policy = _mapping(
-                _mapping(self.policy.get("gate_policy"), "POLICY_GATE").get("G1"),
-                "POLICY_G1",
-            )
-            promotion_paths = tuple(
-                sorted(_strings(gate_policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS"))
-            )
+            promotion_gate_id = self._promotion_gate_id(changed)
             policy_promotion_packet = self._policy_promotion_packet(
                 mode,
                 base=base,
@@ -3260,7 +3972,7 @@ class SpecGate:
                 kinds.append("proposal")
             if review_candidate:
                 kinds.append("review")
-            if changed == promotion_paths:
+            if promotion_gate_id is not None:
                 kinds.append("promotion")
             if policy_promotion_packet is not None:
                 kinds.append("policy_promotion")

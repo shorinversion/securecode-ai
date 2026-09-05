@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
@@ -44,6 +44,226 @@ def _load_gate() -> ModuleType:
 
 
 GATE = _load_gate()
+
+
+@dataclass(frozen=True)
+class G2TaskPacketFixture:
+    """Immutable admission fields captured from one reviewed G2 task packet."""
+
+    task_id: str
+    allowed_paths: tuple[str, ...]
+    forbidden_paths: tuple[str, ...]
+    max_changed_files: int
+    max_diff_lines: int
+
+
+# These are literals from the reviewed P2.6--P2.13 packet fields, rather than
+# values copied from the evaluator policy.  The packets are candidate-only and
+# absent from the protected base used by the policy-amendment promotion tests.
+G2_TASK_PACKET_FIXTURES = (
+    G2TaskPacketFixture(
+        task_id="P2.6",
+        allowed_paths=(
+            "CHANGELOG.md",
+            "docs/CONTEXT.md",
+            "docs/PLAN.md",
+            "packages/adapters/src/securecode_ai/adapters/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py",
+            "tests/fixtures/p2_6/safe-requirements.txt",
+            "tests/fixtures/p2_6/vulnerable-requirements.txt",
+            "tests/unit/test_dependency_scanning.py",
+            "work/task-packets/P2.6.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "packages/core/**",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=10,
+        max_diff_lines=2600,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.7",
+        allowed_paths=(
+            "packages/adapters/src/securecode_ai/adapters/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/cwe89.py",
+            "tests/unit/test_cwe89_adapter.py",
+            "work/task-packets/P2.7.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "packages/core/**",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=4,
+        max_diff_lines=2500,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.8",
+        allowed_paths=(
+            "packages/core/src/securecode_ai/core/scanning.py",
+            "packages/core/src/securecode_ai/core/__init__.py",
+            "packages/adapters/src/securecode_ai/adapters/scanner_plugin.py",
+            "tests/unit/test_scanner_plugin.py",
+            "tests/__init__.py",
+            "tests/unit/__init__.py",
+            "work/task-packets/P2.8.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=7,
+        max_diff_lines=2200,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.9",
+        allowed_paths=(
+            "packages/core/src/securecode_ai/core/normalization.py",
+            "tests/unit/test_signal_normalization.py",
+            "work/task-packets/P2.9.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "packages/core/src/securecode_ai/core/__init__.py",
+            "packages/adapters/**",
+            "docs/**",
+            "CHANGELOG.md",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=3,
+        max_diff_lines=1800,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.10",
+        allowed_paths=(
+            "packages/core/src/securecode_ai/core/evidence_graph.py",
+            "tests/unit/test_evidence_graph.py",
+            "work/task-packets/P2.10.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "packages/core/src/securecode_ai/core/__init__.py",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=3,
+        max_diff_lines=2200,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.11",
+        allowed_paths=(
+            "packages/core/src/securecode_ai/core/classification.py",
+            "tests/unit/test_classification.py",
+            "work/task-packets/P2.11.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=3,
+        max_diff_lines=700,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.12",
+        allowed_paths=(
+            "packages/core/src/securecode_ai/core/reports.py",
+            "tests/unit/test_reports.py",
+            "work/task-packets/P2.12.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "pyproject.toml",
+            "uv.lock",
+        ),
+        max_changed_files=3,
+        max_diff_lines=1600,
+    ),
+    G2TaskPacketFixture(
+        task_id="P2.13",
+        allowed_paths=(
+            "apps/cli/src/securecode_ai/cli/application.py",
+            "apps/cli/src/securecode_ai/cli/diagnostic.py",
+            "apps/cli/src/securecode_ai/cli/__init__.py",
+            "tests/unit/test_cli_diagnostic.py",
+            "work/task-packets/P2.13.yaml",
+        ),
+        forbidden_paths=(
+            "specs/**",
+            "scripts/**",
+            ".github/**",
+            "artifacts/gates/**",
+            "packages/contracts/**",
+            "packages/core/**",
+            "packages/adapters/**",
+            "pyproject.toml",
+            "uv.lock",
+            "docs/**",
+        ),
+        max_changed_files=5,
+        max_diff_lines=1800,
+    ),
+)
+
+G2_PACKET_BASELINE = {
+    "baseline_id": "securecode-definition-0.2.0",
+    "baseline_content_sha256": "dedb43be8ba055dfa47858b975630b4c870af3bed2dda842b0e8422c8354b5c9",
+    "baseline_commit_sha": "f5cd4ef2a0f7130d16cb2c206091908be71b0702",
+}
+
+
+def _g2_task_packet_document(fixture: G2TaskPacketFixture, base: str) -> dict[str, Any]:
+    """Materialize only the closed fields validated for candidate-only packets."""
+
+    return {
+        "schema_version": "0.1-draft",
+        "task": {
+            "id": fixture.task_id,
+            "type": "implementation",
+            **G2_PACKET_BASELINE,
+            "starting_commit_sha": base,
+        },
+        "execution": {"exclusive_path_lease": list(fixture.allowed_paths)},
+        "scope": {
+            "allowed_paths": list(fixture.allowed_paths),
+            "forbidden_paths": list(fixture.forbidden_paths),
+            "max_changed_files": fixture.max_changed_files,
+            "max_diff_lines": fixture.max_diff_lines,
+        },
+    }
 
 
 def _limits() -> Any:
@@ -811,13 +1031,264 @@ def _complete_task(
 def test_protected_run_evidence_tasks_are_derived_from_closed_policy_catalog() -> None:
     policy = GATE.SpecGate().policy
     assert GATE.completion_run_evidence_tasks(policy) == frozenset(
-        {f"P2.{index}" for index in range(1, 15)}
+        {"P2.1", "P2.2", "P2.3", "P2.4", "P2.5", "P2.14"}
     )
 
     invalid = copy.deepcopy(policy)
     invalid["completion_evidence"]["P2.2"].remove("post_merge_gate")
     with pytest.raises(GATE.GateInputError, match="POLICY_GITHUB_RUN_EVIDENCE_PAIR"):
         GATE.completion_run_evidence_tasks(invalid)
+
+
+def test_g2_policy_consolidates_only_unattested_p2_tasks() -> None:
+    gate = GATE.SpecGate()
+    policy = gate._gate_policy("G2")
+    completion = gate._gate_completion_tasks("G2")
+    assert completion == tuple(f"P2.{index}" for index in range(6, 14))
+    assert policy["review_required"] is False
+    assert set(completion).issubset(policy["prerequisite_tasks"])
+    assert not set(completion).intersection(gate.policy["completion_evidence"])
+    assert gate._promotion_gate_id(tuple(sorted(policy["promotion_paths"]))) == "G2"
+
+
+def _candidate_packet_repository(tmp_path: Path) -> tuple[Path, str, str]:
+    repository = tmp_path / "candidate-packets"
+    repository.mkdir()
+    _run_git(repository, "init", "-b", "master")
+    _run_git(repository, "config", "user.name", "Spec Gate Test")
+    _run_git(repository, "config", "user.email", "spec-gate@example.invalid")
+    _write_candidate(repository, "README.md", b"base\n")
+    base = _commit_all(repository, "base")
+    for fixture in G2_TASK_PACKET_FIXTURES:
+        packet_path = f"work/task-packets/{fixture.task_id}.yaml"
+        _write_candidate(
+            repository,
+            packet_path,
+            yaml.safe_dump(_g2_task_packet_document(fixture, base), sort_keys=False).encode(),
+        )
+    candidate = _commit_all(repository, "Add candidate-only G2 packets")
+    return repository, base, candidate
+
+
+def test_g2_candidate_packets_are_bound_to_policy_authority_and_closed_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    repository, base, candidate = _candidate_packet_repository(tmp_path)
+    gate = GATE.SpecGate(root=repository, policy_path=GATE.POLICY_PATH)
+    completion = gate._gate_completion_tasks("G2")
+    scopes = gate._integrated_task_scopes("G2", completion)
+    budgets = gate._integrated_task_budgets("G2", completion)
+    assert completion == tuple(fixture.task_id for fixture in G2_TASK_PACKET_FIXTURES)
+    for fixture in G2_TASK_PACKET_FIXTURES:
+        assert scopes[fixture.task_id][0] == fixture.allowed_paths
+        assert budgets[fixture.task_id][0] == {
+            "max_changed_files": fixture.max_changed_files,
+            "max_diff_lines": fixture.max_diff_lines,
+        }
+    gate._validate_integrated_task_packets(base=base, candidate=candidate, scopes=scopes)
+
+    packet_path = "work/task-packets/P2.6.yaml"
+    altered = (
+        (repository / packet_path)
+        .read_bytes()
+        .replace(
+            b"packages/adapters/src/securecode_ai/adapters/dependency_scanning.py",
+            b"README.md",
+        )
+    )
+    _write_candidate(repository, packet_path, altered)
+    tampered = _commit_all(repository, "Broaden candidate packet")
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_TASK_PACKET_PACKET_SCOPE"):
+        gate._validate_integrated_task_packets(base=base, candidate=tampered, scopes=scopes)
+
+
+def test_g2_packet_fixture_forbidden_paths_are_enforced_at_admission() -> None:
+    gate = GATE.SpecGate()
+    base = "a" * 40
+    forbidden_path = "artifacts/gates/G2/decision.md"
+    for fixture in G2_TASK_PACKET_FIXTURES:
+        packet = _g2_task_packet_document(fixture, base)
+        assert (
+            GATE.validate_task_packet(
+                packet,
+                packet_path=f"work/task-packets/{fixture.task_id}.yaml",
+                base_sha=base,
+                changed=fixture.allowed_paths,
+                diff_lines=0,
+                policy=gate.policy,
+            )
+            == ()
+        )
+        packet["execution"]["exclusive_path_lease"].append(forbidden_path)
+        packet["scope"]["allowed_paths"].append(forbidden_path)
+        errors = GATE.validate_task_packet(
+            packet,
+            packet_path=f"work/task-packets/{fixture.task_id}.yaml",
+            base_sha=base,
+            changed=(*fixture.allowed_paths, forbidden_path),
+            diff_lines=0,
+            policy=gate.policy,
+        )
+        assert "PACKET_ALLOW_FORBID_OVERLAP" in errors
+        assert "PACKET_SCOPE" in errors
+
+
+def test_g2_candidate_packets_enforce_actual_scoped_diff_line_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    repository, base, _ = _candidate_packet_repository(tmp_path)
+    gate = GATE.SpecGate(root=repository, policy_path=GATE.POLICY_PATH)
+    completion = gate._gate_completion_tasks("G2")
+    scopes = gate._integrated_task_scopes("G2", completion)
+    packet_path = "work/task-packets/P2.6.yaml"
+    packet = yaml.safe_load((repository / packet_path).read_bytes())
+    packet["scope"]["max_diff_lines"] = 1
+    _write_candidate(repository, packet_path, yaml.safe_dump(packet, sort_keys=False).encode())
+    candidate = _commit_all(repository, "Constrain P2.6 candidate line budget")
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_TASK_PACKET_PACKET_LINE_BUDGET"):
+        gate._validate_integrated_task_packets(base=base, candidate=candidate, scopes=scopes)
+
+
+@pytest.mark.parametrize(
+    ("transient_path", "code"),
+    [
+        ("unreviewed/transient.py", "INTEGRATED_CHECKPOINT_SCOPE"),
+        ("scripts/spec_gate.py", "INTEGRATED_CHECKPOINT_SELF_PROTECTED"),
+    ],
+)
+def test_g2_checkpoint_history_rejects_removed_scope_laundering(
+    monkeypatch: pytest.MonkeyPatch, transient_path: str, code: str
+) -> None:
+    gate = GATE.SpecGate()
+    base = "a" * 40
+    checkpoint = "b" * 40
+    subject = "c" * 40
+    mode_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_single_parent",
+        lambda _self, commit: {checkpoint: base, subject: checkpoint}[commit],
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_diff_records",
+        lambda _self, _mode, _base, candidate: (
+            (("A", transient_path),)
+            if candidate == checkpoint
+            else (("A", "work/task-packets/P2.6.yaml"),)
+        ),
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_validate_git_modes",
+        lambda _self, _mode, *, base, candidate, records: mode_calls.append((base, candidate)),
+    )
+    with pytest.raises(GATE.GateInputError, match=code):
+        gate._validate_integrated_checkpoint_deltas(
+            base=base,
+            commits=(checkpoint, subject),
+            subject_index=1,
+            scopes=gate._integrated_task_scopes("G2", gate._gate_completion_tasks("G2")),
+        )
+    assert mode_calls == [(base, checkpoint)]
+
+
+def test_g2_checkpoint_history_charges_cumulative_permitted_deltas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    base = "a" * 40
+    first = "b" * 40
+    second = "c" * 40
+    subject = "d" * 40
+    permitted = "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py"
+    packet_records = tuple(
+        ("A", f"work/task-packets/{task_id}.yaml") for task_id in gate._gate_completion_tasks("G2")
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_single_parent",
+        lambda _self, commit: {first: base, second: first, subject: second}[commit],
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_diff_records",
+        lambda _self, _mode, _base, candidate: (
+            packet_records if candidate == subject else (("M", permitted),)
+        ),
+    )
+    monkeypatch.setattr(GATE.SpecGate, "_validate_git_modes", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(GATE.SpecGate, "_diff_lines_for_paths", lambda *_args: 1400)
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_CHECKPOINT_BUDGET"):
+        gate._validate_integrated_checkpoint_deltas(
+            base=base,
+            commits=(first, second, subject),
+            subject_index=2,
+            scopes=gate._integrated_task_scopes("G2", gate._gate_completion_tasks("G2")),
+        )
+
+
+def test_integrated_chain_budget_charges_review_and_transient_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    base = "a" * 40
+    checkpoint = "b" * 40
+    review = "c" * 40
+    paths = tuple(f"transient/{index}.txt" for index in range(40))
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_diff_records",
+        lambda _self, _mode, _base, _candidate: tuple(("A", path) for path in paths),
+    )
+    monkeypatch.setattr(GATE.SpecGate, "_diff_lines", lambda *_args: 6001)
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_CHAIN_BUDGET"):
+        gate._validate_integrated_chain_budget(base, (checkpoint, review), "G2")
+
+
+def test_integrated_gate_rejects_reopening_an_effective_go_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    packet = {
+        "schema_version": "1.0.0",
+        "change_type": "integrated_gate_candidate",
+        "change_id": "CR-999",
+        "starting_commit_sha": "a" * 40,
+        "protected_class": "gate_evidence",
+        "gate_id": "G1",
+        "decision": "GO-PROPOSED",
+        "evidence_bundle_sha256": "b" * 64,
+        "review_subject_sha256": "c" * 64,
+        "allowed_paths": [],
+        "budgets": {"max_changed_files": 1, "max_diff_lines": 1},
+    }
+    monkeypatch.setattr(GATE, "_git_blob", lambda *_args: json.dumps(packet).encode("utf-8"))
+    monkeypatch.setattr(GATE.SpecGate, "_base_gate_decision", lambda *_args: "GO")
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_GATE_IMMUTABLE"):
+        gate._integrated_gate_packet_errors(
+            "a" * 40,
+            "b" * 40,
+            "work/change-control/CR-999.yaml",
+            (),
+            0,
+        )
+
+
+def test_g2_promotion_plan_marks_only_consolidated_tasks_done() -> None:
+    gate = GATE.SpecGate()
+    completion = gate._gate_completion_tasks("G2")
+    base = (REPOSITORY_ROOT / "docs/PLAN.md").read_bytes()
+    final = gate._completed_gate_plan(base, completion)
+    before = GATE.task_statuses(base)
+    after = GATE.task_statuses(final)
+    assert all(before[task_id] in {"TODO", "IN PROGRESS"} for task_id in completion)
+    assert all(after[task_id] == "DONE" for task_id in completion)
+    assert after["P2.5"] == before["P2.5"] == "DONE"
+    assert after["P2.14"] == before["P2.14"] == "DONE"
 
 
 P2_IMPLEMENTATION_SHA = "".join(("e44fe903", "27013526", "65061e24", "88e0de3a", "c7fc5e21"))

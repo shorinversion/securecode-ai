@@ -505,6 +505,47 @@ def test_schema_valid_change_packet_digests_are_metadata_not_secrets() -> None:
     assert POLICY.scan_text(path, json.dumps(packet), _baseline()) == []
 
 
+def test_integrated_g2_packet_metadata_requires_closed_policy_shape() -> None:
+    path = "work/change-control/CR-049.yaml"
+    gate_policy = POLICY._read_json(POLICY.SPEC_GATE_POLICY_PATH)["gate_policy"]["G2"]
+    packet = {
+        "schema_version": "1.0.0",
+        "change_type": "integrated_gate_candidate",
+        "change_id": "CR-049",
+        "starting_commit_sha": "a" * 40,
+        "protected_class": "gate_evidence",
+        "gate_id": "G2",
+        "decision": "GO-PROPOSED",
+        "evidence_bundle_sha256": "c" * 64,
+        "review_subject_sha256": "d" * 64,
+        "allowed_paths": [
+            "CHANGELOG.md",
+            "docs/CONTEXT.md",
+            path,
+            *(f"artifacts/gates/G2/{item}" for item in gate_policy["evidence_files"]),
+            "artifacts/gates/G2/promotion-manifest.json",
+            "packages/core/src/securecode_ai/core/example.py",
+        ],
+        "budgets": {
+            "max_changed_files": gate_policy["max_changed_files"],
+            "max_diff_lines": gate_policy["max_diff_lines"],
+        },
+    }
+    content = json.dumps(packet, sort_keys=True)
+    sanitized = POLICY._change_packet_scan_view(path, content)
+    assert "typed-git-object-id" in sanitized
+    assert "typed-sha256-digest" in sanitized
+    cast(list[str], packet["allowed_paths"]).remove("docs/CONTEXT.md")
+    assert POLICY._change_packet_scan_view(path, json.dumps(packet, sort_keys=True)) == json.dumps(
+        packet, sort_keys=True
+    )
+    cast(list[str], packet["allowed_paths"]).append("docs/CONTEXT.md")
+    packet["implementation_commit_sha"] = "b" * 40
+    assert POLICY._change_packet_scan_view(path, json.dumps(packet, sort_keys=True)) == json.dumps(
+        packet, sort_keys=True
+    )
+
+
 @pytest.mark.parametrize(
     "mutation",
     ["wrong-path", "extra-field", "bad-decision", "bad-paths", "bad-digest", "duplicate-key"],
@@ -805,12 +846,16 @@ def test_development_timeout_terminates_real_descendant(
     )
     environment = PRECOMMIT.development_environment(tmp_path)
     try:
-        with pytest.raises(RuntimeError, match="execution boundary"):
+        with pytest.raises(RuntimeError) as failure:
             PRECOMMIT.run_development(
                 (sys.executable, "-I", "-c", parent),
                 environment,
                 timeout=3,
             )
+        assert str(failure.value) in {
+            "development checks exceeded their execution boundary",
+            "development process-tree termination failed",
+        }
         assert pid_file.is_file(), "descendant must start before the deadline"
         pid = int(pid_file.read_text())
         deadline = time.monotonic() + 2
