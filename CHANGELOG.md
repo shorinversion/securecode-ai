@@ -49,8 +49,8 @@ Changelog отвечает на вопрос «что и когда измени
   jobs and post-merge run `33955936418` passed without bypass.
 - P2.5 implementation then merged through protected PR #34 as `76d7601` after
   the final fail-open boundary fix. PR run `33957781524`, post-merge run
-  `33957954712` and canonical quality passed. P2.5 remains `IN PROGRESS` only
-  until its exact completion attestation is protected and effective.
+  `33957954712` and canonical quality passed. The exact completion attestation
+  now binds those protected bytes and evidence and marks P2.5 `DONE`.
 - D-044 records the bounded scheduling/evidence decision. Independent document
   reviews and integration handoff are tracked in development-run CR-046;
   accepted specs, evaluator behavior and product code are not modified.
@@ -85,6 +85,13 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-09-05 — completed `P2.5`: bounded first-party pattern/entropy
+  detection and the closed approved external-scanner adapter retain only
+  immutable source identity, exact location, fixed redaction and keyed
+  fingerprints. The accepted correction rejects the first byte above the
+  4096-byte match budget before filtering. Completion evidence binds
+  implementation commit `3415414`, protected merge `76d7601`, PR run
+  `33957781524` and green post-merge run `33957954712`.
 - 2026-08-29 - implemented the local `P2.5` candidate with bounded first-party
   pattern/entropy detection, a pinned `detect-secrets@1.5.0` injected adapter,
   immutable source-bound redacted metadata and keyed fingerprints. The current

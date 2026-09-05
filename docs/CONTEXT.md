@@ -17,19 +17,19 @@
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
-- Latest completed task: `P2.4 — bounded CPython ast adapter`, implementation
-  commit `cbd29a60386e04cd7358f49d7add287832f580f7`.
+- Latest completed task: `P2.5 — bounded secret detection`, implementation
+  commit `34154148faef5281a2e4ddb8170b87294d1e4024`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
 - `CR-017/D-030` evaluator repair интегрирован exact commit
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: `P2.5` secret detector is `IN PROGRESS`. Its implementation
-  passed focused tests, canonical quality and final security delta review after
-  closing the oversized-candidate fail-open boundary. Protected PR #34 merged
-  as `76d7601`; PR run `33957781524` and post-merge run `33957954712` passed.
-  The remaining step is the exact protected completion attestation; P3 remains
-  blocked until effective G2 GO.
+- `P2.5` is `DONE`. Its implementation passed focused tests, canonical
+  quality and final security delta review after closing the oversized-candidate
+  fail-open boundary. Protected PR #34 merged as `76d7601`; PR run
+  `33957781524` and post-merge run `33957954712` passed. The exact completion
+  attestation binds those bytes and evidence. P3 remains blocked until
+  effective G2 GO.
 - `CR-047` repaired the evaluator timeout without changing the collected
   114-node contract or 360-second deadline. Protected PR #33 merged without
   bypass as `d61d3d5`; all required PR jobs and post-merge run `33955936418`
@@ -365,13 +365,14 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Защищённо интегрировать CR-046 и затем опубликовать exact completion
-   attestation P2.5, не повторяя уже действительные продуктовые проверки.
-2. Провести исполняемый protected amendment CR-045, сохранив hooks/CI/gates,
+1. Провести исполняемый protected amendment CR-045, сохранив hooks/CI/gates,
    но убрав дублирующие per-task full-quality/review циклы до начала P2.6.
-3. Реализовать P2.6–P2.13 code-first к effective G2; параллельно
+2. Реализовать P2.6–P2.13 code-first к effective G2; параллельно
    подготовить P9.12 и development corpus. P3 начинается только после effective
    G2. Календарь следующих этапов — SUBMISSION_PLAN.md.
+3. После стабилизации CR-045 дать Luna medium writer lease на безопасные
+   ненормативные translation batches; immutable/spec/gate evidence не переводить
+   без отдельного change control.
 
 ## Критические запреты
 
