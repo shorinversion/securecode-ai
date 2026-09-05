@@ -22,6 +22,18 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### G2 — deterministic core gate candidate (2026-09-06)
+
+- Integrated P2.6-P2.13 as one frozen G2 candidate: dependency and CWE-89
+  scanners, bounded scanner plugins, deterministic normalization and lineage,
+  EvidenceGraph, classification, JSON/Markdown/HTML/SARIF reporting, and the
+  diagnostic CLI mode.
+- The exact implementation checkpoint `eb849b555ef8ff7e96b45baf866f2300d56d3b4c`
+  passed the canonical gate cycle: 1296 unit tests passed, 5 Windows-only
+  POSIX/FIFO oracles skipped, Core branch coverage 86.80%, and
+  `QUALITY=PASS`. Gate status remains `GO-PROPOSED` until exact-byte promotion
+  and protected delivery complete.
+
 ### CR-054 — make G2 promotion test state-independent (2026-09-05)
 
 - Build the G2 pre-promotion plan fixture inside the evaluator regression test
