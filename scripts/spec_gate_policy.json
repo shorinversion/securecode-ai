@@ -1097,10 +1097,11 @@
       "state": "planned"
     },
     "html_markdown_sarif_terminal_rendering": {
+      "command": "python scripts/quality.py",
       "owners": [
         "P2.12"
       ],
-      "state": "planned"
+      "state": "executable"
     },
     "hybrid_lineage_dedup": {
       "owners": [
