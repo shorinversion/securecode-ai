@@ -22,6 +22,19 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-052 — activate completed G2 rendering evidence (2026-09-05)
+
+- Closing-phase lifecycle correction for P2.12: promote the existing
+  `html_markdown_sarif_terminal_rendering` catalog entry from `planned` to
+  `executable`, bound to the canonical `python scripts/quality.py` command that
+  collects the JSON/Markdown/HTML/SARIF reporter tests on the integrated G2
+  candidate. This removes
+  the stale-planned contradiction when exact G2 promotion marks P2.12 `DONE`;
+  product code, accepted specifications and G2 evidence remain unchanged.
+- The amendment uses the existing fail-closed POLICY route and its three
+  specifically authorized receipts. It does not reintroduce independent gate
+  reviews for G2-G8 or change the single post-G9 final review policy.
+
 ### CR-050 — protected candidate admission repair (2026-09-05)
 
 - Successor proposal for the integrated gate lifecycle: preserve the
@@ -31,8 +44,9 @@ Changelog отвечает на вопрос «что и когда измени
   the admitted candidate packet to its declared base, complete checkpoint
   ancestry and exact target scope, preventing protected-scope laundering or
   self-admission. The three POLICY receipts remain the only specifically
-  authorized reviews for this evaluator amendment; the proposal remains
-  pending until its protected review and delivery chain completes.
+  authorized reviews for this evaluator amendment. Protected PR #38 merged as
+  `7d6e150`; post-merge run `33978319717` passed, so the consolidated lifecycle
+  is effective for G2 and later gates.
 
 ### CR-048 — bounded development checks and commit hook cadence (2026-09-05)
 
