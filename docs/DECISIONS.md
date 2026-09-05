@@ -804,6 +804,23 @@
   fail-closed chain; missing paths still fail because the evaluator reads the
   base only when no candidate document exists.
 
+## D-050 — State-independent G2 promotion regression fixture
+
+- Status: proposed evaluator amendment CR-054; effective only after the
+  existing protected policy route accepts the exact target byte and its three
+  specifically authorized POLICY receipts.
+- Decision: derive a synthetic pre-promotion plan inside the G2 promotion unit
+  test by normalizing only P2.6-P2.13 from either `TODO` or `DONE` to `TODO`,
+  then verify that the evaluator promotes exactly those tasks to `DONE`.
+- Rationale: the previous test read the live plan and therefore failed after
+  the very promotion it was designed to validate, although the integrated
+  evaluator and promotion bytes were correct.
+- Scope: one regression test in `tests/unit/test_spec_gate.py`; no evaluator
+  algorithm, accepted spec, product implementation, evidence rule, hook,
+  protected CI or branch-protection change.
+- Consequence: canonical quality remains valid on both sides of G2 promotion
+  while still proving the exact completion-task transition.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
