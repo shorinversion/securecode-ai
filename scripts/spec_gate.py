@@ -2499,7 +2499,8 @@ class SpecGate:
             raise GateInputError("INTEGRATED_PLAN_EARLY")
         promotion_paths = _strings(policy.get("promotion_paths"), "POLICY_PROMOTION_PATHS")
         promotion_base = {
-            path: documents.get(path, self._base_file(base, path)) for path in promotion_paths
+            path: documents[path] if path in documents else self._base_file(base, path)
+            for path in promotion_paths
         }
         manifest = strict_json_loads(
             documents[f"artifacts/gates/{gate_id}/promotion-manifest.json"], self.limits
