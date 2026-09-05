@@ -22,6 +22,14 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-054 — make G2 promotion test state-independent (2026-09-05)
+
+- Build the G2 pre-promotion plan fixture inside the evaluator regression test
+  instead of assuming the repository's current P2.6-P2.13 statuses are always
+  `TODO`. The same test now remains valid before and after exact G2 promotion.
+- Product code, accepted specifications, gate semantics, review cadence,
+  protected CI and branch protection are unchanged.
+
 ### CR-053 — fix first integrated gate base lookup (2026-09-05)
 
 - Correct the protected integrated-gate evaluator so a promotion path supplied
