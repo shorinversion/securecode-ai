@@ -1,0 +1,129 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.5"
+  type: "implementation"
+  objective: "Implement bounded first-party hardcoded-secret detection plus a closed approved external-scanner adapter that retains only type, exact location, fixed redaction and keyed fingerprint."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"
+  starting_commit_sha: "\x64\x36\x31\x64\x33\x64\x35\x65\x31\x64\x35\x64\x37\x30\x61\x64\x34\x64\x33\x66\x62\x32\x32\x30\x63\x65\x33\x65\x37\x38\x63\x35\x63\x62\x32\x36\x63\x32\x30\x66"
+  spec_refs: [SC-PROD-003, SC-DATA-003, SC-DATA-004, SC-PORT-003, SC-REPORT-004]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.1 and P2.14 repository intake completion evidence is effective"
+    - "P2.4 completion attestation and green post-merge run are present on the exact starting commit"
+  non_goals:
+    - "RawSignal normalization, findings, verdicts, reports, telemetry sinks or EvidenceGraph"
+    - "filesystem traversal, subprocess/shell execution, network access, credential validation or secret rotation"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "secret-detector-implementer"
+  mode: "direct"
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/secret_detection.py"
+    - "tests/unit/test_secret_detection.py"
+    - "work/task-attestations/P2.5.json"
+    - "work/task-packets/P2.5.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/secret_detection.py"
+    - "tests/unit/test_secret_detection.py"
+    - "work/task-attestations/P2.5.json"
+    - "work/task-packets/P2.5.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 8
+  max_diff_lines: 3000
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command, independent_review]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg"
+    - "pytest targeted secret detection and package boundary suites"
+    - "python scripts/quality.py"
+    - "python scripts/spec_gate.py snapshot/index-candidate/committed-candidate"
+    - "python scripts/ci_policy.py validate"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny except authorized GitHub publication after completed local validation"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "immutable source-bound redacted secret candidate metadata"
+    - "deterministic keyed fingerprints under an explicit opaque fingerprint-key capability"
+    - "bounded first-party pattern and entropy detection"
+    - "closed injected external-scanner request/result adapter with typed non-echo failure"
+
+constraints:
+  invariants:
+    - "retained results contain no matched bytes, decoded value, prefix, suffix or reversible encoding"
+    - "every candidate binds repository/revision/path/content hash, exact byte/point location, detector kind/version and fingerprint key identity"
+    - "suspected secrets are DC4 by construction and never treated as a finding or clean verdict"
+    - "source, candidate count, candidate length and external-output budgets have hard ceilings"
+    - "external output cannot supply fingerprints, redactions, source text, paths or verdicts; the trusted adapter recomputes safe metadata over admitted bytes"
+  compatibility:
+    - "values remain internal adapter Python APIs and add no public contract schema"
+    - "accepted specifications, evaluator, dependency graph and gate evidence remain unchanged"
+  security:
+    - "repository content and external scanner output have no instruction or capability authority"
+    - "no API accepts a path, command, endpoint, environment name or credential value"
+
+budgets:
+  max_iterations: 12
+  max_tool_calls: 110
+  timeout_seconds: 7200
+  max_output_bytes: 350000
+
+verification:
+  acceptance_commands:
+    - "targeted secret detection and package boundary tests"
+    - "canonical quality command"
+    - "snapshot/committed candidate spec gate, CI policy and strict frozen G0"
+    - "git diff --check and exact packet scope validation"
+  positive_cases:
+    - "known pattern and high-entropy fixtures yield deterministic ordered candidates"
+    - "same secret under the same key has the same fingerprint while key identities separate fingerprints"
+    - "approved external offsets are normalized through the same safe candidate issuer"
+  negative_cases:
+    - "ordinary identifiers, hashes, placeholders and low-entropy values do not produce candidates"
+    - "source/candidate/match/output limits and malformed or overlapping external output fail closed"
+    - "matched canaries are absent from repr, serialization, exceptions, logs and captured test output"
+    - "external exception canaries have no cause/context and no filesystem/shell/network surface exists"
+  required_evidence:
+    - "targeted positive/negative and multi-sink non-disclosure tests"
+    - "full quality, snapshot, CI policy and strict G0 PASS"
+    - "independent product, architecture and security/evaluation PASS on one exact tree"
+    - "post-commit clean verification and ordinary protected PR gate"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "accepted specification/public contract, Core or dependency change required"
+  - "matched secret bytes must be retained or emitted"
+  - "filesystem, subprocess, shell, environment credential or network capability is required"
+  - "protected evaluator or gate-evidence change required"
+
+completion:
+  definition_of_done_refs: [P2.5]
+  partial_refs:
+    SC-PROD-003: "Provides bounded hardcoded-secret detection; dependency detection and downstream normalization remain later P2 tasks"
+    SC-DATA-004: "Enforces redacted candidate retention before later report/sink integration"
+  gate_contribution: "Supplies positive/negative/entropy secret detection and early non-disclosure evidence toward G2; does not complete G2."
+  changelog_required: true
+  adr_required: false

@@ -63,6 +63,22 @@ from .python_ast import (
 )
 from .repository import FileSystemRepositoryIntake
 from .runtime import LocalWorkflowRuntime, RuntimeClock
+from .secret_detection import (
+    DEFAULT_SECRET_DETECTION_LIMITS,
+    ApprovedExternalSecretScanner,
+    ExternalSecretDetection,
+    ExternalSecretScanRequest,
+    ExternalSecretScanResponse,
+    SecretCandidate,
+    SecretDetectionError,
+    SecretDetectionErrorCode,
+    SecretDetectionLimits,
+    SecretFingerprintKey,
+    SecretKind,
+    SecretProducer,
+    SecretScanResult,
+    scan_secrets,
+)
 from .telemetry import (
     BinaryStreamTelemetrySink,
     InMemoryTelemetrySink,
@@ -73,6 +89,8 @@ from .telemetry import (
 __all__ = [
     "DEFAULT_CST_LIMITS",
     "DEFAULT_PYTHON_AST_LIMITS",
+    "DEFAULT_SECRET_DETECTION_LIMITS",
+    "ApprovedExternalSecretScanner",
     "AuthorizedProviderHarness",
     "BinaryStreamTelemetrySink",
     "ConfigDiagnostic",
@@ -91,6 +109,9 @@ __all__ = [
     "EndpointAuthorizationIssuer",
     "EndpointError",
     "EphemeralStructuredPayload",
+    "ExternalSecretDetection",
+    "ExternalSecretScanRequest",
+    "ExternalSecretScanResponse",
     "FileSystemRepositoryIntake",
     "HmacContentIdentifier",
     "InMemoryTelemetrySink",
@@ -114,6 +135,14 @@ __all__ = [
     "Resolver",
     "RuntimeClock",
     "ScriptedFakeProvider",
+    "SecretCandidate",
+    "SecretDetectionError",
+    "SecretDetectionErrorCode",
+    "SecretDetectionLimits",
+    "SecretFingerprintKey",
+    "SecretKind",
+    "SecretProducer",
+    "SecretScanResult",
     "SelectionProvenance",
     "StructuredPayloadValidator",
     "SystemTraceIdSource",
@@ -129,4 +158,5 @@ __all__ = [
     "parse_provider_profile",
     "resolve_configuration",
     "resolve_environment_credential",
+    "scan_secrets",
 ]
