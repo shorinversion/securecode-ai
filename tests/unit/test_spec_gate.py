@@ -1278,6 +1278,111 @@ def test_integrated_gate_rejects_reopening_an_effective_go_base(
         )
 
 
+def test_integrated_gate_uses_candidate_first_decision_as_promotion_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    base = "a" * 40
+    candidate = "b" * 40
+    packet_path = "work/change-control/CR-999.yaml"
+    decision_path = "artifacts/gates/G2/decision.md"
+    evidence_paths = (
+        "artifacts/gates/G2/checklist.md",
+        "artifacts/gates/G2/benchmark-summary.md",
+        "artifacts/gates/G2/security-review.md",
+        "artifacts/gates/G2/open-risks.md",
+        decision_path,
+        "artifacts/gates/G2/test-results/deterministic-core-validation.md",
+    )
+    promotion_paths = (decision_path, "CHANGELOG.md", "docs/PLAN.md", "docs/CONTEXT.md")
+    manifest_path = "artifacts/gates/G2/promotion-manifest.json"
+    evidence = {
+        evidence_paths[0]: b"- `integrated_quality`: `PASS`\n",
+        evidence_paths[1]: b"benchmark: PASS\n",
+        evidence_paths[2]: b"security: PASS\n",
+        evidence_paths[3]: b"risks: none\n",
+        decision_path: b"decision: GO-PROPOSED\n",
+        evidence_paths[5]: b"validation: PASS\n",
+    }
+    changed = tuple(
+        sorted((packet_path, *evidence_paths, manifest_path, "CHANGELOG.md", "docs/CONTEXT.md"))
+    )
+    packet = {
+        "schema_version": "1.0.0",
+        "change_type": "integrated_gate_candidate",
+        "change_id": "CR-999",
+        "starting_commit_sha": base,
+        "protected_class": "gate_evidence",
+        "gate_id": "G2",
+        "decision": "GO-PROPOSED",
+        "evidence_bundle_sha256": GATE.length_prefixed_digest(evidence),
+        "review_subject_sha256": "c" * 64,
+        "allowed_paths": list(changed),
+        "budgets": {"max_changed_files": 48, "max_diff_lines": 40000},
+    }
+    documents = {
+        **evidence,
+        packet_path: json.dumps(packet).encode(),
+        manifest_path: b"{}",
+        "CHANGELOG.md": b"changelog\n",
+        "docs/CONTEXT.md": b"context\n",
+    }
+    base_reads: list[str] = []
+
+    def base_file(_self: object, _base: str, path: str) -> bytes:
+        base_reads.append(path)
+        assert path == "docs/PLAN.md"
+        return b""
+
+    def promotion_manifest(
+        _manifest: object,
+        *,
+        gate_id: str,
+        policy_paths: tuple[str, ...],
+        base_documents: Mapping[str, bytes],
+    ) -> tuple[tuple[str, bytes], ...]:
+        assert gate_id == "G2"
+        assert policy_paths == promotion_paths
+        assert base_documents[decision_path] == evidence[decision_path]
+        return tuple(sorted((path, b"") for path in policy_paths))
+
+    policy = {
+        "max_changed_files": 48,
+        "max_diff_lines": 40000,
+        "evidence_files": tuple(
+            path.removeprefix("artifacts/gates/G2/") for path in evidence_paths
+        ),
+        "checklist_ids": ("integrated_quality",),
+        "prerequisite_tasks": (),
+        "promotion_paths": promotion_paths,
+    }
+    monkeypatch.setattr(GATE, "_git_blob", lambda *_args: json.dumps(packet).encode())
+    monkeypatch.setattr(
+        GATE, "canonical_review_subject", lambda *_args, **_kwargs: "c" * 64
+    )
+    monkeypatch.setattr(
+        GATE,
+        "strict_json_loads",
+        lambda *_args: {
+            "promotion_subject_sha256": "d" * 64,
+            "evidence_bundle_sha256": packet["evidence_bundle_sha256"],
+        },
+    )
+    monkeypatch.setattr(GATE, "_promotion_manifest_errors", promotion_manifest)
+    monkeypatch.setattr(GATE.SpecGate, "_base_gate_decision", lambda *_args: None)
+    monkeypatch.setattr(GATE.SpecGate, "_gate_policy", lambda *_args: policy)
+    monkeypatch.setattr(GATE.SpecGate, "_gate_completion_tasks", lambda *_args: ())
+    monkeypatch.setattr(GATE.SpecGate, "_integrated_task_scopes", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        GATE.SpecGate, "_validate_integrated_task_packets", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(GATE.SpecGate, "_candidate_documents", lambda *_args: documents)
+    monkeypatch.setattr(GATE.SpecGate, "_base_file", base_file)
+
+    assert gate._integrated_gate_packet_errors(base, candidate, packet_path, changed, 0)[0] == "G2"
+    assert base_reads == ["docs/PLAN.md", "docs/PLAN.md"]
+
+
 def test_g2_promotion_plan_marks_only_consolidated_tasks_done() -> None:
     gate = GATE.SpecGate()
     completion = gate._gate_completion_tasks("G2")
