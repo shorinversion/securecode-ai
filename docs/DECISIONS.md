@@ -761,6 +761,29 @@
   fail-closed promotion and the mandatory protected CI/PR path. Historical
   evidence and accepted specifications remain unchanged.
 
+## D-048 — Executable catalog activation at G2 closing
+
+- Status: proposed evaluator amendment CR-052; effective only after the
+  existing protected policy route accepts the exact target byte and its three
+  specifically authorized POLICY receipts.
+- Decision: when G2 promotes P2.12 to `DONE`, promote its already implemented
+  `html_markdown_sarif_terminal_rendering` test-catalog entry from `planned` to
+  `executable` and bind it to the existing canonical
+  `python scripts/quality.py` command. On the integrated G2 candidate, that
+  command collects the reporter contract and golden-output tests and remains
+  the single integrated gate cycle.
+- Rationale: a completed owner may not retain a planned-only test entry. The
+  stale state makes the otherwise valid exact G2 promotion fail closed with
+  `CATALOG_STALE_PLANNED` even though the executable tests and quality evidence
+  exist.
+- Scope: one declarative entry in `scripts/spec_gate_policy.json`. No product
+  code, accepted specification, evaluator algorithm, test bytes, G2 evidence,
+  review cadence, hooks, protected CI or branch protection changes.
+- Consequence: G2 can close through its existing exact-byte integrated gate
+  path. The three receipts are only for this protected policy mutation; G2-G8
+  still have no independent gate reviews, with the combined final review after
+  G9 unchanged.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
