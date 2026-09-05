@@ -784,6 +784,26 @@
   still have no independent gate reviews, with the combined final review after
   G9 unchanged.
 
+## D-049 — Candidate-first lookup for first integrated gate evidence
+
+- Status: proposed evaluator amendment CR-053; effective only after the
+  existing protected policy route accepts the exact target byte and its three
+  specifically authorized POLICY receipts.
+- Decision: when an integrated-gate promotion path is already present in the
+  proposal candidate, use those candidate bytes without evaluating a fallback
+  read from the protected base. Read the base only when the candidate does not
+  provide that path.
+- Rationale: `dict.get(key, fallback())` evaluates `fallback()` eagerly. The
+  previous expression therefore rejected the first promotion of a gate whose
+  evidence directory correctly did not exist in the base, even though the
+  candidate contained the required exact bytes.
+- Scope: one lookup expression in `scripts/spec_gate.py`. No accepted spec,
+  product implementation, G2 evidence, review cadence, budgets, hook,
+  protected CI or branch-protection change.
+- Consequence: first-time integrated gate evidence can traverse the existing
+  fail-closed chain; missing paths still fail because the evaluator reads the
+  base only when no candidate document exists.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).

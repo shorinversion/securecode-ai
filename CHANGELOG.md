@@ -22,6 +22,16 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-053 — fix first integrated gate base lookup (2026-09-05)
+
+- Correct the protected integrated-gate evaluator so a promotion path supplied
+  by the proposal candidate is used directly instead of eagerly reading the
+  same path from the protected base. First-time gate evidence, such as
+  `artifacts/gates/G2/decision.md`, is intentionally absent from that base.
+- The amendment changes only the lookup expression in `scripts/spec_gate.py`.
+  It does not alter accepted specifications, G2 product bytes, review cadence,
+  scope budgets, exact-byte promotion, protected CI or branch protection.
+
 ### CR-052 — activate completed G2 rendering evidence (2026-09-05)
 
 - Closing-phase lifecycle correction for P2.12: promote the existing
