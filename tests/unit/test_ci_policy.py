@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import copy
+import ctypes
 import importlib.util
 import json
 import os
+import subprocess
 import sys
+import time
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
@@ -46,6 +49,7 @@ def _load_precommit_entry() -> ModuleType:
 
 
 PRECOMMIT = _load_precommit_entry()
+ORIGINAL_POPEN = subprocess.Popen
 
 
 def _workflow() -> dict[str, Any]:
@@ -678,6 +682,253 @@ def test_precommit_launcher_uses_the_project_owned_uv_and_closed_commands() -> N
         PRECOMMIT.build_command("quality", ["untrusted.py"])
     with pytest.raises(RuntimeError, match="unknown"):
         PRECOMMIT.build_command("unknown", [])
+
+
+def test_hook_cadence_preserves_policy_secrets_and_workflow_without_full_quality() -> None:
+    configuration = POLICY._load_precommit()
+    assert POLICY.precommit_errors(configuration) == []
+    hooks = configuration["repos"][0]["hooks"]
+    assert [hook["id"] for hook in hooks] == [
+        "securecode-ci-policy",
+        "securecode-secrets",
+        "securecode-workflow-security",
+    ]
+    for index in range(len(hooks)):
+        mutated = copy.deepcopy(configuration)
+        mutated["repos"][0]["hooks"].pop(index)
+        assert POLICY.precommit_errors(mutated)
+    assert "scripts/quality.py" in PRECOMMIT.build_command("quality", [])
+
+
+def test_development_command_runs_only_explicit_targeted_tests() -> None:
+    filenames = ["tests/unit/test_ci_policy.py", "tests/unit/test_spec_gate.py"]
+    command = PRECOMMIT.build_command("development", filenames)
+    assert command[-2:] == tuple(filenames)
+    assert "scripts/quality.py" not in command
+    assert not any(argument.startswith("--cov") for argument in command)
+
+
+@pytest.mark.parametrize(
+    "filenames",
+    [
+        [],
+        ["tests/unit"],
+        ["--collect-only"],
+        ["../tests/unit/test_ci_policy.py"],
+        ["tests/unit/test_ci_policy.py::test_example"],
+        ["tests/unit/test_ci_policy.py"] * 2,
+        [f"tests/unit/test_missing_{index}.py" for index in range(9)],
+        ["tests/unit/test_missing.py"],
+    ],
+)
+def test_development_command_rejects_unbounded_or_untrusted_selection(filenames: list[str]) -> None:
+    with pytest.raises(RuntimeError):
+        PRECOMMIT.build_command("development", filenames)
+
+
+def test_development_environment_removes_credentials_and_plugin_injection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "synthetic-credential")
+    monkeypatch.setenv("PYTEST_ADDOPTS", "--collect-only")
+    monkeypatch.setenv("PYTHONPATH", "untrusted")
+    monkeypatch.setenv("UV_INDEX_URL", "https://untrusted.invalid")
+    environment = PRECOMMIT.development_environment(tmp_path)
+    assert not {"GITHUB_TOKEN", "PYTEST_ADDOPTS", "PYTHONPATH", "UV_INDEX_URL"} & environment.keys()
+    assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+    assert environment["HOME"] == str(tmp_path)
+
+
+def test_development_launcher_propagates_failure_with_bounded_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def run(*arguments: Any, **options: Any) -> SimpleNamespace:
+        calls.append(options)
+        return SimpleNamespace(returncode=0, stdout="uv 0.12.0\n")
+
+    def development(command: Any, environment: Any, *, timeout: float = 360) -> int:
+        assert environment["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
+        assert timeout == 360
+        return 5
+
+    monkeypatch.setattr(PRECOMMIT.subprocess, "run", run)
+    monkeypatch.setattr(PRECOMMIT, "run_development", development)
+    assert PRECOMMIT.main(["development", "tests/unit/test_ci_policy.py"]) == 5
+    assert [call["timeout"] for call in calls] == [10]
+
+
+def _development_pid_running(pid: int) -> bool:
+    if os.name == "nt":
+        loader = getattr(ctypes, "WinDLL", None)
+        assert callable(loader)
+        kernel = loader("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = (ctypes.c_uint, ctypes.c_int, ctypes.c_uint)
+        kernel.OpenProcess.restype = ctypes.c_void_p
+        kernel.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint)
+        kernel.WaitForSingleObject.restype = ctypes.c_uint
+        kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
+        handle = kernel.OpenProcess(0x00100000, False, pid)
+        if not handle:
+            assert getattr(ctypes, "get_last_error", lambda: -1)() in (87, 1168)
+            return False
+        try:
+            return bool(kernel.WaitForSingleObject(handle, 0) == 258)
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    status = Path(f"/proc/{pid}/stat")
+    try:
+        return not status.exists() or status.read_text().split(")", 1)[1].split()[0] != "Z"
+    except FileNotFoundError:
+        return False
+
+
+def test_development_timeout_terminates_real_descendant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    pid_file = tmp_path / "descendant.pid"
+    child = (
+        "import os,time; from pathlib import Path; "
+        f"Path({str(pid_file)!r}).write_text(str(os.getpid())); time.sleep(30)"
+    )
+    parent = (
+        "import subprocess,sys,time; "
+        f"subprocess.Popen([sys.executable,'-I','-c',{child!r}]); time.sleep(30)"
+    )
+    environment = PRECOMMIT.development_environment(tmp_path)
+    try:
+        with pytest.raises(RuntimeError, match="execution boundary"):
+            PRECOMMIT.run_development(
+                (sys.executable, "-I", "-c", parent),
+                environment,
+                timeout=3,
+            )
+        assert pid_file.is_file(), "descendant must start before the deadline"
+        pid = int(pid_file.read_text())
+        deadline = time.monotonic() + 2
+        while _development_pid_running(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not _development_pid_running(pid), "timeout left the descendant alive"
+    finally:
+        if pid_file.is_file():
+            pid = int(pid_file.read_text())
+            if _development_pid_running(pid):
+                if os.name == "nt":
+                    subprocess.run(
+                        (str(PRECOMMIT.windows_taskkill()), "/PID", str(pid), "/T", "/F"),
+                        check=False,
+                        capture_output=True,
+                        timeout=10,
+                    )
+                else:
+                    os.kill(pid, 9)
+
+
+def test_development_tree_termination_failure_is_not_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    killed: list[bool] = []
+    process = SimpleNamespace(
+        pid=123,
+        poll=lambda: None,
+        kill=lambda: killed.append(True),
+        wait=lambda timeout: 0,
+    )
+
+    def fail(*arguments: Any, **options: Any) -> SimpleNamespace:
+        assert arguments[0] == (str(tmp_path / "taskkill.exe"), "/PID", "123", "/T", "/F")
+        assert options["timeout"] == 10
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(PRECOMMIT.subprocess, "run", fail)
+    with pytest.raises(RuntimeError, match="termination failed"):
+        PRECOMMIT.terminate_development_tree(process, {}, tmp_path / "taskkill.exe")
+    assert killed == [True]
+
+
+def test_development_timeout_kills_before_reaping_launcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    def wait(timeout: float) -> int:
+        raise subprocess.TimeoutExpired("owned-test-process", timeout)
+
+    process = SimpleNamespace(pid=123, wait=wait)
+
+    def launch(*arguments: Any, **options: Any) -> SimpleNamespace:
+        assert options["shell"] is False
+        assert options["start_new_session"] is (os.name != "nt")
+        events.append("launch")
+        return process
+
+    def terminate(*arguments: Any) -> None:
+        assert arguments[0] is process
+        events.append("terminate-tree")
+
+    monkeypatch.setattr(PRECOMMIT.subprocess, "Popen", launch)
+    monkeypatch.setattr(PRECOMMIT, "terminate_development_tree", terminate)
+    with pytest.raises(RuntimeError, match="execution boundary"):
+        PRECOMMIT.run_development(("owned-test-process",), {}, timeout=0.1)
+    assert events == ["launch", "terminate-tree"]
+
+
+def test_development_posix_group_is_killed_and_leader_reaped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, int]] = []
+    process = SimpleNamespace(
+        pid=123,
+        poll=lambda: 0,
+        wait=lambda timeout: events.append(("wait", timeout)),
+    )
+    monkeypatch.setattr(
+        PRECOMMIT.os,
+        "killpg",
+        lambda pid, sig: events.append(("killpg", pid)),
+        raising=False,
+    )
+    monkeypatch.setattr(PRECOMMIT.signal, "SIGKILL", 9, raising=False)
+    PRECOMMIT.terminate_development_tree(process, {}, None)
+    assert events == [("killpg", 123), ("wait", 10)]
+
+
+def test_development_tree_terminator_timeout_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    killed: list[bool] = []
+    process = SimpleNamespace(
+        pid=123,
+        poll=lambda: None,
+        kill=lambda: killed.append(True),
+        wait=lambda timeout: 0,
+    )
+
+    def timeout(*arguments: Any, **options: Any) -> None:
+        raise subprocess.TimeoutExpired("system-terminator", 10)
+
+    monkeypatch.setattr(PRECOMMIT.subprocess, "run", timeout)
+    with pytest.raises(subprocess.TimeoutExpired):
+        PRECOMMIT.terminate_development_tree(process, {}, tmp_path / "taskkill.exe")
+    assert killed == [True]
+
+
+def test_windows_tree_terminator_unavailable_fails_before_launch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(PRECOMMIT.ctypes, "WinDLL", None, raising=False)
+    with pytest.raises(RuntimeError, match="terminator is unavailable"):
+        PRECOMMIT.windows_taskkill()
 
 
 def test_precommit_launcher_fails_closed_on_version_drift(
