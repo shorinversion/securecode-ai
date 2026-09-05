@@ -22,6 +22,18 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-050 — protected candidate admission repair (2026-09-05)
+
+- Successor proposal for the integrated gate lifecycle: preserve the
+  owner-authorized Terra/Luna bounded methodology, local checkpoint history,
+  no independent reviews for G2-G8 and the single final
+  product/architecture/security review after G9. The protected evaluator binds
+  the admitted candidate packet to its declared base, complete checkpoint
+  ancestry and exact target scope, preventing protected-scope laundering or
+  self-admission. The three POLICY receipts remain the only specifically
+  authorized reviews for this evaluator amendment; the proposal remains
+  pending until its protected review and delivery chain completes.
+
 ### CR-048 — bounded development checks and commit hook cadence (2026-09-05)
 
 - Proposed protected follow-up to the accepted development workflow: ordinary

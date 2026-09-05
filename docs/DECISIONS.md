@@ -738,6 +738,29 @@
   review the effective G2 completion audit before per-task completion evidence
   can be consolidated. This amendment alone does not enable that lifecycle.
 
+## D-047 — CR-050 candidate admission and checkpoint provenance
+
+- Status: proposed evaluator successor; effective only after the
+  existing protected policy route accepts the exact candidate and its three
+  POLICY receipts. The owner-authorized methodology remains: Terra/Luna own
+  bounded implementation and mechanics, local checkpoints may preserve
+  rollback history, G2-G8 have no independent gate reviews, and one
+  product/architecture/security evaluation reviews the complete project after
+  G9.
+- Decision: bind this policy amendment to the five declared evaluator target
+  blobs. The resulting gate evaluator admits product task packets from the
+  candidate only after validating their declared base and scope against
+  protected authority. Validate every checkpoint delta and the final scope.
+  Reject scope
+  laundering through unlisted protected files, detached or rewritten checkpoint
+  history, alternate packet paths, or self-admission by the candidate PR.
+  The only authorized independent receipts are the three POLICY reviews;
+  this does not create product reviews for G2-G8.
+- Consequence: the successor closes the gap between evaluator amendment
+  delivery and later gate-candidate admission while retaining exact-byte,
+  fail-closed promotion and the mandatory protected CI/PR path. Historical
+  evidence and accepted specifications remain unchanged.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
