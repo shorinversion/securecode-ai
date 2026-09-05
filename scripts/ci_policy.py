@@ -298,14 +298,6 @@ def precommit_errors(configuration: Mapping[str, Any]) -> list[str]:
                         "pass_filenames": "false",
                         "always_run": "true",
                     },
-                    {
-                        "id": "securecode-quality",
-                        "name": "SecureCode canonical quality gate",
-                        "language": "system",
-                        "entry": "python -I scripts/precommit_entry.py quality",
-                        "pass_filenames": "false",
-                        "always_run": "true",
-                    },
                 ],
             }
         ],

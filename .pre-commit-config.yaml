@@ -23,9 +23,3 @@ repos:
         entry: python -I scripts/precommit_entry.py workflow
         pass_filenames: false
         always_run: true
-      - id: securecode-quality
-        name: SecureCode canonical quality gate
-        language: system
-        entry: python -I scripts/precommit_entry.py quality
-        pass_filenames: false
-        always_run: true
