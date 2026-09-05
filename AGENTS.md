@@ -28,3 +28,58 @@ Project-specific rules:
   default.
 - Treat every subagent result as a candidate. The Primary Integrator must inspect
   changes and rerun relevant verification before accepting or reporting it.
+
+## Permanent code-first execution policy
+
+For the entire project, prioritize implementation of working product code.
+Planning, documentation, tests, reviews, Git and CI exist to guide and verify
+the implementation; they must not become the primary output or consume a
+disproportionate share of execution time and model usage.
+
+- Start each task with the smallest necessary context and move promptly to code
+  whenever its dependencies and acceptance contract are already clear.
+- During implementation, run focused tests for the changed component and its
+  immediate boundaries. After the protected CR-045 amendment becomes effective,
+  run canonical full quality and independent reviews on the integrated gate
+  candidate, not per P-task. Repeat a full cycle only after a material change
+  that invalidates its evidence.
+- Inspect CI through compact status summaries. Fetch detailed logs only for a
+  failed or ambiguous job; do not continuously stream successful runs.
+- Do not reload large durable-context files when the current task state is
+  intact. After context loss, follow the project navigator recovery protocol and
+  load only the relevant plan/gate sections beyond the required context file.
+- Delegate bounded implementation to the stage-appropriate model under
+  [DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md). Use bounded internal
+  subagents with explicit model/reasoning configuration; do not create separate
+  user-visible tasks for internal stages. One writer owns each path; the Primary Integrator
+  retains acceptance and integration authority.
+- Combine related read-only checks and avoid redundant reports, commits, test
+  reruns, and intermediate publication artifacts.
+- After `P2.5`, review the delivery lifecycle for the remaining project tasks and
+  remove duplicate PR, attestation, review and verification steps wherever the
+  same acceptance evidence can be preserved through one ordinary protected PR.
+  Apply the resulting streamlined lifecycle for the rest of the project. Do not
+  use bypass or weaken required gates.
+- Never economize by weakening secret non-disclosure, fail-closed behavior,
+  protected-branch enforcement, independent final review, or the effective G2
+  completion audit.
+
+## Model routing and verification cadence
+
+- Use Codex models and native Codex coordination only for this workflow.
+  Do not apply the `delegating-subagents-and-deepseek` skill or call DeepSeek
+  services; the user explicitly excluded that skill on 2026-09-05.
+- Read [DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) before dispatch
+  or implementation. Check the assigned role, requested model and reliable
+  runtime identity; never infer model identity from writing style.
+- On a confirmed mismatch, transfer to a bounded subagent with the explicit
+  model and reasoning setting. Preserve the return address and candidate identity,
+  release the old writer lease, and stop duplicate execution. Unknown identity
+  and failed/uncertain creation follow the bounded recovery rules in the policy.
+- After the protected cadence amendment is effective, one full local quality
+  and independent review cycle belongs to the integrated gate candidate, not
+  to each task, edit, commit, reviewer message or handoff. Use targeted checks
+  while developing; record a concrete invalidation reason before repeating it.
+- Existing executable hooks, protected CI and completion evidence remain
+  mandatory until their separately reviewed amendment is effective. Never use
+  SKIP, --no-verify, hook removal or branch bypass to implement this policy.

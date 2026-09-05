@@ -629,31 +629,82 @@
   exact-byte promotion, ordinary protected PR and green post-merge CI. No
   bypass.
 
-## D-045 — Packed local transport for evaluator test fixtures
+## D-043 — Stage-specific development models and bounded task transfer
 
-- Status: proposed (`CR-047`); exact test bytes require protected promotion.
-- Decision: replace the two filesystem clone operations in
-  `tests/unit/test_spec_gate.py` with local Git transport (`--no-local`).
-  Transfer full reachable history into independent packed object databases;
-  do not use shallow history, object filters, shared databases or alternates.
-  Retain real commits, ancestry, merge and exact-byte transition checks.
-- Rationale: repeated copies of loose Git objects add fixture overhead inside
-  the bounded canonical unit stage. The measured transport-only candidate
-  makes that stage fit its unchanged 360-second deadline on the supplied host.
-- Scope: no test removal, added skip/xfail, assertion, coverage, policy or
-  timeout change. Preserve complete discovery, sanitized isolation and every
-  lifecycle/evidence negative, including rejection of missing, failed, stale
-  or skipped required evidence. Product code and accepted specifications are
-  unchanged.
-- Evidence limitation: host timings are non-normative. The provided editable
-  environment imports packages from another checkout; its successful local
-  run is not clean exact-tree publication or gate-completion evidence.
-- Alternative rejected: increasing the deadline or weakening/deselecting
-  tests would change the acceptance contract instead of fixture transport.
-- Delivery: POLICY proposal, three sequential independent product,
-  architecture and security/evaluation reviews, exact-byte promotion, ordinary
-  protected PR and successful post-merge CI. No bypass or effective gate
-  advancement is authorized by this proposal.
+- Refinement accepted by user 2026-09-05: ordinary full quality and independent
+  product/architecture/security review occur after integration of all required
+  gate tasks, with focused tests during implementation. Critical security and
+  evaluator changes require early review before downstream reliance. This
+  supersedes the original per-increment verification default recorded below.
+  Shared checkout is preferred for management, stable read-only review and
+  sequential branch-based development; worktrees isolate concurrent writers or
+  fixed review inputs. Track their owners and cleanup conditions.
+  Rationale: reduce repeated context, review and disk copies while preserving
+  complete integrated review. Consequence: freeze review inputs, retain early
+  critical-change checks and amend per-task completion enforcement through the
+  protected procedure before the new gate cadence can replace mandatory checks.
+- Status: accepted operating policy by explicit user instruction 2026-09-05
+  (CR-045); protected automation migration remains pending.
+- Decision: Sol medium orchestrates, Terra high implements, Luna medium handles
+  bounded mechanical work, Sol high performs independent reviews, and Astra is
+  capped at medium for narrowly justified critical security/evaluator work.
+  Internal implementation and review use bounded Codex subagents with explicit
+  model/reasoning configuration and one writer per path, not separate
+  user-visible tasks. A spawn receipt proves accepted configuration, not runtime
+  identity when the platform does not expose it; unknown identity never causes
+  recursive transfers.
+- Rationale: use strong reasoning where defects are costly while reducing
+  repeated context loading, redundant full tests and coordination overhead.
+- Alternative rejected: use the strongest model for every action or create a
+  fresh task for every fix; both repeat expensive work without new evidence.
+- Consequences: orchestrator validates results and final candidate, records
+  task IDs/ownership, and reuses worker context for corrections. One full local
+  quality belongs to the final increment; independent review and exact-SHA
+  protected evidence remain mandatory. No runtime product architecture changes.
+- Scope: [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md) and agent operating
+  instructions. This decision alone does not alter hooks, evaluator, accepted
+  specs, branch rules or task-packet schemas.
+
+## D-044 — Academic deadline checkpoint before enterprise expansion
+
+- Status: accepted planning direction by explicit user instruction 2026-09-05
+  (`CR-046`); exact documentation reviews/integration are recorded in development-run CR-046.
+- Decision: user confirmed defense on 27 September 2026, Asia/Yekaterinburg,
+  and one-person execution. First working instructor demo targets 16 September, feedback 17–18;
+  meeting confirmation is pending. Readiness target is 24 September 18:00; rehearse on
+  the 25th, retain the 26th as reserve. Source time 23:59 is not the defense
+  slot. Record outstanding defense/upload slot and instructor/individual-approval
+  reference distinctly. Start P9.12 immediately.
+- M-A2026 is an additional unversioned academic evidence checkpoint, not a
+  replacement for G7/G9, release version, enterprise readiness or PROJECT CLOSED.
+  Preserve all original languages/tools/agents/patch/report/notebook requirements,
+  real local quantized-model demonstration, applicable submission artifacts and
+  independent exact-candidate acceptance. Existing G7/G9 oracles are refreshed
+  later for their full product releases.
+- Schedule: retain effective G2 → G3 → G4; then prioritize P7.1–P7.3 language
+  support, separate P7.17 diagnostic comparisons and P9.16 academic bundle before
+  P5/P6 and enterprise hardening. Add explicit P3.12 live connector and P3.13
+  model/hardware qualification; do not rewrite completed P1.8 scope.
+- Rationale: validate useful audit/repair behavior and complete the assignment
+  before investing further in infrastructure. Source-controlled calendar and
+  daily active-run reforecast expose missed milestones without inventing results.
+- Alternatives rejected: presenting Python-only G4 as complete academic work;
+  claiming v1/G9 without enterprise gates; forcing all enterprise components
+  into the deadline; editing frozen specs merely to record additional early
+  evidence. Each either omits requirements, misstates readiness or delays the
+  decisive product evidence.
+- Evaluation: supplemental development_e2e_remediation_rate counts independently
+  verified repaired expected root causes over all predeclared eligible vulnerable
+  root causes. Frozen formulas/thresholds and locked tests are unchanged; early
+  diagnostics do not certify production blocking or replace confirmatory tests.
+- Compatibility: no public schema, runtime security boundary, current gate
+  criterion, evaluator or normative baseline mutation. Changed operational
+  dependencies and added task acceptance are tracked in PLAN; their future
+  packets/completion catalog admission still need the applicable protected route.
+- Scope: [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
+  [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md) and linked operational
+  docs. Product code, PROJECT_BRIEF.md, specs and historical gate evidence remain
+  intact. Publishing/submitting to people is not performed by this decision.
 
 ## Открытые решения, не блокирующие P1
 

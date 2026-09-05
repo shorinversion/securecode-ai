@@ -28,6 +28,10 @@ state and do not ask the user to repeat information already recorded here.
 6. Inspect `git status --short` and preserve unrelated user changes.
 7. State which task ID the request advances. If no task covers it, propose a
    new task/change request before treating it as committed scope.
+8. Read [development workflow](../../../docs/DEVELOPMENT_WORKFLOW.md) before
+   model dispatch or implementation. Restore the active development-run record
+   if present; check role/model and transfer ownership on a confirmed mismatch.
+   Unknown identity must never trigger recursive replacement tasks.
 
 If the helper cannot run, perform the same checks manually. Do not block useful
 work only because the helper is unavailable.
@@ -137,8 +141,10 @@ The index of durable documents is [docs/README.md](../../../docs/README.md).
   review is reconciled.
 - Begin each implementation task from its accepted spec refs and a failing or
   otherwise independently demonstrable acceptance/contract/negative oracle.
-  Run the packet's acceptance commands, negative cases and relevant regression
-  suite before handoff; report passes, failures and skips separately.
+  During worker handoff run targeted acceptance/negative checks. The integrator
+  runs the full acceptance suite once on the final integrated publication
+  candidate, under DEVELOPMENT_WORKFLOW.md; report passes, failures and skips
+  separately. A handoff or commit alone does not invalidate unchanged checks.
 - Add tests for SecureCode AI itself at the appropriate layer: unit and branch,
   schema/contract/compatibility, integration, end-to-end, negative/adversarial,
   replay/idempotency/restart, benchmark/calibration and clean-environment tests
@@ -174,6 +180,9 @@ Before the final response, update only the files affected by actual work:
 
 Then rerun the context helper, check local Markdown links when documentation
 changed, and report the exact files and verification performed.
+An operational documentation change does not require product regression.
+Update development-run state only for actual dispatch/transitions; it is not
+gate evidence. Existing executable gates remain mandatory until amended.
 
 ## Change control
 

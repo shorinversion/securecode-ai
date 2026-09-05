@@ -1,7 +1,7 @@
 # Как SecureCode AI разрабатывается с помощью ИИ
 
 Статус: действующий operating model разработки.  
-Последнее обновление: 13 августа 2026 года.  
+Последнее обновление: 5 сентября 2026 года.
 Нормативные детали: [Spec-Driven Development](SPEC_DRIVEN_DEVELOPMENT.md),
 [план и gates](PLAN.md), решение [`D-016`](DECISIONS.md) и
 [project navigator](../.agents/skills/securecode-project-navigator/SKILL.md).
@@ -17,9 +17,10 @@
 → versioned specification и contracts
 → ограниченный task packet
 → независимый acceptance oracle
-→ минимальная реализация
-→ unit/contract/integration/security/e2e tests
-→ независимый review
+→ реализация обязательных задач и focused acceptance/negative tests
+→ интегрированный кандидат гейта
+→ полный quality и независимый product/architecture/security review
+→ исправления и только затронутые delta checks/review
 → evidence packet и gate
 → следующая фаза
 ```
@@ -39,7 +40,7 @@
 - decomposition и порядком зависимостей;
 - назначением ограниченных задач;
 - объединением изменений;
-- повторным запуском всех acceptance/negative/regression checks;
+- целевой проверкой задач и полным quality/review интегрированного гейта;
 - решениями о принятии candidate result;
 - актуальным контекстом и итоговым handoff.
 
@@ -72,6 +73,14 @@ Implementation-agent не может ослабить requirement или тес�
 analysis, ADR/spec update и повторный review.
 
 ## 4. Test- и evidence-driven реализация
+
+Частота проверок, модели по ролям и передача между задачами определены в
+[DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md). После effective CR-045
+полный цикл относится к интегрированному gate-кандидату, не к каждой задаче,
+строке, коммиту или ответу reviewer. Во время реализации выполняются focused
+acceptance/negative tests; локальное исправление повторяет только затронутую
+проверку и роль review, если изменение не затронуло общие контракты.
+Существующие обязательные hooks/CI остаются действующими до protected amendment.
 
 Каждая задача начинается с failing или независимо наблюдаемого oracle:
 
@@ -154,4 +163,3 @@ split. Они не являются самостоятельным ground truth.
 
 В обоих уровнях LLM формулирует candidates и выполняет bounded reasoning, но
 финальные переходы задают contracts, deterministic policy, tests и human gates.
-
