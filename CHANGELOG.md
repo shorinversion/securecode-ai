@@ -22,6 +22,20 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-047 — packed Git transport for evaluator fixtures (2026-09-05)
+
+- Proposed a test-only amendment replacing the two fixture clone operations
+  with local Git transport (`--no-local`). Each clone receives full reachable
+  history in an independent packed object database; real commits, ancestry,
+  merge and exact-byte transition checks are retained.
+- No test removal, added skip/xfail, assertion, coverage, policy or timeout
+  change. The canonical unit-stage deadline remains 360 seconds.
+- Host diagnostics: the same 114 tests passed in 329.03 seconds before and
+  242.26 seconds after; one canonical run passed with its unit stage at
+  288.98 seconds. Timing is non-normative and the provided editable environment
+  is not exact-tree protected delivery evidence. Independent reviews and
+  protected promotion remain pending; see [D-045](docs/DECISIONS.md#d-045--packed-local-transport-for-evaluator-test-fixtures).
+
 ### Added
 
 - 2026-08-23 — completed `P2.4`: the bounded CPython `ast` adapter passed
