@@ -706,6 +706,38 @@
   docs. Product code, PROJECT_BRIEF.md, specs and historical gate evidence remain
   intact. Publishing/submitting to people is not performed by this decision.
 
+## D-045 — Explicit local quality and bounded development checks
+
+- Status: proposed evaluator amendment CR-048; not effective before protected
+  review, exact-byte promotion and ordinary protected delivery.
+- Decision: retain the policy, staged-secret and workflow-security hooks for
+  ordinary commit/push. Keep full quality available as the explicit `quality`
+  launcher selection and preserve the mandatory protected CI quality matrix.
+  A separate `development` selection accepts at most eight distinct regular
+  `tests/unit/test_*.py` files, rejects arbitrary options/path traversal, uses
+  isolated Python and a locked offline environment, strips parent credentials
+  and plugin overrides, and imposes a 360-second execution deadline. Development
+  subprocesses have explicit ownership: Windows uses the absolute OS-resolved
+  taskkill executable with tree termination; POSIX starts a new session and
+  kills the process group. Timeout/interruption cleanup precedes leader reaping
+  and has bounded 10-second termination/reap windows. Failure to clean up is an
+  error, never a successful test result. Its exit status is
+  the targeted pytest result; it is never a full-quality or gate attestation.
+- Rationale: reduce repeated full-suite execution while retaining policy and
+  secret checks at each commit/push and all protected publication checks.
+- Review correction: a direct-child subprocess timeout can leave uv/Python
+  descendants alive. Process-tree termination replaces that unpublished design,
+  with a real child/descendant regression and OS-termination error negatives.
+- Alternatives rejected: hook bypass, removing mandatory CI, arbitrary pytest
+  arguments and treating targeted checks as a completed gate. Each loses a
+  required control or misstates evidence. The canonical quality script is intact.
+- Scope: the hook configuration, launcher, closed CI-policy hook expectations
+  and focused CI-policy self-tests only. Product code, frozen specifications,
+  gate artifacts and task-completion requirements are unchanged.
+- Consequence: the separate CR-049 successor must implement and independently
+  review the effective G2 completion audit before per-task completion evidence
+  can be consolidated. This amendment alone does not enable that lifecycle.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).

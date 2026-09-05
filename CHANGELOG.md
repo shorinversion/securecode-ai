@@ -22,6 +22,33 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-048 — bounded development checks and commit hook cadence (2026-09-05)
+
+- Proposed protected follow-up to the accepted development workflow: ordinary
+  commit and push retain the closed policy, staged-secret and workflow-security
+  hooks. Canonical full quality becomes an explicit publication command instead
+  of a repeated hook. The canonical quality implementation, protected CI matrix,
+  branch protection and completion-evidence contracts remain unchanged.
+- Add `python -I scripts/precommit_entry.py development tests/unit/test_NAME.py`:
+  one to eight distinct existing unit-test files, no arbitrary pytest arguments,
+  isolated interpreter, locked offline environment, credential-free child
+  environment and a 360-second execution deadline. On timeout or interruption,
+  terminate the owned process tree using the absolute OS-owned Windows taskkill
+  executable or a new POSIX session/process group. Cleanup has bounded 10-second
+  termination and reap windows; cleanup failures cannot become PASS. Test
+  failures and empty collection fail.
+- Architecture review identified descendant survival in the earlier unpublished
+  direct-child timeout implementation; the replacement includes a real spawned
+  descendant timeout regression and focused termination-error negatives.
+- Candidate validation: 114 CI-policy tests through the new entrypoint; focused
+  Ruff and mypy pass; unchanged-baseline snapshot passes after restoring Git's
+  canonical LF checkout bytes. The real descendant timeout regression passes on
+  Windows; POSIX group selection/termination unit checks and Linux-target mypy
+  pass. No broad product regression was run by the worker.
+- Not effective until independent POLICY review, exact-byte promotion and
+  ordinary protected delivery. G2 lifecycle consolidation remains separate
+  CR-049 work; current per-task completion evidence is still mandatory.
+
 ### CR-046 — deadline and academic submission snapshot (2026-09-05)
 
 - User confirmed project defense on 27 September 2026, Asia/Yekaterinburg,
