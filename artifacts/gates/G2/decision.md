@@ -1,5 +1,5 @@
 # G2 decision proposal
 
-decision: GO-PROPOSED
+decision: GO
 
-The frozen candidate `34f3fcaf598f152753920cb32717ccbc720bd215` has a terminal canonical quality result of `QUALITY=PASS`.
+All seven Deterministic Core Ready criteria have executable evidence. This GO is effective because the promotion validator accepted the exact integrated subject, checkpoint ancestry and precommitted final bytes.

@@ -31,8 +31,8 @@ Changelog отвечает на вопрос «что и когда измени
 - The exact implementation checkpoint `34f3fcaf598f152753920cb32717ccbc720bd215`
   passed the canonical gate cycle: 1296 unit tests passed, 5 Windows-only
   POSIX/FIFO oracles skipped, Core branch coverage 86.80%, and
-  `QUALITY=PASS`. Gate status remains `GO-PROPOSED` until exact-byte
-  promotion and protected delivery complete.
+  `QUALITY=PASS`. Exact-byte promotion advances G2 to `GO`; ordinary
+  protected delivery remains the publication boundary.
 
 ### CR-053 — fix first integrated gate base lookup (2026-09-05)
 
