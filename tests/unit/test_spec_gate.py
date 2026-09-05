@@ -632,7 +632,8 @@ def _commit_all(repository: Path, message: str) -> str:
 
 def _clone_index_candidate(parent: Path) -> tuple[Path, str]:
     repository = parent / "lifecycle"
-    _run_git(parent, "clone", "--quiet", "--no-hardlinks", str(REPOSITORY_ROOT), str(repository))
+    # Local transport packs the full reachable history into a private object database.
+    _run_git(parent, "clone", "--quiet", "--no-local", str(REPOSITORY_ROOT), str(repository))
     _run_git(repository, "config", "user.name", "Spec Gate Test")
     _run_git(repository, "config", "user.email", "spec-gate@example.invalid")
     _run_git(repository, "config", "core.autocrlf", "false")
@@ -1645,7 +1646,7 @@ def test_p2_completion_requires_authoritative_bound_github_runs(
         "core.eol=lf",
         "clone",
         "--quiet",
-        "--no-hardlinks",
+        "--no-local",
         str(REPOSITORY_ROOT),
         str(repository),
     )
