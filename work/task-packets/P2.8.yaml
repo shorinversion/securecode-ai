@@ -1,0 +1,119 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.8"
+  type: "implementation"
+  objective: "Implement a closed scanner-plugin port with host-owned time and resource budgets, source-bound RawSignal facts, and typed crash, timeout, output and isolation outcomes."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "805fa17528\
+    2357cc4df1\
+    148c026ca3\
+    6af327d807"
+  spec_refs: [SC-PROD-003, SC-DATA-003, SC-PORT-003, SC-SYS-004, SC-CAP-001]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.5 through P2.7 implementation candidates supply bounded first-party scanner facts"
+  non_goals:
+    - "RawSignal normalization, candidate/finding generation, verdicts, reports, EvidenceGraph, model discovery or product PASS"
+    - "An arbitrary-plugin security sandbox or externally reachable worker transport"
+    - "repository filesystem traversal, repository source import/execution, subprocess/shell, network, credential or environment access"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "scanner-contract-implementer"
+  mode: "path_isolated_subtask"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/scanning.py"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/scanner_plugin.py"
+    - "tests/unit/test_scanner_plugin.py"
+    - "tests/__init__.py"
+    - "tests/unit/__init__.py"
+    - "work/task-packets/P2.8.yaml"
+  parallel_sibling_tasks: [P2.9, P2.10, P2.11, P2.12, P2.13]
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/scanning.py"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/scanner_plugin.py"
+    - "tests/unit/test_scanner_plugin.py"
+    - "tests/__init__.py"
+    - "tests/unit/__init__.py"
+    - "work/task-packets/P2.8.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 7
+  max_diff_lines: 2200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands: ["git status/diff/show/rev-parse", "rg"]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "closed immutable RawSignal fact, deterministic signal digest and scanner execution receipt values"
+    - "host-owned budget enforcement for admitted input, elapsed time, signal count and retained output bytes"
+    - "typed timeout, resource-exhausted, crash, invalid-output and isolation-failure outcomes"
+    - "host-owned spawned worker with a bounded JSON receipt and adapter invocation without path opening, shell, network, credential or environment capability"
+
+constraints:
+  invariants:
+    - "scanner output is a source-bound fact only and has no finding, verdict, severity, confidence, outcome or product PASS field"
+    - "the host independently validates output identity, content hash, source size, detector identity, canonical ordering and deterministic signal digest"
+    - "repository content and plugin output have instruction_authority=NONE and cannot select a budget or execution boundary"
+    - "FIRST_PARTY_IN_PROCESS is rejected; APPROVED_ISOLATED_WORKER uses a host-owned spawned process, bounded JSON receipt and host-side termination, without claiming OS sandboxing"
+    - "plugin exceptions and invalid output are non-echoing typed outcomes with no retained signals"
+  compatibility:
+    - "new values are internal Core/adapter Python APIs; accepted schemas and evaluator remain unchanged"
+  security:
+    - "no public plugin port argument grants arbitrary filesystem, shell, subprocess, network, write, credential or environment access"
+    - "separate-process execution is not an OS sandbox: untrusted code requires a later verified sandbox profile before admission"
+
+budgets:
+  max_iterations: 12
+  max_tool_calls: 110
+  timeout_seconds: 7200
+  max_output_bytes: 350000
+
+verification:
+  acceptance_commands:
+    - "deferred by CR-049 until the integrated G2 candidate: scanner plugin targeted tests and package-boundary tests"
+    - "deferred by CR-049 until the integrated G2 candidate: canonical quality, spec/CI policy and strict frozen G0"
+  positive_cases:
+    - "deterministic facts and completed-zero scanner receipts preserve exact admitted identity without becoming a product PASS"
+  negative_cases:
+    - "late return, crash, oversized input/output, malformed or mismatched signals and unproven isolation produce typed non-success with no signals"
+  required_evidence:
+    - "integrated G2 targeted positive/negative budget and isolation tests"
+    - "one full quality/test and protected delivery cycle for the final G2 candidate"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "accepted specification/public contract, dependency or protected evaluator change required"
+  - "arbitrary plugin execution would require pretending an in-process callback is isolated"
+  - "filesystem, subprocess/shell, network, credential or environment capability is required"
+
+completion:
+  definition_of_done_refs: [P2.8]
+  gate_contribution: "Supplies the deterministic scanner-stage contract and typed bounded non-success receipts toward G2; it does not complete G2."
+  changelog_required: false
+  adr_required: false

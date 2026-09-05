@@ -1,0 +1,137 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.6"
+  type: "implementation"
+  objective: "Implement bounded exact-pin Python requirements parsing and fail-closed OSV advisory normalization over source-bound dependency manifests."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "805fa17528\
+    2357cc4df1\
+    148c026ca3\
+    6af327d807"
+  spec_refs: [SC-PROD-003, SC-EVAL-007]
+  decision_refs: [D-015, D-027, D-045]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.2 dependency discovery completion evidence is effective"
+    - "P2.5 completion is merged on the exact protected starting commit ancestry"
+  non_goals:
+    - "live OSV HTTP transport, dependency resolution, lock generation or package installation"
+    - "findings, verdicts, severity policy, RawSignal, EvidenceGraph or report integration"
+    - "non-Python manifest formats or unpinned requirement expressions"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "dependency-scanner-implementer"
+  mode: "direct"
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py"
+    - "tests/fixtures/p2_6/safe-requirements.txt"
+    - "tests/fixtures/p2_6/vulnerable-requirements.txt"
+    - "tests/unit/test_dependency_scanning.py"
+    - "work/task-packets/P2.6.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "docs/CONTEXT.md"
+    - "docs/PLAN.md"
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py"
+    - "tests/fixtures/p2_6/safe-requirements.txt"
+    - "tests/fixtures/p2_6/vulnerable-requirements.txt"
+    - "tests/unit/test_dependency_scanning.py"
+    - "work/task-packets/P2.6.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 10
+  max_diff_lines: 2600
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands:
+    - "git status/diff/show/rev-parse"
+    - "rg"
+    - "python scripts/spec_gate.py snapshot/index-candidate/committed-candidate at G2 closure"
+    - "python scripts/ci_policy.py validate"
+    - "python scripts/validate_g0.py --require-frozen"
+  network: "deny except authorized GitHub publication after completed local validation"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "source-bound canonical Python dependency coordinates from exact pinned requirements"
+    - "closed injected OSV batch request/response boundary with deterministic advisory normalization"
+    - "tamper-evident manifest and advisory result hashes"
+    - "pinned vulnerable and no-advisory fixture manifests"
+
+constraints:
+  invariants:
+    - "only exact name==version Python requirements are admitted; ambiguous, included, direct-URL, marker and duplicate-name inputs fail closed"
+    - "manifest path/content identity and every retained source range are bound to admitted repository bytes"
+    - "OSV output cannot supply paths, package coordinates, verdicts or producer identity"
+    - "one exact OSV result is required for every requested coordinate; missing, duplicate, substituted and over-budget results fail closed"
+    - "source, dependency, advisory, alias and execution budgets have hard ceilings"
+  compatibility:
+    - "values remain internal adapter Python APIs and add no public contract schema"
+    - "accepted specifications, evaluator, dependency graph and gate evidence remain unchanged"
+  security:
+    - "manifest bytes and scanner output have no instruction or capability authority"
+    - "the implementation opens no path, resolves no package and owns no live network client"
+
+budgets:
+  max_iterations: 10
+  max_tool_calls: 90
+  timeout_seconds: 7200
+  max_output_bytes: 300000
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G2 full test and quality cycle after P2.6-P2.13 integration"
+  positive_cases:
+    - "pinned vulnerable and no-advisory fixtures produce deterministic canonical coordinates"
+    - "approved exact OSV response normalizes stable IDs, aliases, producer and hashes"
+    - "comments, canonical package-name spelling and sha256 pin metadata are handled deterministically"
+  negative_cases:
+    - "unpinned, URL, included, marked, duplicate, malformed and non-UTF-8 manifest entries"
+    - "manifest byte/identity mismatch and source/dependency/advisory/alias limit exhaustion"
+    - "scanner exception, wrong identity, missing/duplicate/substituted result and result tampering"
+    - "no filesystem traversal, shell, package resolution, installation or live network surface"
+  required_evidence:
+    - "one integrated G2 full test and quality cycle"
+    - "one protected G2 PR and required post-merge audit"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "accepted specification/public contract, Core or dependency change required"
+  - "live network or package-resolution capability is required"
+  - "finding, verdict or severity-policy authority is required"
+  - "protected evaluator or gate-evidence change required"
+
+completion:
+  definition_of_done_refs: [P2.6]
+  partial_refs:
+    SC-PROD-003: "Provides bounded Python dependency manifest parsing and OSV advisory normalization; multi-ecosystem coverage and downstream findings remain later tasks"
+    SC-EVAL-007: "Supplies pinned positive/negative adapter fixtures; broad corpus evaluation remains P7"
+  gate_contribution: "Supplies vulnerable dependency detection evidence toward G2; does not complete G2."
+  changelog_required: true
+  adr_required: false

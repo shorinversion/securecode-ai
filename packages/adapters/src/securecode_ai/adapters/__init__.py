@@ -20,6 +20,33 @@ from .cst import (
     CstLimits,
     build_python_symbol_index,
 )
+from .cwe89 import (
+    DEFAULT_CWE89_SCAN_LIMITS,
+    Cwe89EvidenceKind,
+    Cwe89ScanError,
+    Cwe89ScanErrorCode,
+    Cwe89ScanLimits,
+    Cwe89ScanResult,
+    Cwe89Signal,
+    scan_python_cwe89,
+)
+from .dependency_scanning import (
+    DEFAULT_DEPENDENCY_SCAN_LIMITS,
+    ApprovedOsvScanner,
+    DependencyAdvisory,
+    DependencyCoordinate,
+    DependencyScanError,
+    DependencyScanErrorCode,
+    DependencyScanLimits,
+    DependencyScanResult,
+    OsvAdvisoryRecord,
+    OsvBatchRequest,
+    OsvBatchResponse,
+    OsvPackageResult,
+    ParsedDependencyManifest,
+    parse_python_requirements,
+    scan_dependency_advisories,
+)
 from .endpoint import (
     EndpointAuthorization,
     EndpointAuthorizationIssuer,
@@ -63,6 +90,7 @@ from .python_ast import (
 )
 from .repository import FileSystemRepositoryIntake
 from .runtime import LocalWorkflowRuntime, RuntimeClock
+from .scanner_plugin import ScannerPluginBinding, run_scanner_plugin
 from .secret_detection import (
     DEFAULT_SECRET_DETECTION_LIMITS,
     ApprovedExternalSecretScanner,
@@ -88,9 +116,12 @@ from .telemetry import (
 
 __all__ = [
     "DEFAULT_CST_LIMITS",
+    "DEFAULT_CWE89_SCAN_LIMITS",
+    "DEFAULT_DEPENDENCY_SCAN_LIMITS",
     "DEFAULT_PYTHON_AST_LIMITS",
     "DEFAULT_SECRET_DETECTION_LIMITS",
     "ApprovedExternalSecretScanner",
+    "ApprovedOsvScanner",
     "AuthorizedProviderHarness",
     "BinaryStreamTelemetrySink",
     "ConfigDiagnostic",
@@ -104,6 +135,18 @@ __all__ = [
     "CstAdapterError",
     "CstAdapterErrorCode",
     "CstLimits",
+    "Cwe89EvidenceKind",
+    "Cwe89ScanError",
+    "Cwe89ScanErrorCode",
+    "Cwe89ScanLimits",
+    "Cwe89ScanResult",
+    "Cwe89Signal",
+    "DependencyAdvisory",
+    "DependencyCoordinate",
+    "DependencyScanError",
+    "DependencyScanErrorCode",
+    "DependencyScanLimits",
+    "DependencyScanResult",
     "EffectiveConfiguration",
     "EndpointAuthorization",
     "EndpointAuthorizationIssuer",
@@ -119,6 +162,11 @@ __all__ = [
     "LocalWorkflowRuntime",
     "ModelBoundaryError",
     "NormalizedModelAttempt",
+    "OsvAdvisoryRecord",
+    "OsvBatchRequest",
+    "OsvBatchResponse",
+    "OsvPackageResult",
+    "ParsedDependencyManifest",
     "PayloadValidation",
     "PreparedModelContext",
     "ProviderAttempt",
@@ -134,6 +182,7 @@ __all__ = [
     "PythonAstStatus",
     "Resolver",
     "RuntimeClock",
+    "ScannerPluginBinding",
     "ScriptedFakeProvider",
     "SecretCandidate",
     "SecretDetectionError",
@@ -156,7 +205,11 @@ __all__ = [
     "parse_model_call_result",
     "parse_model_request",
     "parse_provider_profile",
+    "parse_python_requirements",
     "resolve_configuration",
     "resolve_environment_credential",
+    "run_scanner_plugin",
+    "scan_dependency_advisories",
+    "scan_python_cwe89",
     "scan_secrets",
 ]

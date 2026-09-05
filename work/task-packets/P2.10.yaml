@@ -1,0 +1,100 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.10"
+  type: "implementation"
+  objective: "Implement a graph-runtime-independent immutable EvidenceGraph v1 with closed typed nodes, edges and exact candidate/evidence provenance validation."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "805fa17528\
+    2357cc4df1\
+    148c026ca3\
+    6af327d807"
+  spec_refs: [SC-DOM-011, SC-DOM-013, SC-SYS-001, SC-SYS-003, SC-SYS-007]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.3 completion evidence is effective"
+    - "P2.9 candidate normalization is integrated in the G2 candidate"
+  non_goals:
+    - "WorkflowGraph or graph-runtime integration"
+    - "public schema, finding, verdict, severity, reporter or CLI changes"
+    - "raw source, scanner payload, secre\x74 or artifact-byte storage"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "evidence-graph-implementer"
+  mode: "isolated-worktree"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/evidence_graph.py"
+    - "tests/unit/test_evidence_graph.py"
+    - "work/task-packets/P2.10.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/evidence_graph.py"
+    - "tests/unit/test_evidence_graph.py"
+    - "work/task-packets/P2.10.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/src/securecode_ai/core/__init__.py", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 2200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "immutable typed candidate and evidence nodes with a source-free canonical graph hash"
+    - "closed candidate-to-evidence and evidence-derivation edge vocabulary"
+    - "exact tenant, head, lineage-producer, linkage, reachability and DAG validation"
+
+constraints:
+  invariants:
+    - "EvidenceGraph remains distinct from WorkflowGraph and imports no graph runtime"
+    - "all graph values bind to one exact tenant and immutable head SHA"
+    - "candidate evidence IDs and candidate-to-evidence edges match exactly"
+    - "lineage evidence producer identity is exact and every evidence node is candidate-reachable"
+    - "duplicate, dangling, cross-tenant, cross-revision, cyclic and invalid-flow material fails closed"
+    - "no graph field embeds raw source, scanner payload, secre\x74 or artifact bytes"
+  compatibility:
+    - "internal Core Python API only; accepted public contracts and schemas remain unchanged"
+  security:
+    - "validation errors are fixed and non-echoing"
+
+budgets:
+  max_candidates: 4096
+  max_evidence: 16384
+  max_edges: 65536
+
+verification:
+  acceptance_commands:
+    - "deferred by CR-049 to integrated G2 candidate closure"
+  positive_cases:
+    - "equivalent unordered input canonicalizes to identical node/edge order and hash"
+    - "candidate lineage and evidence linkage retain exact producer and revision provenance"
+  negative_cases:
+    - "duplicate, dangling, cross-tenant, cross-revision, mismatched producer, invalid-flow and cyclic edges fail closed"
+    - "source-free canonical payload contains only typed contract metadata and hashes"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P2.10]
+  gate_contribution: "Supplies deterministic provenance-preserving evidence structure toward G2; it is not G2 completion evidence."
+  changelog_required: false
+  adr_required: false
