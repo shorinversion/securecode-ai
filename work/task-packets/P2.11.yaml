@@ -1,0 +1,84 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.11"
+  type: "implementation"
+  objective: "Implement deterministic Core-MVP CWE/OWASP and severity mapping with explicit unscored pre-calibration confidence provenance."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "0609db3189\
+    9e967deae7\
+    6af3e03fd5\
+    c402140bf5"
+  spec_refs: [SC-PROD-004, SC-PROD-008, SC-REPORT-002, SC-POLICY-001, SC-EVAL-015]
+  decision_refs: [D-012, D-015]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.9 normalized candidate contract is available before integration"
+  non_goals:
+    - "finding verdicts, production blocking, statistical confidence scores or calibration"
+    - "CWE families beyond the accepted Core-MVP CWE-89 vertical slice"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "classification-implementer"
+  mode: "integrated-gate-candidate"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/classification.py"
+    - "tests/unit/test_classification.py"
+    - "work/task-packets/P2.11.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/classification.py"
+    - "tests/unit/test_classification.py"
+    - "work/task-packets/P2.11.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 700
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+constraints:
+  invariants:
+    - "classification is deterministic, immutable and carries exact mapping provenance"
+    - "pre-calibration confidence is UNSCORED and has no guessed numeric threshold"
+    - "classification has no verdict or blocking authority"
+    - "unknown or malformed CWE input fails with a fixed non-echo diagnostic"
+  compatibility:
+    - "accepted contracts and checked-in schemas remain unchanged"
+    - "the initial closed catalogue contains only CWE-89 mapped to OWASP A03:2021"
+
+verification:
+  acceptance_commands:
+    - "deferred: canonical G2 full test and quality cycle only after P2.6-P2.13 integration"
+  positive_cases:
+    - "CWE-89 maps deterministically to OWASP A03:2021, HIGH rule severity and UNSCORED confidence"
+    - "repeated mapping produces the same provenance and classification hash"
+  negative_cases:
+    - "malformed and unsupported CWE identifiers fail closed without input echo"
+    - "tampered classification/provenance hashes and invented confidence values reject"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P2.11]
+  gate_contribution: "Supplies deterministic classification metadata toward G2; does not complete G2."
+  changelog_required: true
+  adr_required: false
