@@ -1384,7 +1384,15 @@ def test_integrated_gate_uses_candidate_first_decision_as_promotion_base(
 def test_g2_promotion_plan_marks_only_consolidated_tasks_done() -> None:
     gate = GATE.SpecGate()
     completion = gate._gate_completion_tasks("G2")
-    base = (REPOSITORY_ROOT / "docs/PLAN.md").read_bytes()
+    current = (REPOSITORY_ROOT / "docs/PLAN.md").read_text(encoding="utf-8")
+    lines = current.splitlines(keepends=True)
+    for task_id in completion:
+        matches = [index for index, line in enumerate(lines) if f"| `{task_id}` |" in line]
+        assert len(matches) == 1
+        line = lines[matches[0]]
+        assert ("| `TODO` |" in line) != ("| `DONE` |" in line)
+        lines[matches[0]] = line.replace("| `DONE` |", "| `TODO` |", 1)
+    base = "".join(lines).encode("utf-8")
     final = gate._completed_gate_plan(base, completion)
     before = GATE.task_statuses(base)
     after = GATE.task_statuses(final)
