@@ -1,0 +1,114 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.9"
+  type: "implementation"
+  objective: "Normalize deterministic RawSignal facts and pre-verdict discovery candidates into stable, exact-fingerprint-deduplicated candidates with complete immutable lane, producer, input and evidence lineage."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "805fa17528\
+    2357cc4df1\
+    148c026ca3\
+    6af327d807"
+  spec_refs: [SC-PROD-019, SC-SYS-007, SC-DOM-011, SC-DOM-013]
+  decision_refs: [D-027]
+  preconditions:
+    - "G1 is effective GO."
+    - "P2.8 scanner plugin and budget boundary is integrated into the G2 candidate."
+  non_goals:
+    - "findings, verdicts, severity/confidence policy, EvidenceGraph construction or reporting"
+    - "source parsing, repository access, code execution, network, filesystem, subprocess or provider calls"
+    - "accepted public-contract, specification, evaluator or gate-evidence changes"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "normalization-implementer"
+  mode: "isolated-worktree"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/normalization.py"
+    - "tests/unit/test_signal_normalization.py"
+    - "work/task-packets/P2.9.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/normalization.py"
+    - "tests/unit/test_signal_normalization.py"
+    - "work/task-packets/P2.9.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - ".github/**"
+    - "artifacts/gates/**"
+    - "packages/contracts/**"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/adapters/**"
+    - "docs/**"
+    - "CHANGELOG.md"
+    - "pyproject.toml"
+    - "uv.lock"
+  max_changed_files: 3
+  max_diff_lines: 1800
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "domain-separated SHA-256 root-cause fingerprint bound to tenant, rule and exact content-bound source location but not head SHA"
+    - "canonical candidate IDs and deterministic ordering"
+    - "exact-fingerprint-only deduplication with deterministic, model-native or hybrid closed origin"
+    - "complete producer, input signal/candidate and evidence lineage retention"
+
+constraints:
+  invariants:
+    - "RawSignal remains a scanner fact, never a finding or verdict."
+    - "fingerprints exclude head SHA and producer/raw-signal IDs but retain tenant, rule, path, interval and content hash."
+    - "hybrid origin is emitted only after deterministic and model-native lineages converge on the exact same fingerprint."
+    - "all inputs must bind one tenant, immutable head SHA and schema version; conflicts fail closed."
+    - "duplicate IDs with nonidentical immutable values and conflicting extension namespaces fail closed."
+    - "normalization preserves all retained input IDs, producers and evidence IDs without source bytes."
+    - "hard input/output/lineage budgets reject excess data."
+  compatibility:
+    - "uses existing RawSignal, DiscoveryCandidate, LineageRef and ProducerRef models without public-contract modification."
+    - "adds an internal Core module only; Core package re-export integration is deferred to the primary integrator."
+  security:
+    - "no caller-controlled repository path, source bytes, shell, filesystem, network, subprocess or provider capability exists."
+    - "normalization errors are closed and do not echo source, path or untrusted payload content."
+
+verification:
+  acceptance_commands:
+    - "Deferred by CR-049 section 1 and section 5 until the integrated G2 candidate closes."
+  positive_cases:
+    - "unchanged tenant/rule/content-bound source interval retains one fingerprint across head SHAs"
+    - "multiple deterministic signals retain all distinct producer/input lineage under one candidate"
+    - "exact equal deterministic/model-native fingerprints converge to one hybrid candidate"
+  negative_cases:
+    - "changed path/location/content/rule fingerprint never merges"
+    - "mixed tenant/head/schema identities, conflicting duplicate IDs and conflicting extension namespaces fail closed"
+    - "input/output/lineage limits fail closed"
+  required_evidence:
+    - "one integrated G2 full test and quality cycle"
+    - "one protected G2 PR and required CI"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P2.9]
+  gate_contribution: "Provides deterministic provenance-preserving normalization for the G2 candidate; it does not itself complete P2.9 or G2."
+  changelog_required: false
+  adr_required: false

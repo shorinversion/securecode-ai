@@ -1,0 +1,77 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.12"
+  type: "implementation"
+  objective: "Render one validated deterministic semantic report as canonical JSON, Markdown, self-contained HTML and SARIF 2.1 without changing finding or gate semantics."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "805fa17528\
+    2357cc4df1\
+    148c026ca3\
+    6af327d807"
+  spec_refs: [SC-PROD-008, SC-REPORT-001, SC-REPORT-002, SC-REPORT-003, SC-REPORT-004, SC-REPORT-005, SC-REPORT-006, SC-REPORT-008, SC-REPORT-010, SC-REPORT-011, SC-CLI-008]
+  decision_refs: [D-012, D-027]
+  preconditions:
+    - "P2.9-P2.11 integrated contracts are available"
+  non_goals:
+    - "SCM upload, report persistence, patch embedding, policy evaluation or finding verdict derivation"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "reporter-implementer"
+  mode: "integrated-gate-candidate"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/reports.py"
+    - "tests/unit/test_reports.py"
+    - "work/task-packets/P2.12.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/reports.py"
+    - "tests/unit/test_reports.py"
+    - "work/task-packets/P2.12.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1600
+
+constraints:
+  invariants:
+    - "canonical JSON is the semantic source and every renderer uses the same validated run/finding data"
+    - "format selection never changes run outcome, verdict, coverage, origin or lineage"
+    - "Markdown, HTML and SARIF contain no active content, unsafe path or source/secret bytes"  # pragma: allowlist secret
+    - "HTML is self-contained with scripts disabled; SARIF uses repository-relative encoded locations"
+    - "incomplete coverage is never rendered as clean"
+    - "SARIF uses the official OASIS 2.1.0 Errata 01 schema URI and pinned SHA-256 c3b4bb2d6093897483348925aaa73af03b3e3f4bd4ca38cef26dcb4212a2682e; before bytes return, an offline validator rejects every OASIS structural/type/enum/location constraint reachable from the renderer's closed shape, without a runtime resolver or JSON-schema dependency"
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G2 full test and quality cycle after P2.6-P2.13 integration"
+  positive_cases:
+    - "JSON, Markdown, HTML and SARIF render one exact run/finding semantic source"
+    - "SARIF 2.1 structure satisfies every pinned OASIS Errata 01 constraint reachable from the closed emitted shape and uses repository-relative percent-encoded locations"
+  negative_cases:
+    - "run/finding/candidate/revision mismatch rejects"
+    - "active markup, control sequences, unsafe path forms and classified canaries remain inert or absent"
+    - "incomplete coverage emits explicit non-clean warning"
+    - "mutations of every emitted SARIF structural class, or an absolute/drive/authority URI, fail closed before output"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P2.12]
+  gate_contribution: "Supplies deterministic multi-format report evidence toward G2; does not complete G2."
+  changelog_required: true
+  adr_required: false

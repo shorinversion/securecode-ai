@@ -1,4 +1,4 @@
-"""Fail-closed foundation CLI; analysis commands intentionally remain absent."""
+"""Fail-closed CLI foundation with explicit non-product diagnostic composition."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import os
 import sys
 import uuid
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Final, Protocol, TextIO, cast
 
 from securecode_ai.adapters import ConfigError, ProviderProfileRegistry, resolve_configuration
@@ -31,6 +33,16 @@ from securecode_ai.contracts import (
 )
 from securecode_ai.core import CONTRACT_SCHEMA_VERSION as CORE_CONTRACT_SCHEMA_VERSION
 
+from .diagnostic import (
+    DeterministicDiagnostic,
+    DiagnosticError,
+    DiagnosticErrorCode,
+    DiagnosticFormat,
+    LocalDeterministicDiagnostic,
+    canonical_diagnostic_json,
+    run_deterministic_diagnostic,
+)
+
 CLI_VERSION: Final = "0.1.0a0"
 FOUNDATION_PROFILE_SELECTOR: Final = "securecode-foundation-fake@0.2.0"
 FOUNDATION_PROFILE_CONTENT_SHA256: Final = (
@@ -44,6 +56,9 @@ FOUNDATION_DEFAULTS: Final = {
 _HUMAN_SUCCESS: Final = (
     "foundation configuration diagnostics completed; scan readiness was not evaluated"
 )
+_HUMAN_DIAGNOSTIC_SUCCESS: Final = (
+    "deterministic diagnostic completed; product scan outcome was not evaluated"
+)
 
 
 class Doctor(Protocol):
@@ -56,6 +71,13 @@ class FoundationConfigurationError(ValueError):
 
 class FoundationCapabilityError(ValueError):
     """Safe closed signal for declaration-only capability incompatibility."""
+
+
+@dataclass(frozen=True, slots=True)
+class _DiagnosticScanArguments:
+    target: str
+    report_format: DiagnosticFormat
+    output: Path | None
 
 
 def build_foundation_profile() -> ProviderProfile:
@@ -286,6 +308,107 @@ def _write_error(
     return int(result.exit_code)
 
 
+def _parse_diagnostic_scan(tokens: tuple[str, ...]) -> _DiagnosticScanArguments:
+    """Parse the deliberately narrow scan diagnostic grammar without echoing argv."""
+
+    if not tokens or tokens[0] != CliCommand.SCAN.value:
+        raise ValueError("diagnostic scan grammar is invalid")
+    target: str | None = None
+    report_format = DiagnosticFormat.JSON
+    format_selected = False
+    output: Path | None = None
+    diagnostic_requested = False
+    index = 1
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--diagnostic":
+            if diagnostic_requested:
+                raise ValueError("diagnostic scan grammar is invalid")
+            diagnostic_requested = True
+        elif token == "--format":
+            index += 1
+            if index >= len(tokens) or format_selected:
+                raise ValueError("diagnostic scan grammar is invalid")
+            try:
+                report_format = DiagnosticFormat(tokens[index])
+            except ValueError:
+                raise ValueError("diagnostic scan grammar is invalid") from None
+            format_selected = True
+        elif token == "--output":
+            index += 1
+            if index >= len(tokens) or output is not None or not tokens[index]:
+                raise ValueError("diagnostic scan grammar is invalid")
+            output = Path(tokens[index])
+        elif token.startswith("-") or target is not None or not token:
+            raise ValueError("diagnostic scan grammar is invalid")
+        else:
+            target = token
+        index += 1
+    if not diagnostic_requested or target is None:
+        raise ValueError("diagnostic scan grammar is invalid")
+    return _DiagnosticScanArguments(target=target, report_format=report_format, output=output)
+
+
+def _run_diagnostic_scan(
+    tokens: tuple[str, ...],
+    *,
+    machine: bool,
+    stdout: TextIO,
+    stderr: TextIO,
+    correlation_id_factory: Callable[[], str],
+    diagnostic: DeterministicDiagnostic | None,
+) -> int:
+    """Execute only the explicit deterministic diagnostic scope of ``scan``."""
+
+    command = CliCommand.SCAN
+    try:
+        arguments = _parse_diagnostic_scan(tokens)
+        result = run_deterministic_diagnostic(
+            diagnostic or LocalDeterministicDiagnostic(),
+            target=arguments.target,
+            report_format=arguments.report_format,
+            output=arguments.output,
+        )
+    except ValueError:
+        return _write_error(
+            _error_result(CliErrorCode.INVALID_USAGE, command, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except DiagnosticError as error:
+        error_code = (
+            CliErrorCode.OPERATIONAL_ERROR
+            if error.code is DiagnosticErrorCode.OUTPUT_UNAVAILABLE
+            else CliErrorCode.ANALYSIS_INDETERMINATE
+        )
+        return _write_error(
+            _error_result(error_code, command, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except KeyboardInterrupt:
+        return _write_error(
+            _error_result(CliErrorCode.CANCELLED, command, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except Exception:
+        return _write_error(
+            _error_result(CliErrorCode.INTERNAL_ERROR, command, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    if machine:
+        stdout.write(canonical_diagnostic_json(result) + "\n")
+    else:
+        stderr.write(_HUMAN_DIAGNOSTIC_SUCCESS + "\n")
+    return int(CliExitCode.COMPLETED)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -293,6 +416,7 @@ def main(
     stderr: TextIO | None = None,
     environment: Mapping[str, str] | None = None,
     doctor: Doctor | None = None,
+    diagnostic: DeterministicDiagnostic | None = None,
     correlation_id_factory: Callable[[], str] = _default_correlation_id,
 ) -> int:
     """Execute the bounded P1.10 grammar and return one stable process code."""
@@ -333,6 +457,15 @@ def main(
     if stripped == ("--version",):
         output.write(f"securecode {CLI_VERSION}\n")
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] == CliCommand.SCAN.value:
+        return _run_diagnostic_scan(
+            stripped,
+            machine=machine,
+            stdout=output,
+            stderr=errors,
+            correlation_id_factory=correlation_id_factory,
+            diagnostic=diagnostic,
+        )
     if stripped != ("doctor",):
         return _write_error(
             _error_result(CliErrorCode.INVALID_USAGE, command, correlation_id_factory),

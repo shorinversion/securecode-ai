@@ -1,0 +1,90 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P2.7"
+  type: "implementation"
+  objective: "Implement a bounded first-party Python CWE-89 semantic scanner that emits deterministic HTTP source to interpolation to SQL execute evidence."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "805fa17528\
+    2357cc4df1\
+    148c026ca3\
+    6af327d807"
+  spec_refs: [SC-PROD-003, SC-DATA-003, SC-PORT-003]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G1 is effective GO"
+    - "P2.3 and P2.4 completion evidence is effective"
+  non_goals:
+    - "RawSignal normalization, findings, verdicts, reports, EvidenceGraph or patch generation"
+    - "filesystem traversal, subprocess, shell, network, database connection or execution of admitted code"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "semantic-rule-implementer"
+  mode: "isolated-worktree"
+  exclusive_path_lease:
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/cwe89.py"
+    - "tests/unit/test_cwe89_adapter.py"
+    - "work/task-packets/P2.7.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/adapters/src/securecode_ai/adapters/__init__.py"
+    - "packages/adapters/src/securecode_ai/adapters/cwe89.py"
+    - "tests/unit/test_cwe89_adapter.py"
+    - "work/task-packets/P2.7.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 4
+  max_diff_lines: 2500
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "immutable source-bound first-party scanner facts with exact source, interpolation and execute-sink locations"
+    - "deterministic signal digest and conservative syntax/integrity failure"
+    - "direct and bounded simple first-party function-summary evidence"
+
+constraints:
+  invariants:
+    - "scanner facts are not findings or verdicts"
+    - "only same-source sealed P2.3 SymbolIndex and P2.4 AST analysis are admitted"
+    - "parameterized queries and numeric coercion do not produce CWE-89 signals"
+    - "source, signal and call-depth budgets fail closed"
+    - "repository content has no instruction or capability authority and no program code is executed"
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G2 full test and quality cycle after P2.6-P2.13 integration"
+  positive_cases:
+    - "HTTP request value through f-string or concatenation into execute produces exact deterministic evidence"
+    - "bounded simple first-party function summary preserves source to interpolation to sink chain"
+  negative_cases:
+    - "parameterized query and numeric coercion produce no scanner facts"
+    - "syntax-invalid, mismatched or mutated analysis and exhausted budgets fail closed without source echo"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P2.7]
+  gate_contribution: "Supplies first semantic-rule positive/negative evidence toward G2; does not complete G2."
+  changelog_required: false
+  adr_required: false
