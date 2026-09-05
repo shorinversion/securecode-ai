@@ -17,6 +17,12 @@
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
+- G2 candidate P2.6-P2.13 is integrated at implementation checkpoint
+  `34f3fcaf598f152753920cb32717ccbc720bd215`. Its canonical local gate cycle
+  passed with 1296 tests passed, 5 Windows-only POSIX/FIFO skips, 86.80% Core
+  branch coverage and `QUALITY=PASS`. The gate remains `GO-PROPOSED` until
+  exact-byte promotion, protected PR/CI and post-merge verification complete;
+  P3 has not started.
 - Latest completed task: `P2.5 — bounded secret detection`, implementation
   commit `34154148faef5281a2e4ddb8170b87294d1e4024`.
 - P2.1 is authorized by effective G1; P3+ remain gated.
@@ -337,23 +343,27 @@ P3.12/P3.13 явно владеют live connector и реальной лока�
 
 ## Модель разработки
 
-CR-045 / D-043: пользователь принял
+CR-050 / D-047 supersedes the earlier per-task lifecycle: пользователь принял
 [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md): Sol medium orchestrator,
 Terra high developer, Sol high reviewers, Astra не выше medium для узких
 critical-security/evaluator задач; Luna medium для механических задач.
 Внутренняя работа выполняется bounded Codex-субагентами с явной моделью и одним
 writer на путь; отдельные пользовательские задачи для внутренних стадий не
 создаются. Spawn receipt подтверждает принятую конфигурацию, но не доказывает
-runtime identity, если платформа её не раскрывает. Полный local quality и
-независимые reviews относятся к интегрированному gate-кандидату; на задачах
-остаются focused acceptance/negative tests. После локального review-блокера
-повторяется только затронутый review и регрессия, если изменение не сквозное.
-Критические изменения безопасности/evaluator проверяются до downstream reliance.
+runtime identity, если платформа её не раскрывает. Между P-задачами допустимы
+только локальные checkpoint-коммиты без тестов и ревью. Один canonical quality
+cycle выполняется для интегрированного gate-кандидата; независимые reviews для
+G2-G8 отключены, а единый product/architecture/security-evaluation review
+выполняется после G9. Полный цикл повторяется только после изменения кандидата
+или исправления, которое инвалидировало предыдущий результат.
 Общий checkout используется для управления, стабильного read-only review и
 последовательной разработки в feature-ветке; worktree — для параллельных writers
 или изоляции фиксированного review-кандидата, с учётом владельца и очистки.
-Изменения hooks/evaluator, per-task completion и one-PR delivery ещё не
-выполнены; действующие protected проверки обязательны.
+Lifecycle amendment effective через protected PR #38 (`7d6e150`) и зелёный
+post-merge run `33978319717`; CR-052 closing activation merged through
+protected PR #39 (`3aec841`); CR-053 first-gate lookup repair merged through
+protected PR #41 (`0609db3`). Hooks, protected CI и exact-byte promotion
+остаются обязательными.
 
 Основной Codex-agent — единственный `Primary Integrator` и owner
 решений/baseline. Субагенты — bounded read-only reviewers или
@@ -365,12 +375,12 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Провести исполняемый protected amendment CR-045, сохранив hooks/CI/gates,
-   но убрав дублирующие per-task full-quality/review циклы до начала P2.6.
-2. Реализовать P2.6–P2.13 code-first к effective G2; параллельно
-   подготовить P9.12 и development corpus. P3 начинается только после effective
-   G2. Календарь следующих этапов — SUBMISSION_PLAN.md.
-3. После стабилизации CR-045 дать Luna medium writer lease на безопасные
+1. Завершить exact-byte promotion и protected delivery интегрированного G2
+   candidate. P3 начинается только после effective G2 GO.
+2. После G2 без паузы реализовать demo-critical P3 code-first по той же
+   consolidated gate cadence; параллельно готовить P9.12 и development corpus.
+   Календарь следующих этапов — SUBMISSION_PLAN.md.
+3. После G2 дать Luna medium writer lease на безопасные
    ненормативные translation batches; immutable/spec/gate evidence не переводить
    без отдельного change control.
 
