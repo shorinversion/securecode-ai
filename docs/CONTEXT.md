@@ -1,9 +1,21 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 23 августа 2026 года.
+Последнее обновление: 5 сентября 2026 года.
 
 ## Текущая позиция
 
+- Deadline: пользователь подтвердил **защиту 27 сентября 2026**, Екатеринбург,
+  **1 человек** (5 сентября, task `01a07049-3886-7a52-bc78-e53900cc816f`).
+  Комплект готовится к **24 сентября 18:00 Asia/Yekaterinburg**, 25-го репетиция,
+  26-го резерв. Слот защиты/загрузки и instructor reference/индивидуальное
+  разрешение ещё нужны; source time 23:59 не считается временем защиты.
+- `CR-046/D-044`, `P9.15`: добавочный `M-A2026 — Academic Submission Snapshot`,
+  календарь и ранняя diagnostic evaluation; exact reviews/handoff фиксируются
+  в development-run CR-046. Первое демо P9.17 — 16 сентября (сценарий
+  15-го 18:00), feedback 17–18-го; встреча с преподавателем ещё не назначена.
+  [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
+  [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
+  не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
 - Latest completed task: `P2.4 — bounded CPython ast adapter`, implementation
   commit `cbd29a60386e04cd7358f49d7add287832f580f7`.
@@ -12,9 +24,18 @@
   `84f6bd859b90bd4ea7fdc7635a31b2b1c207f6b0` одним audited fast-forward
   admin bypass; bypass немедленно удалён, ruleset `21006868` восстановлен без
   bypass actors.
-- Current task: publish the `P2.4` successor completion attestation from exact
-  implementation merge `2c62e20`, then open constrained `P2.5`. P3 remains
+- Current task: `P2.5` secret detector is `IN PROGRESS`. Its implementation
+  passed focused tests, canonical quality and final security delta review after
+  closing the oversized-candidate fail-open boundary. Protected PR #34 merged
+  as `76d7601`; PR run `33957781524` and post-merge run `33957954712` passed.
+  The remaining step is the exact protected completion attestation; P3 remains
   blocked until effective G2 GO.
+- `CR-047` repaired the evaluator timeout without changing the collected
+  114-node contract or 360-second deadline. Protected PR #33 merged without
+  bypass as `d61d3d5`; all required PR jobs and post-merge run `33955936418`
+  passed. CR-046 changes no evaluator behavior or product code.
+- P2.4 completion attestation merged through protected PR #32 as `7171d5e`;
+  its post-merge run `32622194943` passed all mandatory jobs without bypass.
 - P2.4 passed exact-tree product, architecture and security/evaluation review
   after closing cyclic-tree exception leakage and the validation/copy race.
   Protected PR #31 merged as `2c62e20`; PR run `32621529046` and post-merge run
@@ -307,7 +328,32 @@ Python/JS/Go к beta/final. Backend по умолчанию не получае�
 new-code blocking. Auto-Fix — candidate до sandbox validation и required
 human/policy gate.
 
+CR-046 приоритизирует до сдачи G2 → G3 → G4 → P7.1–P7.3 (языки), P7.17
+(отдельное development сравнение), P9.16 (академический комплект). Backend,
+вторая SCM и enterprise hardening сохраняются для последующих releases.
+P3.12/P3.13 явно владеют live connector и реальной локальной моделью; P1.8
+не переобъявляется готовым HTTP-клиентом. Все новые packets/catalog admissions
+проверяются до исполнения; календарь не заменяет protected completion.
+
 ## Модель разработки
+
+CR-045 / D-043: пользователь принял
+[DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md): Sol medium orchestrator,
+Terra high developer, Sol high reviewers, Astra не выше medium для узких
+critical-security/evaluator задач; Luna medium для механических задач.
+Внутренняя работа выполняется bounded Codex-субагентами с явной моделью и одним
+writer на путь; отдельные пользовательские задачи для внутренних стадий не
+создаются. Spawn receipt подтверждает принятую конфигурацию, но не доказывает
+runtime identity, если платформа её не раскрывает. Полный local quality и
+независимые reviews относятся к интегрированному gate-кандидату; на задачах
+остаются focused acceptance/negative tests. После локального review-блокера
+повторяется только затронутый review и регрессия, если изменение не сквозное.
+Критические изменения безопасности/evaluator проверяются до downstream reliance.
+Общий checkout используется для управления, стабильного read-only review и
+последовательной разработки в feature-ветке; worktree — для параллельных writers
+или изоляции фиксированного review-кандидата, с учётом владельца и очистки.
+Изменения hooks/evaluator, per-task completion и one-PR delivery ещё не
+выполнены; действующие protected проверки обязательны.
 
 Основной Codex-agent — единственный `Primary Integrator` и owner
 решений/baseline. Субагенты — bounded read-only reviewers или
@@ -319,11 +365,13 @@ metric loopholes. Главный агент сводит corrections и повт
 
 ## Ближайшие действия
 
-1. Publish and merge the `P2.4` completion attestation through the ordinary
-   protected gate and require its green post-merge run.
-2. Open constrained `P2.5` from the exact completed P2.4 master and implement
-   the secret detector plus approved external adapter.
-3. Continue P2 in order; do not begin P3 before effective G2 GO.
+1. Защищённо интегрировать CR-046 и затем опубликовать exact completion
+   attestation P2.5, не повторяя уже действительные продуктовые проверки.
+2. Провести исполняемый protected amendment CR-045, сохранив hooks/CI/gates,
+   но убрав дублирующие per-task full-quality/review циклы до начала P2.6.
+3. Реализовать P2.6–P2.13 code-first к effective G2; параллельно
+   подготовить P9.12 и development corpus. P3 начинается только после effective
+   G2. Календарь следующих этапов — SUBMISSION_PLAN.md.
 
 ## Критические запреты
 

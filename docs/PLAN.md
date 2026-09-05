@@ -1,8 +1,8 @@
 # SecureCode AI — master plan
 
-Версия плана: `0.8`
+Версия плана: `1.0`
 Статус: `active`  
-Последнее обновление: 19 августа 2026 года
+Последнее обновление: 5 сентября 2026 года
 Current phase: `P2 - Deterministic analysis and reporting` - authorized to start.
 Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G2`.
 
@@ -13,6 +13,50 @@ Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G
 [DECISIONS.md](DECISIONS.md).
 
 ## 1. Как читать и обновлять план
+
+### CR-046 — academic deadline and early evidence
+
+- Пользователь подтвердил **защиту 27 сентября 2026**, Екатеринбург и команду
+  **1 человек**. Готовность комплекта — **24 сентября, 18:00 Asia/Yekaterinburg**;
+  25-го репетиция, 26-го резерв. Время 23:59 из исходного задания не считается
+  временем защиты. Слот/загрузка и instructor reference/индивидуальное разрешение
+  ещё нужны.
+- [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md) задаёт календарь и дополнительный
+  `M-A2026 — Academic Submission Snapshot`: G2 → G3 → G4 → ранняя поддержка
+  Python/JS/TS/Go → проверенные эксперименты и комплект сдачи.
+- M-A2026 не меняет frozen baseline, release ladder или G0–G9 и не закрывает
+  enterprise v1.0. Все соответствующие G7/G9 oracles позднее проверяются на
+  актуальном release candidate. Необходимые академические работы выполняются
+  раньше backend/второй SCM; оставшийся enterprise scope сохраняется.
+- [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md) добавляет раннее
+  диагностическое сравнение и сквозную development-метрику; frozen metrics,
+  locked tests, calibration и blocking policy остаются прежними.
+- Текущая работа соответствует `P9.15 / CR-046 / D-044`. Документационный
+  reviews и exact identity записываются в development-run CR-046;
+  это не product gate evidence. Первое демо P9.17 — 16 сентября,
+  готовность сценария 15-го 18:00; feedback 17–18-го, встреча ещё не назначена.
+
+### CR-045 — development workflow migration
+
+- Operating instructions: accepted by user 2026-09-05; implement model routing,
+  bounded internal-subagent handoff and whole-gate full verification/review under
+  [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md). This is a process change,
+  not P2.5 implementation or a claim that any product gate advanced.
+- Protected automation: `TODO` after P2.5, before ordinary P2.6 development.
+  Amend repeated full-quality hooks and redundant attestation delivery through
+  the existing protected policy procedure, with exact-SHA evidence and G2
+  completion audit preserved. Acceptance: focused positive/negative policy
+  tests, required independent reviews and ordinary protected delivery.
+- User refinement 2026-09-05: focused acceptance/negative checks per P-task;
+  full quality and independent product/architecture/security review after all
+  required gate tasks are integrated. Critical security/evaluator changes need
+  review before downstream reliance. Migration must reconcile current per-task
+  completion contracts with this cadence without weakening effective G2 GO.
+- Shared checkout is the default for management, stable read-only reviews and
+  sequential feature-branch work; isolate concurrent writers/fixed candidates
+  in worktrees with explicit owners and verified cleanup conditions.
+- Current hooks, CI and task-completion contracts remain effective until that
+  amendment passes. Never mark this migration fully complete from docs alone.
 
 ### Уровни планирования
 
@@ -35,6 +79,10 @@ Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G
 только при выполнении acceptance criteria и наличии воспроизводимого evidence.
 
 ## 2. Итоговый outcome
+
+Ниже сохраняется outcome полного `v1.0 / G9`. Академическая контрольная точка
+M-A2026 имеет собственный полный учебный комплект и не объявляет этот outcome
+выполненным до завершения оставшихся enterprise задач.
 
 Проект закрыт, когда существует воспроизводимая, документированная и защищённая
 система, которая:
@@ -66,10 +114,10 @@ Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G
 и корректность ядра на одном сквозном сценарии; затем вокруг устойчивого ядра
 строятся control plane и SCM-интеграции.
 
-Календарные даты намеренно не выдумываются до фиксации дедлайна, доступной
-команды и закрытия `G0`. После `G0` задачи критического пути оцениваются,
-раскладываются по итерациям и получают целевые даты; изменение даты после этого
-проходит обычный change-control процесс.
+Рабочий календарь до подтверждённой даты 27 сентября 2026 приведён в
+[SUBMISSION_PLAN.md](SUBMISSION_PLAN.md). Это целевой прогноз с резервом,
+ежедневной сверкой фактической скорости и явными незакрытыми административными
+вопросами. Дата не разрешает обход acceptance или удаление обязательного языка.
 
 ## 4. Критический путь
 
@@ -85,6 +133,13 @@ P0 Definition
   → P8 Enterprise hardening                 = RC v0.9
   → P9 Release, defense and handoff          = v1.0 / closure
 ```
+
+Это зависимости release gates; порядок готовности отдельных компонентов
+уточнён CR-046. После G4 приоритетный путь к дедлайну идёт через P7.1–P7.3,
+P7.17 и P9.16 к M-A2026. Он не требует заранее построить P5/P6; G5–G9
+остаются открытыми до выполнения всех собственных критериев. Подготовка
+P7.6 и P9.12 начинается сейчас. Контракты и безопасность G2 → G3 → G4
+сохраняются, самостоятельная ранняя реализация gated фаз запрещена.
 
 Documentation, tests, security review, observability and change control идут
 сквозным потоком, а не откладываются на конец.
@@ -229,7 +284,7 @@ G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 | `P2.2` | Ignore policy, language и dependency discovery | P2.1, P2.14 | корректные manifests и changed-files map | `DONE` |
 | `P2.3` | Tree-sitter/CST adapter и symbol index | P2.2 | location-stable symbols на fixtures | `DONE` |
 | `P2.4` | Python `ast` adapter | P2.2 | syntax/error recovery tests | `DONE` |
-| `P2.5` | Собственный secret detector + approved external adapter | P2.1, P2.14 | positive/negative/entropy fixtures, redacted output | `TODO` |
+| `P2.5` | Собственный secret detector + approved external adapter | P2.1, P2.14 | positive/negative/entropy fixtures, redacted output | `IN PROGRESS` |
 | `P2.6` | Dependency scanner adapter и OSV normalization | P2.2 | pinned vulnerable/safe manifests | `TODO` |
 | `P2.7` | Первый semantic rule: Python CWE-89 | P2.3, P2.4 | source → interpolation → SQL sink evidence | `TODO` |
 | `P2.8` | Scanner plugin contract и time/resource budgets | P2.5–P2.7 | timeout/crash isolation tests | `TODO` |
@@ -238,6 +293,13 @@ G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 | `P2.11` | Severity/confidence/CWE/OWASP mapping | P2.9 | deterministic mapping fixtures | `TODO` |
 | `P2.12` | JSON, Markdown/HTML и SARIF reporters | P2.9–P2.11 | schema validation и golden snapshots | `TODO` |
 | `P2.13` | CLI deterministic diagnostic/evaluation mode | P2.12 | end-to-end facts/report tests без LLM; mode не выдаёт product `PASS` | `TODO` |
+
+`P2.5` implementation note (updated 2026-09-05): CR-047 first restored the
+mandatory evaluator path through protected PR #33 (`d61d3d5`) without weakening
+its collected checks or deadline. The P2.5 candidate then passed focused tests,
+canonical quality and final security delta review; protected PR #34 merged as
+`76d7601`, and post-merge run `33957954712` passed. Status is `IN PROGRESS`
+until the exact completion attestation is merged and effective.
 
 ### G2 — Deterministic Core Ready
 
@@ -266,6 +328,14 @@ G1 status: `GO` - Foundation Ready; P2.1 is permitted and G2 remains enforced.
 | `P3.9` | Human escalation case format | P3.5 | conflicts/budget exhaustion preserve all evidence | `TODO` |
 | `P3.10` | Mandatory model-native discovery over `RepositoryView` | P3.1, P3.2, P3.7 | zero-scanner native finding, completed-zero receipt, provider/profile fault and bounded read-only tool tests | `TODO` |
 | `P3.11` | Dual-lane convergence and interpretation coverage | P2.9, P2.10, P3.3, P3.10 | deterministic/model-native/hybrid lineage; every normalized candidate has Auditor receipt | `TODO` |
+| `P3.12` | Live local OpenAI-compatible connector | G2, P1.8 | real bounded transport through existing authorization/peer/egress contract; timeout/cancel/native non-success tests; no ambient proxy or silent redirects | `TODO` |
+| `P3.13` | Local model and hardware qualification for academic demo | P3.10, P3.12 | pinned quantized open-source LLM; exact model/runtime artifacts, hashes, licenses/restrictions and profile; real structured and RepositoryView requests, completed-zero/fault evidence, CPU/RAM/VRAM and costs; downloadable weights alone are insufficient, any brief deviation requires recorded curator approval | `TODO` |
+
+P1.8 remains DONE within its original no-live-HTTP scope. P3.12/P3.13 own the
+missing real connector and academic model evidence; hardware metadata stays
+outside public ProviderProfile schema. New task packets and completion
+admission must be reviewed on their exact base; this table does not amend the
+protected completion catalog or authorize product PASS from fake-only results.
 
 ### G3 — Investigation Ready
 
@@ -380,8 +450,8 @@ approvals и audit trail без обязательной передачи пол
 
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
-| `P7.1` | JavaScript/TypeScript parser, symbols и rules | G6 | positive/negative multi-file fixtures | `TODO` |
-| `P7.2` | Go parser, symbols и rules | G6 | positive/negative multi-file fixtures | `TODO` |
+| `P7.1` | JavaScript/TypeScript parser, symbols и rules | G4; reviewed dependency admission | positive/negative multi-file fixtures through common evidence/verdict/report pipeline | `TODO` |
+| `P7.2` | Go parser, symbols и rules | G4; reviewed dependency admission | positive/negative multi-file fixtures through common evidence/verdict/report pipeline | `TODO` |
 | `P7.3` | Language-neutral call/data-flow contracts | P7.1, P7.2 | shared graph invariants across 3 languages | `TODO` |
 | `P7.4` | Расширить CWE portfolio | P7.3 | SQLi, command injection, path traversal, SSRF, authz sample | `TODO` |
 | `P7.5` | Подключить вторую SCM | G5 | feature parity matrix and E2E test | `TODO` |
@@ -396,6 +466,13 @@ approvals и audit trail без обязательной передачи пол
 | `P7.14` | Offline DSPy/GEPA and SkillOpt-style experiments | P7.7, P7.12 | versioned prompt/skill candidates, development/held-out metrics and zero protected access | `TODO` |
 | `P7.15` | Sandboxed RLM-inspired discovery experiment | P7.7, P7.12 | read-only CodeIndex ablation, bounded resources and no unauthorized effects | `TODO` |
 | `P7.16` | Candidate promotion/no-promotion decision | P7.13–P7.15 | AppSec-reviewed Pareto/security report; promoted immutable artifact or documented rejection | `TODO` |
+| `P7.17` | Early development baseline and E2E remediation study | G4; admitted separate development corpus prepared with P7.6 | versioned per-run facts/budgets/results, independent denominator recomputation and limitations under DEVELOPMENT_EVALUATION.md; no confirmatory claim | `TODO` |
+
+CR-046 prioritizes P7.1–P7.3 and P7.17 for M-A2026 before backend/SCM expansion.
+P7.6 acquisition/license/leakage preparation starts now; a small development
+subset or P7.17 study does not complete the broader P7.6–P7.10 beta acceptance.
+The existing G7 criteria below, including both SCMs and calibration, remain
+unchanged and cannot be satisfied by the academic snapshot alone.
 
 ### G7 — Multi-language Beta v0.5
 
@@ -457,9 +534,18 @@ approvals и audit trail без обязательной передачи пол
 | `P9.9` | Tag/sign/publish `v1.0` | P9.2–P9.8 | immutable release, checksums, SBOM, release notes | `TODO` |
 | `P9.10` | Handoff, backlog and ownership | P9.9 | runbooks, owners, support/escalation and next roadmap | `TODO` |
 | `P9.11` | Retrospective and project archive | P9.9, P9.10 | outcomes vs goals, lessons, archived gate evidence | `TODO` |
-| `P9.12` | Confirm submission administration | P9.1 | recorded deadline year/timezone and team-size or individual-approval evidence | `TODO` |
+| `P9.12` | Confirm submission administration | user/source confirmation; start now | user confirmed defense 27 September 2026, Asia/Yekaterinburg, 1 person; defense/upload slot and instructor/individual-approval reference still required | `IN PROGRESS` |
 | `P9.13` | Build reproducible academic submission bundle | P9.2–P9.5, P9.12 | Git URL, README, dependency/config files, tests, notebook, dataset links/fixed-seed generator, PDF/HTML report and clean-room replay | `TODO` |
 | `P9.14` | Record and verify web-service delivery | P6.12, P9.3, P9.13 | Dockerfile/instructions, 2–5 minute screencast and anonymous public-link checks | `TODO` |
+| `P9.15` | Deadline correction and coordinated delivery plan | explicit user instruction 2026-09-05 | CR-046/D-044, coherent calendar/scope, preserved frozen contracts, independent review and verified handoff | `IN PROGRESS` |
+| `P9.17` | First working demo for instructor discussion | G3, P3.13; scheduling via P9.12 | target Sep16, script/video ready Sep15 18:00; real local Python audit on vulnerable/safe development cases, evidence/report and measured limitations; record actual feedback Sep17–18; no G4/full repair/readiness claim | `TODO` |
+| `P9.16` | Assemble and independently review M-A2026 snapshot | G4, P3.13, P7.1–P7.3, P7.17, P9.12 | full academic manifest, real local-model end-to-end demo, clean notebook/report/data replay and READY_FOR_SUBMISSION record without G7/G9 claims | `TODO` |
+
+Academic portions of P9.2–P9.6 and P9.13 are prepared during development and
+reused by P9.16; their final enterprise/v1 acceptance is not marked DONE early.
+M-A2026 evidence lives with its submission manifest outside artifacts/gates/G*.
+P9.14 still owns final web-service evidence; any actual web service included
+early must already satisfy the same Docker/instructions/video conditions.
 
 ### G9 — Project Closed / v1.0
 
@@ -527,6 +613,11 @@ G0 закрыт immutable baseline `0.2.0` и отдельной effective attes
 verification; ordinary PR #7 прошёл required `gate` на Python 3.12–3.14 и
 слит без bypass. `CR-017/D-030` evaluator repair интегрирован, а active ruleset
 не содержит bypass actors. `G1 Foundation Ready` имеет effective `GO`, поэтому
-текущий фокус — `P2.1` (узкий Python CWE-89 vertical slice) с сохранением
+текущий фокус — завершение `P2.5`, protected migration CR-045/CR-047 и остальных
+P2 задач (узкий Python CWE-89 vertical slice) с сохранением
 frozen G0 contracts и G1 security/quality инвариантов. `G2 Core Ready` остаётся
 следующим enforced gate; P3+ и Enterprise adapters до него не начинаются.
+
+Параллельно P9.15 корректирует план под 27 сентября 2026, P9.12 закрывает
+административные вопросы, P7.6 готовит отдельные development данные. После G4
+приоритет получают языки, ранние эксперименты и M-A2026, а не enterprise UI.

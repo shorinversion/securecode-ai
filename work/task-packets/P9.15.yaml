@@ -1,0 +1,136 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P9.15"
+  type: "implementation"
+  objective: "Integrate the accepted CR-046 academic schedule and inherited CR-045 code-first operating workflow without changing product code, accepted specifications, evaluator behavior or gate evidence."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"  # pragma: allowlist secret
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"  # pragma: allowlist secret
+  starting_commit_sha: "\x37\x36\x64\x37\x36\x30\x31\x39\x38\x62\x63\x38\x31\x38\x66\x31\x36\x66\x66\x62\x66\x39\x63\x63\x32\x38\x62\x37\x63\x65\x66\x35\x62\x36\x66\x66\x64\x34\x30\x62"  # pragma: allowlist secret
+  spec_refs: [SC-PROD-010, SC-VAL-003]
+  decision_refs: [D-043, D-044]
+  preconditions:
+    - "G1 is effective GO"
+    - "CR-047 and the P2.5 implementation are protected and merged"
+  non_goals:
+    - "product runtime, accepted specification, evaluator, hook, CI or gate-evidence changes"
+    - "claiming P2.5, P9.15, M-A2026 or any product gate complete"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "documentation-integrator"
+  mode: "direct"
+  exclusive_path_lease:
+    - ".agents/skills/securecode-project-navigator/SKILL.md"
+    - "AGENTS.md"
+    - "CHANGELOG.md"
+    - "docs/AI_ASSISTED_DEVELOPMENT.md"
+    - "docs/ARCHITECTURE.md"
+    - "docs/CONTEXT.md"
+    - "docs/DECISIONS.md"
+    - "docs/DEVELOPMENT_EVALUATION.md"
+    - "docs/DEVELOPMENT_WORKFLOW.md"
+    - "docs/PLAN.md"
+    - "docs/PRODUCT.md"
+    - "docs/README.md"
+    - "docs/SPEC_DRIVEN_DEVELOPMENT.md"
+    - "docs/SUBMISSION_PLAN.md"
+    - "docs/TEACHER_QUESTIONS.md"
+    - "work/task-packets/P9.15.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - ".agents/skills/securecode-project-navigator/SKILL.md"
+    - "AGENTS.md"
+    - "CHANGELOG.md"
+    - "docs/AI_ASSISTED_DEVELOPMENT.md"
+    - "docs/ARCHITECTURE.md"
+    - "docs/CONTEXT.md"
+    - "docs/DECISIONS.md"
+    - "docs/DEVELOPMENT_EVALUATION.md"
+    - "docs/DEVELOPMENT_WORKFLOW.md"
+    - "docs/PLAN.md"
+    - "docs/PRODUCT.md"
+    - "docs/README.md"
+    - "docs/SPEC_DRIVEN_DEVELOPMENT.md"
+    - "docs/SUBMISSION_PLAN.md"
+    - "docs/TEACHER_QUESTIONS.md"
+    - "work/task-packets/P9.15.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - ".github/**"
+    - "artifacts/gates/**"
+    - "packages/**"
+    - "tests/**"
+    - "pyproject.toml"
+    - "uv.lock"
+  max_changed_files: 16
+  max_diff_lines: 1600
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands:
+    - "git status/diff/show/rev-parse/add/commit"
+    - "rg and read-only Markdown/link checks"
+    - "python scripts/spec_gate.py index-candidate/committed-candidate"
+  network: "deny except authorized GitHub protected publication"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"  # pragma: allowlist secret
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "source-controlled academic submission calendar and first-demo checkpoint"
+    - "honest development-evaluation definitions and limitations"
+    - "code-first internal-subagent workflow with integrated-gate review cadence"
+    - "current protected CR-047 and P2.5 implementation state"
+
+constraints:
+  invariants:
+    - "PROJECT_BRIEF.md and accepted specifications remain byte-identical"
+    - "no product, evaluator, hook, CI, gate-evidence or dependency file changes"
+    - "no gate or task is marked DONE without its exact protected evidence"
+  compatibility:
+    - "G0-G9, frozen metrics, dual-lane and fail-closed contracts remain unchanged"
+  security:
+    - "no secrets or proprietary source enter durable documentation"
+
+budgets:
+  max_iterations: 6
+  max_tool_calls: 60
+  timeout_seconds: 3600
+  max_output_bytes: 250000
+
+verification:
+  acceptance_commands:
+    - "UTF-8 and local Markdown-link check"
+    - "git diff --check and exact packet scope validation"
+    - "committed candidate spec gate and ordinary protected PR gate"
+  positive_cases:
+    - "all new local links resolve and the current schedule is internally consistent"
+    - "P2.5 is IN PROGRESS with protected implementation evidence"
+  negative_cases:
+    - "no accepted spec, evaluator, gate evidence, product code or dependency change"
+    - "no claim that CR-045 automation is effective before its protected amendment"
+  required_evidence:
+    - "prior independent CR-046 document reviews"
+    - "current-state rebind diff/link consistency check"
+    - "ordinary protected PR and green post-merge CI"
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "accepted specification, evaluator, gate evidence or product-code change required"
+  - "calendar or task status cannot be reconciled to protected evidence"
+
+completion:
+  definition_of_done_refs: [P9.15]
+  partial_refs:
+    P9.15: "Integrates the calendar and operating workflow; administrative confirmations and later execution evidence remain in progress."
+  gate_contribution: "Planning and reproducibility support only; completes no product gate."
+  changelog_required: true
+  adr_required: true

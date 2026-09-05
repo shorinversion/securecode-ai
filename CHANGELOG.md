@@ -22,22 +22,83 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
-### CR-047 — packed Git transport for evaluator fixtures (2026-09-05)
+### CR-046 — deadline and academic submission snapshot (2026-09-05)
 
-- Proposed a test-only amendment replacing the two fixture clone operations
-  with local Git transport (`--no-local`). Each clone receives full reachable
-  history in an independent packed object database; real commits, ancestry,
-  merge and exact-byte transition checks are retained.
-- No test removal, added skip/xfail, assertion, coverage, policy or timeout
-  change. The canonical unit-stage deadline remains 360 seconds.
-- Host diagnostics: the same 114 tests passed in 329.03 seconds before and
-  242.26 seconds after; one canonical run passed with its unit stage at
-  288.98 seconds. Timing is non-normative and the provided editable environment
-  is not exact-tree protected delivery evidence. Independent reviews and
-  protected promotion remain pending; see [D-045](docs/DECISIONS.md#d-045--packed-local-transport-for-evaluator-test-fixtures).
+- User confirmed project defense on 27 September 2026, Asia/Yekaterinburg,
+  and a one-person team; authorized the project correction. Plan 1.0 adds the
+  supplemental M-A2026 snapshot ready by 24 September 18:00, rehearsal on the
+  25th and reserve on the 26th. Source time 23:59 is not the defense slot;
+  exact defense/upload slot and instructor/individual-approval reference remain tracked.
+- Prioritize G2/G3/G4, real local-model connector/qualification P3.12/P3.13,
+  early P7.1–P7.3 language support, P7.17 development comparison and P9.16
+  complete academic artifacts before enterprise expansion. P9.12 starts now.
+- Added [submission calendar](docs/SUBMISSION_PLAN.md) and
+  [development evaluation](docs/DEVELOPMENT_EVALUATION.md); the supplemental
+  E2E remediation denominator includes all predeclared eligible vulnerable
+  root causes, including missed findings, absent patches and non-success.
+- Frozen specs, existing metrics/oracles, mandatory languages, dual-lane,
+  secret/sandbox/fail-closed contracts and G0–G9 remain unchanged. M-A2026
+  does not imply beta, enterprise v1.0 or project closure. Existing release
+  oracles are rerun later on their actual candidates; no product result is claimed.
+- User requested a midpoint instructor demo: P9.17 targets 16 September,
+  script ready Sep15 18:00 and feedback Sep17–18; meeting is not yet booked.
+- Product review tightened qualification to a quantized open-source LLM and
+  assigned the complete end-to-end demo to P9.16 with explicit P3.13 dependency.
+- CR-047 repaired the evaluator timeout without changing its 114-node contract
+  or 360-second deadline. Protected PR #33 merged as `d61d3d5`; its required
+  jobs and post-merge run `33955936418` passed without bypass.
+- P2.5 implementation then merged through protected PR #34 as `76d7601` after
+  the final fail-open boundary fix. PR run `33957781524`, post-merge run
+  `33957954712` and canonical quality passed. P2.5 remains `IN PROGRESS` only
+  until its exact completion attestation is protected and effective.
+- D-044 records the bounded scheduling/evidence decision. Independent document
+  reviews and integration handoff are tracked in development-run CR-046;
+  accepted specs, evaluator behavior and product code are not modified.
+
+### CR-045 — development workflow and model routing (2026-09-05)
+
+- Latest user refinement replaces internal user-visible tasks with bounded
+  Codex subagents using explicit model/reasoning configuration, caps Astra at
+  medium, and makes the integrated gate candidate the next ordinary full
+  quality/review unit after the protected amendment becomes effective.
+- Additional user refinement: assignment/origin/reply_to IDs determine every
+  result destination; the active chat does not. Informational coordination
+  messages cannot overwrite the original assignment return path (section 4.1).
+- User refinement: ordinary full quality and independent review move to the
+  integrated whole-gate candidate; development retains focused acceptance and
+  negative tests. Critical security/evaluator changes receive early review
+  before dependent work. Shared checkout becomes the default for management,
+  stable read-only review and sequential feature-branch development; isolated
+  worktrees have explicit ownership and verified cleanup conditions.
+  This supersedes the per-increment/default-worktree operating defaults below;
+  executable migration remains pending and no existing gate evidence is relabeled.
+- The original operating draft used bounded Codex tasks with return paths and
+  one full local verification per completed increment. The refinements above
+  supersede those mechanics with internal subagents and integrated-gate review;
+  single-writer, identity and explicit invalidation safeguards remain.
+- Operating instructions are implemented locally in
+  [DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) and entrypoint docs;
+  decision [D-043](docs/DECISIONS.md) records scope and consequences.
+- Protected hook/evaluator/one-PR automation changes are pending separately
+  under this CR; existing checks and gate evidence remain mandatory. No product
+  completion, protected publication or automatic scheduler is claimed.
 
 ### Added
 
+- 2026-08-29 - implemented the local `P2.5` candidate with bounded first-party
+  pattern/entropy detection, a pinned `detect-secrets@1.5.0` injected adapter,
+  immutable source-bound redacted metadata and keyed fingerprints. The current
+  candidate rejects malformed, reordered, overlapping, oversized, identity-
+  tampered and exception-bearing external output without retaining matched
+  bytes. Targeted secret and package-boundary tests, Ruff, mypy, snapshot,
+  CI-policy and strict frozen-G0 checks pass locally; full canonical quality
+  and protected delivery evidence remain pending.
+- 2026-08-23 — opened `P2.5` from exact completed P2.4 master `7171d5e` with
+  a constrained implementation packet. The task is limited to bounded
+  first-party secret detection and a closed injected external-scanner adapter;
+  retained results may contain only type, location, fixed redaction and keyed
+  fingerprint, never matched secret bytes. RawSignal normalization, reports,
+  filesystem traversal, subprocesses and network access remain outside scope.
 - 2026-08-23 — completed `P2.4`: the bounded CPython `ast` adapter passed
   sequential product, architecture and security/evaluation reviews on exact
   tree `d78d3827cb9f976598b86868e756f393153f5784` after remediation made isolated
@@ -537,9 +598,10 @@ Changelog отвечает на вопрос «что и когда измени
 | `CR-015` | 2026-08-12 | Восстановить пропущенные обязательные условия сдачи из полной исходной формулировки | `accepted` | Corrected product/plan/traceability; deadline year/timezone and individual approval remain tracked external G9 inputs |
 | `CR-016` | 2026-08-12 | Добавить evaluation lab для synthetic cases и контролируемой офлайн-оптимизации prompt/skill; проверить sandboxed RLM как discovery strategy | `accepted — limited P7 scope` | `D-028`, P7.12–P7.16; not Core/runtime dependency, no production self-modification; evidence `EO-001–EO-006` |
 | `CR-017` | 2026-08-19 | Устранить конфликт completion digest metadata и secret scanner без baseline allowlist; добавить штатную byte-exact evaluator amendment lane | `implemented — exact reviewed commit integrated, bootstrap bypass removed` | `D-030`, P1.4 ordinary required-check proof in completion candidate |
+| `CR-046` | 2026-09-05 | Подтверждённый дедлайн, ранняя академическая поставка и diagnostic evidence без замены G7/G9 | `accepted direction; exact review tracked in run` | `D-044`, P3.12–P3.13, P7.17, P9.12/P9.15/P9.16 |
 
 ## Release history
 
 Релизов пока нет. Первый планируемый продуктовый инкремент — Core MVP `v0.1`
-после прохождения `G4`; дата определяется после закрытия `G0` и оценки
-трудоёмкости decision-complete scope.
+после прохождения `G4`, целевая дата 17 сентября 2026. M-A2026 — отдельный
+академический снимок к 27 сентября, не новый product version и не G9 closure.

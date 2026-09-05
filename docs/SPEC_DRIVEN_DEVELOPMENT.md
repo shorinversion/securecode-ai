@@ -282,6 +282,15 @@ Task packet не заменяет спецификацию; он выбирае�
 
 ### 8.1. Модель разработки Codex и субагентами
 
+Действующие правила моделей, внутренних субагентов, возврата результата и частоты
+проверок: [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md), CR-045 / D-043.
+Они уточняют эту секцию: bounded implementation выполняется субагентом с одним
+writer; задачи гейта получают focused checks, а полный quality и независимый
+review выполняются на интегрированном gate-кандидате после effective amendment.
+Локальная коррекция повторяет затронутую проверку/review, не всю регрессию,
+если не изменила общий контракт или trust boundary. Protected evaluator
+amendment сохраняет свой порядок.
+
 Не путать две разные системы ролей:
 
 - `Auditor`, `Skeptic`, `Architect`, `Validator` — runtime-роли внутри

@@ -1,5 +1,10 @@
 # SecureCode AI — целевая архитектура
 
+CR-046 / D-044: к 27 сентября 2026 приоритетен академический снимок общего
+Core с реальной локальной моделью и Python/JS/TS/Go. Connected архитектура ниже
+сохраняется для дальнейших releases; M-A2026 не объявляет её реализованной.
+Порядок работ и evidence определены в [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md).
+
 ## 1. Архитектурная формула
 
 > Evidence graph исследует код, workflow graph управляет расследованием, а
@@ -277,6 +282,14 @@ code, а не LLM.
 
 ## 9. Provider-agnostic model layer
 
+Реализованный P1.8 содержит порт, безопасную нормализацию и authorization
+harness, но сознательно не включает live HTTP client. P3.12 реализует connector
+через существующую endpoint/peer/egress boundary; P3.13 подтверждает реальную
+локальную модель, capabilities, версии, лицензию и ресурсы. Fake остаётся
+hermetic test double. Hardware/quantization evidence хранится в run manifest,
+без новых полей публичного ProviderProfile и без ослабления native-status
+контракта. Health endpoint не заменяет representative source-analysis request.
+
 Runtime выбирает immutable профиль из одобренного registry; lower-trust слои
 могут выбрать только exact `profile_id@version`, но не переопределить endpoint,
 model, capabilities, terms, budgets или credential reference:
@@ -316,6 +329,12 @@ retention_policy
 корпоративный gateway являются равноправными deployment profiles.
 
 ## 10. Runtime abstraction
+
+До завершения Core и M-A2026 не вводить новые runtime frameworks или временное
+второе ядро ради demo. Новые внутренние защитные механизмы должны иметь
+достижимый threat scenario и проверяемый эффект. Изменение существующих
+границ защиты требует собственного reviewed scope. Ранние сравнения
+EvidenceGraph/Skeptic описаны в [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md).
 
 ```text
 Domain nodes and typed state

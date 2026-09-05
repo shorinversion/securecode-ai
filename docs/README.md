@@ -7,6 +7,10 @@
 
 ## Документы
 
+- [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md) — дедлайн 27 сентября 2026,
+  календарь, приёмка M-A2026 и сохранённая enterprise roadmap (CR-046).
+- [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md) — ранняя
+  диагностическая оценка и сквозная remediation-метрика без изменения frozen tests.
 - [PROJECT_BRIEF.md](PROJECT_BRIEF.md) — исходное задание и граница между baseline и расширениями.
 - [PLAN.md](PLAN.md) — master plan от MVP до v1.0 с задачами, gates и контрольными точками.
 - [SPEC_DRIVEN_DEVELOPMENT.md](SPEC_DRIVEN_DEVELOPMENT.md) — contract-first процесс, specification hierarchy и ограничения для LLM-разработки.
