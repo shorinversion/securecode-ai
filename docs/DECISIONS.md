@@ -629,6 +629,32 @@
   exact-byte promotion, ordinary protected PR and green post-merge CI. No
   bypass.
 
+## D-045 — Packed local transport for evaluator test fixtures
+
+- Status: proposed (`CR-047`); exact test bytes require protected promotion.
+- Decision: replace the two filesystem clone operations in
+  `tests/unit/test_spec_gate.py` with local Git transport (`--no-local`).
+  Transfer full reachable history into independent packed object databases;
+  do not use shallow history, object filters, shared databases or alternates.
+  Retain real commits, ancestry, merge and exact-byte transition checks.
+- Rationale: repeated copies of loose Git objects add fixture overhead inside
+  the bounded canonical unit stage. The measured transport-only candidate
+  makes that stage fit its unchanged 360-second deadline on the supplied host.
+- Scope: no test removal, added skip/xfail, assertion, coverage, policy or
+  timeout change. Preserve complete discovery, sanitized isolation and every
+  lifecycle/evidence negative, including rejection of missing, failed, stale
+  or skipped required evidence. Product code and accepted specifications are
+  unchanged.
+- Evidence limitation: host timings are non-normative. The provided editable
+  environment imports packages from another checkout; its successful local
+  run is not clean exact-tree publication or gate-completion evidence.
+- Alternative rejected: increasing the deadline or weakening/deselecting
+  tests would change the acceptance contract instead of fixture transport.
+- Delivery: POLICY proposal, three sequential independent product,
+  architecture and security/evaluation reviews, exact-byte promotion, ordinary
+  protected PR and successful post-merge CI. No bypass or effective gate
+  advancement is authorized by this proposal.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
