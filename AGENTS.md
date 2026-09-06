@@ -38,11 +38,11 @@ disproportionate share of execution time and model usage.
 
 - Start each task with the smallest necessary context and move promptly to code
   whenever its dependencies and acceptance contract are already clear.
-- During implementation, run focused tests for the changed component and its
-  immediate boundaries. After the protected CR-045 amendment becomes effective,
-  run canonical full quality and independent reviews on the integrated gate
-  candidate, not per P-task. Repeat a full cycle only after a material change
-  that invalidates its evidence.
+- Under effective CR-050, between P-tasks make local checkpoint commits only,
+  without tests or independent reviews. Run one canonical full quality and
+  protected PR/CI cycle at gate closing. G2-G8 have no independent gate reviews;
+  one combined final review cycle closes G9 before promotion. Repeat a closing cycle only
+  after a material change invalidates its evidence.
 - Inspect CI through compact status summaries. Fetch detailed logs only for a
   failed or ambiguous job; do not continuously stream successful runs.
 - Do not reload large durable-context files when the current task state is
@@ -76,10 +76,15 @@ disproportionate share of execution time and model usage.
   model and reasoning setting. Preserve the return address and candidate identity,
   release the old writer lease, and stop duplicate execution. Unknown identity
   and failed/uncertain creation follow the bounded recovery rules in the policy.
-- After the protected cadence amendment is effective, one full local quality
-  and independent review cycle belongs to the integrated gate candidate, not
-  to each task, edit, commit, reviewer message or handoff. Use targeted checks
-  while developing; record a concrete invalidation reason before repeating it.
+- One full local quality and protected PR/CI cycle belongs to the integrated
+  gate candidate. No tests or reviews run between P-tasks; record a concrete
+  invalidation reason before repeating closing verification. The final combined
+  independent review cycle closes G9 before promotion.
 - Existing executable hooks, protected CI and completion evidence remain
   mandatory until their separately reviewed amendment is effective. Never use
   SKIP, --no-verify, hook removal or branch bypass to implement this policy.
+
+- CR-050 / D-047 remains the current cadence authority. CR-055 / D-051 is the
+  effective G3-G9 successor-evaluator authority, delivered by protected PR #50
+  at merge `d8edb4c4fe30af4c6b7f2d27d48ed917b7464356`; protected postmerge run
+  `34020445912` completed `PASS`.

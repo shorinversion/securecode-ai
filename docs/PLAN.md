@@ -38,6 +38,19 @@ Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G
 
 ### CR-045 — development workflow migration
 
+Historical migration record below is superseded by effective CR-050 / D-047.
+Current cadence: local checkpoints without tests or reviews between P-tasks;
+one canonical quality and protected PR/CI cycle per gate; no independent reviews
+for G2-G8; one combined final review cycle after G9 implementation and quality, before closure. G3-G9 executable
+succession is IN PROGRESS until the separate protected evaluator proposal is
+accepted. No task or gate status is advanced by that proposal.
+
+CR-050 / D-047 remains the current cadence authority. CR-055 / D-051 is the
+effective G3-G9 successor-evaluator authority, delivered by protected PR #50 at
+merge `d8edb4c4fe30af4c6b7f2d27d48ed917b7464356`; protected postmerge run
+`34020445912` completed `PASS`. This POLICY delivery does not itself advance any
+product gate.
+
 - Operating instructions: accepted by user 2026-09-05; implement model routing,
   bounded internal-subagent handoff and whole-gate full verification/review under
   [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md). This is a process change,
@@ -334,7 +347,7 @@ until the exact completion attestation is merged and effective.
 P1.8 remains DONE within its original no-live-HTTP scope. P3.12/P3.13 own the
 missing real connector and academic model evidence; hardware metadata stays
 outside public ProviderProfile schema. New task packets and completion
-admission must be reviewed on their exact base; this table does not amend the
+admission must be bound to their exact base; this table does not amend the
 protected completion catalog or authorize product PASS from fake-only results.
 
 ### G3 — Investigation Ready
@@ -505,7 +518,7 @@ unchanged and cannot be satisfied by the academic snapshot alone.
 | `P8.9` | Backup/restore and disaster recovery | P6.2–P6.4 | timed restore drill and documented RPO/RTO | `TODO` |
 | `P8.10` | Load, soak, cancellation and chaos tests | P6.3, P8.8 | no cross-run corruption; measured capacity | `TODO` |
 | `P8.11` | Supply-chain security | P1.2 | SBOM, provenance, signed artifacts, dependency policy | `TODO` |
-| `P8.12` | Independent security review and remediation | P8.1–P8.11 | no unresolved release-blocking findings | `TODO` |
+| `P8.12` | Security evaluation and remediation inputs for final review | P8.1–P8.11 | no unresolved release-blocking findings; security evaluation and remediation inputs ready for the three final G9 closing receipts | `TODO` |
 
 ### G8 — Release Candidate v0.9
 
@@ -537,9 +550,9 @@ unchanged and cannot be satisfied by the academic snapshot alone.
 | `P9.12` | Confirm submission administration | user/source confirmation; start now | user confirmed defense 27 September 2026, Asia/Yekaterinburg, 1 person; defense/upload slot and instructor/individual-approval reference still required | `IN PROGRESS` |
 | `P9.13` | Build reproducible academic submission bundle | P9.2–P9.5, P9.12 | Git URL, README, dependency/config files, tests, notebook, dataset links/fixed-seed generator, PDF/HTML report and clean-room replay | `TODO` |
 | `P9.14` | Record and verify web-service delivery | P6.12, P9.3, P9.13 | Dockerfile/instructions, 2–5 minute screencast and anonymous public-link checks | `TODO` |
-| `P9.15` | Deadline correction and coordinated delivery plan | explicit user instruction 2026-09-05 | CR-046/D-044, coherent calendar/scope, preserved frozen contracts, independent review and verified handoff | `IN PROGRESS` |
+| `P9.15` | Deadline correction and coordinated delivery plan | explicit user instruction 2026-09-05 | CR-046/D-044, coherent calendar/scope, preserved frozen contracts and verified handoff; three final independent review receipts close G9 before promotion | `IN PROGRESS` |
 | `P9.17` | First working demo for instructor discussion | G3, P3.13; scheduling via P9.12 | target Sep16, script/video ready Sep15 18:00; real local Python audit on vulnerable/safe development cases, evidence/report and measured limitations; record actual feedback Sep17–18; no G4/full repair/readiness claim | `TODO` |
-| `P9.16` | Assemble and independently review M-A2026 snapshot | G4, P3.13, P7.1–P7.3, P7.17, P9.12 | full academic manifest, real local-model end-to-end demo, clean notebook/report/data replay and READY_FOR_SUBMISSION record without G7/G9 claims | `TODO` |
+| `P9.16` | Assemble and verify M-A2026 snapshot | G4, P3.13, P7.1–P7.3, P7.17, P9.12 | full academic manifest, real local-model end-to-end demo, clean notebook/report/data replay and READY_FOR_SUBMISSION record without G7/G9 claims; three final independent review receipts close G9 before promotion | `TODO` |
 
 Academic portions of P9.2–P9.6 and P9.13 are prepared during development and
 reused by P9.16; their final enterprise/v1 acceptance is not marked DONE early.

@@ -283,13 +283,18 @@ Task packet не заменяет спецификацию; он выбирае�
 ### 8.1. Модель разработки Codex и субагентами
 
 Действующие правила моделей, внутренних субагентов, возврата результата и частоты
-проверок: [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md), CR-045 / D-043.
-Они уточняют эту секцию: bounded implementation выполняется субагентом с одним
-writer; задачи гейта получают focused checks, а полный quality и независимый
-review выполняются на интегрированном gate-кандидате после effective amendment.
-Локальная коррекция повторяет затронутую проверку/review, не всю регрессию,
-если не изменила общий контракт или trust boundary. Protected evaluator
-amendment сохраняет свой порядок.
+проверок: [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md), effective CR-050 / D-047.
+Bounded implementation выполняется субагентом с одним writer. Между P-задачами
+допустимы только локальные checkpoint-коммиты без тестов и ревью; test code
+готовится вместе с реализацией. Один canonical quality и protected PR/CI cycle
+выполняется при закрытии gate. Для G2-G8 независимые reviews отключены; один
+combined independent final review выполняется после реализации и quality G9, до PROJECT CLOSED promotion. Повтор закрывающей
+проверки требует конкретной причины invalidation. Protected evaluator amendment
+сохраняет отдельный действующий порядок receipts без расширения gate reviews.
+CR-050 / D-047 remains the cadence authority. CR-055 / D-051 is the effective
+G3-G9 successor-evaluator authority, delivered by protected PR #50 at merge
+`d8edb4c4fe30af4c6b7f2d27d48ed917b7464356`; protected postmerge run
+`34020445912` completed `PASS`.
 
 Не путать две разные системы ролей:
 
@@ -351,7 +356,7 @@ task packet и одну из ролей:
 6. Не более необходимого числа параллельных workers; количество агентов не
    является метрикой прогресса.
 7. Любой subagent result считается candidate до проверки Primary Integrator.
-8. Primary Integrator повторно читает diff, запускает проверки и единолично
+8. Primary Integrator повторно читает diff, запускает проверки при закрытии gate и единолично
    выполняет финальный merge/handoff; утверждение субагента `tests pass` не
    является достаточным evidence.
 

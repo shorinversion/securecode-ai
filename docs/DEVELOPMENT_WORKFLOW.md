@@ -1,7 +1,7 @@
 # Development workflow and model routing
 
-Status: active operating instructions, accepted by the user on 2026-09-05
-under CR-045 / D-043. This governs development agents, not product runtime
+Status: active operating instructions under effective CR-050 / D-047,
+superseding the earlier CR-045 cadence. This governs development agents, not product runtime
 agents. Accepted specifications and executable gates retain their authority.
 
 ## 1. Unit of delivery
@@ -15,11 +15,14 @@ outcomes; group small related fixes only within an explicitly scoped packet.
 Roughly 200-800 changed product-code lines is a sizing heuristic, not a gate,
 quota or reason to split coupled changes. Review complexity includes tests.
 
-User refinement accepted 2026-09-05: after the protected amendment in section 6
-becomes effective, the ordinary full-quality and independent-review cycle belongs
-to the integrated whole-gate candidate after all required P-tasks are implemented.
-Individual P-tasks retain focused acceptance/negative checks and are not separate
-full-review cycles. Until then, current executable checks remain mandatory.
+Between P-tasks, author implementation and its test code and make local checkpoint
+commits only. Do not run tests, lint, types, full quality or independent reviews
+between tasks. One canonical full quality cycle and one ordinary protected PR/CI
+cycle belong to the integrated gate candidate. G2-G8 have no independent product,
+architecture or security/evaluation reviews. After G9 implementation and quality,
+one combined final cycle supplies three distinct product, architecture and
+security/evaluation receipts on the exact G9 subject before PROJECT CLOSED promotion.
+Hooks and protected CI remain mandatory.
 
 ## 2. Model assignments
 
@@ -102,14 +105,17 @@ dispatch, acceptance and integration authority.
 
 ## 4. Execution and return path
 
-Task: `READY -> IMPLEMENTING -> TARGETED_CHECKS -> INTEGRATED`.
-Gate: `ALL_REQUIRED_TASKS_INTEGRATED -> FULL_QUALITY -> INDEPENDENT_REVIEWS ->
-FIXING_AND_DELTA_CHECKS (if needed) -> EFFECTIVE_GATE_DECISION`.
+Task: `READY -> IMPLEMENTING -> LOCAL_CHECKPOINT -> INTEGRATED`.
+Gate: `ALL_REQUIRED_TASKS_INTEGRATED -> FULL_QUALITY -> PROTECTED_PR_AND_CI ->
+EFFECTIVE_GATE_DECISION`. Failed closing checks return the candidate to fixing.
+G9: `IMPLEMENTATION_AND_QUALITY_COMPLETE -> THREE_FINAL_REVIEW_RECEIPTS ->
+PROTECTED_CLOSURE_PROMOTION -> FINAL_HANDOFF`.
 
-The orchestrator spawns one bounded developer subagent per active increment and
-fresh read-only subagents after the integrated gate candidate is stable. Required product,
-architecture and security/evaluation reviews remain independent with distinct
-agent identities and role scopes.
+The orchestrator spawns bounded developer subagents per active increment and
+three distinct read-only reviewers for the combined final product, architecture
+and security/evaluation cycle after G9 implementation and quality, before closure.
+Protected POLICY amendment receipts are a
+distinct existing enforcement mechanism and do not authorize extra gate reviews.
 Do not replace an independent review with the author's self-review, even if
 the author changes models. Reviewers do not edit or merge.
 
@@ -143,15 +149,15 @@ wakeups require an explicitly configured automation.
 
 ## 5. Verification cadence
 
-During implementation run changed-component tests and immediate boundaries,
-plus relevant negative/contract cases. Do not apply global coverage thresholds
-to a targeted subset. Do not run the complete matrix or broad review per P-task.
+During implementation supply changed-component, negative and contract test code;
+execution waits for closing the integrated gate. Local checkpoint commits preserve
+rollback history and do not constitute acceptance evidence.
 
-After the protected cadence amendment is effective, the integrator runs
-canonical full local quality once on the integrated gate candidate after all
-required tasks are implemented. Required independent product, architecture and
-security/evaluation reviews cover that candidate. Until then, existing hooks,
-CI and completion contracts still run and must not be bypassed.
+The integrator runs canonical full local quality once after all required gate
+tasks are implemented, followed by the ordinary protected PR/CI cycle. No
+independent gate reviews run for G2-G8. G9 requires three distinct final review
+receipts on its exact integrated subject after implementation and quality and
+before PROJECT CLOSED promotion. This is one combined final review cycle.
 
 Repeat full quality only when product code, dependencies,
 test behavior, executable configuration or relevant contracts changed, or a
@@ -160,39 +166,33 @@ operation, new subagent, status note or unchanged-byte handoff alone is not a
 reason. Required exact-SHA evidence must still be freshly bound and validated;
 do not relabel old evidence as a new-SHA PASS.
 
-Review corrections require affected regression checks and the affected role's
-delta review. Each required reviewer must cover the final candidate, directly or through
-an explicit original-review plus inspected-delta reconciliation. Do not call
-an old review an exact-final-tree PASS. Restart broad review only when scope,
-trust boundaries or shared contracts invalidate previous conclusions.
+Closing corrections require checks for the concrete invalidated evidence. Final
+review corrections require reconciliation by the final reviewer. Do not relabel
+an old review as an exact-final-tree PASS or create per-task review cycles.
 
 Blocking findings require a violated contract or reproducible defect and a
 closure condition. Optional refactoring does not reopen delivery. Do not
 discard a real security finding to meet iteration budgets; return the specific
 blocker instead. Documentation-only operating instructions need link/diff and
-consistency checks plus required independent review, not product regression.
+consistency inspection; they do not require a separate independent review.
 
 ## 6. Protected automation transition
 
-The instructions above reduce discretionary reruns immediately. Current
-pre-commit/pre-push full quality, mandatory CI and completion attestations
-remain effective. Do not bypass them with `SKIP`, `--no-verify`, hook removal,
-environment tricks or branch-rule changes.
+CR-048 moved full quality out of repeated hooks; CR-050 became effective through
+protected PR #38. Secret/policy/workflow hooks and protected CI remain mandatory.
+Never use `SKIP`, `--no-verify`, hook removal or branch-rule changes.
 
-CR-045's protected automation follow-up is pending, not implemented here:
+The G3-G9 successor implementation (CR-055 / D-051) is effective as the
+successor-evaluator authority: protected PR #50, merge
+`d8edb4c4fe30af4c6b7f2d27d48ed917b7464356`, protected postmerge run
+`34020445912` with `PASS`. CR-050 / D-047 remains the cadence authority. G3 bootstraps exact
+historical packet hashes and fixed path budgets. G4-G9 consume immutable full-schema
+packets seeded in the preceding protected gate candidate and carried unchanged
+through promotion. Each gate seeds its successor before the next implementation
+starts. No gate candidate can broaden its own packet authority. A missing seed,
+stale hash, unmet acceptance criterion or failed required CI keeps the gate open.
 
-- Amend `.pre-commit-config.yaml`, `scripts/precommit_entry.py` and the closed
-  expectations in `scripts/ci_policy.py` together: keep required secret/policy
-  checks; move repeated hook full quality to explicit publication verification.
-- Provide a bounded development-check entrypoint without weakening canonical
-  `scripts/quality.py`; preserve sanitized execution and negative tests.
-- Amend `scripts/spec_gate.py` / `scripts/spec_gate_policy.json` and affected
-  tests for one protected implementation PR, with immutable externally
-  verifiable review/CI completion evidence instead of a second attestation PR.
-  Preserve exact merged SHA, required checks and effective G2 completion audit.
-- Use the existing protected amendment procedure and independent reviews;
-  implementation packets cannot promote their own evaluator changes.
-
-Do not advertise the one-PR lifecycle or removal of hook reruns as effective
-until the amendment has passed protected delivery. Historical evidence remains
-unchanged. See [PLAN.md](PLAN.md) and [CHANGELOG.md](../CHANGELOG.md).
+POLICY amendments still require their existing three separated receipts; the
+integrator must obtain authorization for those receipts when they are not already
+assigned. This does not restore product reviews for G2-G8. Historical evidence
+remains unchanged. See [PLAN.md](PLAN.md) and [CHANGELOG.md](../CHANGELOG.md).

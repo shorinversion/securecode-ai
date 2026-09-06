@@ -354,7 +354,7 @@ runtime identity, если платформа её не раскрывает. М
 только локальные checkpoint-коммиты без тестов и ревью. Один canonical quality
 cycle выполняется для интегрированного gate-кандидата; независимые reviews для
 G2-G8 отключены, а единый product/architecture/security-evaluation review
-выполняется после G9. Полный цикл повторяется только после изменения кандидата
+выполняется после реализации и quality G9, до PROJECT CLOSED promotion. Полный цикл повторяется только после изменения кандидата
 или исправления, которое инвалидировало предыдущий результат.
 Общий checkout используется для управления, стабильного read-only review и
 последовательной разработки в feature-ветке; worktree — для параллельных writers
@@ -365,6 +365,18 @@ protected PR #39 (`3aec841`); CR-053 first-gate lookup repair merged through
 protected PR #41 (`0609db3`); CR-054 state-independent promotion regression
 merged through protected PR #44 (`805fa17`). Hooks, protected CI и exact-byte
 promotion остаются обязательными.
+
+G3-G9 evaluator succession подготовлен как отдельный POLICY proposal, ещё не
+effective: G3 связывает exact historical packet hashes и фиксированные scopes;
+G4-G9 используют full-schema packets из predecessor gate candidate, неизменные
+в protected base. При G3 closing необходимо seed всех P4 packets. Тесты,
+quality, reviews и CI для этой подготовки не запускались по текущему заданию.
+До protected promotion новые evaluator bytes не являются acceptance authority.
+
+CR-050 / D-047 остаётся действующей cadence authority. CR-055 / D-051 —
+effective G3-G9 successor-evaluator authority: protected PR #50, merge
+`d8edb4c4fe30af4c6b7f2d27d48ed917b7464356`, protected postmerge run
+`34020445912` завершён с `PASS`.
 
 Основной Codex-agent — единственный `Primary Integrator` и owner
 решений/baseline. Субагенты — bounded read-only reviewers или

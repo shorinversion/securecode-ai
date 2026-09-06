@@ -21,8 +21,9 @@ state and do not ask the user to repeat information already recorded here.
 4. Identify the current phase, gate and relevant `P*.*` task in
    [docs/PLAN.md](../../../docs/PLAN.md). Read the relevant phase and gate; do
    not load all 100+ tasks unless the request needs a full-plan review.
-5. For implementation work, identify the predecessor `G*` and run its canonical
-   executable oracle when one exists. A missing/non-effective decision,
+5. For implementation work, identify the predecessor `G*` and restore its exact
+   accepted evidence. Under effective CR-050, do not rerun tests between P-tasks;
+   execute the canonical oracle at integrated gate closing. A missing/non-effective decision,
    incomplete evidence packet, skipped required check or non-zero oracle is a
    hard stop for the dependent phase; do not begin scaffolding "provisionally".
 6. Inspect `git status --short` and preserve unrelated user changes.
@@ -125,6 +126,11 @@ The index of durable documents is [docs/README.md](../../../docs/README.md).
   runtime dependencies; protected/locked-test access or production
   self-promotion is a zero-tolerance rejection.
 
+- CR-050 / D-047 remains the cadence authority. CR-055 / D-051 is the effective
+  G3-G9 successor-evaluator authority, delivered by protected PR #50 at merge
+  `d8edb4c4fe30af4c6b7f2d27d48ed917b7464356`; protected postmerge run
+  `34020445912` completed `PASS`.
+
 ### Gate and test enforcement
 
 - A phase transition is proven by the gate's executable oracle plus the exact
@@ -139,12 +145,13 @@ The index of durable documents is [docs/README.md](../../../docs/README.md).
   review as scoped to the old content. Do not freeze or advance the gate until
   the CR is accepted/rejected and every affected contract, oracle and delta
   review is reconciled.
-- Begin each implementation task from its accepted spec refs and a failing or
-  otherwise independently demonstrable acceptance/contract/negative oracle.
-  During worker handoff run targeted acceptance/negative checks. The integrator
-  runs the full acceptance suite once on the final integrated publication
-  candidate, under DEVELOPMENT_WORKFLOW.md; report passes, failures and skips
-  separately. A handoff or commit alone does not invalidate unchanged checks.
+- Begin each implementation task from accepted spec refs and its constrained
+  acceptance/contract/negative test requirements. Author test code, but under
+  effective CR-050 make only local checkpoint commits between P-tasks without
+  executing tests or reviews. The integrator runs canonical full quality once at
+  gate closing, followed by protected PR/CI. G2-G8 have no independent gate reviews;
+  one combined final review cycle closes G9 before promotion. Report passes, failures and
+  skips separately. A handoff or commit alone does not invalidate unchanged checks.
 - Add tests for SecureCode AI itself at the appropriate layer: unit and branch,
   schema/contract/compatibility, integration, end-to-end, negative/adversarial,
   replay/idempotency/restart, benchmark/calibration and clean-environment tests
