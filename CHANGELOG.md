@@ -22,21 +22,19 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
-### G3 — Investigation Ready candidate (2026-09-06)
+### G3 — Investigation Ready (2026-09-06)
 
-- Integrated `P3.1`–`P3.13` as one G3 candidate: evidence-bound Auditor and
-  read-only Skeptic contracts, bounded investigation, deterministic routing,
-  injection containment, typed RepositoryView tools, replay telemetry, human
-  escalation, mandatory model-native discovery, dual-lane convergence, a live
-  local connector and source-free local-model qualification.
-- The exact implementation checkpoint `c3f682bac863e6c46ea159f437179e643d4c3eeb`
-  passed the single canonical G3 quality cycle: 1443 tests passed, 5 expected
-  Windows POSIX/FIFO skips, 82.43% Core branch coverage, Ruff and mypy passed,
-  and terminal `QUALITY=PASS`. A real pinned Qwen2.5-Coder/Ollama qualification
-  also reached `REAL_EVIDENCE_RECORDED` on those bytes.
-- This is a `GO-PROPOSED` packet. G3 becomes effective only through the exact
-  mechanical promotion and ordinary protected delivery. No independent G3
-  review is required by the active evaluator.
+- Completed `P3.1`–`P3.13`: evidence-bound Auditor and read-only Skeptic,
+  bounded investigation, deterministic routing, injection containment, typed
+  RepositoryView tools, replay telemetry, escalation, mandatory model-native
+  discovery, dual-lane convergence, a live local connector and source-free
+  local-model qualification.
+- The implementation checkpoint `c3f682bac863e6c46ea159f437179e643d4c3eeb`
+  passed the canonical G3 cycle: 1443 tests passed, 5 expected Windows
+  POSIX/FIFO skips, 82.43% Core branch coverage, Ruff and mypy passed, and
+  terminal `QUALITY=PASS`. Exact-byte promotion records G3 `GO`; G4 is next.
+- The active policy requires no independent G3 review. The combined final
+  product/architecture/security review remains after G9.
 
 ### CR-055 — reusable protected G3-G9 gate succession (2026-09-06)
 

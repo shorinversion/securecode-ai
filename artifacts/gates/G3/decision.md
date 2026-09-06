@@ -1,8 +1,7 @@
-# G3 decision proposal
+# G3 decision
 
-decision: GO-PROPOSED
+decision: GO
 
-The integrated candidate at implementation checkpoint
-`c3f682bac863e6c46ea159f437179e643d4c3eeb` satisfies all twelve G3 checklist
-criteria and has terminal canonical result `QUALITY=PASS`. The decision becomes
-effective only through exact-byte promotion and ordinary protected delivery.
+All twelve Investigation Ready criteria and all thirteen P3 tasks have
+executable evidence in the integrated G3 candidate. Exact-byte promotion marks
+P3.1-P3.13 complete and authorizes G4 as the next gate.
