@@ -430,6 +430,719 @@
       "checkpoint_chain_max_changed_files": 64,
       "checkpoint_chain_max_diff_lines": 12000,
       "promotion_max_diff_lines": 800
+    },
+    "G3": {
+      "checklist_ids": [
+        "auditor_evidence_binding",
+        "skeptic_read_only",
+        "deterministic_routing",
+        "bounded_progress",
+        "injection_containment",
+        "model_non_success_closed",
+        "mandatory_native_discovery",
+        "dual_lane_receipts",
+        "zero_egress_on_incompatibility",
+        "live_local_connector",
+        "model_hardware_qualification",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g3-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P3.1",
+        "P3.2",
+        "P3.3",
+        "P3.4",
+        "P3.5",
+        "P3.6",
+        "P3.7",
+        "P3.8",
+        "P3.9",
+        "P3.10",
+        "P3.11",
+        "P3.12",
+        "P3.13"
+      ],
+      "completion_tasks": [
+        "P3.1",
+        "P3.2",
+        "P3.3",
+        "P3.4",
+        "P3.5",
+        "P3.6",
+        "P3.7",
+        "P3.8",
+        "P3.9",
+        "P3.10",
+        "P3.11",
+        "P3.12",
+        "P3.13"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G3/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {
+        "P3.1": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/evidence_package.py",
+            "tests/unit/test_evidence_package.py",
+            "work/task-packets/P3.1.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/evidence_package.py",
+            "tests/unit/test_evidence_package.py",
+            "work/task-packets/P3.1.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 900
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 900
+          }
+        },
+        "P3.10": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/model_discovery.py",
+            "tests/unit/test_model_discovery.py",
+            "work/task-packets/P3.10.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/model_discovery.py",
+            "tests/unit/test_model_discovery.py",
+            "work/task-packets/P3.10.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1200
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 8,
+            "max_diff_lines": 1200
+          }
+        },
+        "P3.12": {
+          "packet_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/openai_compatible_local.py",
+            "tests/unit/test_openai_compatible_local.py",
+            "work/task-packets/P3.12.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/openai_compatible_local.py",
+            "tests/unit/test_openai_compatible_local.py",
+            "work/task-packets/P3.12.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1800
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 1800
+          }
+        },
+        "P3.2": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/auditor.py",
+            "tests/unit/test_auditor_contract.py",
+            "work/task-packets/P3.2.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/auditor.py",
+            "tests/unit/test_auditor_contract.py",
+            "work/task-packets/P3.2.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 800
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 800
+          }
+        },
+        "P3.3": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/investigation.py",
+            "tests/unit/test_investigation.py",
+            "work/task-packets/P3.3.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/investigation.py",
+            "tests/unit/test_investigation.py",
+            "work/task-packets/P3.3.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1600
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 1600
+          }
+        },
+        "P3.4": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/skeptic.py",
+            "tests/unit/test_skeptic.py",
+            "work/task-packets/P3.4.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/skeptic.py",
+            "tests/unit/test_skeptic.py",
+            "work/task-packets/P3.4.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1400
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 1400
+          }
+        },
+        "P3.5": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/finding_gate.py",
+            "tests/unit/test_finding_gate.py",
+            "work/task-packets/P3.5.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/finding_gate.py",
+            "tests/unit/test_finding_gate.py",
+            "work/task-packets/P3.5.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1400
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 8,
+            "max_diff_lines": 1400
+          }
+        },
+        "P3.6": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/injection_boundary.py",
+            "tests/security/test_injection_boundary.py",
+            "work/task-packets/P3.6.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/injection_boundary.py",
+            "tests/security/test_injection_boundary.py",
+            "work/task-packets/P3.6.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 2200
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 7,
+            "max_diff_lines": 2200
+          }
+        },
+        "P3.7": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/tool_policy.py",
+            "tests/unit/test_tool_policy.py",
+            "work/task-packets/P3.7.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/tool_policy.py",
+            "tests/unit/test_tool_policy.py",
+            "work/task-packets/P3.7.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1800
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 8,
+            "max_diff_lines": 1800
+          }
+        },
+        "P3.8": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/investigation_telemetry.py",
+            "tests/unit/test_investigation_telemetry.py",
+            "work/task-packets/P3.8.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/investigation_telemetry.py",
+            "tests/unit/test_investigation_telemetry.py",
+            "work/task-packets/P3.8.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1000
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 11,
+            "max_diff_lines": 1000
+          }
+        },
+        "P3.9": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/escalation.py",
+            "tests/unit/test_escalation.py",
+            "work/task-packets/P3.9.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/escalation.py",
+            "tests/unit/test_escalation.py",
+            "work/task-packets/P3.9.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1400
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 10,
+            "max_diff_lines": 1400
+          }
+        },
+        "P3.11": {
+          "packet_allowed_paths": [
+            "packages/core/src/securecode_ai/core/convergence.py",
+            "tests/integration/test_dual_lane_convergence.py",
+            "work/task-packets/P3.11.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/core/src/securecode_ai/core/convergence.py",
+            "tests/integration/test_dual_lane_convergence.py",
+            "work/task-packets/P3.11.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1800
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 10,
+            "max_diff_lines": 1800
+          }
+        },
+        "P3.13": {
+          "packet_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/local_model_qualification.py",
+            "tests/integration/test_local_model_qualification.py",
+            "work/task-packets/P3.13.yaml"
+          ],
+          "checkpoint_allowed_paths": [
+            "packages/adapters/src/securecode_ai/adapters/local_model_qualification.py",
+            "tests/integration/test_local_model_qualification.py",
+            "work/task-packets/P3.13.yaml"
+          ],
+          "packet_budget": {
+            "max_changed_files": 3,
+            "max_diff_lines": 1400
+          },
+          "checkpoint_budget": {
+            "max_changed_files": 14,
+            "max_diff_lines": 1800
+          }
+        }
+      },
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 96,
+      "checkpoint_chain_max_diff_lines": 16000,
+      "promotion_max_diff_lines": 1600
+    },
+    "G4": {
+      "checklist_ids": [
+        "reference_cwe89",
+        "safe_negative_control",
+        "repository_unchanged",
+        "ephemeral_validation_ladder",
+        "typed_failure_diagnostics",
+        "offline_profiles",
+        "clean_notebook_reports",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g4-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.7",
+        "P4.8",
+        "P4.9",
+        "P4.10",
+        "P4.11",
+        "P4.12"
+      ],
+      "completion_tasks": [
+        "P4.1",
+        "P4.2",
+        "P4.3",
+        "P4.4",
+        "P4.5",
+        "P4.6",
+        "P4.7",
+        "P4.8",
+        "P4.9",
+        "P4.10",
+        "P4.11",
+        "P4.12"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G4/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {},
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 512,
+      "checkpoint_chain_max_diff_lines": 160000,
+      "promotion_max_diff_lines": 1600
+    },
+    "G5": {
+      "checklist_ids": [
+        "real_scm_e2e",
+        "webhook_idempotency",
+        "stale_run_supersession",
+        "exact_sha_status",
+        "advisory_outcome_mapping",
+        "calibrated_blocking_only",
+        "minimum_permissions",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g5-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P5.1",
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P5.9",
+        "P5.10"
+      ],
+      "completion_tasks": [
+        "P5.1",
+        "P5.2",
+        "P5.3",
+        "P5.4",
+        "P5.5",
+        "P5.6",
+        "P5.7",
+        "P5.8",
+        "P5.9",
+        "P5.10"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G5/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {},
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 512,
+      "checkpoint_chain_max_diff_lines": 160000,
+      "promotion_max_diff_lines": 1600
+    },
+    "G6": {
+      "checklist_ids": [
+        "durable_restart_retry",
+        "tenant_isolation",
+        "default_no_checkout",
+        "immutable_run_provenance",
+        "audited_waivers",
+        "enterprise_e2e",
+        "container_clean_start",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g6-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P6.1",
+        "P6.2",
+        "P6.3",
+        "P6.4",
+        "P6.5",
+        "P6.6",
+        "P6.7",
+        "P6.8",
+        "P6.9",
+        "P6.10",
+        "P6.11",
+        "P6.12"
+      ],
+      "completion_tasks": [
+        "P6.1",
+        "P6.2",
+        "P6.3",
+        "P6.4",
+        "P6.5",
+        "P6.6",
+        "P6.7",
+        "P6.8",
+        "P6.9",
+        "P6.10",
+        "P6.11",
+        "P6.12"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G6/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {},
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 512,
+      "checkpoint_chain_max_diff_lines": 160000,
+      "promotion_max_diff_lines": 1600
+    },
+    "G7": {
+      "checklist_ids": [
+        "three_language_pipeline",
+        "two_scm_parity",
+        "reproducible_leakage_safe_benchmark",
+        "metrics_and_limitations",
+        "calibrated_thresholds",
+        "no_security_guarantee",
+        "evaluation_lab_isolation",
+        "safe_promotion_or_rejection",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g7-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P7.1",
+        "P7.2",
+        "P7.3",
+        "P7.4",
+        "P7.5",
+        "P7.6",
+        "P7.7",
+        "P7.8",
+        "P7.9",
+        "P7.10",
+        "P7.11",
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16",
+        "P7.17"
+      ],
+      "completion_tasks": [
+        "P7.1",
+        "P7.2",
+        "P7.3",
+        "P7.4",
+        "P7.5",
+        "P7.6",
+        "P7.7",
+        "P7.8",
+        "P7.9",
+        "P7.10",
+        "P7.11",
+        "P7.12",
+        "P7.13",
+        "P7.14",
+        "P7.15",
+        "P7.16",
+        "P7.17"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G7/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {},
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 512,
+      "checkpoint_chain_max_diff_lines": 160000,
+      "promotion_max_diff_lines": 1600
+    },
+    "G8": {
+      "checklist_ids": [
+        "threat_mitigation_traceability",
+        "no_release_blockers",
+        "adversarial_boundaries",
+        "recovery_rotation_incident_drills",
+        "data_handling",
+        "measured_capacity_cost",
+        "signed_supply_chain",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g8-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P8.1",
+        "P8.2",
+        "P8.3",
+        "P8.4",
+        "P8.5",
+        "P8.6",
+        "P8.7",
+        "P8.8",
+        "P8.9",
+        "P8.10",
+        "P8.11",
+        "P8.12"
+      ],
+      "completion_tasks": [
+        "P8.1",
+        "P8.2",
+        "P8.3",
+        "P8.4",
+        "P8.5",
+        "P8.6",
+        "P8.7",
+        "P8.8",
+        "P8.9",
+        "P8.10",
+        "P8.11",
+        "P8.12"
+      ],
+      "review_required": false,
+      "promotion_paths": [
+        "artifacts/gates/G8/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {},
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 512,
+      "checkpoint_chain_max_diff_lines": 160000,
+      "promotion_max_diff_lines": 1600
+    },
+    "G9": {
+      "checklist_ids": [
+        "assignment_traceability",
+        "pinned_reproduction",
+        "clean_room_verification",
+        "published_limitations",
+        "consistent_accessible_deliverables",
+        "complete_submission_manifest",
+        "confirmed_administration",
+        "owned_backlog",
+        "closure_decision",
+        "integrated_quality"
+      ],
+      "evidence_files": [
+        "checklist.md",
+        "benchmark-summary.md",
+        "security-review.md",
+        "open-risks.md",
+        "decision.md",
+        "test-results/g9-validation.md"
+      ],
+      "prerequisite_tasks": [
+        "P9.1",
+        "P9.2",
+        "P9.3",
+        "P9.4",
+        "P9.5",
+        "P9.6",
+        "P9.7",
+        "P9.8",
+        "P9.9",
+        "P9.10",
+        "P9.11",
+        "P9.12",
+        "P9.13",
+        "P9.14",
+        "P9.15",
+        "P9.16",
+        "P9.17"
+      ],
+      "completion_tasks": [
+        "P9.1",
+        "P9.2",
+        "P9.3",
+        "P9.4",
+        "P9.5",
+        "P9.6",
+        "P9.7",
+        "P9.8",
+        "P9.9",
+        "P9.10",
+        "P9.11",
+        "P9.12",
+        "P9.13",
+        "P9.14",
+        "P9.15",
+        "P9.16",
+        "P9.17"
+      ],
+      "review_required": true,
+      "promotion_paths": [
+        "artifacts/gates/G9/decision.md",
+        "CHANGELOG.md",
+        "docs/PLAN.md",
+        "docs/CONTEXT.md"
+      ],
+      "integrated_task_scope": {},
+      "max_changed_files": 256,
+      "max_diff_lines": 120000,
+      "checkpoint_chain_max_changed_files": 512,
+      "checkpoint_chain_max_diff_lines": 160000,
+      "promotion_max_diff_lines": 1600
     }
   },
   "known_formats": [
@@ -509,7 +1222,9 @@
         "P3.3",
         "P7.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "adapter_conformance": {
       "owners": [
@@ -522,7 +1237,9 @@
         "P5.8",
         "P7.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "advisory_normalization": {
       "owners": [
@@ -530,7 +1247,9 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "air_gap": {
       "owners": [
@@ -540,7 +1259,9 @@
         "P6.11",
         "P6.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "anonymous_link_check": {
       "owners": [
@@ -554,7 +1275,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "anonymous_repository_access": {
       "owners": [
@@ -564,7 +1287,9 @@
         "P4.12",
         "P9.13"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "architect_contract": {
       "owners": [
@@ -574,7 +1299,9 @@
         "P4.4",
         "P4.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "architect_validation": {
       "owners": [
@@ -584,7 +1311,9 @@
         "P4.4",
         "P4.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "architecture_consistency": {
       "command": "python scripts/quality.py",
@@ -604,14 +1333,18 @@
         "P6.4",
         "P8.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "audit_visibility_and_worm_source_rejection": {
       "owners": [
         "P6.8",
         "P8.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "auditor_contract": {
       "owners": [
@@ -621,7 +1354,9 @@
         "P4.4",
         "P4.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "baseline_manifest": {
       "command": "python scripts/quality.py",
@@ -644,7 +1379,9 @@
         "P5.8",
         "P7.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "calibration_access_separation": {
       "owners": [
@@ -652,7 +1389,9 @@
         "P5.8",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "calibration_freeze": {
       "owners": [
@@ -662,7 +1401,9 @@
         "P7.11",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "capability_mismatch": {
       "owners": [
@@ -670,7 +1411,9 @@
         "P1.8",
         "P6.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "checkout_unchanged": {
       "owners": [
@@ -681,7 +1424,9 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "claim_check": {
       "owners": [
@@ -691,7 +1436,9 @@
         "P7.8",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "classification_and_retention_conformance": {
       "owners": [
@@ -700,7 +1447,9 @@
         "P6.7",
         "P8.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "classification_property": {
       "owners": [
@@ -711,7 +1460,9 @@
         "P6.7",
         "P8.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "clean_environment_docs": {
       "owners": [
@@ -726,7 +1477,9 @@
         "P9.3",
         "P9.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "clean_room_reproduction": {
       "owners": [
@@ -740,7 +1493,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "commit_provenance": {
       "command": "python scripts/quality.py",
@@ -790,7 +1545,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "connected_worker": {
       "owners": [
@@ -800,7 +1557,9 @@
         "P6.11",
         "P6.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "content_hash": {
       "command": "python scripts/quality.py",
@@ -820,14 +1579,18 @@
         "P6.11",
         "P6.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "cross_tenant_purpose_linkability": {
       "owners": [
         "P6.2",
         "P6.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "dataset_link_and_hash": {
       "owners": [
@@ -835,7 +1598,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "dataset_lock": {
       "owners": [
@@ -845,7 +1610,9 @@
         "P7.8",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "delegated_task_boundary": {
       "command": "python scripts/quality.py",
@@ -864,14 +1631,18 @@
         "P6.4",
         "P8.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "dependency_action_image_provenance": {
       "owners": [
         "P1.2",
         "P8.11"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "dependency_manifest_positive_negative": {
       "owners": [
@@ -879,7 +1650,9 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "deterministic_candidate_interpretation": {
       "owners": [
@@ -910,7 +1683,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "diff_parser": {
       "owners": [
@@ -924,14 +1699,18 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "direct_indirect_composed_injection": {
       "owners": [
         "P3.6",
         "P3.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G3"
     },
     "docker_clean_build": {
       "owners": [
@@ -945,7 +1724,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "dual_lane_zero_signal": {
       "owners": [
@@ -976,7 +1757,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "effective_gate_decision": {
       "command": "python scripts/quality.py",
@@ -997,14 +1780,18 @@
         "P6.7",
         "P8.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "event_artifact_tamper_and_gap": {
       "owners": [
         "P1.6",
         "P6.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "every_gate_failure": {
       "owners": [
@@ -1015,7 +1802,9 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "evidence_citation": {
       "owners": [
@@ -1025,7 +1814,9 @@
         "P3.3",
         "P7.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "expanded_cwe_portfolio_conformance": {
       "owners": [
@@ -1035,7 +1826,9 @@
         "P3.3",
         "P7.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "final_independent_reviews": {
       "command": "python scripts/quality.py",
@@ -1053,7 +1846,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "gate_outcome_mapping": {
       "owners": [
@@ -1066,7 +1861,9 @@
         "P5.8",
         "P7.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "generated_program_isolation": {
       "owners": [
@@ -1076,7 +1873,9 @@
         "P7.15",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "golden_rendering": {
       "owners": [
@@ -1084,7 +1883,9 @@
         "P2.12",
         "P4.11"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "held_out_promotion": {
       "owners": [
@@ -1094,7 +1895,9 @@
         "P7.15",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "html_markdown_sarif_terminal_rendering": {
       "command": "python scripts/quality.py",
@@ -1132,7 +1935,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "identity_existence_and_path_disclosure": {
       "owners": [
@@ -1140,7 +1945,9 @@
         "P6.2",
         "P6.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "injection_corpus": {
       "owners": [
@@ -1149,7 +1956,9 @@
         "P3.6",
         "P8.3"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "injection_rendering": {
       "owners": [
@@ -1157,7 +1966,9 @@
         "P2.12",
         "P4.11"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "kill_restart": {
       "owners": [
@@ -1168,7 +1979,9 @@
         "P6.4",
         "P8.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "language_conformance": {
       "owners": [
@@ -1177,14 +1990,18 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "lifecycle_script_sentinel": {
       "owners": [
         "P2.1",
         "P4.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "limitations_check": {
       "owners": [
@@ -1192,7 +2009,9 @@
         "P9.4",
         "P9.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "loop_budget": {
       "owners": [
@@ -1201,14 +2020,18 @@
         "P3.3",
         "P4.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "malicious_scanner_config_and_output": {
       "owners": [
         "P2.8",
         "P3.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G3"
     },
     "manifest_completeness": {
       "owners": [
@@ -1218,7 +2041,9 @@
         "P7.8",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "metric_recomputation": {
       "owners": [
@@ -1226,7 +2051,9 @@
         "P9.4",
         "P9.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "mixed_language_coverage": {
       "owners": [
@@ -1235,7 +2062,9 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "multi_sink_secret_canary": {
       "owners": [
@@ -1243,7 +2072,9 @@
         "P6.7",
         "P8.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "navigator_snapshot": {
       "command": "python scripts/validate_g0.py --require-frozen",
@@ -1257,7 +2088,9 @@
         "P4.5",
         "P8.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "no_progress": {
       "owners": [
@@ -1266,7 +2099,9 @@
         "P3.3",
         "P4.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "notebook_execution": {
       "owners": [
@@ -1281,7 +2116,9 @@
         "P9.3",
         "P9.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "optimizer_dataset_license_purpose_authorization": {
       "owners": [
@@ -1294,7 +2131,9 @@
         "P7.16",
         "P9.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "optimizer_generated_program_protected_access_isolation": {
       "owners": [
@@ -1303,7 +2142,9 @@
         "P7.15",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "optimizer_protected_access": {
       "owners": [
@@ -1313,7 +2154,9 @@
         "P7.15",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "origin_stratified_independent_recomputation": {
       "owners": [
@@ -1344,7 +2187,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "outcome_cartesian_matrix": {
       "owners": [
@@ -1353,7 +2198,9 @@
         "P3.2",
         "P3.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G3"
     },
     "outcome_mapping": {
       "owners": [
@@ -1363,7 +2210,9 @@
         "P7.11",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "parser_positive_negative": {
       "owners": [
@@ -1372,7 +2221,9 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "pass_guard": {
       "owners": [
@@ -1381,7 +2232,9 @@
         "P3.6",
         "P8.3"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "patch_path_semantic_regression_poc_plus": {
       "owners": [
@@ -1389,7 +2242,9 @@
         "P4.6",
         "P4.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "path_location": {
       "command": "python scripts/quality.py",
@@ -1419,7 +2274,9 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "poc_plus": {
       "owners": [
@@ -1433,7 +2290,9 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "policy_schema_parse": {
       "command": "python scripts/validate_g0.py --require-frozen",
@@ -1454,7 +2313,9 @@
         "P6.4",
         "P8.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "pre_calibration_advisory": {
       "owners": [
@@ -1462,7 +2323,9 @@
         "P5.8",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "pre_calibration_policy": {
       "owners": [
@@ -1472,14 +2335,18 @@
         "P7.11",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "privileged_policy_change_audit_signal": {
       "owners": [
         "P1.13",
         "P6.10"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "product_consistency": {
       "command": "python scripts/validate_g0.py --require-frozen",
@@ -1496,7 +2363,9 @@
         "P4.4",
         "P4.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "protected_paths": {
       "command": "python scripts/quality.py",
@@ -1518,14 +2387,18 @@
         "P4.4",
         "P4.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "provider_downgrade_replay_cache_isolation": {
       "owners": [
         "P1.8",
         "P6.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "provider_fault_matrix": {
       "owners": [
@@ -1534,7 +2407,9 @@
         "P3.6",
         "P8.3"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "provider_non_success_fail_open_matrix": {
       "owners": [
@@ -1542,7 +2417,9 @@
         "P3.5",
         "P3.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G3"
     },
     "provider_non_success_indeterminate": {
       "owners": [
@@ -1573,7 +2450,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "provider_normalization": {
       "owners": [
@@ -1581,21 +2460,27 @@
         "P1.8",
         "P6.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "provider_outage_retry_cost_ceiling": {
       "owners": [
         "P3.3",
         "P8.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "ref_move_and_stale_sha_race": {
       "owners": [
         "P5.4",
         "P5.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G5"
     },
     "regression": {
       "owners": [
@@ -1609,7 +2494,9 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "release_test_suite": {
       "owners": [
@@ -1621,7 +2508,9 @@
         "P9.3",
         "P9.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "report_content_check": {
       "owners": [
@@ -1629,7 +2518,9 @@
         "P9.4",
         "P9.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "report_schema": {
       "owners": [
@@ -1637,7 +2528,9 @@
         "P2.12",
         "P4.11"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "repository_intake_security": {
       "owners": [
@@ -1646,7 +2539,9 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "required_memory_files": {
       "command": "python scripts/validate_g0.py --require-frozen",
@@ -1673,7 +2568,9 @@
         "P2.8",
         "P3.3"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G3"
     },
     "run_execution_identity_cross_transport_mutation": {
       "owners": [
@@ -1704,7 +2601,9 @@
         "P7.7",
         "P7.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "safe_control": {
       "owners": [
@@ -1714,14 +2613,18 @@
         "P3.3",
         "P7.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "sandbox_escape_and_profile_attestation": {
       "owners": [
         "P4.5",
         "P8.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "sandbox_teardown": {
       "owners": [
@@ -1732,7 +2635,9 @@
         "P6.4",
         "P8.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "schema_round_trip": {
       "command": "python scripts/quality.py",
@@ -1765,7 +2670,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "secret_canary": {
       "owners": [
@@ -1776,7 +2683,9 @@
         "P6.7",
         "P8.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "secret_detector": {
       "owners": [
@@ -1784,7 +2693,9 @@
         "P6.7",
         "P8.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "secret_redaction": {
       "owners": [
@@ -1792,7 +2703,9 @@
         "P1.8",
         "P6.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "security_conformance_suite": {
       "owners": [
@@ -1808,7 +2721,9 @@
         "P8.2",
         "P8.6"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "skeptic_read_only": {
       "owners": [
@@ -1819,7 +2734,9 @@
         "P4.8",
         "P4.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "spec_lint": {
       "command": "python scripts/quality.py",
@@ -1841,7 +2758,9 @@
         "P7.8",
         "P7.9"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "ssrf_redirect_rebinding_credential_host": {
       "owners": [
@@ -1849,7 +2768,9 @@
         "P1.8",
         "P6.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "stale_sha": {
       "owners": [
@@ -1862,7 +2783,9 @@
         "P5.8",
         "P7.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "strict_frozen_validator": {
       "command": "python scripts/quality.py",
@@ -1886,7 +2809,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "submission_manifest": {
       "owners": [
@@ -1900,7 +2825,9 @@
         "P9.13",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "summary_idempotency": {
       "owners": [
@@ -1913,7 +2840,9 @@
         "P5.8",
         "P7.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "symbol_location_stability": {
       "owners": [
@@ -1922,7 +2851,9 @@
         "P7.1",
         "P7.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "synthetic_candidate_acceptance": {
       "owners": [
@@ -1932,7 +2863,9 @@
         "P7.15",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "synthetic_dataset_lineage_split": {
       "owners": [
@@ -1945,28 +2878,36 @@
         "P7.16",
         "P9.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "synthetic_oracle_provenance_lineage_leakage": {
       "owners": [
         "P7.13",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "tenant_bola_cache_artifact_isolation": {
       "owners": [
         "P6.2",
         "P6.4"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "tenant_fairness_webhook_storm": {
       "owners": [
         "P8.10",
         "P8.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G8"
     },
     "threat_traceability": {
       "command": "python scripts/validate_g0.py --require-frozen",
@@ -1995,13 +2936,17 @@
         "P3.3",
         "P4.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G4"
     },
     "unauthorized_tool_argument_zero_effect": {
       "owners": [
         "P3.7"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G3"
     },
     "undeclared_purpose_training_destination": {
       "owners": [
@@ -2014,7 +2959,9 @@
         "P7.16",
         "P9.2"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "unsafe_candidate_rejection": {
       "owners": [
@@ -2024,20 +2971,26 @@
         "P7.15",
         "P7.16"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "waiver_scope_sha_expiry_replay": {
       "owners": [
         "P6.8"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
     },
     "web_launch_smoke": {
       "owners": [
         "P6.12",
         "P9.14"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G9"
     },
     "webhook_security": {
       "owners": [
@@ -2050,14 +3003,187 @@
         "P5.8",
         "P7.5"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G7"
     },
     "webhook_signature_replay_idempotency": {
       "owners": [
         "P5.5",
         "P6.3"
       ],
-      "state": "planned"
+      "state": "gate_bound",
+      "command": "python scripts/quality.py",
+      "completion_gate": "G6"
+    }
+  },
+  "gate_succession": {
+    "G3": {
+      "predecessor": "G2",
+      "successor": "G4",
+      "packet_source": "bootstrap",
+      "packet_sha256": {
+        "P3.1": [
+          "f936281a",
+          "32cb7c97",
+          "7ebd6116",
+          "92ecb66b",
+          "81d7a0d2",
+          "462a6723",
+          "1eaea2d6",
+          "4b896b70"
+        ],
+        "P3.10": [
+          "45825b66",
+          "d1f513a4",
+          "9aa9f1a2",
+          "02661131",
+          "0cc2bb52",
+          "9f48f954",
+          "a8a4a74e",
+          "dc7c3b9c"
+        ],
+        "P3.12": [
+          "3889c213",
+          "cba7e39b",
+          "be2a3eb0",
+          "7f664cac",
+          "cea6a75f",
+          "2b8c2dd8",
+          "f44f1817",
+          "b6988aa8"
+        ],
+        "P3.2": [
+          "82adc8f6",
+          "4ec8f159",
+          "0f683083",
+          "ab39f86a",
+          "0ddfbefd",
+          "a055e7b6",
+          "231fdfd5",
+          "32b36099"
+        ],
+        "P3.3": [
+          "d4ae70a4",
+          "e1df2dd0",
+          "a7de5607",
+          "13673ba6",
+          "1abca5e9",
+          "6042af73",
+          "d0a83823",
+          "34a220b9"
+        ],
+        "P3.4": [
+          "2582fe40",
+          "eb37b5be",
+          "81d45200",
+          "f7ba9e2f",
+          "e9332033",
+          "822d68ba",
+          "5aea92df",
+          "4b5a5408"
+        ],
+        "P3.5": [
+          "8a00fe7e",
+          "7b71267a",
+          "126d06ae",
+          "2e4d624d",
+          "a594cff8",
+          "c265a554",
+          "7df06d05",
+          "e350aa34"
+        ],
+        "P3.6": [
+          "0bf1564d",
+          "834b8705",
+          "17f173a8",
+          "775b8fec",
+          "15aa78eb",
+          "032918eb",
+          "d6ed0d8c",
+          "d35ccd26"
+        ],
+        "P3.7": [
+          "8e8578ac",
+          "a143be20",
+          "63532666",
+          "657c3402",
+          "206031db",
+          "3add9f30",
+          "ab091e66",
+          "339ad9c7"
+        ],
+        "P3.8": [
+          "3e3bb514",
+          "bb668a35",
+          "638f89a6",
+          "22e782d0",
+          "bdb4f987",
+          "39d2cdd3",
+          "d1e37c82",
+          "653ea794"
+        ],
+        "P3.9": [
+          "7ee868c6",
+          "0ad46df5",
+          "1548d3a6",
+          "d0579808",
+          "68fb11d4",
+          "91db23fa",
+          "015ec827",
+          "39242bdc"
+        ],
+        "P3.11": [
+          "22675525",
+          "bb0dee4b",
+          "98bbb63e",
+          "52a6dad9",
+          "282d8385",
+          "9c989043",
+          "9c608167",
+          "49aa46d6"
+        ],
+        "P3.13": [
+          "5935b245",
+          "a6e7a4e4",
+          "889bae19",
+          "82ac687b",
+          "1819e5e5",
+          "9737be12",
+          "2db8e79e",
+          "f7d79b8f"
+        ]
+      }
+    },
+    "G4": {
+      "predecessor": "G3",
+      "successor": "G5",
+      "packet_source": "protected_base"
+    },
+    "G5": {
+      "predecessor": "G4",
+      "successor": "G6",
+      "packet_source": "protected_base"
+    },
+    "G6": {
+      "predecessor": "G5",
+      "successor": "G7",
+      "packet_source": "protected_base"
+    },
+    "G7": {
+      "predecessor": "G6",
+      "successor": "G8",
+      "packet_source": "protected_base"
+    },
+    "G8": {
+      "predecessor": "G7",
+      "successor": "G9",
+      "packet_source": "protected_base"
+    },
+    "G9": {
+      "predecessor": "G8",
+      "successor": null,
+      "packet_source": "protected_base"
     }
   }
 }
