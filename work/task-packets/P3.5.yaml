@@ -1,0 +1,79 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.5"
+  type: "implementation"
+  objective: "Route one terminal Auditor/Skeptic candidate through deterministic policy code without allowing model prose or non-success to select a clean result."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "90e892e079\
+    9617e0e395\
+    b07f816649\
+    1133c7daf4"
+  spec_refs: [SC-DOM-001, SC-DOM-002, SC-DOM-003, SC-DOM-013, SC-PROD-005, SC-PROD-006, SC-POLICY-002, SC-POLICY-004, SC-WF-001, SC-WF-008, SC-WF-016, SC-WF-017]
+  decision_refs: [D-005, D-027]
+  preconditions:
+    - "G2 Deterministic Core Ready is effective GO"
+    - "P3.1/P3.2/P3.4 metadata contracts are present; P3.3 may supply its terminal receipt through the local typed FindingGateInput seam"
+  non_goals:
+    - "Auditor loop execution, Skeptic mutation, model transport, repository/tool/network access, public schema changes, or product PASS derivation"
+    - "Human decision execution, patch routing, or changing P3.3's in-progress receipt contract"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "component-implementer"
+  mode: "path_isolated_subtask"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/finding_gate.py"
+    - "tests/unit/test_finding_gate.py"
+    - "work/task-packets/P3.5.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/finding_gate.py"
+    - "tests/unit/test_finding_gate.py"
+    - "work/task-packets/P3.5.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/src/securecode_ai/core/__init__.py", "packages/adapters/**", "docs/**", "CHANGELOG.md", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1400
+
+constraints:
+  invariants:
+    - "policy code alone selects CONFIRMED, REJECTED_WITH_EVIDENCE, NEEDS_MORE_EVIDENCE, HUMAN_ESCALATION, or INDETERMINATE; no model prose or caller route field exists"
+    - "only matching SUCCEEDED, cited REJECTED_WITH_EVIDENCE may produce FindingGateState.CLEAN"
+    - "every routing receipt retains the candidate's authoritative evidence-ID set and validates preserved Auditor/Skeptic citations against that exact set"
+    - "High/Critical Auditor/Skeptic conflicts route HUMAN_ESCALATION and preserve both verdicts, objections, evidence references, identities and safe receipt hashes"
+    - "all model non-success, invalid or missing citations/evidence, budget/no-progress/context exhaustion, cancellation, and invalid terminal receipt route INDETERMINATE and never CLEAN/PASS"
+    - "the gate accepts only safe typed metadata and performs no repository, model, tool, network, patch, policy mutation, or human-decision effect"
+  compatibility:
+    - "uses accepted FindingVerdict, ModelCallStatus, FindingGateState, FindingSeverity and P3.4 Skeptic value types without public schema changes"
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G3 full test and quality cycle after all G3 work is integrated"
+  positive_cases:
+    - "matching confirmed/rejected/needs-more-evidence inputs select their deterministic routes"
+    - "High/Critical conflict requires human escalation while retaining both independent records"
+  negative_cases:
+    - "every non-success status, missing/foreign citation, receipt mismatch, budget/no-progress/exhaustion and retained-input mutation is non-clean"
+    - "same Auditor/Skeptic identity is rejected at trusted construction"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.5]
+  gate_contribution: "Supplies deterministic finding routing toward G3; it does not claim product PASS or execute a human decision."
+  changelog_required: false
+  adr_required: false

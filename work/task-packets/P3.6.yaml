@@ -1,0 +1,113 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.6"
+  type: "implementation"
+  objective: "Implement a structurally independent immutable untrusted-text boundary so repository, SCM, tool and refusal text remains data with instruction_authority=NONE and cannot alter investigation controls."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "395a927471\
+    a9241e3a68\
+    ab07fddde1\
+    b7079715e4"
+  spec_refs: [SC-CAP-001, SC-CAP-003, SC-CAP-010, SC-EVAL-013]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G2 is effective GO at exact protected base 395a927471a9241e3a68ab07fddde1b7079715e4."
+    - "P3.1-P3.5 may integrate later through the internal Core boundary without changing its control-plane ownership."
+  non_goals:
+    - "prompt-injection detection, model execution, route selection, tool dispatch, provider transport, policy mutation or coverage calculation"
+    - "public schema, accepted specification, evaluator, gate evidence, Core package re-export or dependency changes"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "injection-boundary-implementer"
+  mode: "isolated-worktree"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/injection_boundary.py"
+    - "tests/security/test_injection_boundary.py"
+    - "work/task-packets/P3.6.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/injection_boundary.py"
+    - "tests/security/test_injection_boundary.py"
+    - "work/task-packets/P3.6.yaml"
+  forbidden_paths:
+    - "specs/**"
+    - "scripts/**"
+    - ".github/**"
+    - "artifacts/gates/**"
+    - "packages/contracts/**"
+    - "packages/core/src/securecode_ai/core/__init__.py"
+    - "packages/adapters/**"
+    - "docs/**"
+    - "CHANGELOG.md"
+    - "pyproject.toml"
+    - "uv.lock"
+  max_changed_files: 3
+  max_diff_lines: 2200
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "immutable trusted investigation controls for policy, tool policy, route policy, provider, destination, coverage and numeric budgets"
+    - "closed untrusted origin and instruction authority values covering repository source/comments/identifiers/docs, SCM metadata, tool output and model refusal"
+    - "source-free canonical admission/rejection receipts bound to trusted controls and content hashes"
+    - "direct, encoded, split and composed attack text handling that cannot select or mutate controls"
+
+constraints:
+  invariants:
+    - "all admitted source, comments, identifiers, documentation, SCM metadata, tool output and refusal text retains instruction_authority=NONE"
+    - "untrusted text APIs accept no policy, tool, budget, route, provider, destination or coverage selector"
+    - "invalid, duplicate, oversized or tampered text has typed fail-closed rejection and never partially admits content"
+    - "safe receipts contain identifiers, hashes, origin labels and byte counts only: no raw source, secret-like text, path or mutation payload"
+    - "this boundary does not claim Python runtime sandboxing or model-level injection immunity"
+  compatibility:
+    - "internal Core Python API only; later P3.1-P3.5 integrations remain responsible for context selection, Auditor, routing and tool authorization"
+  security:
+    - "no text-derived capability expansion, policy mutation, provider/destination selection, coverage suppression or product PASS exists"
+    - "errors are fixed and non-echoing"
+
+budgets:
+  max_spans: 1024
+  max_span_bytes: 131072
+  max_total_bytes: 1048576
+
+verification:
+  acceptance_commands:
+    - "Deferred by the active fast gate cadence until the integrated G3 candidate closes."
+  positive_cases:
+    - "all closed untrusted origins admit bounded data with NONE authority and source-free receipts"
+    - "trusted control SHA remains identical across direct, encoded and split/composed injection corpus inputs"
+  negative_cases:
+    - "text-originated control mutation, malformed shape, duplicate IDs, oversized text and tampered authority reject fail closed"
+    - "safe receipt serialization omits raw source and secret-like test marker text"
+  required_evidence:
+    - "one integrated G3 full test and quality cycle"
+    - "one protected G3 PR and required CI"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.6]
+  gate_contribution: "Provides the deterministic P3 trust boundary required by G3; it does not itself complete P3.6 or G3."
+  changelog_required: false
+  adr_required: false

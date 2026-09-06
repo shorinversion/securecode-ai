@@ -1,0 +1,73 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.7"
+  type: "implementation"
+  objective: "Implement a fail-closed allowlist and typed argument policy for the four bounded read-only RepositoryView operations."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "395a927471\
+    a9241e3a68\
+    ab07fddde1\
+    b7079715e4"
+  spec_refs: [SC-CAP-001, SC-CAP-002, SC-CAP-003, SC-CAP-004, SC-CAP-007, SC-CAP-008, SC-CAP-009, SC-CAP-010, SC-PORT-004]
+  decision_refs: [D-027]
+  preconditions:
+    - "G2 is effective GO"
+    - "P3.3 will consume this independent policy boundary in the integrated G3 candidate"
+  non_goals:
+    - "filesystem implementation, network, shell/process execution, arbitrary URLs, source writes, accepted schema changes or a product verdict"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "repository-tool-policy-implementer"
+  mode: "integrated-gate-candidate"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/tool_policy.py"
+    - "tests/unit/test_tool_policy.py"
+    - "work/task-packets/P3.7.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/tool_policy.py"
+    - "tests/unit/test_tool_policy.py"
+    - "work/task-packets/P3.7.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/adapters/**", "docs/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1800
+
+constraints:
+  invariants:
+    - "only list_paths, lookup_symbol, read_range and read_evidence are dispatchable"
+    - "arguments are immutable versioned types bound to the exact repository revision and approved path/evidence scope"
+    - "unknown, malformed, mismatched and exhausted requests are denied before the backend and have zero effect"
+    - "calls, returned bytes and tokens are metered cumulatively by host-owned budgets that requests cannot widen"
+    - "all repository output retains instruction_authority=NONE; failures are typed, bounded and non-echoing"
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G3 full test and quality cycle after complete G3 integration"
+  positive_cases:
+    - "all four exact read-only operations dispatch through typed arguments and produce safe audit receipts"
+  negative_cases:
+    - "unknown/malformed tools, traversal, revision/path/evidence drift, backend faults and budget excess never release output or broaden privilege"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.7]
+  gate_contribution: "Supplies the bounded RepositoryView capability boundary toward G3; it does not complete G3."
+  changelog_required: true
+  adr_required: false

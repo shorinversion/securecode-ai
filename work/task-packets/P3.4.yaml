@@ -1,0 +1,78 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.4"
+  type: "implementation"
+  objective: "Add a typed, independently identified, read-only Skeptic reducer over immutable Auditor result metadata."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "395a927471\
+    a9241e3a68\
+    ab07fddde1\
+    b7079715e4"
+  spec_refs: [SC-PROD-006, SC-PROD-014, SC-CAP-002, SC-CAP-003, SC-CAP-008, SC-CAP-009, SC-WF-007]
+  decision_refs: [D-003, D-005, D-027]
+  preconditions:
+    - "G2 Deterministic Core Ready is effective GO"
+    - "P3.2 supplies a structured Auditor result or an integration adapter to the local immutable AuditorSnapshot bridge"
+  non_goals:
+    - "repository, evidence, Auditor verdict, policy, tool permission, budget, provider, network, patch, routing, or source mutation"
+    - "finding-gate route selection, human escalation, model transport, public schema changes, or P3.2 Auditor implementation"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "skeptic-implementer"
+  mode: "integrated-gate-candidate"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/skeptic.py"
+    - "tests/unit/test_skeptic.py"
+    - "work/task-packets/P3.4.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/skeptic.py"
+    - "tests/unit/test_skeptic.py"
+    - "work/task-packets/P3.4.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/src/securecode_ai/core/__init__.py", "packages/adapters/**", "docs/**", "CHANGELOG.md", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1400
+
+constraints:
+  invariants:
+    - "the Skeptic receives only an immutable AuditorSnapshot and typed structured output; it receives no repository, evidence object, policy, tool, budget, provider, network, patch, or mutation capability"
+    - "Skeptic identity must differ from Auditor identity"
+    - "all objections have a closed typed kind and cite only AuditorSnapshot evidence IDs"
+    - "an objection or a divergent Skeptic verdict yields explicit CONFLICTING; neither Auditor nor Skeptic verdict is overwritten"
+    - "refusal, filter, empty, invalid, timeout, provider fault, budget exhaustion, cancellation, malformed output, foreign evidence, and unexplained verdict change yield NOT_EVALUATED, never clean or PASS"
+    - "all boundary errors use closed safe codes and never echo supplied content"
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G3 full test and quality cycle after all G3 work is integrated"
+  positive_cases:
+    - "matching independently identified Skeptic verdict preserves Auditor metadata unchanged"
+    - "typed evidence-cited objection preserves both verdicts and returns explicit CONFLICTING"
+  negative_cases:
+    - "same Auditor/Skeptic identity is rejected"
+    - "unknown/foreign/unexplained model output becomes typed non-success"
+    - "all non-success statuses remain NOT_EVALUATED"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.4]
+  gate_contribution: "Supplies a pure read-only Skeptic review boundary toward G3; it does not establish a finding route or product PASS."
+  changelog_required: true
+  adr_required: false

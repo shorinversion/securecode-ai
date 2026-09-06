@@ -22,6 +22,20 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### G3 — Investigation Ready (2026-09-06)
+
+- Completed `P3.1`–`P3.13`: evidence-bound Auditor and read-only Skeptic,
+  bounded investigation, deterministic routing, injection containment, typed
+  RepositoryView tools, replay telemetry, escalation, mandatory model-native
+  discovery, dual-lane convergence, a live local connector and source-free
+  local-model qualification.
+- The implementation checkpoint `c3f682bac863e6c46ea159f437179e643d4c3eeb`
+  passed the canonical G3 cycle: 1443 tests passed, 5 expected Windows
+  POSIX/FIFO skips, 82.43% Core branch coverage, Ruff and mypy passed, and
+  terminal `QUALITY=PASS`. Exact-byte promotion records G3 `GO`; G4 is next.
+- The active policy requires no independent G3 review. The combined final
+  product/architecture/security review remains after G9.
+
 ### CR-055 — reusable protected G3-G9 gate succession (2026-09-06)
 
 - Version 8 supersedes proposal commits `664df0d`, `6b31e38`, `12fd257`,

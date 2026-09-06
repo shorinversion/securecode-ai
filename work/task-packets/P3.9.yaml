@@ -1,0 +1,56 @@
+schema_version: "0.1-draft"
+task:
+  id: "P3.9"
+  type: "implementation"
+  objective: "Create an immutable, source-free human escalation case from FindingGateDecision metadata."
+  starting_commit_sha: "3c9663fee6d\\
+    c3df332e135c\\
+    fc301ca70b632cb7e"
+  spec_refs: [SC-WF-008, SC-WF-010, SC-CAP-006, SC-CAP-007, SC-DATA-001, SC-DATA-003]
+  decision_refs: [D-003, D-005, D-027]
+  preconditions:
+    - "G3 P3.5 Finding Gate is the integration source"
+  non_goals:
+    - "human approval or rejection, workflow mutation, repository/model access, source or raw model output, public schemas"
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "escalation-case-implementer"
+  mode: "isolated-checkpoint"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/escalation.py"
+    - "tests/unit/test_escalation.py"
+    - "work/task-packets/P3.9.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/escalation.py"
+    - "tests/unit/test_escalation.py"
+    - "work/task-packets/P3.9.yaml"
+  forbidden_paths: ["specs/**", "docs/**", "packages/contracts/**", "packages/core/src/securecode_ai/core/__init__.py", "artifacts/gates/**", ".github/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1400
+constraints:
+  invariants:
+    - "candidate, tenant, run, exact HEAD and validated execution identity are preserved"
+    - "case creation requires the typed AuditorInvestigationReceipt and host InvestigationBudget; usage, no-progress, context and stop reason are derived from that receipt and revalidated on direct construction"
+    - "the complete six-field InvestigationBudget is retained canonically; investigation stop reason is separate from final model non-success status"
+    - "known evidence IDs, Auditor/Skeptic citations and objections, receipt hashes, conflicts and typed non-success metadata are retained"
+    - "policy/route hashes and an append-only safe event chain are retained without source/model text/secrets"
+    - "stale, cross-scope or tampered identity/event cases fail closed"
+    - "canonical bytes and SHA-256 are deterministic; creation has no approval/rejection fields or side effects"
+    - "HUMAN_ESCALATION and INDETERMINATE gate routes may be handed to a case; original route is preserved and case route is always HUMAN_ESCALATION"
+verification:
+  acceptance_commands:
+    - "deferred: one canonical whole-G3 quality cycle after all P3 tasks integrate"
+  positive_cases: ["conflict case preserves typed metadata and deterministic digest", "same metadata produces byte-identical case"]
+  negative_cases: ["wrong tenant/HEAD or tampered event chain is rejected", "receipt usage beyond host budget is rejected", "raw source/model output is not accepted or serialized"]
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+  local_checks_skipped_by_assignment: "Do not run tests, lint, type, quality, review, push, PR or CI. Mandatory commit hooks only."
+completion:
+  definition_of_done_refs: [P3.9]
+  gate_contribution: "Supplies human-review handoff metadata; human decision remains external and G3 remains unclaimed."
+  changelog_required: false
+  adr_required: false
+  independent_review: "No independent review at G3; single review deferred until after G9."

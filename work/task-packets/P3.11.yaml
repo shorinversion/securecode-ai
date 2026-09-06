@@ -1,0 +1,79 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.11"
+  type: "implementation"
+  objective: "Converge mandatory deterministic and model-native discovery lanes through the existing normalization contract and fail closed unless every normalized candidate has one successful terminal Auditor interpretation receipt."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "3c9663fee6\
+    dc3df332e1\
+    35cfc301ca\
+    70b632cb7e"
+  spec_refs: [SC-DOM-002, SC-DOM-003, SC-DOM-011, SC-DOM-012, SC-DOM-013, SC-PROD-018, SC-PROD-019, SC-SYS-007]
+  decision_refs: [D-027]
+  preconditions:
+    - "G2 is effective GO and P2.9 normalization plus P2.10 EvidenceGraph are available."
+    - "P3.3 and P3.10 supply bounded Auditor and model-native lane receipts before gate integration."
+  non_goals:
+    - "provider transport, RepositoryView tools, prompt construction, Auditor invocation, Skeptic routing, final product PASS, or public contract/schema changes"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "dual-lane-convergence-implementer"
+  mode: "integrated-gate-candidate"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/convergence.py"
+    - "tests/integration/test_dual_lane_convergence.py"
+    - "work/task-packets/P3.11.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/convergence.py"
+    - "tests/integration/test_dual_lane_convergence.py"
+    - "work/task-packets/P3.11.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/src/securecode_ai/core/__init__.py", "docs/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1800
+
+constraints:
+  invariants:
+    - "Both lanes bind to the exact RunExecutionIdentity repository revision and policy identity."
+    - "Cross-lane deduplication is delegated to P2.9 and occurs only for identical stable root-cause fingerprints; every pre-normalization model source candidate is provably retained through model-native lineage."
+    - "A completed-zero model-native receipt is valid; every missing, faulted or non-success model receipt produces INDETERMINATE and cannot become clean coverage."
+    - "Every normalized candidate requires exactly one current successful terminal CandidateInterpretationReceipt before mandatory coverage is complete."
+    - "COMPLETE coverage requires an exact canonical P2.10 EvidenceGraph binding for the converged candidates at the same tenant and immutable head."
+    - "The convergence component never returns a product PASS; only complete versus INDETERMINATE mandatory coverage."
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical G3 full quality cycle after all G3 tasks are integrated"
+  positive_cases:
+    - "identical deterministic and model-native root-cause fingerprints converge to hybrid provenance with both lineages retained"
+    - "valid CoverageManifest binds the exact execution identity, model receipt and one Auditor receipt for every normalized candidate"
+    - "hybrid candidate lineage is retained in the exact EvidenceGraph candidate set"
+  negative_cases:
+    - "missing/duplicate/non-success Auditor receipt is INDETERMINATE, never clean or PASS"
+    - "distinct root-cause fingerprints remain distinct candidates"
+    - "missing/non-success model-native receipt is INDETERMINATE and cannot fall back to deterministic-only coverage"
+    - "missing, stale or candidate-mismatched EvidenceGraph is INDETERMINATE"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.11]
+  gate_contribution: "Supplies provenance-preserving dual-lane convergence and mandatory interpretation coverage for G3; does not establish a product run PASS or G3 GO."
+  changelog_required: true
+  adr_required: false

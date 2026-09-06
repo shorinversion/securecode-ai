@@ -317,19 +317,19 @@ until the exact completion attestation is merged and effective.
 
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
-| `P3.1` | EvidencePackage и context selection | G2 | source policy, token budget, provenance и truncation tests | `TODO` |
-| `P3.2` | Structured Auditor contract | P3.1 | independent `ModelCallStatus` + schema-valid `FindingVerdict` with evidence citations | `TODO` |
-| `P3.3` | Auditor bounded investigation loop | P3.2 | stop on confirmation/rejection/budget; no-progress detection | `TODO` |
-| `P3.4` | Read-only Skeptic | P3.2 | independent objections; no mutation permissions | `TODO` |
-| `P3.5` | Finding Gate и deterministic routing policy | P3.3, P3.4 | confirm/reject/more-evidence/human routes; non-success cannot become pass | `TODO` |
-| `P3.6` | Prompt-injection and untrusted-text boundary | P3.1–P3.5 | code/docs/SCM/tool-output/refusal attack corpus cannot alter policy, tools or suppress coverage | `TODO` |
-| `P3.7` | Tool allowlist и argument schema validation | P3.3 | unauthorized tool/argument tests fail closed | `TODO` |
-| `P3.8` | Replay, cost, latency и node telemetry | P3.3–P3.5 | deterministic fake replay and trace completeness | `TODO` |
-| `P3.9` | Human escalation case format | P3.5 | conflicts/budget exhaustion preserve all evidence | `TODO` |
-| `P3.10` | Mandatory model-native discovery over `RepositoryView` | P3.1, P3.2, P3.7 | zero-scanner native finding, completed-zero receipt, provider/profile fault and bounded read-only tool tests | `TODO` |
-| `P3.11` | Dual-lane convergence and interpretation coverage | P2.9, P2.10, P3.3, P3.10 | deterministic/model-native/hybrid lineage; every normalized candidate has Auditor receipt | `TODO` |
-| `P3.12` | Live local OpenAI-compatible connector | G2, P1.8 | real bounded transport through existing authorization/peer/egress contract; timeout/cancel/native non-success tests; no ambient proxy or silent redirects | `TODO` |
-| `P3.13` | Local model and hardware qualification for academic demo | P3.10, P3.12 | pinned quantized open-source LLM; exact model/runtime artifacts, hashes, licenses/restrictions and profile; real structured and RepositoryView requests, completed-zero/fault evidence, CPU/RAM/VRAM and costs; downloadable weights alone are insufficient, any brief deviation requires recorded curator approval | `TODO` |
+| `P3.1` | EvidencePackage и context selection | G2 | source policy, token budget, provenance и truncation tests | `DONE` |
+| `P3.2` | Structured Auditor contract | P3.1 | independent `ModelCallStatus` + schema-valid `FindingVerdict` with evidence citations | `DONE` |
+| `P3.3` | Auditor bounded investigation loop | P3.2 | stop on confirmation/rejection/budget; no-progress detection | `DONE` |
+| `P3.4` | Read-only Skeptic | P3.2 | independent objections; no mutation permissions | `DONE` |
+| `P3.5` | Finding Gate и deterministic routing policy | P3.3, P3.4 | confirm/reject/more-evidence/human routes; non-success cannot become pass | `DONE` |
+| `P3.6` | Prompt-injection and untrusted-text boundary | P3.1–P3.5 | code/docs/SCM/tool-output/refusal attack corpus cannot alter policy, tools or suppress coverage | `DONE` |
+| `P3.7` | Tool allowlist и argument schema validation | P3.3 | unauthorized tool/argument tests fail closed | `DONE` |
+| `P3.8` | Replay, cost, latency и node telemetry | P3.3–P3.5 | deterministic fake replay and trace completeness | `DONE` |
+| `P3.9` | Human escalation case format | P3.5 | conflicts/budget exhaustion preserve all evidence | `DONE` |
+| `P3.10` | Mandatory model-native discovery over `RepositoryView` | P3.1, P3.2, P3.7 | zero-scanner native finding, completed-zero receipt, provider/profile fault and bounded read-only tool tests | `DONE` |
+| `P3.11` | Dual-lane convergence and interpretation coverage | P2.9, P2.10, P3.3, P3.10 | deterministic/model-native/hybrid lineage; every normalized candidate has Auditor receipt | `DONE` |
+| `P3.12` | Live local OpenAI-compatible connector | G2, P1.8 | real bounded transport through existing authorization/peer/egress contract; timeout/cancel/native non-success tests; no ambient proxy or silent redirects | `DONE` |
+| `P3.13` | Local model and hardware qualification for academic demo | P3.10, P3.12 | pinned quantized open-source LLM; exact model/runtime artifacts, hashes, licenses/restrictions and profile; real structured and RepositoryView requests, completed-zero/fault evidence, CPU/RAM/VRAM and costs; downloadable weights alone are insufficient, any brief deviation requires recorded curator approval | `DONE` |
 
 P1.8 remains DONE within its original no-live-HTTP scope. P3.12/P3.13 own the
 missing real connector and academic model evidence; hardware metadata stays

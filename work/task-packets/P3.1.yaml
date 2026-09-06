@@ -1,0 +1,76 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.1"
+  type: "implementation"
+  objective: "Construct deterministic, provenance-bound metadata-only EvidencePackage context for one normalized candidate under hard source, byte and token budgets."
+  baseline_commit_sha: "\x33\x39\x35\x61\x39\x32\x37\x34\x37\x31\x61\x39\x32\x34\x31\x65\x33\x61\x36\x38\x61\x62\x30\x37\x66\x64\x64\x64\x65\x31\x62\x37\x30\x37\x39\x37\x31\x35\x65\x34"
+  spec_refs: [SC-DOM-005, SC-DOM-010, SC-DOM-011, SC-DOM-013, SC-DATA-001, SC-DATA-002, SC-DATA-003, SC-CAP-009, SC-PORT-004]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G2 is effective GO on the exact starting commit"
+  non_goals:
+    - "Reading source bytes, storage access, egress authorization or model invocation"
+    - "EvidenceGraph mutation, candidate normalization or public schema changes"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "component-implementer"
+  mode: "path_isolated_subtask"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/evidence_package.py"
+    - "tests/unit/test_evidence_package.py"
+    - "work/task-packets/P3.1.yaml"
+  parallel_sibling_tasks: [P3.2]
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/evidence_package.py"
+    - "tests/unit/test_evidence_package.py"
+    - "work/task-packets/P3.1.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", "artifacts/gates/**", "packages/contracts/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 900
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands: ["git status/diff/show/add/commit", "rg"]
+  network: "deny"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "immutable EvidencePackage with candidate, graph and selected-evidence provenance"
+    - "deterministic truncation receipt and hard byte/token/item limits"
+    - "metadata-only model evidence references with DC4 and unavailable content refused"
+
+constraints:
+  invariants:
+    - "selection is deterministic and binds one candidate, tenant and exact head"
+    - "selected content has an exact same-class ArtifactRef and never embeds raw bytes"
+    - "DC4, invalid provenance and an empty selected context fail closed"
+  compatibility:
+    - "uses existing accepted domain contracts without modifying public schemas"
+  security:
+    - "repository evidence is data, not instruction authority; no filesystem, shell, process or network capability is introduced"
+
+verification:
+  acceptance_commands: ["deferred to primary integrator per assignment"]
+  negative_cases: ["DC4 evidence", "missing artifact metadata", "identity drift", "budget exhaustion"]
+  required_evidence: ["focused unit tests supplied for integrator execution"]
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "protected or public contract change required"
+  - "raw source bytes or a new I/O capability required"
+  - "new dependency required"
+
+completion:
+  definition_of_done_refs: [P3.1]
+  changelog_required: false
+  adr_required: false
