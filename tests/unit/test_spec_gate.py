@@ -1040,6 +1040,185 @@ def test_protected_run_evidence_tasks_are_derived_from_closed_policy_catalog() -
         GATE.completion_run_evidence_tasks(invalid)
 
 
+def test_successor_gates_require_final_reviews_only_at_g9_closing() -> None:
+    gate = GATE.SpecGate()
+    counts = {3: 13, 4: 12, 5: 10, 6: 12, 7: 17, 8: 12, 9: 17}
+    for phase, count in counts.items():
+        gate_id = f"G{phase}"
+        policy = gate._gate_policy(gate_id)
+        assert policy["review_required"] is (phase == 9)
+        assert gate._gate_completion_tasks(gate_id) == tuple(
+            f"P{phase}.{number}" for number in range(1, count + 1)
+        )
+        assert gate._succession(gate_id)["predecessor"] == f"G{phase - 1}"
+        assert policy["checklist_ids"][-1] == "integrated_quality"
+    assert gate._succession("G9")["successor"] is None
+
+
+def test_g8_rejects_reviews_and_g9_requires_three_distinct_receipts() -> None:
+    gate = GATE.SpecGate()
+    roles = {"product_scope", "architecture_contracts", "security_evaluation"}
+    gate._check_gate_review_roles("G8", set(), set())
+    gate._check_gate_review_roles("G9", roles, {"product", "architecture", "security"})
+    for gate_id, observed, identities in (
+        ("G8", roles, {"product", "architecture", "security"}),
+        ("G9", set(), set()),
+        ("G9", roles, {"shared-reviewer", "security"}),
+        ("G9", {"product_scope", "security_evaluation"}, {"one", "two", "three"}),
+    ):
+        with pytest.raises(GATE.GateInputError, match="INTEGRATED_REVIEW_INDEPENDENCE"):
+            gate._check_gate_review_roles(gate_id, observed, identities)
+
+
+def test_g9_no_review_promotion_chain_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    gate = GATE.SpecGate()
+    base, subject, promotion = "a" * 40, "b" * 40, "c" * 40
+    monkeypatch.setattr(GATE, "git_bytes", lambda *_args: b"")
+    monkeypatch.setattr(GATE, "git_text", lambda *_args: f"{subject}\n{promotion}\n")
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda *_args: ())
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_integrated_packet_path",
+        lambda _self, commit, _base: (
+            "work/change-control/CR-999.yaml" if commit == subject else None
+        ),
+    )
+    monkeypatch.setattr(GATE, "_git_blob", lambda *_args: b'{"gate_id":"G9"}')
+    assert gate._validate_integrated_pull_request_chain(base, promotion) == (
+        "INTEGRATED_CHAIN_LENGTH",
+    )
+
+
+def test_successor_scope_requires_protected_base_authority() -> None:
+    gate = GATE.SpecGate()
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_PACKET_AUTHORITY_BASE"):
+        gate._integrated_task_scopes("G4", gate._gate_completion_tasks("G4"))
+
+
+def test_g3_bootstrap_rejects_packet_byte_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+    gate = GATE.SpecGate()
+    task_id = "P3.1"
+    scopes = gate._integrated_task_scopes("G3", gate._gate_completion_tasks("G3"))
+    monkeypatch.setattr(GATE, "_git_blob", lambda *_args: b"substituted packet\n")
+    monkeypatch.setattr(GATE.SpecGate, "_integrated_task_budgets", lambda *_args, **_kwargs: {})
+    with pytest.raises(GATE.GateInputError, match="BOOTSTRAP_PACKET_BYTES"):
+        gate._validate_integrated_task_packets(
+            base="a" * 40,
+            candidate="b" * 40,
+            scopes={task_id: scopes[task_id]},
+            gate_id="G3",
+        )
+
+
+def test_successor_packet_cannot_replace_protected_base_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    monkeypatch.setattr(GATE, "_git_blob", lambda *_args: b"changed candidate packet\n")
+    monkeypatch.setattr(GATE.SpecGate, "_base_file", lambda *_args: b"protected packet\n")
+    monkeypatch.setattr(GATE.SpecGate, "_integrated_task_budgets", lambda *_args, **_kwargs: {})
+    path = "work/task-packets/P4.1.yaml"
+    with pytest.raises(GATE.GateInputError, match="INTEGRATED_BASE_PACKET_MUTATION"):
+        gate._validate_integrated_task_packets(
+            base="a" * 40,
+            candidate="b" * 40,
+            scopes={"P4.1": ((path,), (path,))},
+            gate_id="G4",
+        )
+
+
+@pytest.mark.parametrize(
+    "extra_path", ["scripts/spec_gate.py", "work/change-control/CR-999.yaml", "tests/**"]
+)
+def test_successor_seed_rejects_protected_or_open_scope(
+    extra_path: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    fixture = G2_TASK_PACKET_FIXTURES[0]
+    packet = _g2_task_packet_document(fixture, "a" * 40)
+    packet["scope"]["allowed_paths"].append(extra_path)
+    packet["execution"]["exclusive_path_lease"] = packet["scope"]["allowed_paths"]
+    packet["scope"]["max_changed_files"] = len(packet["scope"]["allowed_paths"])
+    monkeypatch.setattr(GATE, "git_bytes", lambda *_args: b"")
+    with pytest.raises(GATE.GateInputError, match=r"SEED_(PACKET_INVALID|PROTECTED_SCOPE)"):
+        gate._seed_packet_entry(yaml.safe_dump(packet).encode(), fixture.task_id, "b" * 40)
+
+
+def test_successor_seed_accepts_bounded_full_schema_packet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    packet = _g2_task_packet_document(G2_TASK_PACKET_FIXTURES[0], "a" * 40)
+    paths = ["packages/core/src/securecode_ai/core/repair.py", "work/task-packets/P4.1.yaml"]
+    packet["task"]["id"] = "P4.1"
+    packet["scope"]["allowed_paths"] = paths
+    packet["execution"]["exclusive_path_lease"] = paths
+    packet["scope"]["max_changed_files"] = 2
+    monkeypatch.setattr(GATE, "git_bytes", lambda *_args: b"")
+    entry = gate._seed_packet_entry(yaml.safe_dump(packet).encode(), "P4.1", "b" * 40)
+    assert entry["packet_allowed_paths"] == tuple(paths)
+    assert entry["packet_budget"]["max_changed_files"] == 2
+
+
+@pytest.mark.parametrize("gate_id", ["G3", "G4", "G9"])
+@pytest.mark.parametrize(
+    ("file_limit", "line_limit", "accepted"),
+    [(2, 2, True), (1, 2, False), (2, 1, False)],
+)
+def test_successor_subject_only_delta_enforces_per_task_packet_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    gate_id: str,
+    file_limit: int,
+    line_limit: int,
+    accepted: bool,
+) -> None:
+    """Direct subject writes consume task budgets even without any checkpoints."""
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    repository = tmp_path / "successor-subject"
+    repository.mkdir()
+    _run_git(repository, "init", "-b", "master")
+    _run_git(repository, "config", "user.name", "Spec Gate Test")
+    _run_git(repository, "config", "user.email", "spec-gate@example.invalid")
+    task_id = f"P{gate_id[1:]}.1"
+    packet_path = f"work/task-packets/{task_id}.yaml"
+    _write_candidate(repository, packet_path, b"protected packet\n")
+    base = _commit_all(repository, "Protected successor packet")
+    task_paths = ("packages/core/first.py", "packages/core/second.py", packet_path)
+    for path in task_paths[:2]:
+        _write_candidate(repository, path, b"value = 1\n")
+    _write_candidate(repository, "other-task/file.py", b"other task\n" * 10)
+    subject = _commit_all(repository, "Write task files directly in gate subject")
+    gate = GATE.SpecGate(root=repository, policy_path=GATE.POLICY_PATH)
+    budget = {"max_changed_files": file_limit, "max_diff_lines": line_limit}
+    if gate_id == "G3":
+        packet_hash = hashlib.sha256(b"protected packet\n").hexdigest()
+        succession = dict(gate._succession(gate_id))
+        succession["packet_sha256"] = {
+            task_id: [packet_hash[index : index + 8] for index in range(0, 64, 8)]
+        }
+        monkeypatch.setattr(GATE.SpecGate, "_succession", lambda *_args: succession)
+    # Isolate budget consumption from separately tested seed admission/provenance.
+    # The file-overflow case also guards against future broader seed admissions.
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_integrated_task_budgets",
+        lambda *_args, **_kwargs: {task_id: (budget, budget)},
+    )
+    arguments = {
+        "base": base,
+        "candidate": subject,
+        "scopes": {task_id: (task_paths, task_paths)},
+        "gate_id": gate_id,
+    }
+    if accepted:
+        gate._validate_integrated_task_packets(**arguments)
+    else:
+        with pytest.raises(GATE.GateInputError, match="INTEGRATED_TASK_PACKET_BUDGET"):
+            gate._validate_integrated_task_packets(**arguments)
+
+
 def test_g2_policy_consolidates_only_unattested_p2_tasks() -> None:
     gate = GATE.SpecGate()
     policy = gate._gate_policy("G2")
@@ -1196,6 +1375,51 @@ def test_g2_checkpoint_history_rejects_removed_scope_laundering(
     assert mode_calls == [(base, checkpoint)]
 
 
+@pytest.mark.parametrize("mutation", ["M", "D", "R100", "C100"])
+def test_g3_bootstrap_allows_only_added_then_modified_packets(
+    mutation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    scopes = gate._integrated_task_scopes("G3", gate._gate_completion_tasks("G3"))
+    base, added, modified, subject = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+    packet_path = "work/task-packets/P3.1.yaml"
+    record = (
+        (mutation, packet_path, scopes["P3.1"][0][0])
+        if mutation in {"R100", "C100"}
+        else (mutation, packet_path)
+    )
+    records = {
+        added: tuple(("A", f"work/task-packets/{task_id}.yaml") for task_id in scopes),
+        modified: (record,),
+        subject: (("A", "CHANGELOG.md"),),
+    }
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_single_parent",
+        lambda _self, commit: {added: base, modified: added, subject: modified}[commit],
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_diff_records",
+        lambda _self, _mode, _base, candidate: records[candidate],
+    )
+    monkeypatch.setattr(GATE.SpecGate, "_validate_git_modes", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(GATE.SpecGate, "_diff_lines_for_paths", lambda *_args: 1)
+    arguments = {
+        "base": base,
+        "commits": (added, modified, subject),
+        "subject_index": 2,
+        "scopes": scopes,
+        "gate_id": "G3",
+    }
+    if mutation == "M":
+        gate._validate_integrated_checkpoint_deltas(**arguments)
+    else:
+        with pytest.raises(GATE.GateInputError, match="INTEGRATED_TASK_PACKET_IMMUTABLE"):
+            gate._validate_integrated_checkpoint_deltas(**arguments)
+
+
 def test_g2_checkpoint_history_charges_cumulative_permitted_deltas(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1229,6 +1453,40 @@ def test_g2_checkpoint_history_charges_cumulative_permitted_deltas(
             subject_index=2,
             scopes=gate._integrated_task_scopes("G2", gate._gate_completion_tasks("G2")),
         )
+
+
+@pytest.mark.parametrize(
+    ("touches", "lines", "accepted"),
+    [(95, 15999, True), (96, 16000, True), (97, 16000, False), (96, 16001, False)],
+)
+def test_g3_chain_budget_enforces_empirical_closing_bounds(
+    touches: int,
+    lines: int,
+    accepted: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = GATE.SpecGate()
+    policy = gate._gate_policy("G3")
+    assert policy["checkpoint_chain_max_changed_files"] == 96
+    assert policy["checkpoint_chain_max_diff_lines"] == 16000
+    base, first, last = "a" * 40, "b" * 40, "c" * 40
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_diff_records",
+        lambda _self, _mode, _base, candidate: tuple(
+            ("M", f"task/{index}.py") for index in range(59 if candidate == first else touches - 59)
+        ),
+    )
+    monkeypatch.setattr(
+        GATE.SpecGate,
+        "_diff_lines",
+        lambda _self, _mode, _base, candidate: 10268 if candidate == first else lines - 10268,
+    )
+    if accepted:
+        gate._validate_integrated_chain_budget(base, (first, last), "G3")
+    else:
+        with pytest.raises(GATE.GateInputError, match="INTEGRATED_CHAIN_BUDGET"):
+            gate._validate_integrated_chain_budget(base, (first, last), "G3")
 
 
 def test_integrated_chain_budget_charges_review_and_transient_commits(
