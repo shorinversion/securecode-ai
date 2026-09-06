@@ -22,6 +22,39 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-055 — reusable protected G3-G9 gate succession (2026-09-06)
+
+- Supersedes unpublished proposal commits `664df0d`, `6b31e38` and `12fd257`.
+  G3 cumulative checkpoint
+  limits are 96 file touches and 16000 changed lines, covering the measured
+  59 touches / 10268 lines plus successor packet seeding and gate evidence.
+  New boundary self-tests cover exact limits and rejection above either limit.
+- G3 bootstrap permits scoped packet modifications after exactly one addition,
+  while rejecting deletion, rename/copy or a final pinned-hash mismatch.
+  Per-task touch budgets include four touches of remediation headroom; global
+  96/16000 limits and fixed paths remain authoritative. Successor packets stay immutable.
+- Proposal-only evaluator extension: declare G3-G9 task/checklist/evidence
+  admission once, preserve exact-byte promotion and immutable checkpoint scope.
+  G3 binds the exact historical packet bytes and fixed task scopes; successors
+  consume full-schema packets seeded by the previous protected gate candidate.
+  Candidate-created or changed successor authority is rejected. Planned tests
+  remain explicitly gate-bound until completion rather than requiring a new
+  evaluator amendment for each catalog activation.
+- Reconcile active methodology with effective owner-authorized cadence: local
+  checkpoint commits without tests/reviews between P-tasks, one canonical
+  quality and protected PR/CI cycle per gate, no G2-G8 independent gate reviews,
+  and one combined final review cycle after G9 implementation and quality,
+  before PROJECT CLOSED promotion. Its three independent product, architecture
+  and security/evaluation receipts bind the exact integrated G9 subject.
+  P8.12 prepares security evaluation and remediation inputs for that cycle.
+- Repair proposal digest construction with ordinal path ordering matching the
+  canonical evaluator; committed proposal and decoded target blobs require
+  canonical subject readback equality before this proposal is accepted.
+- Existing POLICY amendment receipts remain required by executable policy;
+  no receipts were authored here. No tests, lint, types, quality, reviews or CI
+  were executed for this preparation. Product code, frozen specifications and
+  existing gate evidence are unchanged. Protected activation remains pending.
+
 ### G2 — deterministic core gate candidate (2026-09-06)
 
 - Integrated P2.6-P2.13 as one frozen G2 candidate: dependency and CWE-89
