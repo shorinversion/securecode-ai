@@ -22,6 +22,58 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-055 — reusable protected G3-G9 gate succession (2026-09-06)
+
+- Version 7 supersedes proposal commits `664df0d`, `6b31e38`, `12fd257`,
+  `98d99b2`, `7fc33c8`, `d12ad81` and `cc5316f`. Version 7 removes
+  nonessential evaluator docstrings to fit every Base64 scalar within the
+  existing 262144-byte parser limit; executable AST is unchanged from v6.
+  The prior security review found that G3
+  bootstrap still skipped subject-commit task budgets. Both bootstrap and
+  protected-base successor tasks now enforce packet file and line budgets
+  on the scoped retained base-to-subject delta, including the subject commit.
+  G3 pinned packet hashes/history, cumulative checkpoint caps and global
+  chain caps are unchanged.
+  G3 cumulative checkpoint
+  limits are 96 file touches and 16000 changed lines, covering the measured
+  59 touches / 10268 lines plus successor packet seeding and gate evidence.
+  New boundary self-tests cover exact limits and rejection above either limit.
+- G3 bootstrap permits scoped packet modifications after exactly one addition,
+  while rejecting deletion, rename/copy or a final pinned-hash mismatch.
+  Per-task touch budgets include four touches of remediation headroom; global
+  96/16000 limits and fixed paths remain authoritative. Successor packets stay immutable.
+- Proposal-only evaluator extension: declare G3-G9 task/checklist/evidence
+  admission once, preserve exact-byte promotion and immutable checkpoint scope.
+  G3 binds the exact historical packet bytes and fixed task scopes; successors
+  consume full-schema packets seeded by the previous protected gate candidate.
+  Candidate-created or changed successor authority is rejected. Planned tests
+  remain explicitly gate-bound until completion rather than requiring a new
+  evaluator amendment for each catalog activation.
+- Reconcile active methodology with effective owner-authorized cadence: local
+  checkpoint commits without tests/reviews between P-tasks, one canonical
+  quality and protected PR/CI cycle per gate, no G2-G8 independent gate reviews,
+  and one combined final review cycle after G9 implementation and quality,
+  before PROJECT CLOSED promotion. Its three independent product, architecture
+  and security/evaluation receipts bind the exact integrated G9 subject.
+  P8.12 prepares security evaluation and remediation inputs for that cycle.
+- Repair proposal digest construction with ordinal path ordering matching the
+  canonical evaluator; committed proposal and decoded target blobs require
+  canonical subject readback equality before this proposal is accepted.
+- Existing POLICY amendment receipts remain required by executable policy;
+  no receipts were authored here. Version 4 Ruff fixes remain in
+  the proposed evaluator and its unit-test target: formatting, a raw regex string
+  (RUF043) and dictionary literal (C408). Ruff 0.15.22 format/check pass for
+  those two decoded targets. Fifteen focused evaluator tests pass: bootstrap
+  and successor subject-only file/line overflow and exact boundaries for
+  G3/G4/G9, packet
+  immutability, and G3 bootstrap hash/history negatives. File-count overflow
+  is a defensive unit boundary; current literal seed admission also bounds
+  scope cardinality. No types, full quality, reviews or CI were run for this
+  preparation; normal commit hooks remain mandatory.
+  All final hashes and canonical subjects are recalculated from exact bytes.
+  Product code, frozen specifications and
+  existing gate evidence are unchanged. Protected activation remains pending.
+
 ### G2 — deterministic core gate candidate (2026-09-06)
 
 - Integrated P2.6-P2.13 as one frozen G2 candidate: dependency and CWE-89
