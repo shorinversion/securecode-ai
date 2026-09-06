@@ -1,0 +1,47 @@
+schema_version: "0.1-draft"
+task:
+  id: "P4.6"
+  type: "implementation"
+  objective: "Implement the ordered validation ladder from patch apply and parse through quality gates, PoC+ and rescan."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba\
+    055dfa4785\
+    8b975630b4\
+    c870af3bed\
+    2dda842b0e\
+    8422c8354b\
+    5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "395a927471\
+    a9241e3a68\
+    ab07fddde1\
+    b7079715e4"
+  spec_refs: [SC-PROD-006, SC-PROD-007, SC-WF-013, SC-WF-014, SC-WF-015, SC-CAP-004]
+  decision_refs: [D-006, D-023, D-027]
+  preconditions: ["P4.4 and P4.5 are integrated", "G3 is effective GO"]
+  non_goals: ["approval, auto-merge, protected evaluator changes, silent gate downgrade"]
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "validation-ladder-implementer"
+  mode: "path_isolated_subtask"
+  parent_task_id: P4.5
+  exclusive_path_lease: ["packages/core/src/securecode_ai/core/validation.py", "tests/unit/test_validation.py", "work/task-packets/P4.6.yaml"]
+  parallel_sibling_tasks: [P4.7, P4.8]
+  may_delegate_further: false
+  integration_owner: "codex-root"
+scope:
+  allowed_paths: ["packages/core/src/securecode_ai/core/validation.py", "tests/unit/test_validation.py", "work/task-packets/P4.6.yaml"]
+  forbidden_paths: ["specs/**", "scripts/**", "artifacts/gates/**", "packages/contracts/**", "docs/**", ".github/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1800
+capabilities: {allowed_tools: [apply_patch, shell_command], allowed_commands: ["git status/diff/show/add/commit", "rg"], network: "deny", "\x73\x65\x63\x72\x65\x74\x73": "deny", dependency_changes: "deny"}
+inputs: {artifacts: ["PatchCandidate", "sandbox receipt", "regression oracle"], fixtures: ["each mandatory ladder failure"], context_budget_tokens: 14000}
+outputs: {required_artifacts: ["ordered validation stages", "immutable per-stage diagnostics and final ValidationResult"], structured_result_schema: "accepted validation-result contract", handoff_required_fields: [task_id_and_role, scope_completed, files_read_and_changed, commands_and_exact_results, evidence, assumptions, risks_and_unresolved, integration_order]}
+constraints: {invariants: ["every applicable stage runs in order", "mandatory failure blocks positive approval", "receipt binds patch, head, sandbox profile, commands and resources"], compatibility: ["reuse accepted ValidationResult", "no public schema changes"], security: ["patch paths and protected files are validated before apply", "errors are bounded and non-echoing"], privacy: ["no secrets/raw source in diagnostics"], performance: ["bounded stages and output"]}
+budgets: {max_iterations: 3, max_tool_calls: 50, timeout_seconds: 420, max_output_bytes: 131072}
+verification: {acceptance_commands: ["deferred: canonical whole-G4 quality cycle after all P4 tasks integrate"], positive_cases: ["all stages pass for safe candidate"], negative_cases: ["each stage failure, PoC-only pass, rescan regression, stale head"], required_evidence: ["focused validation tests and stage receipt"], independent_validator_required: false, primary_integrator_rerun_required: true, local_checks_skipped_by_assignment: "Do not run tests, lint, type, quality, review, push, PR or CI. Mandatory commit hooks only."}
+stop_conditions: ["spec_conflict", "protected_path_change_required", "new_dependency_required_but_not_allowed", "security_boundary_change_required", "budget_exhausted", "no_new_diagnostic_signal"]
+completion: {definition_of_done_refs: [P4.6], gate_contribution: "Supplies validation ladder for G4; does not establish G4.", changelog_required: true, adr_required: false}

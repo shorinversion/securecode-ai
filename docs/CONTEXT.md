@@ -16,6 +16,11 @@
   [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
+- G3 `Investigation Ready` is `GO-PROPOSED` on implementation checkpoint
+  `c3f682bac863e6c46ea159f437179e643d4c3eeb`: the canonical G3 cycle passed
+  with 1443 tests passed, 5 expected Windows POSIX/FIFO skips, 82.43% Core
+  branch coverage and `QUALITY=PASS`; real local-model qualification reached
+  `REAL_EVIDENCE_RECORDED`. Exact promotion and protected delivery are pending.
 - Phase: `P2 - Deterministic analysis and reporting` is authorized to start.
 - G2 `Deterministic Core Ready` is `GO`: P2.6-P2.13 are complete through
   exact-byte promotion of implementation checkpoint
