@@ -1219,6 +1219,22 @@ class SpecGate:
                     self.diagnostics.add(f"CATALOG_STALE_PLANNED:{test_id}")
                 if set(entry) != {"owners", "state"}:
                     self.diagnostics.add(f"CATALOG_PLANNED_KEYS:{test_id}")
+            elif state == "gate_bound":
+                gate_id = entry.get("completion_gate")
+                if (
+                    set(entry) != {"owners", "state", "command", "completion_gate"}
+                    or not isinstance(entry.get("command"), str)
+                    or entry.get("command") not in allowed_commands
+                    or not isinstance(gate_id, str)
+                    or self._succession(gate_id) is None
+                ):
+                    self.diagnostics.add(f"CATALOG_GATE_BOUND:{test_id}")
+                elif all(tasks.get(owner) == "DONE" for owner in owners):
+                    decision = _text_from_bytes(
+                        self._read(f"artifacts/gates/{gate_id}/decision.md"), kind="MARKDOWN"
+                    )
+                    if re.findall(r"(?m)^decision: (NO-GO|GO-PROPOSED|GO)$", decision) != ["GO"]:
+                        self.diagnostics.add(f"CATALOG_GATE_INCOMPLETE:{test_id}")
             elif state == "executable":
                 command = entry.get("command")
                 if not isinstance(command, str) or command not in allowed_commands:
@@ -2108,13 +2124,103 @@ class SpecGate:
             raise GateInputError("POLICY_GATE_COMPLETION_SCOPE")
         return completion
 
+    def _succession(self, gate_id: str) -> Mapping[str, object] | None:
+        catalog = _mapping(self.policy.get("gate_succession", {}), "POLICY_SUCCESSION")
+        return (
+            _mapping(catalog[gate_id], "POLICY_SUCCESSION_ENTRY")
+            if gate_id in catalog
+            else None
+        )
+
+    def _seed_packet_entry(self, raw: bytes, task_id: str, revision: str) -> Mapping[str, object]:
+        """Constrain successor authority before the predecessor admits its bytes."""
+        packet = _mapping(strict_yaml_loads(raw, self.limits), "SEED_PACKET")
+        task = _mapping(packet.get("task"), "SEED_TASK")
+        scope = _mapping(packet.get("scope"), "SEED_SCOPE")
+        paths = _strings(scope.get("allowed_paths"), "SEED_PATHS")
+        start = task.get("starting_commit_sha")
+        if not isinstance(start, str) or not SHA1_PATTERN.fullmatch(start):
+            raise GateInputError("SEED_BASE")
+        git_bytes(self.root, "merge-base", "--is-ancestor", start, revision)
+        packet_path = f"work/task-packets/{task_id}.yaml"
+        errors = validate_task_packet(
+            packet,
+            packet_path=packet_path,
+            base_sha=start,
+            changed=paths,
+            diff_lines=0,
+            policy=self.policy,
+        )
+        if errors or task.get("id") != task_id:
+            raise GateInputError("SEED_PACKET_INVALID")
+        protected = _strings(self.policy.get("self_protected_paths"), "POLICY_PROTECTED")
+        for path in paths:
+            normalize_repo_path(path)
+            if (
+                any(character in path for character in "*?[")
+                or _path_matches(path, protected)
+                or (path.startswith("work/") and path != packet_path)
+                or path in {"docs/PLAN.md", "docs/CONTEXT.md", "CHANGELOG.md", "AGENTS.md"}
+                or path.startswith(".agents/")
+            ):
+                raise GateInputError("SEED_PROTECTED_SCOPE")
+        budget = {name: scope.get(name) for name in ("max_changed_files", "max_diff_lines")}
+        if (
+            any(type(value) is not int or value <= 0 for value in budget.values())
+            or cast(int, budget["max_changed_files"]) > 64
+            or cast(int, budget["max_diff_lines"]) > 12000
+        ):
+            raise GateInputError("SEED_BUDGET")
+        return {
+            "packet_allowed_paths": paths,
+            "checkpoint_allowed_paths": paths,
+            "packet_budget": budget,
+            "checkpoint_budget": budget,
+        }
+
+    def _integrated_task_entries(self, gate_id: str, base: str | None) -> Mapping[str, object]:
+        succession = self._succession(gate_id)
+        if succession is None or succession.get("packet_source") == "bootstrap":
+            return _mapping(
+                self._gate_policy(gate_id).get("integrated_task_scope"),
+                "INTEGRATED_TASK_POLICY",
+            )
+        if succession.get("packet_source") != "protected_base" or base is None:
+            raise GateInputError("INTEGRATED_PACKET_AUTHORITY_BASE")
+        for task_id in self._gate_completion_tasks(gate_id):
+            packet_path = f"work/task-packets/{task_id}.yaml"
+            additions = git_text(
+                self.root, "log", "--diff-filter=A", "--format=%H", base, "--", packet_path
+            ).splitlines()
+            if len(additions) != 1:
+                raise GateInputError("INTEGRATED_SEED_PROVENANCE")
+            seed_commit = additions[0]
+            proposal_path = self._integrated_packet_path(seed_commit, self._single_parent(seed_commit))
+            if proposal_path is None:
+                raise GateInputError("INTEGRATED_SEED_PROVENANCE")
+            proposal = _mapping(
+                strict_yaml_loads(self._base_file(seed_commit, proposal_path), self.limits),
+                "INTEGRATED_SEED_PROPOSAL",
+            )
+            if (
+                proposal.get("gate_id") != succession.get("predecessor")
+                or packet_path not in _strings(proposal.get("allowed_paths"), "SEED_ADMISSION")
+                or self._base_file(seed_commit, packet_path) != self._base_file(base, packet_path)
+            ):
+                raise GateInputError("INTEGRATED_SEED_PROVENANCE")
+        return {
+            task_id: self._seed_packet_entry(
+                self._base_file(base, f"work/task-packets/{task_id}.yaml"), task_id, base
+            )
+            for task_id in self._gate_completion_tasks(gate_id)
+        }
+
     def _integrated_task_scopes(
-        self, gate_id: str, completion_tasks: tuple[str, ...]
+        self, gate_id: str, completion_tasks: tuple[str, ...], base: str | None = None
     ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...]]]:
         """Load policy-owned packet and checkpoint paths for an integrated gate."""
 
-        policy = self._gate_policy(gate_id)
-        configured = _mapping(policy.get("integrated_task_scope"), "INTEGRATED_TASK_POLICY")
+        configured = self._integrated_task_entries(gate_id, base)
         if set(configured) != set(completion_tasks):
             raise GateInputError("INTEGRATED_TASK_POLICY_SCOPE")
         protected = _strings(self.policy.get("self_protected_paths"), "POLICY_PROTECTED")
@@ -2155,13 +2261,11 @@ class SpecGate:
         return scopes
 
     def _integrated_task_budgets(
-        self, gate_id: str, completion_tasks: tuple[str, ...]
+        self, gate_id: str, completion_tasks: tuple[str, ...], base: str | None = None
     ) -> dict[str, tuple[Mapping[str, int], Mapping[str, int]]]:
         """Load closed packet and cumulative-checkpoint budgets from policy."""
 
-        configured = _mapping(
-            self._gate_policy(gate_id).get("integrated_task_scope"), "INTEGRATED_TASK_POLICY"
-        )
+        configured = self._integrated_task_entries(gate_id, base)
         if set(configured) != set(completion_tasks):
             raise GateInputError("INTEGRATED_TASK_POLICY_SCOPE")
         budgets: dict[str, tuple[Mapping[str, int], Mapping[str, int]]] = {}
@@ -2195,9 +2299,26 @@ class SpecGate:
     ) -> None:
         """Accept candidate-only packets only when their authority and scope match policy."""
 
-        budgets = self._integrated_task_budgets(gate_id=gate_id, completion_tasks=tuple(scopes))
+        budgets = self._integrated_task_budgets(
+            gate_id=gate_id, completion_tasks=tuple(scopes), base=base
+        )
+        succession = self._succession(gate_id)
         for task_id, (packet_paths, _) in scopes.items():
             packet_path = f"work/task-packets/{task_id}.yaml"
+            raw = _git_blob(self.root, candidate, packet_path)
+            if succession is not None:
+                if succession.get("packet_source") == "bootstrap":
+                    hashes = _mapping(succession.get("packet_sha256"), "BOOTSTRAP_PACKET_HASHES")
+                    chunks = _strings(hashes.get(task_id), "BOOTSTRAP_PACKET_DIGEST")
+                    if (
+                        len(chunks) != 8
+                        or any(re.fullmatch(r"[0-9a-f]{8}", chunk) is None for chunk in chunks)
+                        or hashlib.sha256(raw).hexdigest() != "".join(chunks)
+                    ):
+                        raise GateInputError("BOOTSTRAP_PACKET_BYTES")
+                elif raw != self._base_file(base, packet_path):
+                    raise GateInputError("INTEGRATED_BASE_PACKET_MUTATION")
+                continue
             if git_text(self.root, "ls-tree", "--name-only", base, "--", packet_path).splitlines():
                 raise GateInputError("INTEGRATED_TASK_PACKET_BASE_AUTHORITY")
             packet = strict_yaml_loads(_git_blob(self.root, candidate, packet_path), self.limits)
@@ -2236,10 +2357,18 @@ class SpecGate:
         """Reject an out-of-scope checkpoint even if its final-tree trace was removed."""
 
         checkpoint_paths = {path for _, paths in scopes.values() for path in paths}
-        budgets = self._integrated_task_budgets(gate_id=gate_id, completion_tasks=tuple(scopes))
+        budgets = self._integrated_task_budgets(
+            gate_id=gate_id, completion_tasks=tuple(scopes), base=base
+        )
         cumulative = {task_id: [0, 0] for task_id in scopes}
         packet_paths = {f"work/task-packets/{task_id}.yaml" for task_id in scopes}
-        introduced: dict[str, int] = dict.fromkeys(packet_paths, 0)
+        introduced: dict[str, int] = {
+            path: int(bool(git_text(self.root, "ls-tree", "--name-only", base, "--", path)))
+            if (self._succession(gate_id) or {}).get("packet_source") == "protected_base"
+            else 0
+            for path in packet_paths
+        }
+        bootstrap = (self._succession(gate_id) or {}).get("packet_source") == "bootstrap"
         protected = _strings(self.policy.get("self_protected_paths"), "POLICY_PROTECTED")
         previous = base
         for index, commit in enumerate(commits[: subject_index + 1]):
@@ -2265,7 +2394,9 @@ class SpecGate:
             for record in records:
                 for path in record[1:]:
                     if path in packet_paths:
-                        if record[0] != "A" or record[1] != path:
+                        if bootstrap and record[0] == "M" and introduced[path] == 1:
+                            continue
+                        if record[0] != "A" or record[1] != path or introduced[path] != 0:
                             raise GateInputError("INTEGRATED_TASK_PACKET_IMMUTABLE")
                         introduced[path] += 1
             previous = commit
@@ -2408,6 +2539,14 @@ class SpecGate:
         if self._base_gate_decision(base, gate_id) == "GO":
             raise GateInputError("INTEGRATED_GATE_IMMUTABLE")
         policy = self._gate_policy(gate_id)
+        succession = self._succession(gate_id)
+        if succession is not None:
+            predecessor = succession.get("predecessor")
+            if (
+                not isinstance(predecessor, str)
+                or self._base_gate_decision(base, predecessor) != "GO"
+            ):
+                raise GateInputError("INTEGRATED_PREDECESSOR_GATE")
         if (
             packet.get("schema_version") != "1.0.0"
             or packet.get("change_type") != "integrated_gate_candidate"
@@ -2444,7 +2583,7 @@ class SpecGate:
             "docs/CONTEXT.md",
         }
         completion_tasks = self._gate_completion_tasks(gate_id)
-        integrated_scopes = self._integrated_task_scopes(gate_id, completion_tasks)
+        integrated_scopes = self._integrated_task_scopes(gate_id, completion_tasks, base=base)
         self._validate_integrated_task_packets(
             base=base, candidate=candidate, scopes=integrated_scopes, gate_id=gate_id
         )
@@ -2462,6 +2601,23 @@ class SpecGate:
             if task_id in completion_catalog and self._historical_completion_errors(base, task_id):
                 raise GateInputError("INTEGRATED_COMPLETION_RECORD")
         permitted = set(required)
+        successor = succession.get("successor") if succession is not None else None
+        if successor is not None:
+            if not isinstance(successor, str) or self._succession(successor) is None:
+                raise GateInputError("INTEGRATED_SUCCESSOR_POLICY")
+            for task_id in self._gate_completion_tasks(successor):
+                seed_path = f"work/task-packets/{task_id}.yaml"
+                raw = _git_blob(self.root, candidate, seed_path)
+                self._seed_packet_entry(raw, task_id, base)
+                base_paths = git_text(
+                    self.root, "ls-tree", "--name-only", base, "--", seed_path
+                ).splitlines()
+                if base_paths:
+                    if raw != self._base_file(base, seed_path):
+                        raise GateInputError("INTEGRATED_SEED_MUTATION")
+                else:
+                    required.add(seed_path)
+                    permitted.add(seed_path)
         for packet_paths, _ in integrated_scopes.values():
             permitted.update(packet_paths)
         if not required.issubset(changed) or not set(changed).issubset(permitted):
@@ -2524,6 +2680,17 @@ class SpecGate:
         if not isinstance(promotion_hash, str) or not SHA256_PATTERN.fullmatch(promotion_hash):
             raise GateInputError("INTEGRATED_PROMOTION_HASH")
         return gate_id, review_hash, promotion_hash, packet
+
+    def _check_gate_review_roles(
+        self, gate_id: str, roles: set[str], identities: set[str]
+    ) -> None:
+        expected = (
+            {"product_scope", "architecture_contracts", "security_evaluation"}
+            if self._gate_policy(gate_id).get("review_required")
+            else set()
+        )
+        if roles != expected or len(identities) != len(expected):
+            raise GateInputError("INTEGRATED_REVIEW_INDEPENDENCE")
 
     def _validate_integrated_pull_request_chain(
         self, base: str, pull_request_head: str
@@ -2592,7 +2759,9 @@ class SpecGate:
                 base=base,
                 commits=commits,
                 subject_index=subject_index,
-                scopes=self._integrated_task_scopes(gate_id, self._gate_completion_tasks(gate_id)),
+                scopes=self._integrated_task_scopes(
+                    gate_id, self._gate_completion_tasks(gate_id), base=base
+                ),
                 gate_id=gate_id,
             )
             self._validate_integrated_chain_budget(base, commits, gate_id)
@@ -2664,11 +2833,7 @@ class SpecGate:
                     raise GateInputError("INTEGRATED_REVIEW_BINDING")
                 roles.add(role)
                 identities.add(identity)
-            if review_required and (
-                roles != {"product_scope", "architecture_contracts", "security_evaluation"}
-                or len(identities) != 3
-            ):
-                raise GateInputError("INTEGRATED_REVIEW_INDEPENDENCE")
+            self._check_gate_review_roles(gate_id, roles, identities)
             promotion = commits[-1]
             promotion_parent = self._single_parent(promotion)
             promotion_records = self._diff_records(
@@ -3118,7 +3283,7 @@ class SpecGate:
             )
             identity = (packet.get("change_type"), packet.get("decision")) == (
                 ("spec", "GO-PROPOSED")
-                if gate_id in {"G1", "G2"}
+                if gate_id != "POLICY"
                 else ("policy_amendment", "CHANGE-PROPOSED")
             )
             if (
@@ -3169,7 +3334,7 @@ class SpecGate:
             raise GateInputError("REVIEW_PROPOSAL_INVALID")
         manifest_path = (
             f"artifacts/gates/{gate_id}/promotion-manifest.json"
-            if gate_id in {"G1", "G2"}
+            if gate_id != "POLICY"
             else f"work/change-control/amendments/{packet.get('change_id')}-manifest.json"
         )
         manifest = _mapping(
@@ -3195,7 +3360,7 @@ class SpecGate:
         try:
             reviewed_gate_ids = {
                 gate_id
-                for gate_id in ("G1", "G2")
+                for gate_id in _mapping(self.policy.get("gate_policy"), "POLICY_GATE")
                 if any(
                     path.startswith(f"work/change-control/reviews/{gate_id}/") for path in changed
                 )
@@ -3245,7 +3410,13 @@ class SpecGate:
             if (
                 receipt.get("schema_version") != "1.0.0"
                 or receipt.get("change_type") != "independent_review"
-                or gate_id not in {"G1", "G2", "POLICY"}
+                or (
+                    gate_id != "POLICY"
+                    and (
+                        not isinstance(gate_id, str)
+                        or self._gate_policy(gate_id).get("review_required") is not True
+                    )
+                )
                 or role not in {"product_scope", "architecture_contracts", "security_evaluation"}
                 or receipt.get("verdict") not in {"PASS", "BLOCK"}
                 or not isinstance(reviewer_identity, str)
@@ -3954,7 +4125,7 @@ class SpecGate:
             ]
             review_candidate = len(changed) == 2 and all(
                 record[0] == "A"
-                and re.match(r"work/change-control/reviews/(?:G1|G2|POLICY)/", record[1])
+                and re.match(r"work/change-control/reviews/(?:G[1-9]|POLICY)/", record[1])
                 for record in records
             )
             promotion_gate_id = self._promotion_gate_id(changed)
