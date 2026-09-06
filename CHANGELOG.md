@@ -22,6 +22,22 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### G4 — Core MVP v0.1 gate candidate (2026-09-06)
+
+- Integrated `P4.1`-`P4.12`: evidence-bound root-cause localization, security
+  invariants, PoC/PoC+ regression descriptors, bounded patch construction,
+  ephemeral sandbox validation, a twelve-stage validation ladder, bounded repair
+  attempts, semantic diff review, monotonic patch lifecycle, reference CWE-89
+  E2E, repair CLI receipts, and a reproducible demo/notebook.
+- Implementation checkpoint `f76c4c803b3ca185e0c68c310a5d4674c49ba391`
+  passed the canonical G4 cycle: 1514 unit tests passed, 5 platform skips,
+  81.20% Core branch coverage, Ruff and mypy passed, and `QUALITY=PASS`.
+  The two G4 integration files passed all 6 scenarios; the clean demo produced
+  deterministic reports without network access or a product PASS claim.
+- CR-057 proposes exact-byte G4 promotion through one protected PR/CI cycle.
+  Independent G4 review is not required; the combined final review remains
+  after G9.
+
 ### G3 — Investigation Ready (2026-09-06)
 
 - Completed `P3.1`–`P3.13`: evidence-bound Auditor and read-only Skeptic,
