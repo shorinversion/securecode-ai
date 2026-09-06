@@ -1,0 +1,93 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.3"
+  type: "implementation"
+  objective: "Implement a bounded, fail-closed Auditor investigation loop over metadata-only EvidencePackage and structured AuditorResponse values."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "90e892e079\
+    9617e0e395\
+    b07f816649\
+    1133c7daf4"
+  spec_refs: [SC-DOM-001, SC-DOM-002, SC-DOM-005, SC-DOM-010, SC-DOM-011, SC-DOM-013, SC-WF-006, SC-CAP-002, SC-CAP-003, SC-CAP-008, SC-CAP-009]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G2 Deterministic Core Ready is effective GO."
+    - "P3.1 and P3.2 contracts are present in the same integration candidate."
+  non_goals:
+    - "Model transport, prompt assembly, repository I/O, tool dispatch, routing policy, Skeptic, Finding Gate, public contract schema, or persisted telemetry."
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "component-implementer"
+  mode: "path_isolated_subtask"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/investigation.py"
+    - "tests/unit/test_investigation.py"
+    - "work/task-packets/P3.3.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/investigation.py"
+    - "tests/unit/test_investigation.py"
+    - "work/task-packets/P3.3.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/core/src/securecode_ai/core/__init__.py", "packages/adapters/**", "docs/**", "CHANGELOG.md", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1600
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  network: "deny"
+  "secre\x74s": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "typed terminal Auditor investigation receipt with no workflow route field"
+    - "host-owned cumulative attempt, token, tool-call, elapsed-time and two-context-round limits"
+    - "typed provider and read-only context protocols with raw output excluded"
+
+constraints:
+  invariants:
+    - "only a NEEDS_MORE_EVIDENCE result may request another context, and only a package preserving all selected evidence IDs while adding a new selected evidence ID may run it"
+    - "confirmation and evidence-backed rejection stop immediately"
+    - "model non-success, malformed typed invocation, provider fault, no progress and every exhausted limit terminate as NOT_EVALUATED and INDETERMINATE"
+    - "provider or model values cannot select workflow routing or product PASS"
+    - "safe receipts retain only identifiers, digests, status, citations and resource counts; no raw source, prompt, tool output or model prose"
+  security:
+    - "no filesystem, shell, process, network, write or arbitrary tool capability is introduced"
+
+verification:
+  acceptance_commands:
+    - "Deferred by the active fast gate cadence until the integrated G3 candidate closes."
+  positive_cases:
+    - "confirmation and evidence-backed rejection are terminal"
+    - "one new-evidence context round can produce a terminal cited result"
+  negative_cases:
+    - "reused or absent context is no-progress and indeterminate"
+    - "all ModelCallStatus non-success values and every budget exhaustion remain NOT_EVALUATED"
+    - "third context round is refused"
+  required_evidence:
+    - "one integrated G3 full test and quality cycle"
+    - "one protected G3 PR and required CI"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.3]
+  gate_contribution: "Supplies the bounded Auditor loop required by G3; it does not independently establish task DONE, a finding route, or product PASS."
+  changelog_required: false
+  adr_required: false

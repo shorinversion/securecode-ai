@@ -1,0 +1,68 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.12"
+  type: "implementation"
+  objective: "Provide one bounded local OpenAI-compatible HTTP connector through the accepted provider authorization, endpoint peer-verification and egress contracts."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "395a927471\
+    a9241e3a68\
+    ab07fddde1\
+    b7079715e4"
+  spec_refs: [SC-PORT-003, SC-MODEL-001, SC-MODEL-002, SC-MODEL-006, SC-MODEL-007, SC-EGRESS-002, SC-ENDPOINT-001, SC-ENDPOINT-002, SC-ENDPOINT-003]
+  decision_refs: [D-024, D-027, D-044]
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "component-implementer"
+  mode: "isolated-worktree"
+  exclusive_path_lease:
+    - "packages/adapters/src/securecode_ai/adapters/openai_compatible_local.py"
+    - "tests/unit/test_openai_compatible_local.py"
+    - "work/task-packets/P3.12.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/adapters/src/securecode_ai/adapters/openai_compatible_local.py"
+    - "tests/unit/test_openai_compatible_local.py"
+    - "work/task-packets/P3.12.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/adapters/src/securecode_ai/adapters/__init__.py", "docs/**", "CHANGELOG.md", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 1800
+
+constraints:
+  invariants:
+    - "The connector accepts only an approved local OpenAI-compatible literal-loopback profile and the harness-provided peer parameters."
+    - "It performs direct sockets only: no ambient proxy lookup, DNS lookup, redirect following, alternate authority or credential attachment."
+    - "One request has explicit bounded headers and response bytes, caller timeout and cancellation polling; every transport ambiguity returns a typed non-success."
+    - "Native HTTP 2xx is passed only to existing normalization; refusal, filter, invalid payload and incomplete outcomes remain non-success."
+    - "The connector retains no durable raw source, credential or provider response data."
+
+verification:
+  acceptance_commands:
+    - "Not run by this worker: targeted fake-local endpoint tests are supplied for the integrator."
+  positive_cases:
+    - "Local fake endpoint receives one direct OpenAI-compatible request and a completed native response normalizes through the existing harness."
+  negative_cases:
+    - "Timeout, cancellation, redirect, oversized response and HTTP-200 native refusal return typed non-success without redirect retry or proxy behavior."
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: [P3.12]
+  gate_contribution: "Supplies the bounded live local transport required by G3; it does not make G3 effective."
+  changelog_required: false
+  adr_required: false

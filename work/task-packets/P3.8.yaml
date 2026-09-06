@@ -1,0 +1,78 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.8"
+  type: "implementation"
+  objective: "Implement immutable metadata-only replay, cost, latency and node telemetry contracts for investigation attempts."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8b\
+    a055dfa478\
+    58b975630b\
+    4c870af3be\
+    d2dda842b0\
+    e8422c8354\
+    b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "395a927471\
+    a9241e3a68\
+    ab07fddde1\
+    b7079715e4"
+  spec_refs: [SC-SYS-001, SC-SYS-004, SC-DATA-001, SC-DATA-003, SC-DATA-005, SC-EGRESS-005, SC-MODEL-003, SC-MODEL-005, SC-WF-003, SC-WF-005]
+  decision_refs: [D-027]
+  preconditions:
+    - "G2 deterministic core is effective and P3.3-P3.5 contracts remain the integration targets"
+  non_goals:
+    - "workflow graph/runtime integration, provider transport, prompt or response persistence, source/evidence content, secrets, SCM/backend telemetry, or public wire schemas"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "investigation-telemetry-implementer"
+  mode: "isolated-checkpoint"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/investigation_telemetry.py"
+    - "tests/unit/test_investigation_telemetry.py"
+    - "work/task-packets/P3.8.yaml"
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/investigation_telemetry.py"
+    - "tests/unit/test_investigation_telemetry.py"
+    - "work/task-packets/P3.8.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", ".github/**", "artifacts/gates/**", "packages/contracts/**", "packages/adapters/**", "packages/core/src/securecode_ai/core/__init__.py", "pyproject.toml", "uv.lock", "docs/**"]
+  max_changed_files: 3
+  max_diff_lines: 1000
+
+constraints:
+  invariants:
+    - "records bind exact tenant, run, 40-hex HEAD and execution identity"
+    - "provider/model/profile plus prompt/output schema, tool policy, evidence package, package and route hashes are mandatory semantic pins"
+    - "attempts, usage calls/tokens/bytes, latency and cost are bounded integers; zero cost is explicit and non-success stays non-success"
+    - "canonical replay digest changes under every semantic pin mutation and replay is deterministic"
+    - "only DC1 metadata is retained; raw source, prompts, responses, secrets, tool payloads and rationale are not accepted or serialized"
+    - "module remains graph-independent and does not import unfinished P3.3-P3.5 modules"
+
+verification:
+  acceptance_commands:
+    - "deferred: one canonical whole-G3 quality cycle after all P3 tasks integrate; independent review remains deferred until the single post-G9 review"
+  positive_cases:
+    - "fake records replay to byte-identical canonical digests"
+    - "trace completeness is deterministic for required node IDs"
+    - "zero-cost and successful/non-success provider statuses serialize as explicit metadata"
+  negative_cases:
+    - "wrong-length HEAD, non-positive attempts, negative counters/cost and cross-scope traces fail closed"
+    - "semantic pin mutations alter replay digest"
+    - "source/prompt/response canaries are absent from canonical telemetry"
+  independent_validator_required: false
+  primary_integrator_rerun_required: true
+  local_checks_skipped_by_assignment: "Do not run tests, lint, type, quality, review, push, PR or CI. Mandatory commit hooks only."
+
+completion:
+  definition_of_done_refs: [P3.8]
+  gate_contribution: "Supplies graph-independent deterministic telemetry/replay contracts for G3; does not establish G3 or product PASS."
+  changelog_required: true
+  adr_required: false

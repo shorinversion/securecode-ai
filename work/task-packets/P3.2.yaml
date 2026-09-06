@@ -1,0 +1,77 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P3.2"
+  type: "implementation"
+  objective: "Provide a fail-closed structured Auditor response contract that keeps ModelCallStatus independent from a schema-valid cited FindingVerdict."
+  baseline_commit_sha: "\x33\x39\x35\x61\x39\x32\x37\x34\x37\x31\x61\x39\x32\x34\x31\x65\x33\x61\x36\x38\x61\x62\x30\x37\x66\x64\x64\x64\x65\x31\x62\x37\x30\x37\x39\x37\x31\x35\x65\x34"
+  spec_refs: [SC-DOM-001, SC-DOM-002, SC-DOM-005, SC-DOM-010, SC-DOM-013, SC-WF-006, SC-CAP-002, SC-CAP-009]
+  decision_refs: [D-015, D-027]
+  preconditions:
+    - "G2 is effective GO on the exact starting commit"
+    - "P3.1 EvidencePackage context contract is present in the same candidate"
+  non_goals:
+    - "Model transport, prompts, investigation-loop routing, Skeptic, finding-gate policy or receipt persistence"
+    - "Public contract schema changes"
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "component-implementer"
+  mode: "path_isolated_subtask"
+  parent_task_id: null
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/auditor.py"
+    - "tests/unit/test_auditor_contract.py"
+    - "work/task-packets/P3.2.yaml"
+  parallel_sibling_tasks: [P3.1]
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/auditor.py"
+    - "tests/unit/test_auditor_contract.py"
+    - "work/task-packets/P3.2.yaml"
+  forbidden_paths: ["specs/**", "scripts/**", "artifacts/gates/**", "packages/contracts/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 3
+  max_diff_lines: 800
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands: ["git status/diff/show/add/commit", "rg"]
+  network: "deny"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "closed structured auditor verdict parser with evidence citations"
+    - "response object with independent model status and schema-valid result flag"
+    - "fixed non-echoing failures for malformed output and citation violations"
+
+constraints:
+  invariants:
+    - "only a SUCCEEDED call with valid structured output exposes a verdict"
+    - "every verdict citation is unique and belongs to the selected EvidencePackage"
+    - "non-success model outcomes cannot carry a schema-valid verdict"
+  compatibility:
+    - "uses existing ModelCallStatus and FindingVerdict enums without generic status aliases or public schema changes"
+  security:
+    - "Auditor remains a read-only typed consumer of evidence metadata; raw model output is never retained"
+
+verification:
+  acceptance_commands: ["deferred to primary integrator per assignment"]
+  negative_cases: ["invented citation", "duplicate citation", "invalid payload", "success-status schema failure", "non-success with payload"]
+  required_evidence: ["focused unit tests supplied for integrator execution"]
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+stop_conditions:
+  - "protected or public contract change required"
+  - "raw model output retention or model transport required"
+  - "new dependency required"
+
+completion:
+  definition_of_done_refs: [P3.2]
+  changelog_required: false
+  adr_required: false
