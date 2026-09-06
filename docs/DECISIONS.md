@@ -821,6 +821,54 @@
 - Consequence: canonical quality remains valid on both sides of G2 promotion
   while still proving the exact completion-task transition.
 
+## D-051 — Reusable gate succession and immutable successor admission
+
+- Status: proposed evaluator amendment CR-055; effective only after exact-byte
+  POLICY promotion and ordinary protected delivery. It does not advance G3.
+- Version 8 replaces `664df0d`, `6b31e38`, `12fd257`, `98d99b2`, `7fc33c8`
+  `d12ad81`, `cc5316f` and `d2bb408`. Version 8 copies the path lists
+  in two seed-test fixtures to avoid unintended YAML aliases; evaluator and
+  policy bytes remain identical to v7. The positive fixture uses an allowed
+  adapter path, preserving its inherited forbidden scope. Nonessential
+  docstrings were removed
+  to keep the
+  exact-byte manifest within existing parser scalar limits, preserving v6
+  executable AST and all budget enforcement. Parser limits are unchanged.
+  Both G3 bootstrap and protected-base successor task budgets
+  cover the full scoped base-to-subject retained delta,
+  including direct subject-commit writes. Immutable packet identity alone
+  does not establish compliance with its execution budget. Per-task file/line
+  overflow fails closed even within the global gate budget. G3 pinned packet
+  hash checks and cumulative checkpoint/history rules retain their semantics;
+  changed final bytes require fresh proposal subjects and all three
+  sequential POLICY receipts before promotion. G3 budgets
+  are bounded at 96 file touches / 16000 lines using the measured checkpoint
+  history plus successor seeds and gate evidence; later gate limits are unchanged.
+- G3 packet history requires one addition, permits later scoped modifications,
+  rejects deletion/rename/copy, and still binds final exact pinned packet hashes.
+  Per-task touch caps include four touches of remediation headroom within the
+  global budget. Protected-base successor packet history remains immutable.
+- Decision: declare G3-G9 gate requirements and completion tasks once. G3 uses
+  exact historical packet hashes and policy-owned fixed scopes as a bounded
+  bootstrap, without falsely treating simplified packets as old P2 schema.
+  G4-G9 use full-schema packets admitted in the predecessor gate subject and
+  carried unchanged through promotion into the next protected base. Admission
+  checks the declared base ancestry, exact packet bytes, constrained paths,
+  budgets and seed provenance. No candidate can grant itself broader authority.
+- Test catalog entries owned by future tasks bind to their final owner's gate
+  and canonical quality command. Completed owners require that gate's effective
+  GO; declared catalog state alone is never test PASS evidence.
+- Alternatives rejected: candidate-owned wildcard scopes, repeated evaluator
+  amendments for each P-task/gate, and rewriting historical evidence.
+- Consequences: each gate closing must include its successor's constrained
+  packets. Missing packets, hash drift or unmet required evidence fail closed.
+  G3-G8 use no independent gate reviews. After all G9 implementation and quality,
+  one combined final cycle requires three independent product, architecture and
+  security/evaluation receipts on the exact G9 subject before closure promotion.
+  Ordinal digest ordering and canonical committed-byte readback are mandatory.
+  Existing POLICY receipts are a separate protected
+  mutation requirement, not authorization for extra product reviews.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
