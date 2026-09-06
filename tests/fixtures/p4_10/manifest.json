@@ -1,0 +1,40 @@
+{
+  "schema_version": "securecode.p4_10.reference.v1",
+  "dataset": {
+    "dataset_id": "SC-MVP-CWE89",
+    "version": "1.1.0",
+    "revision": "securecode-spec-0.2.0",
+    "sha256_parts": ["436843b0", "2bee53cc", "2997903b", "3e61afb9", "734ff5fa", "2580756e", "cba7344e", "92c12663"]
+  },
+  "identities": {
+    "tenant_id": "p4-10-tenant",
+    "repository_id": "p4-10-cwe89-reference",
+    "vulnerable_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "fixed_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "reference_patch_sha256_parts": ["1525fc1b", "6d074c63", "157b7798", "1a414611", "ca1bba84", "bf6f6e79", "1e2cb4d0", "3a403f64"]
+  },
+  "cases": [
+    {
+      "case_id": "CWE89-VULN-001",
+      "role": "vulnerable",
+      "path": "vulnerable/app.py",
+      "size_bytes": 189,
+      "sha256_parts": ["cdccb9c1", "12a8914d", "6069de31", "377d4295", "efe93e74", "c0c5d53d", "77eb8222", "142b4f28"],
+      "expected": "confirmed_cwe89_and_validated_candidate"
+    },
+    {
+      "case_id": "CWE89-SAFE-001",
+      "role": "safe_control",
+      "path": "safe/app.py",
+      "size_bytes": 192,
+      "sha256_parts": ["b2982417", "dec78be5", "873b88df", "72f65082", "7d986030", "8090de56", "6d6907db", "604e6059"],
+      "expected": "no_confirmed_finding_or_patch"
+    },
+    {
+      "case_id": "CWE89-GUARD-001",
+      "role": "poc_plus_guard",
+      "source_origin": "SC-MVP-CWE89:1.1.0",
+      "expected": "needs_more_evidence"
+    }
+  ]
+}

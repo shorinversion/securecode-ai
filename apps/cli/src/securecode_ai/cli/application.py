@@ -42,6 +42,7 @@ from .diagnostic import (
     canonical_diagnostic_json,
     run_deterministic_diagnostic,
 )
+from .repair import RepairCli, RepairFormat, render_receipt
 
 CLI_VERSION: Final = "0.1.0a0"
 FOUNDATION_PROFILE_SELECTOR: Final = "securecode-foundation-fake@0.2.0"
@@ -237,6 +238,79 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _parse_repair(tokens: tuple[str, ...]) -> tuple[CliCommand, str, RepairFormat, Path | None]:
+    if not tokens or tokens[0] not in {"scan", "fix", "validate"} or len(tokens) < 2:
+        raise ValueError
+    command = CliCommand(tokens[0])
+    target = tokens[1]
+    if not target or target.startswith("-"):
+        raise ValueError
+    report_format = RepairFormat.JSON
+    output: Path | None = None
+    index = 2
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--format" and index + 1 < len(tokens):
+            index += 1
+            report_format = RepairFormat(tokens[index])
+        elif token == "--output" and index + 1 < len(tokens) and output is None:
+            index += 1
+            if not tokens[index]:
+                raise ValueError
+            output = Path(tokens[index])
+        else:
+            raise ValueError
+        index += 1
+    return command, target, report_format, output
+
+
+def _run_repair_command(
+    tokens: tuple[str, ...],
+    *,
+    machine: bool,
+    stdout: TextIO,
+    stderr: TextIO,
+    correlation_id_factory: Callable[[], str],
+    repair: RepairCli | None,
+) -> int:
+    try:
+        command, target, report_format, output = _parse_repair(tokens)
+        receipt = (repair or RepairCli()).run(command, target)
+        rendered = render_receipt(receipt, report_format)
+        if output is not None:
+            if output.exists():
+                raise OSError
+            output.write_bytes(rendered)
+        if machine:
+            stdout.write(rendered.decode("utf-8") + ("" if rendered.endswith(b"\n") else "\n"))
+        else:
+            stderr.write(
+                f"{command.value} operation completed; product outcome was not evaluated\n"
+            )
+        return int(receipt.exit_code)
+    except ValueError:
+        return _write_error(
+            _error_result(CliErrorCode.INVALID_USAGE, CliCommand.SCAN, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except KeyboardInterrupt:
+        return _write_error(
+            _error_result(CliErrorCode.CANCELLED, None, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except Exception:
+        return _write_error(
+            _error_result(CliErrorCode.OPERATIONAL_ERROR, None, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
 def _canonical_json(result: CliDoctorResult | CliErrorResult) -> str:
     return json.dumps(
         result.model_dump(mode="json"),
@@ -417,6 +491,7 @@ def main(
     environment: Mapping[str, str] | None = None,
     doctor: Doctor | None = None,
     diagnostic: DeterministicDiagnostic | None = None,
+    repair: RepairCli | None = None,
     correlation_id_factory: Callable[[], str] = _default_correlation_id,
 ) -> int:
     """Execute the bounded P1.10 grammar and return one stable process code."""
@@ -458,6 +533,22 @@ def main(
         output.write(f"securecode {CLI_VERSION}\n")
         return int(CliExitCode.COMPLETED)
     if stripped and stripped[0] == CliCommand.SCAN.value:
+        if "--diagnostic" not in stripped:
+            if diagnostic is None:
+                return _run_repair_command(
+                    stripped,
+                    machine=machine,
+                    stdout=output,
+                    stderr=errors,
+                    correlation_id_factory=correlation_id_factory,
+                    repair=repair,
+                )
+            return _write_error(
+                _error_result(CliErrorCode.INVALID_USAGE, CliCommand.SCAN, correlation_id_factory),
+                machine=machine,
+                stdout=output,
+                stderr=errors,
+            )
         return _run_diagnostic_scan(
             stripped,
             machine=machine,
@@ -465,6 +556,15 @@ def main(
             stderr=errors,
             correlation_id_factory=correlation_id_factory,
             diagnostic=diagnostic,
+        )
+    if stripped and stripped[0] in {CliCommand.FIX.value, CliCommand.VALIDATE.value}:
+        return _run_repair_command(
+            stripped,
+            machine=machine,
+            stdout=output,
+            stderr=errors,
+            correlation_id_factory=correlation_id_factory,
+            repair=repair,
         )
     if stripped != ("doctor",):
         return _write_error(

@@ -361,18 +361,18 @@ MVP `v0.1`.
 
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
-| `P4.1` | Root-cause localizer | G3 | root cause отделён от surface symptom | `TODO` |
-| `P4.2` | Security invariant contract | P4.1 | invariant машинно связан с finding и tests | `TODO` |
-| `P4.3` | Security regression test/PoC generator | P4.2 | vulnerable revision fails, fixed candidate passes | `TODO` |
-| `P4.4` | Architect structured patch contract | P4.1–P4.3 | minimal unified diff + rationale + touched symbols | `TODO` |
-| `P4.5` | Ephemeral sandbox executor | P4.4 | no network/secrets, limits, teardown и escape tests | `TODO` |
-| `P4.6` | Validation ladder | P4.5 | apply, parse, lint, types, build, tests, PoC+, rescan | `TODO` |
-| `P4.7` | Bounded repair loop | P4.6 | max attempts, diagnostic progress, escalation | `TODO` |
-| `P4.8` | Semantic diff/blast-radius review | P4.4–P4.6 | auth/API/crypto changes marked human-required | `TODO` |
-| `P4.9` | Patch status model и local human approval | P4.6–P4.8 | suggestion → candidate → validated → approved transitions | `TODO` |
-| `P4.10` | End-to-end CWE-89 reference scenario | P4.1–P4.9 | reproducible vulnerable and negative-control repos | `TODO` |
-| `P4.11` | `scan`, `fix`, `validate` CLI UX | P4.10 | documented exit codes, JSON/SARIF/MD/diff outputs | `TODO` |
-| `P4.12` | MVP notebook и demo script | P4.10 | clean environment executes from start to final report | `TODO` |
+| `P4.1` | Root-cause localizer | G3 | root cause отделён от surface symptom | `DONE` |
+| `P4.2` | Security invariant contract | P4.1 | invariant машинно связан с finding и tests | `DONE` |
+| `P4.3` | Security regression test/PoC generator | P4.2 | vulnerable revision fails, fixed candidate passes | `DONE` |
+| `P4.4` | Architect structured patch contract | P4.1–P4.3 | minimal unified diff + rationale + touched symbols | `DONE` |
+| `P4.5` | Ephemeral sandbox executor | P4.4 | no network/secrets, limits, teardown и escape tests | `DONE` |
+| `P4.6` | Validation ladder | P4.5 | apply, parse, lint, types, build, tests, PoC+, rescan | `DONE` |
+| `P4.7` | Bounded repair loop | P4.6 | max attempts, diagnostic progress, escalation | `DONE` |
+| `P4.8` | Semantic diff/blast-radius review | P4.4–P4.6 | auth/API/crypto changes marked human-required | `DONE` |
+| `P4.9` | Patch status model и local human approval | P4.6–P4.8 | suggestion → candidate → validated → approved transitions | `DONE` |
+| `P4.10` | End-to-end CWE-89 reference scenario | P4.1–P4.9 | reproducible vulnerable and negative-control repos | `DONE` |
+| `P4.11` | `scan`, `fix`, `validate` CLI UX | P4.10 | documented exit codes, JSON/SARIF/MD/diff outputs | `DONE` |
+| `P4.12` | MVP notebook и demo script | P4.10 | clean environment executes from start to final report | `DONE` |
 
 ### G4 — Core MVP v0.1
 

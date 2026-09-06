@@ -16,12 +16,17 @@
   [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
+- G4 `Core MVP v0.1` is effective `GO`. `P4.1`-`P4.12` completed at
+  implementation checkpoint `f76c4c803b3ca185e0c68c310a5d4674c49ba391`;
+  canonical quality passed with 1514 unit tests, 5 platform skips, 81.20% Core
+  branch coverage, and all 6 G4 integration scenarios passed. CR-057 exact-byte
+  promotion authorizes G5 as the next gate.
 - G3 `Investigation Ready` is effective `GO`: `P3.1`–`P3.13` completed on
   implementation checkpoint `c3f682bac863e6c46ea159f437179e643d4c3eeb`.
   The canonical G3 cycle passed with 1443 tests passed, 5 expected Windows
   POSIX/FIFO skips, 82.43% Core branch coverage and `QUALITY=PASS`; real
   local-model qualification reached `REAL_EVIDENCE_RECORDED`. G4 is next.
-- Phase: `P4 - Root-cause repair and validation` is authorized to start.
+- Phase: `P5 - CI and reference SCM integration` is authorized to start.
 - G2 `Deterministic Core Ready` is `GO`: P2.6-P2.13 are complete through
   exact-byte promotion of implementation checkpoint
   `eb849b555ef8ff7e96b45baf866f2300d56d3b4c`. Its canonical gate cycle passed
