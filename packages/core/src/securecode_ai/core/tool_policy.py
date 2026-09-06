@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, Protocol
 
-from securecode_ai.contracts import RepositoryTool
+from securecode_ai.contracts import RepositoryTool as RepositoryTool
 
 from .injection_boundary import InstructionAuthority
 

@@ -31,10 +31,10 @@ from securecode_ai.contracts import (
     ModelBudgetUsage,
     ModelCallResult,
     ModelCallStatus,
-    ModelDiscoveryReceipt,
-    ModelPurpose,
+    ModelDiscoveryReceipt as ModelDiscoveryReceipt,
+    ModelPurpose as ModelPurpose,
     ModelRequest,
-    ModelRole,
+    ModelRole as ModelRole,
     PreflightEligibility,
     ProducerRef,
 )
