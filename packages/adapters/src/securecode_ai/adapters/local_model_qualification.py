@@ -7,21 +7,19 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from securecode_ai.contracts import (
+from securecode_ai.core import (
     AuditRunOutcome,
     ComponentPin,
     ModelCallStatus,
-    ModelDiscoveryReceipt,
-    ModelPurpose,
     ModelRequest,
-    ModelRole,
-    RepositoryTool,
 )
+from securecode_ai.core.model_discovery import ModelDiscoveryReceipt, ModelPurpose, ModelRole
 from securecode_ai.core.tool_policy import (
     ListPathsArguments,
     LookupSymbolArguments,
     ReadEvidenceArguments,
     ReadRangeArguments,
+    RepositoryTool,
     RepositoryToolArguments,
     RepositoryToolReceipt,
     RepositoryToolRequest,
