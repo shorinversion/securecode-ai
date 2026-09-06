@@ -1,7 +1,7 @@
 # G4 decision
 
-decision: GO-PROPOSED
+decision: GO
 
 All eight Core MVP criteria and all twelve P4 tasks have executable evidence on
-the integrated candidate. Exact-byte promotion may mark P4.1-P4.12 complete and
-record G4 `GO` after protected PR/CI validation.
+the integrated candidate. Exact-byte promotion marks P4.1-P4.12 complete and
+authorizes G5 as the next gate.
