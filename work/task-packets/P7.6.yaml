@@ -2,7 +2,7 @@ schema_version: "0.1-draft"
 task:
   id: "P7.6"
   type: "implementation"
-  objective: "Prepare and freeze a separately admitted development corpus with reproducible bytes, licenses, lineage-safe grouping and independently checkable oracles for P7.17."
+  objective: "Prepare candidate development-corpus inputs and evidence for P7.17; this bounded packet cannot complete broader P7.6, G7, confirmatory evaluation, calibration, or release readiness."
   baseline_id: "securecode-definition-0.2.0"
   baseline_content_sha256: "dedb43be8ba\
     055dfa47858b\
@@ -14,10 +14,10 @@ task:
     f7130d16cb\
     2c20609190\
     8be71b0702"
-  starting_commit_sha: "7b1d2f46cd\
-    d46ed57c38\
-    f08847389c\
-    b6ad262dd0"
+  starting_commit_sha: "72a9490787\
+    c1d317bc88\
+    290983d889\
+    97af0670f3"
   spec_refs: [SC-PROD-020, SC-EVAL-001, SC-EVAL-002, SC-EVAL-004, SC-EVAL-005, SC-EVAL-007]
   decision_refs: [D-025, D-028, D-044]
   preconditions: ["G4 is effective GO", "development corpus remains separate from locked confirmatory inputs"]
@@ -30,7 +30,36 @@ execution:
   owner_role: "development-corpus-implementer"
   mode: "path_isolated_subtask"
   exclusive_path_lease:
-    - "evaluation/development/corpus/**"
+    - "evaluation/development/corpus/authz/admin_guard.py"
+    - "evaluation/development/corpus/authz/cross_tenant_bridge.py"
+    - "evaluation/development/corpus/authz/default_deny_report.py"
+    - "evaluation/development/corpus/authz/direct_object_reference.py"
+    - "evaluation/development/corpus/authz/opaque_identifier_zero_scanner.py"
+    - "evaluation/development/corpus/authz/support.py"
+    - "evaluation/development/corpus/authz/tenant_checked_lookup.py"
+    - "evaluation/development/corpus/command/argument_vector.py"
+    - "evaluation/development/corpus/command/build_guard.py"
+    - "evaluation/development/corpus/command/indirect_launcher_zero_scanner.py"
+    - "evaluation/development/corpus/command/literal_status.py"
+    - "evaluation/development/corpus/command/shell_flag.py"
+    - "evaluation/development/corpus/command/support.py"
+    - "evaluation/development/corpus/command/task_bridge.py"
+    - "evaluation/development/corpus/oracle-rules.json"
+    - "evaluation/development/corpus/oracle.py"
+    - "evaluation/development/corpus/path/archive_guard.py"
+    - "evaluation/development/corpus/path/encoded_segment_zero_scanner.py"
+    - "evaluation/development/corpus/path/import_path_bridge.py"
+    - "evaluation/development/corpus/path/readonly_config.py"
+    - "evaluation/development/corpus/path/resolved_child.py"
+    - "evaluation/development/corpus/path/support.py"
+    - "evaluation/development/corpus/path/traversal_join.py"
+    - "evaluation/development/corpus/sql/allowlisted_sort.py"
+    - "evaluation/development/corpus/sql/concat_query.py"
+    - "evaluation/development/corpus/sql/implicit_concat_zero_scanner.py"
+    - "evaluation/development/corpus/sql/parameterized_query.py"
+    - "evaluation/development/corpus/sql/report_bridge.py"
+    - "evaluation/development/corpus/sql/static_report.py"
+    - "evaluation/development/corpus/sql/support.py"
     - "evaluation/development/corpus-manifest.yaml"
     - "evaluation/development/README.md"
     - "scripts/development_corpus.py"
@@ -41,7 +70,36 @@ execution:
   integration_owner: "codex-root"
 scope:
   allowed_paths:
-    - "evaluation/development/corpus/**"
+    - "evaluation/development/corpus/authz/admin_guard.py"
+    - "evaluation/development/corpus/authz/cross_tenant_bridge.py"
+    - "evaluation/development/corpus/authz/default_deny_report.py"
+    - "evaluation/development/corpus/authz/direct_object_reference.py"
+    - "evaluation/development/corpus/authz/opaque_identifier_zero_scanner.py"
+    - "evaluation/development/corpus/authz/support.py"
+    - "evaluation/development/corpus/authz/tenant_checked_lookup.py"
+    - "evaluation/development/corpus/command/argument_vector.py"
+    - "evaluation/development/corpus/command/build_guard.py"
+    - "evaluation/development/corpus/command/indirect_launcher_zero_scanner.py"
+    - "evaluation/development/corpus/command/literal_status.py"
+    - "evaluation/development/corpus/command/shell_flag.py"
+    - "evaluation/development/corpus/command/support.py"
+    - "evaluation/development/corpus/command/task_bridge.py"
+    - "evaluation/development/corpus/oracle-rules.json"
+    - "evaluation/development/corpus/oracle.py"
+    - "evaluation/development/corpus/path/archive_guard.py"
+    - "evaluation/development/corpus/path/encoded_segment_zero_scanner.py"
+    - "evaluation/development/corpus/path/import_path_bridge.py"
+    - "evaluation/development/corpus/path/readonly_config.py"
+    - "evaluation/development/corpus/path/resolved_child.py"
+    - "evaluation/development/corpus/path/support.py"
+    - "evaluation/development/corpus/path/traversal_join.py"
+    - "evaluation/development/corpus/sql/allowlisted_sort.py"
+    - "evaluation/development/corpus/sql/concat_query.py"
+    - "evaluation/development/corpus/sql/implicit_concat_zero_scanner.py"
+    - "evaluation/development/corpus/sql/parameterized_query.py"
+    - "evaluation/development/corpus/sql/report_bridge.py"
+    - "evaluation/development/corpus/sql/static_report.py"
+    - "evaluation/development/corpus/sql/support.py"
     - "evaluation/development/corpus-manifest.yaml"
     - "evaluation/development/README.md"
     - "scripts/development_corpus.py"
@@ -52,7 +110,11 @@ scope:
   max_diff_lines: 6000
 capabilities:
   allowed_tools: [apply_patch, shell_command]
-  allowed_commands: ["git status/diff/show/add/commit", "rg", "focused corpus validator tests"]
+  allowed_commands:
+    - "git status/diff/show/add/commit"
+    - "rg"
+    - "focused corpus validator tests"
+    - "local Docker oracle with exact pinned image digest, --pull never, network none and bounded resources"
   network: "deny"
   "\x73\x65\x63\x72\x65\x74\x73": "deny"  # pragma: allowlist secret
   dependency_changes: "deny"
@@ -88,7 +150,9 @@ verification:
   full_quality_deferred: "Run once on the final integrated P7.17 development-study candidate."
 stop_conditions: ["spec conflict", "unresolved license or source revision", "oracle ambiguity", "protected path change required", "new dependency required"]
 completion:
-  definition_of_done_refs: [P7.6]
-  gate_contribution: "Admits development inputs for P7.17; does not establish confirmatory benchmark or G7."
-  changelog_required: true
+  definition_of_done_refs: []
+  partial_refs:
+    P7.6: "Prepares the admitted development subset for P7.17 while the broader beta dataset task remains TODO."
+  gate_contribution: "Supplies candidate preparation inputs for independent P7.6 review and later P7.17; does not establish P7.6 completion, confirmatory benchmark, G7, calibration, or release readiness."
+  changelog_required: false
   adr_required: false

@@ -1,0 +1,608 @@
+{
+  "rules": {
+    "dev-authz-admin_guard": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "is_admin": false
+              },
+              {
+                "invoice_id": "inv-b",
+                "tenant_id": "tenant-b"
+              }
+            ],
+            "entrypoint": "fetch_invoice"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "non-administrator cannot disclose invoice",
+      "source_path": "corpus/authz/admin_guard.py"
+    },
+    "dev-authz-cross_tenant_bridge": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "inv-tenant-b"
+            ],
+            "entrypoint": "fetch_invoice"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "invoice identifier reaches disclosure without requester tenant check",
+      "source_path": "corpus/authz/cross_tenant_bridge.py"
+    },
+    "dev-authz-default_deny_report": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "internal_note": "tenant-b-note"
+              },
+              false
+            ],
+            "entrypoint": "disclose"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "denied caller cannot disclose internal note",
+      "source_path": "corpus/authz/default_deny_report.py"
+    },
+    "dev-authz-direct_object_reference": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "invoice_id": "inv-b",
+                "tenant_id": "tenant-b"
+              }
+            ],
+            "entrypoint": "fetch_invoice"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "untrusted invoice object is returned without authorization",
+      "source_path": "corpus/authz/direct_object_reference.py"
+    },
+    "dev-authz-opaque_identifier_zero_scanner": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "internal_note": "tenant-b-note"
+              }
+            ],
+            "entrypoint": "disclose"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "opaque identifier does not authorize internal note disclosure",
+      "source_path": "corpus/authz/opaque_identifier_zero_scanner.py"
+    },
+    "dev-authz-tenant_checked_lookup": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "tenant-a",
+              {
+                "invoice_id": "inv-b",
+                "tenant_id": "tenant-b"
+              }
+            ],
+            "entrypoint": "fetch_invoice"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "mismatched tenant cannot disclose invoice",
+      "source_path": "corpus/authz/tenant_checked_lookup.py"
+    },
+    "dev-command-argument_vector": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "tool",
+              "; touch /owned"
+            ],
+            "entrypoint": "build"
+          },
+          "secure_assertion": {
+            "expected": "; touch /owned",
+            "kind": "shell_safe"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              "tool",
+              "$(touch /owned2)"
+            ],
+            "entrypoint": "build"
+          },
+          "secure_assertion": {
+            "expected": "$(touch /owned2)",
+            "kind": "shell_safe"
+          }
+        }
+      ],
+      "security_property": "untrusted command-looking value remains one argv element in a shell-disabled execution plan",
+      "source_path": "corpus/command/argument_vector.py"
+    },
+    "dev-command-build_guard": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "release; touch /owned"
+            ],
+            "entrypoint": "accepts_target"
+          },
+          "secure_assertion": {
+            "expected": false,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "unallowlisted build target is rejected",
+      "source_path": "corpus/command/build_guard.py"
+    },
+    "dev-command-indirect_launcher_zero_scanner": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "; touch /owned"
+            ],
+            "entrypoint": "launch"
+          },
+          "secure_assertion": {
+            "expected": "; touch /owned",
+            "kind": "shell_safe"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              "$(touch /owned2)"
+            ],
+            "entrypoint": "launch"
+          },
+          "secure_assertion": {
+            "expected": "$(touch /owned2)",
+            "kind": "shell_safe"
+          }
+        }
+      ],
+      "security_property": "untrusted text is concatenated into a shell-enabled process execution plan",
+      "source_path": "corpus/command/indirect_launcher_zero_scanner.py"
+    },
+    "dev-command-literal_status": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [],
+            "entrypoint": "status"
+          },
+          "secure_assertion": {
+            "expected": "ready",
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "status output contains no command input",
+      "source_path": "corpus/command/literal_status.py"
+    },
+    "dev-command-shell_flag": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "; touch /owned"
+            ],
+            "entrypoint": "build"
+          },
+          "secure_assertion": {
+            "expected": "; touch /owned",
+            "kind": "shell_safe"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              "$(touch /owned2)"
+            ],
+            "entrypoint": "build"
+          },
+          "secure_assertion": {
+            "expected": "$(touch /owned2)",
+            "kind": "shell_safe"
+          }
+        }
+      ],
+      "security_property": "untrusted command crosses a shell-enabled process execution boundary",
+      "source_path": "corpus/command/shell_flag.py"
+    },
+    "dev-command-task_bridge": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "; touch /owned"
+            ],
+            "entrypoint": "build"
+          },
+          "secure_assertion": {
+            "expected": "; touch /owned",
+            "kind": "shell_safe"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              "$(touch /owned2)"
+            ],
+            "entrypoint": "build"
+          },
+          "secure_assertion": {
+            "expected": "$(touch /owned2)",
+            "kind": "shell_safe"
+          }
+        }
+      ],
+      "security_property": "untrusted task crosses imported helper boundary into shell-enabled process execution plan",
+      "source_path": "corpus/command/task_bridge.py"
+    },
+    "dev-path-archive_guard": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "dir/../../secrets"
+            ],
+            "entrypoint": "accepts_member"
+          },
+          "secure_assertion": {
+            "expected": false,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "archive extraction plan rejects traversal, absolute, backslash, and drive-qualified names",
+      "source_path": "corpus/path/archive_guard.py"
+    },
+    "dev-path-encoded_segment_zero_scanner": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "/sandbox/root",
+              "%2e%2e/secret"
+            ],
+            "entrypoint": "extraction_plan"
+          },
+          "secure_assertion": {
+            "kind": "inside_root_or_none"
+          }
+        }
+      ],
+      "security_property": "encoded traversal reaches filesystem extraction-plan sink without containment",
+      "source_path": "corpus/path/encoded_segment_zero_scanner.py"
+    },
+    "dev-path-import_path_bridge": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "/sandbox/root",
+              "../../outside"
+            ],
+            "entrypoint": "read"
+          },
+          "secure_assertion": {
+            "kind": "inside_root_or_none"
+          }
+        }
+      ],
+      "security_property": "untrusted name crosses helper boundary to filesystem path outside root",
+      "source_path": "corpus/path/import_path_bridge.py"
+    },
+    "dev-path-readonly_config": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "../etc/passwd"
+            ],
+            "entrypoint": "config_name"
+          },
+          "secure_assertion": {
+            "expected": null,
+            "kind": "equals"
+          }
+        }
+      ],
+      "security_property": "filesystem-looking configuration name is rejected",
+      "source_path": "corpus/path/readonly_config.py"
+    },
+    "dev-path-resolved_child": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "/sandbox/root",
+              "../outside"
+            ],
+            "entrypoint": "read"
+          },
+          "secure_assertion": {
+            "kind": "inside_root_or_none"
+          }
+        }
+      ],
+      "security_property": "resolved path outside configured root is rejected",
+      "source_path": "corpus/path/resolved_child.py"
+    },
+    "dev-path-traversal_join": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              "/sandbox/root",
+              "../../outside"
+            ],
+            "entrypoint": "read"
+          },
+          "secure_assertion": {
+            "kind": "inside_root_or_none"
+          }
+        }
+      ],
+      "security_property": "untrusted path segment reaches filesystem path without containment",
+      "source_path": "corpus/path/traversal_join.py"
+    },
+    "dev-sql-allowlisted_sort": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_args",
+                "values": {
+                  "order": "name; DROP TABLE accounts"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "list_accounts"
+          },
+          "secure_assertion": {
+            "expected": "DROP TABLE",
+            "kind": "db_query_excludes"
+          }
+        }
+      ],
+      "security_property": "untrusted structural SQL token falls back to allowlisted identifier",
+      "source_path": "corpus/sql/allowlisted_sort.py"
+    },
+    "dev-sql-concat_query": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_args",
+                "values": {
+                  "name": "x' OR '1'='1"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "lookup"
+          },
+          "secure_assertion": {
+            "expected": "x' OR '1'='1",
+            "kind": "db_bound_input"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_args",
+                "values": {
+                  "name": "admin'--"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "lookup"
+          },
+          "secure_assertion": {
+            "expected": "admin'--",
+            "kind": "db_bound_input"
+          }
+        }
+      ],
+      "security_property": "HTTP input is interpolated into SQL execute sink",
+      "source_path": "corpus/sql/concat_query.py"
+    },
+    "dev-sql-implicit_concat_zero_scanner": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_form",
+                "values": {
+                  "owner": "x' OR '1'='1"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "predicate"
+          },
+          "secure_assertion": {
+            "expected": "x' OR '1'='1",
+            "kind": "db_bound_input"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_form",
+                "values": {
+                  "owner": "admin'--"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "predicate"
+          },
+          "secure_assertion": {
+            "expected": "admin'--",
+            "kind": "db_bound_input"
+          }
+        }
+      ],
+      "security_property": "form input is interpolated into SQL execute sink despite scanner source-model gap",
+      "source_path": "corpus/sql/implicit_concat_zero_scanner.py"
+    },
+    "dev-sql-parameterized_query": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_args",
+                "values": {
+                  "name": "x' OR '1'='1"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "lookup"
+          },
+          "secure_assertion": {
+            "expected": "x' OR '1'='1",
+            "kind": "db_bound_input"
+          }
+        }
+      ],
+      "security_property": "HTTP input is passed as a bound SQL parameter",
+      "source_path": "corpus/sql/parameterized_query.py"
+    },
+    "dev-sql-report_bridge": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_args",
+                "values": {
+                  "name": "x' OR '1'='1"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "report"
+          },
+          "secure_assertion": {
+            "expected": "x' OR '1'='1",
+            "kind": "db_bound_input"
+          }
+        },
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "request_args",
+                "values": {
+                  "name": "admin'--"
+                }
+              },
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "report"
+          },
+          "secure_assertion": {
+            "expected": "admin'--",
+            "kind": "db_bound_input"
+          }
+        }
+      ],
+      "security_property": "HTTP input crosses imported helper boundary into SQL execute sink",
+      "source_path": "corpus/sql/report_bridge.py"
+    },
+    "dev-sql-static_report": {
+      "probes": [
+        {
+          "call": {
+            "arguments": [
+              {
+                "$fixture": "db"
+              }
+            ],
+            "entrypoint": "report"
+          },
+          "secure_assertion": {
+            "expected": {
+              "parameters": null,
+              "query": "SELECT count(*) FROM events"
+            },
+            "kind": "db_parameterized"
+          }
+        }
+      ],
+      "security_property": "static report query has no untrusted source",
+      "source_path": "corpus/sql/static_report.py"
+    }
+  },
+  "schema_version": "2.0"
+}
