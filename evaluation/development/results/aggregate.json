@@ -1,0 +1,333 @@
+{
+  "additional_finding_overlap": null,
+  "configurations": {
+    "deterministic_only": {
+      "FN": 12,
+      "FP": 0,
+      "TN": 0,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 12,
+      "executed": 0,
+      "f1": null,
+      "f2": null,
+      "failed": 0,
+      "missing_safe": 12,
+      "not_run": 24,
+      "planned": 24,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "full_hybrid": {
+      "FN": 36,
+      "FP": 0,
+      "TN": 0,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 0,
+      "f1": null,
+      "f2": null,
+      "failed": 0,
+      "missing_safe": 36,
+      "not_run": 72,
+      "planned": 72,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "model_native_only": {
+      "FN": 36,
+      "FP": 0,
+      "TN": 0,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 0,
+      "f1": null,
+      "f2": null,
+      "failed": 0,
+      "missing_safe": 36,
+      "not_run": 72,
+      "planned": 72,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "one_shot_llm": {
+      "FN": 27,
+      "FP": 3,
+      "TN": 24,
+      "TP": 9,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 48,
+      "f1": 0.375,
+      "f2": 0.28846153846153844,
+      "failed": 24,
+      "missing_safe": 9,
+      "not_run": 0,
+      "planned": 72,
+      "precision": 0.75,
+      "recall": 0.25,
+      "safe_FP": 3,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "scanner_seeded_investigation": {
+      "FN": 36,
+      "FP": 0,
+      "TN": 0,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 0,
+      "f1": null,
+      "f2": null,
+      "failed": 0,
+      "missing_safe": 36,
+      "not_run": 72,
+      "planned": 72,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    }
+  },
+  "development_e2e_remediation": {
+    "micro": {
+      "eligible_vulnerable_repairs": 156,
+      "rate": 0.0,
+      "validated_root_cause_repairs": 0
+    },
+    "per_configuration_repetition": [
+      {
+        "configuration": "deterministic_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "scanner_seeded_investigation",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "scanner_seeded_investigation",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "scanner_seeded_investigation",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "model_native_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "model_native_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "model_native_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "one_shot_llm",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "one_shot_llm",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "one_shot_llm",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "full_hybrid",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "full_hybrid",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "full_hybrid",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      }
+    ]
+  },
+  "incomplete": true,
+  "incomplete_reasons": {
+    "deterministic_only": {
+      "failed": 0,
+      "not_run": 24
+    },
+    "full_hybrid": {
+      "failed": 0,
+      "not_run": 72
+    },
+    "model_native_only": {
+      "failed": 0,
+      "not_run": 72
+    },
+    "one_shot_llm": {
+      "failed": 24,
+      "not_run": 0
+    },
+    "scanner_seeded_investigation": {
+      "failed": 0,
+      "not_run": 72
+    }
+  },
+  "planned_cells": 312,
+  "recorded_cells": 312,
+  "repair_metrics": {
+    "attempted_patches": 0,
+    "correct_and_secure_rate": null,
+    "root_cause_repair_rate": null
+  },
+  "resources": {
+    "deterministic_only": {
+      "failure_reason_counts": {
+        "shipped deterministic pipeline does not emit policy-matched CONFIRMED findings for this study": 24
+      },
+      "generated_tokens_total": 0,
+      "latency_p50_seconds": 2.00001522898674e-07,
+      "latency_p95_seconds": 4.998873919248581e-07,
+      "measured_wall_count": 24,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 24,
+      "prompt_tokens_total": 0,
+      "provider_cost": null,
+      "token_fact_count": 0,
+      "wall_seconds_total": 7.300404831767082e-06
+    },
+    "full_hybrid": {
+      "failure_reason_counts": {
+        "declared product workflow is not implemented": 72
+      },
+      "generated_tokens_total": 0,
+      "latency_p50_seconds": null,
+      "latency_p95_seconds": null,
+      "measured_wall_count": 0,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 0,
+      "provider_cost": null,
+      "token_fact_count": 0,
+      "wall_seconds_total": 0
+    },
+    "model_native_only": {
+      "failure_reason_counts": {
+        "declared product workflow is not implemented": 72
+      },
+      "generated_tokens_total": 0,
+      "latency_p50_seconds": null,
+      "latency_p95_seconds": null,
+      "measured_wall_count": 0,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 0,
+      "provider_cost": null,
+      "token_fact_count": 0,
+      "wall_seconds_total": 0
+    },
+    "one_shot_llm": {
+      "failure_reason_counts": {
+        "invalid_structured_finding": 24
+      },
+      "generated_tokens_total": 1044,
+      "latency_p50_seconds": 1.220467299921438,
+      "latency_p95_seconds": 1.8215675000101328,
+      "measured_wall_count": 72,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 8841,
+      "provider_cost": null,
+      "token_fact_count": 72,
+      "wall_seconds_total": 98.89483550097793
+    },
+    "scanner_seeded_investigation": {
+      "failure_reason_counts": {
+        "declared product workflow is not implemented": 72
+      },
+      "generated_tokens_total": 0,
+      "latency_p50_seconds": null,
+      "latency_p95_seconds": null,
+      "measured_wall_count": 0,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 0,
+      "provider_cost": null,
+      "token_fact_count": 0,
+      "wall_seconds_total": 0
+    }
+  },
+  "schema_version": "development-benchmark-aggregate-1.0"
+}

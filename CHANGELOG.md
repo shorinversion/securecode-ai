@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-09-07
+
+- Added the frozen P7.17 early development benchmark matrix, fail-closed raw
+  records, loopback-only one-shot run, independent denominator recomputation,
+  results and explicit no-claim limitations.
+
 Здесь фиксируются значимые изменения SecureCode AI: продукта, scope,
 архитектуры, безопасности, требований, планов и пользовательского поведения.
 Формат основан на [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), а

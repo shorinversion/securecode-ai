@@ -14,10 +14,10 @@ task:
     f7130d16cb\
     2c20609190\
     8be71b0702"
-  starting_commit_sha: "7b1d2f46cd\
-    d46ed57c38\
-    f08847389c\
-    b6ad262dd0"
+  starting_commit_sha: "5704ed1e84\
+    3169fada7e\
+    e4c666706e\
+    bd4d123233"
   spec_refs: [SC-EVAL-001, SC-EVAL-003, SC-EVAL-004, SC-EVAL-005, SC-EVAL-008, SC-EVAL-009, SC-EVAL-010, SC-EVAL-011, SC-EVAL-017, SC-EVAL-018]
   decision_refs: [D-025, D-027, D-028, D-044]
   preconditions:
@@ -34,12 +34,17 @@ execution:
   exclusive_path_lease:
     - "packages/core/src/securecode_ai/core/development_benchmark.py"
     - "scripts/run_development_benchmark.py"
+    - "scripts/recompute_development_benchmark.py"
     - "tests/unit/test_development_benchmark.py"
     - "tests/integration/test_development_benchmark.py"
     - "evaluation/development/run-plan.yaml"
-    - "evaluation/development/results/**"
-    - "report/development-benchmark/**"
+    - "evaluation/development/results/run-records.jsonl"
+    - "evaluation/development/results/aggregate.json"
+    - "evaluation/development/results/recomputed.json"
+    - "report/development-benchmark/README.md"
+    - "report/development-benchmark/limitations.md"
     - "work/task-packets/P7.17.yaml"
+    - "CHANGELOG.md"
   parallel_sibling_tasks: []
   may_delegate_further: false
   integration_owner: "codex-root"
@@ -47,19 +52,24 @@ scope:
   allowed_paths:
     - "packages/core/src/securecode_ai/core/development_benchmark.py"
     - "scripts/run_development_benchmark.py"
+    - "scripts/recompute_development_benchmark.py"
     - "tests/unit/test_development_benchmark.py"
     - "tests/integration/test_development_benchmark.py"
     - "evaluation/development/run-plan.yaml"
-    - "evaluation/development/results/**"
-    - "report/development-benchmark/**"
+    - "evaluation/development/results/run-records.jsonl"
+    - "evaluation/development/results/aggregate.json"
+    - "evaluation/development/results/recomputed.json"
+    - "report/development-benchmark/README.md"
+    - "report/development-benchmark/limitations.md"
     - "work/task-packets/P7.17.yaml"
+    - "CHANGELOG.md"
   forbidden_paths: ["specs/**", "artifacts/gates/**", "packages/contracts/**", ".github/**", "pyproject.toml", "uv.lock"]
   max_changed_files: 30
   max_diff_lines: 8000
 capabilities:
   allowed_tools: [apply_patch, shell_command]
   allowed_commands: ["git status/diff/show/add/commit", "rg", "focused benchmark tests", "declared benchmark runner"]
-  network: "deny"
+  network: "deny except literal loopback Ollama endpoint 127.0.0.1:11434 for declared model configurations"
   "\x73\x65\x63\x72\x65\x74\x73": "deny"  # pragma: allowlist secret
   dependency_changes: "deny"
 inputs:
@@ -86,6 +96,7 @@ verification:
     - "clean-checkout corpus validation and dry-run plan expansion"
     - "one canonical full local quality run on the exact integrated study candidate"
     - "declared first development benchmark run plus independent denominator recomputation"
+    - ".venv/Scripts/python.exe scripts/recompute_development_benchmark.py --plan evaluation/development/run-plan.yaml --records evaluation/development/results/run-records.jsonl --output evaluation/development/results/recomputed.json"
   positive_cases: ["implemented configurations emit complete bound facts and reproducible aggregate"]
   negative_cases: ["missing cell, stale hash, denominator drift, fail-open non-success, raw-source result echo and unsafe execution reject"]
   required_evidence: ["raw per-run records", "aggregate report", "independent recomputation", "limitations record"]
