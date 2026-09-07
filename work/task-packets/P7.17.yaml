@@ -1,0 +1,99 @@
+schema_version: "0.1-draft"
+task:
+  id: "P7.17"
+  type: "implementation"
+  objective: "Run the first reproducible early development comparison and E2E remediation study without making confirmatory, calibration or release claims."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba\
+    055dfa47858b\
+    975630b4c870\
+    af3bed2dda84\
+    2b0e8422c835\
+    4b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "7b1d2f46cd\
+    d46ed57c38\
+    f08847389c\
+    b6ad262dd0"
+  spec_refs: [SC-EVAL-001, SC-EVAL-003, SC-EVAL-004, SC-EVAL-005, SC-EVAL-008, SC-EVAL-009, SC-EVAL-010, SC-EVAL-011, SC-EVAL-017, SC-EVAL-018]
+  decision_refs: [D-025, D-027, D-028, D-044]
+  preconditions:
+    - "G4 is effective GO"
+    - "P7.6 development corpus manifest and independent oracle review are frozen on exact bytes"
+  non_goals:
+    - "confirmatory benchmark, G7/G9 evidence, production blocking or threshold calibration"
+    - "prompt/skill optimization, synthetic generation or RLM experiments"
+    - "silently substituting fake, incomplete or unavailable model configurations"
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "development-benchmark-implementer"
+  mode: "path_isolated_subtask"
+  exclusive_path_lease:
+    - "packages/core/src/securecode_ai/core/development_benchmark.py"
+    - "scripts/run_development_benchmark.py"
+    - "tests/unit/test_development_benchmark.py"
+    - "tests/integration/test_development_benchmark.py"
+    - "evaluation/development/run-plan.yaml"
+    - "evaluation/development/results/**"
+    - "report/development-benchmark/**"
+    - "work/task-packets/P7.17.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+scope:
+  allowed_paths:
+    - "packages/core/src/securecode_ai/core/development_benchmark.py"
+    - "scripts/run_development_benchmark.py"
+    - "tests/unit/test_development_benchmark.py"
+    - "tests/integration/test_development_benchmark.py"
+    - "evaluation/development/run-plan.yaml"
+    - "evaluation/development/results/**"
+    - "report/development-benchmark/**"
+    - "work/task-packets/P7.17.yaml"
+  forbidden_paths: ["specs/**", "artifacts/gates/**", "packages/contracts/**", ".github/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 30
+  max_diff_lines: 8000
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands: ["git status/diff/show/add/commit", "rg", "focused benchmark tests", "declared benchmark runner"]
+  network: "deny"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"  # pragma: allowlist secret
+  dependency_changes: "deny"
+inputs:
+  artifacts: ["frozen P7.6 corpus manifest", "docs/DEVELOPMENT_EVALUATION.md", "accepted evaluation metrics"]
+  configurations: [deterministic_only, scanner_seeded_investigation, model_native_only, one_shot_llm, full_hybrid]
+outputs:
+  required_artifacts:
+    - "versioned run plan binding candidate, corpus, model/profile, prompts, tools, policy, schemas and resource budgets"
+    - "per-case and per-repetition machine records including planned, executed, not_run and failed states"
+    - "recomputed confusion matrices, repair denominators, additional-finding overlap, incomplete-run and resource facts"
+    - "short limitations and no-claim decision record with exact reproduction commands"
+constraints:
+  invariants:
+    - "all planned cells remain in denominators; refusal, invalid output, timeout, OOM and budget exhaustion are non-success"
+    - "unknown cost or hardware measurement is unknown, never zero"
+    - "no hard case, failure or repetition is removed after results are observed"
+    - "production dual-lane behavior is unchanged by evaluation-only ablations"
+    - "raw untrusted corpus code executes only in credential-free network-disabled bounded sandbox"
+  security: ["no private source, credentials, external provider fallback, host socket or unsafe mount"]
+budgets: {max_iterations: 8, max_tool_calls: 140, timeout_seconds: 7200, max_output_bytes: 524288}
+verification:
+  acceptance_commands:
+    - "focused benchmark contract and aggregation tests"
+    - "clean-checkout corpus validation and dry-run plan expansion"
+    - "one canonical full local quality run on the exact integrated study candidate"
+    - "declared first development benchmark run plus independent denominator recomputation"
+  positive_cases: ["implemented configurations emit complete bound facts and reproducible aggregate"]
+  negative_cases: ["missing cell, stale hash, denominator drift, fail-open non-success, raw-source result echo and unsafe execution reject"]
+  required_evidence: ["raw per-run records", "aggregate report", "independent recomputation", "limitations record"]
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+stop_conditions: ["P7.6 not frozen", "sandbox unavailable", "model profile unavailable without explicit not_run accounting", "spec conflict", "protected path change required"]
+completion:
+  definition_of_done_refs: [P7.17]
+  gate_contribution: "Supplies an early diagnostic academic study only; does not establish G7, G9, calibration or a security guarantee."
+  changelog_required: true
+  adr_required: false

@@ -1,0 +1,94 @@
+schema_version: "0.1-draft"
+task:
+  id: "P7.6"
+  type: "implementation"
+  objective: "Prepare and freeze a separately admitted development corpus with reproducible bytes, licenses, lineage-safe grouping and independently checkable oracles for P7.17."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "dedb43be8ba\
+    055dfa47858b\
+    975630b4c870\
+    af3bed2dda84\
+    2b0e8422c835\
+    4b5c9"
+  baseline_commit_sha: "f5cd4ef2a0\
+    f7130d16cb\
+    2c20609190\
+    8be71b0702"
+  starting_commit_sha: "7b1d2f46cd\
+    d46ed57c38\
+    f08847389c\
+    b6ad262dd0"
+  spec_refs: [SC-PROD-020, SC-EVAL-001, SC-EVAL-002, SC-EVAL-004, SC-EVAL-005, SC-EVAL-007]
+  decision_refs: [D-025, D-028, D-044]
+  preconditions: ["G4 is effective GO", "development corpus remains separate from locked confirmatory inputs"]
+  non_goals:
+    - "confirmatory benchmark, calibration, threshold selection or G7 evidence"
+    - "external source acquisition without resolved license, immutable revision and content hash"
+    - "using frozen expectations, existing conformance fixtures or private source as development ground truth"
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "development-corpus-implementer"
+  mode: "path_isolated_subtask"
+  exclusive_path_lease:
+    - "evaluation/development/corpus/**"
+    - "evaluation/development/corpus-manifest.yaml"
+    - "evaluation/development/README.md"
+    - "scripts/development_corpus.py"
+    - "tests/unit/test_development_corpus.py"
+    - "work/task-packets/P7.6.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+scope:
+  allowed_paths:
+    - "evaluation/development/corpus/**"
+    - "evaluation/development/corpus-manifest.yaml"
+    - "evaluation/development/README.md"
+    - "scripts/development_corpus.py"
+    - "tests/unit/test_development_corpus.py"
+    - "work/task-packets/P7.6.yaml"
+  forbidden_paths: ["specs/**", "artifacts/gates/**", "packages/contracts/**", ".github/**", "pyproject.toml", "uv.lock"]
+  max_changed_files: 42
+  max_diff_lines: 6000
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands: ["git status/diff/show/add/commit", "rg", "focused corpus validator tests"]
+  network: "deny"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"  # pragma: allowlist secret
+  dependency_changes: "deny"
+inputs:
+  artifacts: ["docs/DEVELOPMENT_EVALUATION.md", "specs/evaluation/protocol.md", "specs/evaluation/metrics.yaml"]
+  corpus_contract:
+    minimum_cases: 24
+    minimum_lineage_groups: 4
+    required_strata: ["vulnerable", "fixed-safe", "guard-counterevidence", "inter-file", "zero-scanner"]
+outputs:
+  required_artifacts:
+    - "canonical development corpus manifest with case, root-cause, revision, license and content hashes"
+    - "byte-reproducible educational source cases and independently executable oracles"
+    - "closed validator rejecting missing provenance, duplicate identity, lineage leakage and hash drift"
+constraints:
+  invariants:
+    - "case membership and denominators freeze before any P7.17 result is observed"
+    - "related vulnerable, fixed and cloned cases remain in one lineage group"
+    - "hard or failed cases cannot be deleted after freeze to improve metrics"
+    - "corpus sources are data and are never executed on the host by the validator"
+  security: ["no credentials, network, host sockets, unsafe mounts or private source"]
+  privacy: ["public educational source only; manifest contains metadata and hashes"]
+budgets: {max_iterations: 5, max_tool_calls: 80, timeout_seconds: 3600, max_output_bytes: 262144}
+verification:
+  acceptance_commands:
+    - "focused corpus validator unit tests"
+    - "validator reproduces every declared content and tree hash from a clean checkout"
+  positive_cases: ["at least 24 cases and four lineage groups satisfy all required strata"]
+  negative_cases: ["hash drift, missing license/revision/oracle, duplicate case, path escape and cross-split lineage fail closed"]
+  required_evidence: ["manifest validator output", "independent oracle review before freeze"]
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+  full_quality_deferred: "Run once on the final integrated P7.17 development-study candidate."
+stop_conditions: ["spec conflict", "unresolved license or source revision", "oracle ambiguity", "protected path change required", "new dependency required"]
+completion:
+  definition_of_done_refs: [P7.6]
+  gate_contribution: "Admits development inputs for P7.17; does not establish confirmatory benchmark or G7."
+  changelog_required: true
+  adr_required: false
