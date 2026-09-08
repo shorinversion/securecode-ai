@@ -266,15 +266,38 @@ def test_workspace_metadata_accepts_only_reviewed_tree_sitter_dependencies() -> 
     adapter_dependencies[:] = ["securecode-ai-core==0.1.0a0"]
     assert POLICY.workspace_metadata_errors(documents) == []
 
-    adapter_dependencies[:] = [
+    pre_grammar = [
         "securecode-ai-core==0.1.0a0",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-python>=0.25,<0.26",
     ]
+    adapter_dependencies[:] = pre_grammar
     assert POLICY.workspace_metadata_errors(documents) == []
 
-    adapter_dependencies.append("tree-sitter-javascript>=0.25,<0.26")
+    reviewed = [
+        "securecode-ai-core==0.1.0a0",
+        "tree-sitter>=0.25,<0.26",
+        "tree-sitter-go==0.25.0",
+        "tree-sitter-javascript==0.25.0",
+        "tree-sitter-python>=0.25,<0.26",
+        "tree-sitter-typescript==0.23.2",
+    ]
+    adapter_dependencies[:] = reviewed
+    assert POLICY.workspace_metadata_errors(documents) == []
+
+    adapter_dependencies[:] = [*reviewed, "tree-sitter-rust==0.24.0"]
     assert POLICY.workspace_metadata_errors(documents)
+
+    for name, version in (
+        ("tree-sitter-go", "0.24.0"),
+        ("tree-sitter-javascript", "0.23.1"),
+        ("tree-sitter-typescript", "0.23.1"),
+    ):
+        adapter_dependencies[:] = [
+            f"{name}=={version}" if dependency.startswith(f"{name}==") else dependency
+            for dependency in reviewed
+        ]
+        assert POLICY.workspace_metadata_errors(documents)
 
 
 @pytest.mark.parametrize("path", ["x.py", 'space and "quote".py', "line\nbreak.py"])

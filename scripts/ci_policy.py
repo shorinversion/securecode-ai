@@ -59,7 +59,10 @@ WORKSPACE_PROJECTS: Final = {
         [
             "securecode-ai-core==0.1.0a0",
             "tree-sitter>=0.25,<0.26",
+            "tree-sitter-go==0.25.0",
+            "tree-sitter-javascript==0.25.0",
             "tree-sitter-python>=0.25,<0.26",
+            "tree-sitter-typescript==0.23.2",
         ],
         {"securecode-ai-core": {"workspace": True}},
         "securecode_ai.adapters",
@@ -69,6 +72,11 @@ WORKSPACE_CONSOLE_SCRIPTS: Final = {
     "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"}
 }
 LEGACY_ADAPTER_DEPENDENCIES: Final = ["securecode-ai-core==0.1.0a0"]
+PRE_GRAMMAR_ADAPTER_DEPENDENCIES: Final = [
+    "securecode-ai-core==0.1.0a0",
+    "tree-sitter>=0.25,<0.26",
+    "tree-sitter-python>=0.25,<0.26",
+]
 PYPI_INDEX: Final = "https://pypi.org/simple"
 PYPI_ARTIFACT_HOST: Final = "files.pythonhosted.org"
 ACTION_REFS: Final = {
@@ -747,7 +755,8 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
         project_dependencies = project.get("dependencies")
         dependencies_match = project_dependencies == dependencies or (
             path == "packages/adapters/pyproject.toml"
-            and project_dependencies == LEGACY_ADAPTER_DEPENDENCIES
+            and project_dependencies
+            in (LEGACY_ADAPTER_DEPENDENCIES, PRE_GRAMMAR_ADAPTER_DEPENDENCIES)
         )
         if (
             project.get("name") != name

@@ -22,6 +22,21 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### CR-059 — transition-safe grammar dependency policy amendment (2026-09-08)
+
+- Propose exact closed-policy admission for `tree-sitter-go==0.25.0`,
+  `tree-sitter-javascript==0.25.0` and `tree-sitter-typescript==0.23.2` before
+  the separate P7.1/P7.2 package-metadata change.
+- Preserve both previously admitted adapter dependency states so the protected
+  base remains green between policy promotion and implementation; unreviewed
+  packages and version drift remain fail-closed.
+- Exact target bytes pass 115 focused policy tests, Ruff, mypy, current-base
+  lock/policy validation and canonical quality: 1514 tests passed, 5 expected
+  Windows skips, 81.20% Core branch coverage and `QUALITY=PASS`.
+- This proposal changes no active policy or product dependency. Three sequential
+  POLICY reviews, exact-byte promotion and ordinary protected delivery remain
+  required before the grammar packages can be admitted in product metadata.
+
 ### G4 — Core MVP v0.1 (2026-09-06)
 
 - Integrated `P4.1`-`P4.12`: evidence-bound root-cause localization, security

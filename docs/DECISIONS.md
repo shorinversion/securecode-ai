@@ -869,6 +869,29 @@
   Existing POLICY receipts are a separate protected
   mutation requirement, not authorization for extra product reviews.
 
+## D-052 — Transition-safe closed grammar dependency admission
+
+- Status: proposed evaluator amendment CR-059; effective only after the
+  established three-review POLICY route, exact-byte promotion and ordinary
+  protected delivery.
+- Decision: extend the exact adapter dependency allowlist with the reviewed Go,
+  JavaScript and TypeScript Tree-sitter grammar versions while retaining the
+  historical minimal state and the current Python-only Tree-sitter state as
+  explicit transition states.
+- Rationale: `scripts/ci_policy.py` and its self-test are protected evaluator
+  targets and cannot be modified by the same implementation candidate they
+  authorize. The policy must become effective first, while the current protected
+  base must continue to pass before package metadata and the lockfile change.
+- Scope: exact final bytes for `scripts/ci_policy.py` and
+  `tests/unit/test_ci_policy.py`, encoded in the protected amendment manifest.
+  No package metadata, lockfile, product implementation, accepted specification,
+  gate evidence, workflow, hook, branch protection or secret-detector behavior
+  changes in the proposal.
+- Consequence: after protected promotion, a separate constrained P7.1/P7.2
+  implementation candidate may add only the three exact registry packages and
+  their hash-complete lock records. Any additional dependency or version drift
+  remains rejected.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
