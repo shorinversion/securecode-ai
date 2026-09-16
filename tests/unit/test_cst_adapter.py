@@ -11,7 +11,10 @@ from securecode_ai.adapters import (
     CstAdapterError,
     CstAdapterErrorCode,
     CstLimits,
+    build_go_symbol_index,
+    build_javascript_symbol_index,
     build_python_symbol_index,
+    build_typescript_symbol_index,
 )
 from securecode_ai.core import (
     ParseDiagnostic,
@@ -340,3 +343,165 @@ def test_public_mutation_rejects_wrong_kind_and_parent() -> None:
 def test_adapter_exposes_no_filesystem_or_execution_inputs() -> None:
     parameters = build_python_symbol_index.__annotations__
     assert not ({"filesystem", "shell", "network", "command"} & set(parameters))
+
+
+@pytest.mark.parametrize(
+    ("builder", "path", "source", "language", "parser_id"),
+    [
+        (
+            build_javascript_symbol_index,
+            "src/service.js",
+            b"class Service { async fetch() { return 1; } }\nfunction helper() {}\n",
+            "javascript",
+            "tree-sitter-javascript@0.25",
+        ),
+        (
+            build_typescript_symbol_index,
+            "src/service.ts",
+            b"class Service { async fetch(): Promise<number> { return 1; } }\nfunction helper(): void {}\n",
+            "typescript",
+            "tree-sitter-typescript@0.23",
+        ),
+        (
+            build_go_symbol_index,
+            "api/service.go",
+            b"package api\n\ntype Service struct{}\nfunc (s *Service) Fetch() int { return 1 }\nfunc Helper() {}\n",
+            "go",
+            "tree-sitter-go@0.25",
+        ),
+    ],
+)
+def test_supported_language_symbols_are_sealed_and_deterministic(
+    builder: object,
+    path: str,
+    source: bytes,
+    language: str,
+    parser_id: str,
+) -> None:
+    arguments = {
+        "repository_id": REPOSITORY_ID,
+        "revision": REVISION,
+        "path": path,
+        "content_sha256": hashlib.sha256(source).hexdigest(),
+        "source": source,
+    }
+    first = builder(**arguments)  # type: ignore[operator]
+    second = builder(**arguments)  # type: ignore[operator]
+    assert first == second
+    assert first.language == language
+    assert first.parser_id == parser_id
+    expected = (
+        [
+            (SymbolKind.MODULE, "service"),
+            (SymbolKind.CLASS, "Service"),
+            (SymbolKind.METHOD, "Fetch"),
+            (SymbolKind.FUNCTION, "Helper"),
+        ]
+        if language == "go"
+        else [
+            (SymbolKind.MODULE, "service"),
+            (SymbolKind.CLASS, "Service"),
+            (SymbolKind.ASYNC_METHOD, "fetch"),
+            (SymbolKind.FUNCTION, "helper"),
+        ]
+    )
+    assert [(item.kind, item.name) for item in first.symbols] == expected
+
+
+@pytest.mark.parametrize(
+    ("builder", "path", "language"),
+    [
+        (build_javascript_symbol_index, "src/service.ts", "javascript"),
+        (build_typescript_symbol_index, "src/service.js", "typescript"),
+        (build_go_symbol_index, "src/service.ts", "go"),
+    ],
+)
+def test_ecmascript_wrong_language_or_extension_fails_closed(
+    builder: object, path: str, language: str
+) -> None:
+    source = b"function helper() {}\n"
+    with pytest.raises(CstAdapterError) as caught:
+        builder(  # type: ignore[operator]
+            repository_id=REPOSITORY_ID,
+            revision=REVISION,
+            path=path,
+            content_sha256=hashlib.sha256(source).hexdigest(),
+            source=source,
+            language=language,
+        )
+    assert caught.value.code is CstAdapterErrorCode.LANGUAGE_UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    ("builder", "path"),
+    [
+        (build_javascript_symbol_index, "ui/widget.jsx"),
+        (build_typescript_symbol_index, "ui/widget.tsx"),
+    ],
+)
+def test_jsx_tsx_callable_binding_and_containment(builder: object, path: str) -> None:
+    source = (
+        b"const View = () => <div/>;\n"
+        b"const handler = function inner() { const nested = () => 1; };\n"
+        b"class Widget { render = () => <View/>; }\n"
+        b"[1].map(x => x);\n"
+    )
+    args = {
+        "repository_id": REPOSITORY_ID,
+        "revision": REVISION,
+        "path": path,
+        "source": source,
+        "content_sha256": hashlib.sha256(source).hexdigest(),
+    }
+    index = builder(**args)  # type: ignore[operator]
+    assert index.parse_health is ParseHealth.HEALTHY
+    assert index == builder(**args)  # type: ignore[operator]
+    by_name = {item.qualified_name: item for item in index.symbols}
+    assert set(by_name) == {
+        "ui.widget",
+        "ui.widget.View",
+        "ui.widget.handler",
+        "ui.widget.handler.nested",
+        "ui.widget.Widget",
+        "ui.widget.Widget.render",
+        "ui.widget.=>",
+    }
+    nested = by_name["ui.widget.handler.nested"]
+    outer = by_name["ui.widget.handler"]
+    assert nested.parent_symbol_id == outer.symbol_id
+    assert outer.declaration.contains(nested.declaration)
+    assert by_name["ui.widget.Widget.render"].kind is SymbolKind.METHOD
+    for item in index.symbols[1:]:
+        assert (
+            source[item.name_location.start_byte : item.name_location.end_byte].decode()
+            == item.name
+        )
+
+
+def test_go_receiver_methods_keep_identity_when_other_receivers_are_inserted() -> None:
+    source = b"package p\nfunc (a *A[T]) Get() {}\nfunc (B) Get() {}\n"
+
+    def build(body: bytes) -> SymbolIndex:
+        return build_go_symbol_index(
+            repository_id=REPOSITORY_ID,
+            revision=REVISION,
+            path="p/x.go",
+            source=body,
+            content_sha256=hashlib.sha256(body).hexdigest(),
+        )
+
+    first = build(source)
+    second = build(b"package p\nfunc (c C) Get() {}\n" + source.split(b"\n", 1)[1])
+    methods = {item.qualified_name: item for item in first.symbols[1:]}
+    changed = {item.qualified_name: item for item in second.symbols[1:]}
+    assert set(methods) == {"p.x.A.Get", "p.x.B.Get"}
+    assert methods["p.x.A.Get"].symbol_id != methods["p.x.B.Get"].symbol_id
+    for name, method in methods.items():
+        assert method.symbol_id == changed[name].symbol_id
+        assert method.occurrence == 0
+        assert method.receiver_location is not None
+        assert method.parent_symbol_id == first.symbols[0].symbol_id
+        assert method.declaration.contains(method.receiver_location)
+    forged = replace(methods["p.x.A.Get"], receiver_name="B")
+    with pytest.raises(ValueError, match="symbol index is invalid"):
+        replace(first, symbols=(first.symbols[0], forged, first.symbols[2]))

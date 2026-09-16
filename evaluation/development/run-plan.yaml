@@ -1,0 +1,60 @@
+{
+  "schema_version": "development-benchmark-plan-1.0",
+  "study_id": "p7.17-development-phase-a-2026-09-08",
+  "candidate_commit": "git-sha1:ea9fc70427acadb5b06206144c5ea95c42c8b9ce",
+  "corpus_manifest": "evaluation/development/corpus-manifest.yaml",
+  "corpus_content_sha256": "sha256:015be7f1613c87db66258c9f190c22c39356e79b09771493afae81674f65f79b",
+  "corpus_identity": {
+    "kind": "manifest-content-sha256",
+    "tree_sha256": null,
+    "reason": "corpus manifest schema 2.0 binds corpus_content_sha256 and publishes no tree hash"
+  },
+  "repetitions": {
+    "deterministic_only": 1,
+    "scanner_seeded_investigation": 3,
+    "model_native_only": 3,
+    "one_shot_llm": 3,
+    "full_hybrid": 3
+  },
+  "budget": {"tokens": 4096, "calls": 1, "wall_seconds": 60, "retries": 0},
+  "configuration_matrix": {
+    "deterministic_only": {"state": "implemented", "implementation": "product sealed Python CST/AST plus CWE-89 scanner"},
+    "scanner_seeded_investigation": {"state": "implemented", "implementation": "sealed CWE-89 facts constrain investigation to scanner-seeded source projections; zero seeds fail closed without model discovery"},
+    "model_native_only": {"state": "implemented", "implementation": "qualified literal-loopback Ollama independent-discovery prompt without scanner facts"},
+    "one_shot_llm": {"state": "implemented", "implementation": "qualified literal-loopback Ollama direct-review prompt"},
+    "full_hybrid": {"state": "implemented", "implementation": "qualified literal-loopback Ollama independent discovery over all projections reconciled with sealed scanner facts"}
+  },
+  "ollama": {
+    "endpoint": "http://127.0.0.1:11434",
+    "model": "qwen2.5-coder:7b-instruct-q4_K_M",
+    "digest": "sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+    "version": "0.16.2",
+    "quantization": "Q4_K_M",
+    "parameters": "7.6B",
+    "temperature": 0.0,
+    "seed": null,
+    "seed_support": "unavailable"
+  },
+  "bindings": {
+    "component_sha256": "sha256:7fc1cfc85ad4023f082cbf3c5bd38a7a57381a99c64fae9b5e7636c8d5ad2004",
+    "core_sha256": "sha256:0dc4d1120a0403e8b3178f612ed103cecf3758425710b10d1ef5b9fe14478036",
+    "recompute_sha256": "sha256:7627e674ab86126daee03c0a50506ab2c999f3832f9da401e11c3a4b55d1e0a6",
+    "corpus_validator_sha256": "sha256:8a80b7e4f1efc839ad0a6466f11793f8b2a1d72b9b9c5a3b5a729811232114a7",
+    "prompt_sha256": "sha256:bf543b6b93217a22c02831cc69e7cfea7b70126de7f52b632315561304ac16f9",
+    "policy_sha256": "sha256:763a5be0a73d17c280af7fde6a8811713dabb66e4c200347c3261f9e1f77ebd4",
+    "schema_sha256": "sha256:8b56f4e8574e66c3b4cd572edac9aa7efcc56b5720f2fbe3764c231d5ea7e3b8"
+  },
+  "environment": {
+    "host_mode": "local-native",
+    "evaluation_image": null,
+    "os": "Windows-11-10.0.26200-SP0",
+    "architecture": "AMD64",
+    "python_implementation": "cpython",
+    "python_version": "3.13.11",
+    "uv_lock_sha256": "sha256:ae181729916f2187aed41ccc6f241af5aee0546e0f4cfd22e00a9ac27260ebf7"
+  },
+  "reproduction_commands": [
+    ".venv/Scripts/python.exe scripts/run_development_benchmark.py --plan evaluation/development/run-plan.yaml --records evaluation/development/results/run-records.jsonl --aggregate evaluation/development/results/aggregate.json",
+    ".venv/Scripts/python.exe scripts/recompute_development_benchmark.py --plan evaluation/development/run-plan.yaml --records evaluation/development/results/run-records.jsonl --output evaluation/development/results/recomputed.json"
+  ]
+}

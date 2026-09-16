@@ -44,7 +44,10 @@ POLICIES = (
                 "securecode_ai.adapters",
                 "securecode_ai.core",
                 "tree_sitter",
+                "tree_sitter_go",
+                "tree_sitter_javascript",
                 "tree_sitter_python",
+                "tree_sitter_typescript",
             }
         ),
     ),
@@ -167,7 +170,10 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
             (
                 "securecode-ai-core==0.1.0a0",
                 "tree-sitter>=0.25,<0.26",
+                "tree-sitter-go==0.25.0",
+                "tree-sitter-javascript==0.25.0",
                 "tree-sitter-python>=0.25,<0.26",
+                "tree-sitter-typescript==0.23.2",
             ),
         ),
         (
@@ -240,6 +246,15 @@ def test_symbol_index_contract_stays_internal_and_adapter_owned() -> None:
     assert not hasattr(contracts, "SymbolIndex")
     assert core.SymbolIndex.__module__ == "securecode_ai.core.symbols"
     assert adapters.build_python_symbol_index.__module__ == "securecode_ai.adapters.cst"
+
+
+def test_program_graph_contract_stays_internal_and_adapter_owned() -> None:
+    contracts = importlib.import_module("securecode_ai.contracts")
+    core = importlib.import_module("securecode_ai.core")
+    adapters = importlib.import_module("securecode_ai.adapters")
+    assert not hasattr(contracts, "ProgramGraph")
+    assert core.ProgramGraph.__module__ == "securecode_ai.core.program_graph"
+    assert adapters.build_program_graph.__module__ == "securecode_ai.adapters.program_graph"
 
 
 @pytest.mark.parametrize(

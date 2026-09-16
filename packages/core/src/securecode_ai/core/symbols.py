@@ -46,8 +46,22 @@ def _valid_repository_id(repository_id: str) -> bool:
     )
 
 
-def _module_name(path: str) -> str:
-    value = path[:-4] if path.endswith(".pyi") else path[:-3]
+_LANGUAGE_DETAILS: dict[str, tuple[tuple[str, ...], str]] = {
+    "python": ((".py", ".pyi"), "tree-sitter-python@0.25"),
+    "javascript": ((".js", ".mjs", ".cjs", ".jsx"), "tree-sitter-javascript@0.25"),
+    "typescript": ((".ts", ".mts", ".cts", ".tsx"), "tree-sitter-typescript@0.23"),
+    "go": ((".go",), "tree-sitter-go@0.25"),
+}
+
+
+def _module_name(path: str, language: str) -> str:
+    details = _LANGUAGE_DETAILS.get(language)
+    if details is None:
+        return ""
+    suffix = next((item for item in details[0] if path.endswith(item)), None)
+    if suffix is None:
+        return ""
+    value = path[: -len(suffix)]
     parts = value.split("/")
     if parts[-1] == "__init__" and len(parts) > 1:
         parts.pop()
@@ -143,6 +157,8 @@ class Symbol:
     declaration: SourceRange
     name_location: SourceRange
     parent_symbol_id: str | None
+    receiver_name: str | None = None
+    receiver_location: SourceRange | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -161,6 +177,19 @@ class Symbol:
             or type(self.declaration) is not SourceRange
             or type(self.name_location) is not SourceRange
             or not self.declaration.contains(self.name_location)
+            or (
+                (self.receiver_name is None) != (self.receiver_location is None)
+                or (
+                    self.receiver_name is not None
+                    and (
+                        type(self.receiver_name) is not str
+                        or not self.receiver_name
+                        or type(self.receiver_location) is not SourceRange
+                        or not self.declaration.contains(self.receiver_location)
+                        or self.kind is not SymbolKind.METHOD
+                    )
+                )
+            )
             or (
                 self.parent_symbol_id is not None
                 and (
@@ -224,8 +253,10 @@ class SymbolIndex:
             and type(self.source_byte_length) is int
             and self.source_byte_length == len(self.source)
             and type(self.source_end_point) is SourcePoint
-            and self.language == "python"
-            and self.parser_id == "tree-sitter-python@0.25"
+            and type(self.language) is str
+            and self.language in _LANGUAGE_DETAILS
+            and self.path.endswith(_LANGUAGE_DETAILS[self.language][0])
+            and self.parser_id == _LANGUAGE_DETAILS[self.language][1]
             and type(self.parse_health) is ParseHealth
             and type(self.symbols) is tuple
             and all(type(symbol) is Symbol for symbol in self.symbols)
@@ -265,7 +296,7 @@ class SymbolIndex:
         occurrences: dict[tuple[SymbolKind, str], int] = {}
         sibling_ends: dict[str, int] = {}
         module = self.symbols[0]
-        expected_module_name = _module_name(self.path)
+        expected_module_name = _module_name(self.path, self.language)
         if (
             module.name != expected_module_name.rsplit(".", 1)[-1]
             or module.qualified_name != expected_module_name
@@ -295,10 +326,25 @@ class SymbolIndex:
             occurrences[occurrence_key] = expected_occurrence + 1
             if symbol is not module:
                 parent = by_id.get(symbol.parent_symbol_id or "")
+                qualifier = ""
+                if symbol.receiver_location is not None:
+                    if (
+                        self.language != "go"
+                        or parent is not module
+                        or not _range_matches_source(
+                            self.source, symbol.receiver_location, line_starts
+                        )
+                        or self.source[
+                            symbol.receiver_location.start_byte : symbol.receiver_location.end_byte
+                        ].decode("utf-8", errors="strict")
+                        != symbol.receiver_name
+                    ):
+                        raise ValueError("symbol index is invalid")
+                    qualifier = f"{symbol.receiver_name}."
                 if (
                     parent is None
                     or not parent.declaration.contains(symbol.declaration)
-                    or symbol.qualified_name != f"{parent.qualified_name}.{symbol.name}"
+                    or symbol.qualified_name != f"{parent.qualified_name}.{qualifier}{symbol.name}"
                     or symbol.declaration.start_byte
                     < sibling_ends.get(parent.symbol_id, symbol.declaration.start_byte)
                 ):
@@ -364,6 +410,14 @@ def symbol_index_sha256(index: SymbolIndex) -> str:
                     "parent_symbol_id": symbol.parent_symbol_id,
                     "qualified_name": symbol.qualified_name,
                     "symbol_id": symbol.symbol_id,
+                    **(
+                        {
+                            "receiver_name": symbol.receiver_name,
+                            "receiver_location": _range_value(symbol.receiver_location),
+                        }
+                        if symbol.receiver_location is not None
+                        else {}
+                    ),
                 }
                 for symbol in index.symbols
             ],

@@ -1,0 +1,96 @@
+<!doctype html><meta charset="utf-8"><title>SecureCode AI P9.17</title><h1>SecureCode AI P9.17 local demo</h1><p>Metadata-only report; source and model output are excluded.</p><pre>{
+  &quot;artifact_schema_version&quot;: &quot;securecode.p9_17.local-demo.v1&quot;,
+  &quot;deterministic_lane&quot;: {
+    &quot;candidate_count&quot;: 1,
+    &quot;findings&quot;: [
+      {
+        &quot;cwe&quot;: &quot;CWE-89&quot;,
+        &quot;finding_id&quot;: &quot;det-cwe89-1&quot;,
+        &quot;path&quot;: &quot;app.py&quot;,
+        &quot;signal_sha256&quot;: &quot;f918e63f9b983c755f030c083bbfea16c9350a13af12d38309dc67f96198a9a4&quot;,
+        &quot;sink_end_row&quot;: 4,
+        &quot;sink_start_row&quot;: 4
+      }
+    ],
+    &quot;signal_count&quot;: 1,
+    &quot;status&quot;: &quot;SUCCEEDED&quot;
+  },
+  &quot;ephemeral_validation&quot;: {
+    &quot;ephemeral_copy&quot;: true,
+    &quot;parse_status&quot;: &quot;PARSED&quot;,
+    &quot;rescan_signal_count&quot;: 0,
+    &quot;status&quot;: &quot;PASSED&quot;
+  },
+  &quot;gate_or_release_claim&quot;: &quot;NOT_EVALUATED&quot;,
+  &quot;lane_agreement&quot;: {
+    &quot;deterministic_only&quot;: [],
+    &quot;location_disagreements&quot;: [],
+    &quot;model_only&quot;: [],
+    &quot;status&quot;: &quot;AGREED&quot;
+  },
+  &quot;limitations&quot;: [
+    &quot;One bounded Python CWE-89 rule is demonstrated; this is not a general security verdict.&quot;,
+    &quot;The model response is transient and is not retained in JSON or HTML reports.&quot;,
+    &quot;Static parse and rescan do not execute the repository and do not prove behavioral correctness.&quot;,
+    &quot;A provider, schema, identity, or validation non-success is INDETERMINATE rather than clean or PASS.&quot;,
+    &quot;Lane agreement is only a diagnostic comparison, not Auditor/Skeptic confirmation or proof of accuracy.&quot;
+  ],
+  &quot;model_lane&quot;: {
+    &quot;candidate_count&quot;: 1,
+    &quot;candidates&quot;: [
+      {
+        &quot;cwe_id&quot;: &quot;CWE-89&quot;,
+        &quot;line&quot;: 4,
+        &quot;path&quot;: &quot;app.py&quot;
+      }
+    ],
+    &quot;endpoint&quot;: &quot;http://127.0.0.1:11434/v1&quot;,
+    &quot;identity_status&quot;: &quot;OBSERVED&quot;,
+    &quot;model_digest&quot;: &quot;sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364&quot;,
+    &quot;model_id&quot;: &quot;qwen2.5-coder:7b-instruct-q4_K_M&quot;,
+    &quot;observation_source&quot;: &quot;literal_loopback_version_and_tags&quot;,
+    &quot;profile_id&quot;: &quot;local-source-model&quot;,
+    &quot;purpose&quot;: &quot;model_native_discovery&quot;,
+    &quot;quantization&quot;: &quot;Q4_K_M&quot;,
+    &quot;runtime_version&quot;: &quot;0.16.2&quot;,
+    &quot;status&quot;: &quot;SUCCEEDED&quot;,
+    &quot;transport&quot;: &quot;authorized_loopback&quot;
+  },
+  &quot;outcome&quot;: &quot;COMPLETED&quot;,
+  &quot;patch&quot;: {
+    &quot;applied_to_source&quot;: false,
+    &quot;path&quot;: &quot;app.py&quot;,
+    &quot;present&quot;: true,
+    &quot;sha256&quot;: &quot;d5cd622213a5eae82fbebf1ff89487b53786346bbb2b6511c0bad73d15386b01&quot;,
+    &quot;status&quot;: &quot;PROPOSED&quot;
+  },
+  &quot;product_pass&quot;: false,
+  &quot;provider_runtime&quot;: {
+    &quot;endpoint&quot;: &quot;http://127.0.0.1:11434/v1&quot;,
+    &quot;identity_status&quot;: &quot;OBSERVED&quot;,
+    &quot;model_digest&quot;: &quot;sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364&quot;,
+    &quot;model_id&quot;: &quot;qwen2.5-coder:7b-instruct-q4_K_M&quot;,
+    &quot;observation_boundary&quot;: &quot;before_and_after_calls&quot;,
+    &quot;observation_source&quot;: &quot;literal_loopback_version_and_tags&quot;,
+    &quot;profile_id&quot;: &quot;local-source-model&quot;,
+    &quot;quantization&quot;: &quot;Q4_K_M&quot;,
+    &quot;runtime_version&quot;: &quot;0.16.2&quot;
+  },
+  &quot;repair&quot;: {
+    &quot;purpose&quot;: &quot;patch_generation&quot;,
+    &quot;status&quot;: &quot;SUCCEEDED&quot;,
+    &quot;transport&quot;: &quot;authorized_loopback&quot;
+  },
+  &quot;report_sha256&quot;: {
+    &quot;model-proposed.patch&quot;: &quot;d5cd622213a5eae82fbebf1ff89487b53786346bbb2b6511c0bad73d15386b01&quot;,
+    &quot;p917-ephemeral-validation.json&quot;: &quot;130c1595e7e5aee1847a5c7e79422efef2e685456f00f9c67034b310e2a89bd8&quot;
+  },
+  &quot;snapshot&quot;: {
+    &quot;python_file_count&quot;: 1,
+    &quot;revision&quot;: &quot;17f1357cfca48247d43d52b414f63327df18aa5d&quot;,
+    &quot;sha256&quot;: &quot;d75f718716e493a0ebfc53f83e11824bd17cd8b05047b05ee369c676a9f0f305&quot;,
+    &quot;total_bytes&quot;: 214
+  },
+  &quot;source_repository_changed&quot;: false,
+  &quot;task_id&quot;: &quot;P9.17&quot;
+}</pre>

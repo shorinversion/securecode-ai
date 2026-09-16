@@ -22,6 +22,156 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+### P9.16 academic-content and validator remediation (2026-09-16)
+
+- Replace the metadata inventory report with a reproducible academic report
+  containing the problem, architecture, method, 312-cell experiment metrics,
+  bounded real-local result, limitations and conclusions in Markdown, HTML and
+  PDF.
+- Extend the executed submission notebook with the pinned public CWE-89 audit
+  composition, aggregate benchmark results and the redacted real-local runtime
+  receipt. The notebook executes no development-corpus source and makes no
+  model call.
+- Close semantic substitution of the manifest, Markdown, HTML and PDF by
+  recomputing exact deterministic bytes and closed status/limitation values.
+  A canonical quality receipt must bind the exact repository subject before a
+  bundle can be built or validated. The builder also requires the benchmark
+  aggregate and independent recomputation to be byte-identical at the accepted
+  digest and checks the closed 312-cell, failure and repair facts.
+- Update the root README with current demo and notebook commands, expected
+  results, real-model prerequisites and the configured Git remote status.
+- Normalize notebook files to LF and disable PDF newline normalization while
+  retaining reviewable diffs, so staged artifacts have stable cross-platform
+  bytes and pass Git's whitespace and candidate checks.
+- Record Wazuh-derived design ideas as research only: staged event analysis,
+  rule test traces, stable rule identities and file-integrity checks. No Wazuh
+  code, ruleset or privileged active-response behavior is copied.
+
+### M-A2026 independent-review remediation (2026-09-16)
+
+- Route JavaScript, TypeScript and Go CWE-89 scanner facts through the production
+  RawSignal normalization boundary instead of a test-only adapter. Add JSX/TSX,
+  common callable forms and receiver-qualified Go method identities.
+- Enforce ProgramGraph aggregate node and edge budgets before large allocation
+  or sorting, including call edges and multi-index inputs.
+- Isolate development-corpus execution from the trusted Docker observation and
+  ACK channel. Adversarial tests now reject forged frames, stdin challenge theft
+  and direct `/proc` descriptor access; all 24 pinned cases pass the hardened
+  oracle.
+- Replace stale benchmark outputs with a complete `not_run` matrix before model
+  preflight and preserve unknown scanner counts. Rerun all 312 cells after the
+  oracle change; aggregate and independent recomputation are byte-identical at
+  `deae563fe08580a2ed3dc447ba19d020f31e63797eb8b83c8b6737ad3a674407`.
+- Bind the P9.17 real-local receipt to observed Ollama `0.16.2`, the exact Qwen
+  model digest and `Q4_K_M` before and after calls. The retained public evidence
+  records lane agreement, proposed patch hash, passed ephemeral validation and
+  unchanged input while excluding the raw patch.
+- The canonical integrated candidate passes spec, format, lint, strict types and
+  1,613 tests, with ten expected platform or opt-in Docker skips, 81.61% Core
+  branch coverage and `QUALITY=PASS`.
+
+### P9.16 PDF and semantic receipt hardening (2026-09-16)
+
+- Add a deterministic PDF, machine-readable quality receipt and exact
+  candidate subject digest to the academic bundle. The validator checks every
+  deliverable and evidence hash, the quality claims, the complete notebook
+  execution order, and the bounded `NOT_READY` statement.
+- Include raw development run records, P7.4 implementation evidence and the
+  redacted P9.17 runtime/validation receipts without retaining corpus source,
+  prompts, raw model responses or the model-proposed patch body.
+
+### M-A2026 integration - Core facade boundary repair (2026-09-15)
+
+- Routed the P7.4 portfolio scanner's accepted contract value types through the
+  existing Core facade so adapters retain the closed inward dependency rule.
+- The integrated canonical quality cycle now passes with 1588 tests, 8 expected
+  platform or opt-in skips, 81.56% Core branch coverage and `QUALITY=PASS`.
+
+### P9.16 - reproducible M-A2026 academic snapshot (2026-09-15)
+
+- Added a deterministic metadata-only builder and fail-closed validator for the
+  M-A2026 bundle, with exact hashes for repository evidence and generated
+  deliverables. It rejects missing evidence, output collisions, hash drift, and
+  a notebook that is not executed.
+- Added an executed submission notebook, Markdown and self-contained HTML
+  reports, delivery manifest, and clean-replay instructions. The bundle records
+  `NOT_READY` and its external and delivery blockers without claiming G7, G9,
+  v1.0, `PROJECT CLOSED`, or release readiness.
+### P9.17 - bounded real local instructor demo (2026-09-15)
+
+- Added a path-isolated runner for a bounded local Python CWE-89 demonstration.
+  It binds deterministic and independent model-native discovery to the same
+  immutable snapshot, uses a separate authorized literal-loopback repair call,
+  keeps source and raw model output out of JSON/HTML reports, and applies a
+  proposed patch only to an ephemeral copy.
+- The connector now supports explicit bounded temperature and seed controls for
+  reproducible local sampling. Focused tests cover the runner, connector and
+  local qualification boundary; a real local development case is recorded only
+  as diagnostic evidence, with no gate, release, accuracy or readiness claim.
+
+### P7.4 - conservative deterministic CWE portfolio (2026-09-08)
+
+- Add sealed-index, source-free scanner facts for direct recognized flows in
+  Python, JavaScript, TypeScript and Go: command injection (CWE-78), path
+  traversal (CWE-22), SSRF (CWE-918) and an unguarded object-lookup sample
+  (CWE-862).
+- Route the deterministic facts through the existing RawSignal normalization
+  boundary with exact revision/path/content provenance. The rules are bounded
+  examples only; they do not claim general SAST coverage or produce verdicts.
+
+### P7.17 - current-candidate development benchmark (2026-09-08)
+
+- Bind the 24-case development corpus, current P7.1-P7.3 candidate, evaluator
+  components and qualified loopback Qwen profile in a 312-cell run plan.
+- Implement and execute all five configurations: the product deterministic
+  baseline, scanner-seeded investigation, model-native discovery, one-shot
+  review and full hybrid. Preserve every invalid structured model response as
+  a fail-closed non-success in the original denominator.
+- Independently recompute byte-identical aggregate evidence and publish exact
+  limitations. All 312 cells are recorded with no `not_run` cells, but 171
+  model cells failed structured-output validation; the study therefore remains
+  incomplete, performs no repair, and makes no calibration, G7/G9, release or
+  security claim.
+- Add independent SC-EVAL-018 full-hybrid origin attribution, zero-scanner
+  matrix, deterministic-candidate Auditor receipt coverage and exact global
+  reconciliation; bind opaque aliases and reject deterministic model-fact or
+  invalid category/alias contamination.
+
+### P7.3 — sealed language-neutral program graph (2026-09-08)
+
+- Add an internal authority-sealed ProgramGraph that binds exact repository,
+  revision, path and content identities while retaining only structural ranges,
+  symbol identities and source-free canonical hashes.
+- Convert independently revalidated Python, JavaScript, TypeScript and Go
+  symbol indexes plus current CWE-89 scanner facts into deterministic unique
+  containment and local data-flow edges; explicit bounded source-free call
+  facts can connect sealed callable symbols across files within one language.
+  No call-target inference or interprocedural precision is claimed.
+- Keep EvidenceGraph separate and all public wire schemas unchanged. This
+  contributes P7.3 only; G7 remains open.
+
+### P7.2 — bounded Go CWE-89 facts (2026-09-08)
+
+- Add sealed Tree-sitter Go symbol indexes with exact parser and source-content
+  binding, recovered-parse diagnostics, and the existing parser resource limits.
+- Add deterministic bounded `net/http` query to `fmt.Sprintf` or string
+  concatenation to `db.Query`/`Exec`/`Raw` facts; parameterized controls emit no
+  fact and malformed parses fail closed.
+- Extend synthetic multi-file common evidence/verdict/report ingress coverage to
+  Go. This contributes P7.2 only; cross-file flow remains P7.3 and G7 is open.
+
+### P7.1 — bounded JavaScript and TypeScript CWE-89 facts (2026-09-08)
+
+- Add sealed Tree-sitter JavaScript/TypeScript symbol indexes with exact parser
+  identity, content binding, recovered-parse diagnostics and the existing
+  source/node/symbol/depth/diagnostic limits.
+- Add deterministic source-to-interpolation-to-SQL scanner facts for admitted
+  JavaScript/TypeScript bytes; parameterized controls emit no fact and parser
+  non-success remains fail-closed.
+- Add synthetic multi-file positive/negative focused coverage through the
+  common deterministic signal-normalization ingress. This contributes P7.1
+  only; it neither establishes G7 nor changes finding/verdict policy.
+
 ### CR-059 — transition-safe grammar dependency policy amendment (2026-09-08)
 
 - Propose exact closed-policy admission for `tree-sitter-go==0.25.0`,
@@ -36,7 +186,6 @@ Changelog отвечает на вопрос «что и когда измени
 - This proposal changes no active policy or product dependency. Three sequential
   POLICY reviews, exact-byte promotion and ordinary protected delivery remain
   required before the grammar packages can be admitted in product metadata.
-
 ### G4 — Core MVP v0.1 (2026-09-06)
 
 - Integrated `P4.1`-`P4.12`: evidence-bound root-cause localization, security

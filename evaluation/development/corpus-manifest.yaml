@@ -1,0 +1,1168 @@
+{
+  "acquisition": {
+    "external_acquisition": "forbidden-until-SC-EVAL-007-license-revision-hash-resolution",
+    "instructions": "Use only the files tracked in this corpus directory after validating every SHA-256, Git blob SHA-1, case digest, corpus digest, and closed manifest keys. No network acquisition is permitted.",
+    "source_revision": "self-authored-v1"
+  },
+  "case_count": 24,
+  "cases": [
+    {
+      "case_content_sha256": "sha256:2096e3c56abe4be6cd1bc6ab25bf0f3ce86d5ce9fec5f036fde048182124afc9",
+      "case_id": "dev-authz-admin_guard",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-authz-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-authz-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/authz/admin_guard.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "non-administrator cannot disclose invoice",
+        "sink": "invoice or internal_note disclosure",
+        "untrusted_source": "untrusted caller or object reference"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:8fc9ecc23fbadf2942312b55f7508a012ee8b1f7",
+          "path": "corpus/authz/admin_guard.py",
+          "sha256": "sha256:6b7818d9bda9b8a5c69b7457f23f977c2b16c9a746f3b9cc7ed117d965fe35bd"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "guard-counterevidence"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:f2fe464ed6912eceb25963b83ec4f5c37fa0de657629c088ad58a7c5dd51d817",
+      "case_id": "dev-authz-cross_tenant_bridge",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-authz-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-authz-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/authz/cross_tenant_bridge.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "invoice identifier reaches disclosure without requester tenant check",
+        "sink": "invoice or internal_note disclosure",
+        "untrusted_source": "untrusted caller or object reference"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:e2e0ad87111fcedd80d85f2aa7b5bdd2df237386",
+          "path": "corpus/authz/cross_tenant_bridge.py",
+          "sha256": "sha256:12038038cb37630d09848252a677256fca1c43eb91673e56f6367ea5d223a9fb"
+        },
+        {
+          "git_blob_sha1": "sha1:3b503df5309151d8efc45c9e8bf5f62fd912b3ee",
+          "path": "corpus/authz/support.py",
+          "sha256": "sha256:47738c9e8584316d2e00525ef26e1ea496d2ce95320c882425f758a799b7871e"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable",
+        "inter-file"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:8b38c88bc88b7a1aac73d3bf30a2f886201ff536b4b121c7d43c91771a3e0c32",
+      "case_id": "dev-authz-default_deny_report",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-authz-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-authz-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/authz/default_deny_report.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "denied caller cannot disclose internal note",
+        "sink": "invoice or internal_note disclosure",
+        "untrusted_source": "untrusted caller or object reference"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:b92eafc66fcc7977a5da70986b66db050afde52f",
+          "path": "corpus/authz/default_deny_report.py",
+          "sha256": "sha256:c6b4173b39c2434fed3920f658b7cce311451bf874f965696b89bf3f3e59cfbd"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:f43d9a4b5426d159ec84814a6cb59b406d87aad564ecd9a19c219e2efe8e3c38",
+      "case_id": "dev-authz-direct_object_reference",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-authz-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-authz-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/authz/direct_object_reference.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted invoice object is returned without authorization",
+        "sink": "invoice or internal_note disclosure",
+        "untrusted_source": "untrusted caller or object reference"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:e3562ce42db630d46b19058d875a073556820e6d",
+          "path": "corpus/authz/direct_object_reference.py",
+          "sha256": "sha256:6e3764aac0c18841e34d0848ff807e5092b34332852f10f08a71aaf7dc6ecc8c"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:c308152946eb81c3bbb7b9cae28188a1d12ed9dc6b52979e81218436e48115ca",
+      "case_id": "dev-authz-opaque_identifier_zero_scanner",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-authz-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-authz-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/authz/opaque_identifier_zero_scanner.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "opaque identifier does not authorize internal note disclosure",
+        "sink": "invoice or internal_note disclosure",
+        "untrusted_source": "untrusted caller or object reference"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:c058e01da397af4465cfc0d4e15a1299f2929804",
+          "path": "corpus/authz/opaque_identifier_zero_scanner.py",
+          "sha256": "sha256:be25857a7f954d5920dfb9498b9ca828f878237752587a9a9961dba17839b86b"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:b5b3edf65aed38537050521dd0fe7acc15e9df742acd1328bfb766728cdfb2f5",
+      "case_id": "dev-authz-tenant_checked_lookup",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-authz-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-authz-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/authz/tenant_checked_lookup.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "mismatched tenant cannot disclose invoice",
+        "sink": "invoice or internal_note disclosure",
+        "untrusted_source": "untrusted caller or object reference"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:b936026567a0204258ee051890b225385b8c80b8",
+          "path": "corpus/authz/tenant_checked_lookup.py",
+          "sha256": "sha256:fdcae0b82ac75bdad5e83f7d55c83691bb969cb52e11491e0701f61ef0e5ba98"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:990a66598ca2c741a5659e555fb61c312197b6f0403ee03ff44156e651edbc9e",
+      "case_id": "dev-path-archive_guard",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-path-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-path-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/path/archive_guard.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "archive extraction plan rejects traversal, absolute, backslash, and drive-qualified names",
+        "sink": "filesystem path construction",
+        "untrusted_source": "untrusted path segment"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:e16756b8b02c41780f2ccfbab014acd8c4f1c9f1",
+          "path": "corpus/path/archive_guard.py",
+          "sha256": "sha256:214c7d4e72041d0e4d630aeb91e5e2f6ec26dd705c3cfbeda1178e15ad7935aa"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "guard-counterevidence"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:61c2a1fe19b507a45660af7fbfb7238841f115086cada3aa8d710f6da6de97b7",
+      "case_id": "dev-path-encoded_segment_zero_scanner",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-path-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-path-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/path/encoded_segment_zero_scanner.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "encoded traversal reaches filesystem extraction-plan sink without containment",
+        "sink": "filesystem path construction",
+        "untrusted_source": "untrusted path segment"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:6eb40eda8a5c8db40e9c49f4d7c769e292102098",
+          "path": "corpus/path/encoded_segment_zero_scanner.py",
+          "sha256": "sha256:59728aa6d9261dbc578b5aee169da9ec207becff9f5376f27118fe792157e5a9"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:e0927a107d0176b8b8b4bc1cf0e05e8e63fbbdc107a56e8b1e6fd3116e6dad81",
+      "case_id": "dev-path-import_path_bridge",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-path-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-path-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/path/import_path_bridge.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted name crosses helper boundary to filesystem path outside root",
+        "sink": "filesystem path construction",
+        "untrusted_source": "untrusted path segment"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:cbbff209b87ea243815988066300f55c838b7312",
+          "path": "corpus/path/import_path_bridge.py",
+          "sha256": "sha256:14f3f16c1cfed206adc094c2f08f06675b327580edd70a1321791e206e3eb6f6"
+        },
+        {
+          "git_blob_sha1": "sha1:f699cc9b87fd963b6270b52ed40ee90e3f84fbcf",
+          "path": "corpus/path/support.py",
+          "sha256": "sha256:ed89fc0b4fc3e159896a95434152a9d97440317fb86b09c9ed93976b0e9f1025"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable",
+        "inter-file"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:d213e4436088f3662fc1d1e88b3b70da3795d1bf3a034e6684d687b0f9f05055",
+      "case_id": "dev-path-readonly_config",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-path-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-path-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/path/readonly_config.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "filesystem-looking configuration name is rejected",
+        "sink": "filesystem path construction",
+        "untrusted_source": "untrusted path segment"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:e4ebdf3693730d60e230caf754a3f92c53ff97a7",
+          "path": "corpus/path/readonly_config.py",
+          "sha256": "sha256:f38ccc67f6fa77f76700c0ce1c0d3b3d588bdff59ce2e6aa0429a50017a1760a"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:3f4c04b65a2e4710aef6a472752271f791d08fb5cb394f2bd2b48fd61e12226b",
+      "case_id": "dev-path-resolved_child",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-path-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-path-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/path/resolved_child.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "resolved path outside configured root is rejected",
+        "sink": "filesystem path construction",
+        "untrusted_source": "untrusted path segment"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:4990818847588a41bbeb68e8cc36d5432f6d18b4",
+          "path": "corpus/path/resolved_child.py",
+          "sha256": "sha256:6e54826414358fc70a678375b2587a6c8aa555abd6916cae6199f4e015f0a6cb"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:814dcbe7ea49d2257d56d4d980e83ffacdd23242ef3097b22fc4d9571b07789b",
+      "case_id": "dev-path-traversal_join",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-path-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-path-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/path/traversal_join.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted path segment reaches filesystem path without containment",
+        "sink": "filesystem path construction",
+        "untrusted_source": "untrusted path segment"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:09b33e91d3be9bb88fc1dd4a50f83eb37869dcca",
+          "path": "corpus/path/traversal_join.py",
+          "sha256": "sha256:eadba5c413158cd8e4380508c7a93f1443ba26868fdc82198c462ede3bf3170c"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:c9664bfe7e70cf32fa5fbed3608f4b1cc898b6df3913995f3ffe7a2157e16a81",
+      "case_id": "dev-sql-allowlisted_sort",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-sql-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-sql-v1",
+      "scanner_receipt": {
+        "applicability": "applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "completed",
+        "expected_signal_count": 0,
+        "observed_signal_count": 0,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/sql/allowlisted_sort.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted structural SQL token falls back to allowlisted identifier",
+        "sink": "database execute query",
+        "untrusted_source": "HTTP or form parameter"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:790e6bba0f1ec93fd462587e22a63769526cce47",
+          "path": "corpus/sql/allowlisted_sort.py",
+          "sha256": "sha256:1801690e0f137c5dad79a8c62c0fb2d2302b23b4af74c35a6a0327993eb99518"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "guard-counterevidence"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:d0a473b99a205b094a57a7842e32c86b572f9f8ca754587fd5be48089846e640",
+      "case_id": "dev-sql-concat_query",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-sql-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-sql-v1",
+      "scanner_receipt": {
+        "applicability": "applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "completed",
+        "expected_signal_count": 1,
+        "observed_signal_count": 1,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/sql/concat_query.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "HTTP input is interpolated into SQL execute sink",
+        "sink": "database execute query",
+        "untrusted_source": "HTTP or form parameter"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:034df2ee2a86918593e33fca641ad2517d74da6a",
+          "path": "corpus/sql/concat_query.py",
+          "sha256": "sha256:79d1cbc60e4e460ac0c0cfd57c591b10b949496b24a325fb2ba51e515f8dbf50"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:b0cc970bf2c7ebff26b382b3de7a0bb03f09196a48a5e6932d41129dbee03a29",
+      "case_id": "dev-sql-implicit_concat_zero_scanner",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-sql-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-sql-v1",
+      "scanner_receipt": {
+        "applicability": "applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "completed",
+        "expected_signal_count": 0,
+        "observed_signal_count": 0,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/sql/implicit_concat_zero_scanner.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "form input is interpolated into SQL execute sink despite scanner source-model gap",
+        "sink": "database execute query",
+        "untrusted_source": "HTTP or form parameter"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:b3681469662bc43f5fbc5b65881e3b629fa6a445",
+          "path": "corpus/sql/implicit_concat_zero_scanner.py",
+          "sha256": "sha256:0494b0586ff9dcc49303b9793f5da034fb195f5037cd72ea14b7311d5fa4a15b"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable",
+        "zero-scanner"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:3baefc677229a38f6106019628cf3a5b75aa7a0d1f9d24346a32b27d966a7da2",
+      "case_id": "dev-sql-parameterized_query",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-sql-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-sql-v1",
+      "scanner_receipt": {
+        "applicability": "applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "completed",
+        "expected_signal_count": 0,
+        "observed_signal_count": 0,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/sql/parameterized_query.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "HTTP input is passed as a bound SQL parameter",
+        "sink": "database execute query",
+        "untrusted_source": "HTTP or form parameter"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:a4fda78e29a7702eb2269ab259c339cff5ae9243",
+          "path": "corpus/sql/parameterized_query.py",
+          "sha256": "sha256:26445809ae84e5ff102b9d44bd623623d0648a94eb856934c7f7b7fb15efc04d"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:17d3562d1f86d26f3dcf80b86248293dcf1f7b3a8c71dca83a35338714c6c4af",
+      "case_id": "dev-sql-report_bridge",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-sql-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-sql-v1",
+      "scanner_receipt": {
+        "applicability": "applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "completed",
+        "expected_signal_count": 0,
+        "observed_signal_count": 0,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/sql/report_bridge.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "HTTP input crosses imported helper boundary into SQL execute sink",
+        "sink": "database execute query",
+        "untrusted_source": "HTTP or form parameter"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:8846e19f25426c1f32d8b127f5964862255cb9b0",
+          "path": "corpus/sql/report_bridge.py",
+          "sha256": "sha256:daad0209150924605a85f122f35aaf42eccbeb8e8fcdfb02e0cf5d1a28bd0b2d"
+        },
+        {
+          "git_blob_sha1": "sha1:3f7ec2afd9268f4673d9602fa3a5f6a57dd357ab",
+          "path": "corpus/sql/support.py",
+          "sha256": "sha256:c32d8ddd9c28b0c3d03eebd0e4fe8f9cd4ce9bb2a830f3f4b96695be0489bf9e"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable",
+        "inter-file",
+        "zero-scanner"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:7fde1531bcba44a57b4a8369f88dbe30f08b75b1cdeef34ca81d1c0350458ab6",
+      "case_id": "dev-sql-static_report",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-sql-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-sql-v1",
+      "scanner_receipt": {
+        "applicability": "applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "completed",
+        "expected_signal_count": 0,
+        "observed_signal_count": 0,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/sql/static_report.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "static report query has no untrusted source",
+        "sink": "database execute query",
+        "untrusted_source": "HTTP or form parameter"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:3be549dbccc7df78cf913b14d6dc664e0abef5ea",
+          "path": "corpus/sql/static_report.py",
+          "sha256": "sha256:e676034ad71b4fd31eeac9477fdb9bf1b89abc4e4382381e637e5a63147d7d9a"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:b0b1471bb36b350309f6dd543ceccefc3e0e0e0bda011037e4d436218b0ff3ba",
+      "case_id": "dev-command-argument_vector",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-command-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-command-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/command/argument_vector.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted command-looking value remains one argv element in a shell-disabled execution plan",
+        "sink": "shell-enabled process execution plan",
+        "untrusted_source": "untrusted command-like text"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:0dca0081999029541694d53c013d40528d822679",
+          "path": "corpus/command/argument_vector.py",
+          "sha256": "sha256:224ab7e898042ec6f1ebfea8f18490b061f0fae52549aeec429f9b0f7c896e07"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:001c94535fbee421e6111c3a5858882bb81901b7ad7b9454170d64842f997fcd",
+      "case_id": "dev-command-build_guard",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-command-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-command-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/command/build_guard.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "unallowlisted build target is rejected",
+        "sink": "shell-enabled process execution plan",
+        "untrusted_source": "untrusted command-like text"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:485e527f298b67c5355d053290fa970828d4f4d4",
+          "path": "corpus/command/build_guard.py",
+          "sha256": "sha256:8403cb2a97e7fb12141d7c6b1cad110a487413aa5b9ee1cc83db08cba8a209c6"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "guard-counterevidence"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:f407640d34eef3c0733bbf21e5647cf1e9eacf83473650cf2a79d62c941476e4",
+      "case_id": "dev-command-indirect_launcher_zero_scanner",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-command-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-command-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/command/indirect_launcher_zero_scanner.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted text is concatenated into a shell-enabled process execution plan",
+        "sink": "shell-enabled process execution plan",
+        "untrusted_source": "untrusted command-like text"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:70a3d009ae4905bc88e28aa0ad0fea5a486939a5",
+          "path": "corpus/command/indirect_launcher_zero_scanner.py",
+          "sha256": "sha256:d609719c07bfa4302df4a8ea09067aeb3edc1da95ca73f561a2ce908f94f0536"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:44c7996758564fe8d3505bd1fd4837434fea9d0a63be3491bbe0469e56b40977",
+      "case_id": "dev-command-literal_status",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "safe",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-command-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-command-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/command/literal_status.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "status output contains no command input",
+        "sink": "shell-enabled process execution plan",
+        "untrusted_source": "untrusted command-like text"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:591f54e269a2d52ace4ebd5c2c4ae7374eacfdf2",
+          "path": "corpus/command/literal_status.py",
+          "sha256": "sha256:21c5198f2c0b340f2a0e90c66eb8303193d26aea05155def1f506e9135e51dea"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "fixed-safe"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:988a2d5126200cbdf75ccdda6019b26fd987b023b30f853c45ef2cea5ada3fdc",
+      "case_id": "dev-command-shell_flag",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-command-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-command-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/command/shell_flag.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted command crosses a shell-enabled process execution boundary",
+        "sink": "shell-enabled process execution plan",
+        "untrusted_source": "untrusted command-like text"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:48fdd9623c7a03f9a13bdf64063c620602bcaab9",
+          "path": "corpus/command/shell_flag.py",
+          "sha256": "sha256:4f2c65c5f62bf8136ea1c8783e8ccc00d9d7d2d076e4711794479ea9b5df74c9"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable"
+      ]
+    },
+    {
+      "case_content_sha256": "sha256:d8c5bc297fb96c7e55fd144eb30418f38c03139833afe4a0ce37d64b4ead9f2b",
+      "case_id": "dev-command-task_bridge",
+      "exclusions": [
+        "No production claim, CVE claim, private source, locked-test input, calibration input, or external provenance is implied."
+      ],
+      "expected_label": "vulnerable",
+      "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+      "language": "python",
+      "lineage_group": "lineage-command-v1",
+      "origin": {
+        "acquisition": "Already present as authored corpus data; no download, credential, or third-party repository access.",
+        "kind": "self-authored-educational",
+        "license": "CC0-1.0",
+        "provenance": "SecureCode AI self-authored educational case; no external source acquired.",
+        "revision": "self-authored-v1"
+      },
+      "root_cause_group": "lineage-command-v1",
+      "scanner_receipt": {
+        "applicability": "not-applicable",
+        "basis": "source-only exact scanner receipt; source is never executed",
+        "completion": "not-run-not-applicable",
+        "expected_signal_count": null,
+        "observed_signal_count": null,
+        "scanner_id": "securecode-python-cwe89@1.0",
+        "scanner_source_path": "corpus/command/task_bridge.py"
+      },
+      "security_semantics": {
+        "policy_invariant": "untrusted task crosses imported helper boundary into shell-enabled process execution plan",
+        "sink": "shell-enabled process execution plan",
+        "untrusted_source": "untrusted command-like text"
+      },
+      "sources": [
+        {
+          "git_blob_sha1": "sha1:4bb0447d1783f41ec65106c84f4fc956f743124e",
+          "path": "corpus/command/task_bridge.py",
+          "sha256": "sha256:94c9b9c708a4fdbf77081290c8397dbb7ab13b8adb7ec66e380dc75c7855815a"
+        },
+        {
+          "git_blob_sha1": "sha1:67020e21b4d1acc2b6fef9a86143feec32b25bc3",
+          "path": "corpus/command/support.py",
+          "sha256": "sha256:d31457672f2409ddae03e4225f192f724649e75f1c59d042c8e34b20caca3845"
+        }
+      ],
+      "split": "development",
+      "strata": [
+        "vulnerable",
+        "inter-file"
+      ]
+    }
+  ],
+  "content_identity": {
+    "authoring_base_commit": "git:d04f588fc323b6696cd0fbad2a76dcdbb0414c61",
+    "content_hash_algorithm": "sha256",
+    "git_blob_algorithm": "sha1",
+    "source_only_build": {
+      "not_applicable_reason": "corpus source is data-only and never built or executed on the host",
+      "status": "not-applicable"
+    },
+    "source_revision": "self-authored-v1"
+  },
+  "corpus_content_sha256": "sha256:015be7f1613c87db66258c9f190c22c39356e79b09771493afae81674f65f79b",
+  "corpus_id": "securecode-development-educational-v1",
+  "exclusions": [
+    "External repositories, CVEs, private source, frozen expectations, locked tests, calibration, and production thresholds are excluded.",
+    "Corpus source is untrusted data and must not execute on the host."
+  ],
+  "frozen_case_ids": [
+    "dev-authz-admin_guard",
+    "dev-authz-cross_tenant_bridge",
+    "dev-authz-default_deny_report",
+    "dev-authz-direct_object_reference",
+    "dev-authz-opaque_identifier_zero_scanner",
+    "dev-authz-tenant_checked_lookup",
+    "dev-path-archive_guard",
+    "dev-path-encoded_segment_zero_scanner",
+    "dev-path-import_path_bridge",
+    "dev-path-readonly_config",
+    "dev-path-resolved_child",
+    "dev-path-traversal_join",
+    "dev-sql-allowlisted_sort",
+    "dev-sql-concat_query",
+    "dev-sql-implicit_concat_zero_scanner",
+    "dev-sql-parameterized_query",
+    "dev-sql-report_bridge",
+    "dev-sql-static_report",
+    "dev-command-argument_vector",
+    "dev-command-build_guard",
+    "dev-command-indirect_launcher_zero_scanner",
+    "dev-command-literal_status",
+    "dev-command-shell_flag",
+    "dev-command-task_bridge"
+  ],
+  "ground_truth_status": "behavioral-property-rule-independently-reviewed",
+  "label_stratum_invariants": {
+    "inter_file_requires_multiple_sources": true,
+    "lineage_split_must_be_development_only": true,
+    "safe_requires_one_of": [
+      "fixed-safe",
+      "guard-counterevidence"
+    ],
+    "vulnerable_requires": "vulnerable",
+    "zero_scanner_requires_applicable_completed_zero": true
+  },
+  "license": "CC0-1.0",
+  "lineage_groups": [
+    "lineage-authz-v1",
+    "lineage-path-v1",
+    "lineage-sql-v1",
+    "lineage-command-v1"
+  ],
+  "oracle": {
+    "execution": "docker-only-credential-free-network-none-read-only-resource-bounded",
+    "path": "corpus/oracle.py",
+    "rules_path": "corpus/oracle-rules.json",
+    "rules_sha256": "sha256:6a820a6823af25fbc4f208bc31a0855ba4a02ab50ebaec29fb772a72ce4a618d",
+    "sha256": "sha256:f453b657ef8ce0fd1db5df4021e621e7a96cce218ad78f6e31acae4b34884fc7"
+  },
+  "purpose": "P7.6 preparation input for P7.17 only; not a confirmatory benchmark, calibration corpus, G7 evidence, or release claim.",
+  "scanner": {
+    "receipt_mode": "source-only static analysis; no corpus source execution",
+    "scanner_id": "securecode-python-cwe89@1.0",
+    "scope": "Python HTTP request.args.get -> interpolation -> execute evidence only"
+  },
+  "schema_version": "2.0",
+  "split": "development",
+  "version": "1.0.0-candidate"
+}
