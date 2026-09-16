@@ -356,3 +356,40 @@ feasibility `dspy.RLM` для обхода OWASP DVSA, но сам сообща�
 [RLM/DSPy/SkillOpt research note](research/RLM_DSPY_SKILLOPT.md). Эти методы
 приняты в ограниченный offline scope `CR-016` и `P7.12–P7.16`, а не
 обязательными runtime dependencies.
+
+## 12. Wazuh patterns applicable to SecureCode AI
+
+Проверено 16 сентября 2026 года по официальной документации и основному
+репозиторию Wazuh.
+
+Для текущего M-A2026 полезны четыре независимо реализуемых принципа:
+
+1. Разделять сбор, декодирование, правило и alert. В SecureCode AI это
+   соответствует цепочке `RawSignal -> normalization -> EvidenceGraph ->
+   FindingCase -> verdict -> report`; сигнал сканера сам по себе не является
+   вердиктом.
+2. Давать тестовый трассировочный режим наподобие `wazuh-logtest`, где один
+   фиксированный вход показывает извлеченные факты, стабильный rule ID,
+   доказательства и итоговый verdict. M-A2026 notebook показывает такой
+   поэтапный публичный CWE-89 пример.
+3. Хранить пользовательские правила отдельно от поставляемых и версионировать
+   `rule_id`, `rule_version`, CWE, source lane и evidence references.
+4. Использовать file-integrity baseline для accepted specs, evaluator, исходного
+   checkout и patch до и после sandbox validation.
+
+После M-A2026 можно исследовать inventory и CVE/OSV correlation, разделение
+collector/analysis/storage/dashboard и фильтрованные SARIF/webhook интеграции.
+Wazuh Active Response с привилегированным запуском команд не переносится: для
+SecureCode AI остаются обязательными dry-run, capability policy, явное
+разрешение и обратимость. Код, XML rules и внутренние протоколы Wazuh не
+копируются. Основной репозиторий указывает GPLv2, поэтому идеи реализуются
+независимо, а любое повторное использование потребует отдельной лицензионной
+проверки.
+
+Первичные источники:
+
+- [Wazuh architecture](https://documentation.wazuh.com/current/getting-started/architecture.html);
+- [Testing decoders and rules](https://documentation.wazuh.com/current/user-manual/ruleset/testing.html);
+- [File integrity monitoring](https://documentation.wazuh.com/current/user-manual/capabilities/file-integrity/how-it-works.html);
+- [Wazuh vulnerability detection](https://documentation.wazuh.com/current/user-manual/capabilities/vulnerability-detection/how-it-works.html);
+- [Wazuh license](https://github.com/wazuh/wazuh/blob/main/LICENSE).

@@ -195,9 +195,11 @@ class OpenAICompatibleLocalHttpConnector:
         "_endpoint_path",
         "_port",
         "_profile",
+        "_seed",
         "_server_ip",
         "_socket_address",
         "_socket_family",
+        "_temperature",
     )
 
     def __init__(
@@ -205,7 +207,19 @@ class OpenAICompatibleLocalHttpConnector:
         *,
         profile: ProviderProfile,
         cancelled: CancellationProbe | None = None,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> None:
+        if temperature is not None and (
+            isinstance(temperature, bool)
+            or not isinstance(temperature, (int, float))
+            or not 0.0 <= float(temperature) <= 2.0
+        ):
+            raise ValueError("LOCAL_CONNECTOR_TEMPERATURE_REJECTED")
+        if seed is not None and (
+            isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2_147_483_647
+        ):
+            raise ValueError("LOCAL_CONNECTOR_SEED_REJECTED")
         parsed = urlsplit(profile.endpoint.base_url)
         if (
             profile.provider_kind is not ProviderKind.OPENAI_COMPATIBLE_LOCAL
@@ -231,6 +245,8 @@ class OpenAICompatibleLocalHttpConnector:
         self._endpoint_path = f"{base_path}/chat/completions" if base_path else "/chat/completions"
         self._port = port
         self._profile = profile
+        self._temperature = None if temperature is None else float(temperature)
+        self._seed = seed
         self._server_ip = configured_ip.compressed
         if configured_ip.version == 4:
             self._socket_family = socket.AF_INET
@@ -448,12 +464,17 @@ class OpenAICompatibleLocalHttpConnector:
             )
         try:
             prompt = payload.decode("utf-8", "strict")
+            request_payload: dict[str, object] = {
+                "model": model_id,
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+            }
+            if self._temperature is not None:
+                request_payload["temperature"] = self._temperature
+            if self._seed is not None:
+                request_payload["seed"] = self._seed
             request_body = json.dumps(
-                {
-                    "model": model_id,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"},
-                },
+                request_payload,
                 ensure_ascii=True,
                 allow_nan=False,
                 separators=(",", ":"),

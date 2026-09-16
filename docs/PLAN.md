@@ -450,12 +450,12 @@ approvals и audit trail без обязательной передачи пол
 
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
-| `P7.1` | JavaScript/TypeScript parser, symbols и rules | G4; reviewed dependency admission | positive/negative multi-file fixtures through common evidence/verdict/report pipeline | `TODO` |
-| `P7.2` | Go parser, symbols и rules | G4; reviewed dependency admission | positive/negative multi-file fixtures through common evidence/verdict/report pipeline | `TODO` |
-| `P7.3` | Language-neutral call/data-flow contracts | P7.1, P7.2 | shared graph invariants across 3 languages | `TODO` |
-| `P7.4` | Расширить CWE portfolio | P7.3 | SQLi, command injection, path traversal, SSRF, authz sample | `TODO` |
+| `P7.1` | JavaScript/TypeScript parser, symbols и rules | G4; reviewed dependency admission | JS/TS/JSX/TSX facts enter the production normalization, EvidenceGraph, verdict and report path; final review and protected delivery remain | `IN PROGRESS` |
+| `P7.2` | Go parser, symbols и rules | G4; reviewed dependency admission | Go facts enter the same production path and receiver-qualified method identities are stable; final review and protected delivery remain | `IN PROGRESS` |
+| `P7.3` | Language-neutral call/data-flow contracts | P7.1, P7.2 | aggregate node/edge admission is bounded before allocation and shared graph invariants pass focused tests; final review and protected delivery remain | `IN PROGRESS` |
+| `P7.4` | Расширить CWE portfolio | P7.3 | SQLi, command injection, path traversal, SSRF and authz samples are implemented, focused-tested and included in canonical quality; final review and protected delivery remain | `IN PROGRESS` |
 | `P7.5` | Подключить вторую SCM | G5 | feature parity matrix and E2E test | `TODO` |
-| `P7.6` | Pin benchmark datasets and licenses | P0.12 | commit/hash/license manifest | `TODO` |
+| `P7.6` | Pin benchmark datasets and licenses | P0.12 | development subset has a hash/license manifest and hardened Docker oracle; broader dataset acquisition and leakage review remain | `IN PROGRESS` |
 | `P7.7` | Baseline comparison | P7.6 | deterministic-only, scanner-seeded LLM, model-native-only, one-shot and full hybrid results | `TODO` |
 | `P7.8` | Ablations | P7.7 | lanes/graph/skeptic/validator/root-cause contribution under declared comparable budgets | `TODO` |
 | `P7.9` | Confidence calibration and gate thresholds | P7.7, P7.8 | held-out reliability curves and chosen thresholds | `TODO` |
@@ -466,7 +466,7 @@ approvals и audit trail без обязательной передачи пол
 | `P7.14` | Offline DSPy/GEPA and SkillOpt-style experiments | P7.7, P7.12 | versioned prompt/skill candidates, development/held-out metrics and zero protected access | `TODO` |
 | `P7.15` | Sandboxed RLM-inspired discovery experiment | P7.7, P7.12 | read-only CodeIndex ablation, bounded resources and no unauthorized effects | `TODO` |
 | `P7.16` | Candidate promotion/no-promotion decision | P7.13–P7.15 | AppSec-reviewed Pareto/security report; promoted immutable artifact or documented rejection | `TODO` |
-| `P7.17` | Early development baseline and E2E remediation study | G4; admitted separate development corpus prepared with P7.6 | versioned per-run facts/budgets/results, independent denominator recomputation and limitations under DEVELOPMENT_EVALUATION.md; no confirmatory claim | `TODO` |
+| `P7.17` | Early development baseline and E2E remediation study | G4; admitted separate development corpus prepared with P7.6 | all 312 cells were rerun after oracle hardening and independently recomputed; 171 model cells remain failed and no repair study is complete | `IN PROGRESS` |
 
 CR-046 prioritizes P7.1–P7.3 and P7.17 for M-A2026 before backend/SCM expansion.
 P7.6 acquisition/license/leakage preparation starts now; a small development
@@ -538,8 +538,8 @@ unchanged and cannot be satisfied by the academic snapshot alone.
 | `P9.13` | Build reproducible academic submission bundle | P9.2–P9.5, P9.12 | Git URL, README, dependency/config files, tests, notebook, dataset links/fixed-seed generator, PDF/HTML report and clean-room replay | `TODO` |
 | `P9.14` | Record and verify web-service delivery | P6.12, P9.3, P9.13 | Dockerfile/instructions, 2–5 minute screencast and anonymous public-link checks | `TODO` |
 | `P9.15` | Deadline correction and coordinated delivery plan | explicit user instruction 2026-09-05 | CR-046/D-044, coherent calendar/scope, preserved frozen contracts, independent review and verified handoff | `IN PROGRESS` |
-| `P9.17` | First working demo for instructor discussion | G3, P3.13; scheduling via P9.12 | target Sep16, script/video ready Sep15 18:00; real local Python audit on vulnerable/safe development cases, evidence/report and measured limitations; record actual feedback Sep17–18; no G4/full repair/readiness claim | `TODO` |
-| `P9.16` | Assemble and independently review M-A2026 snapshot | G4, P3.13, P7.1–P7.3, P7.17, P9.12 | full academic manifest, real local-model end-to-end demo, clean notebook/report/data replay and READY_FOR_SUBMISSION record without G7/G9 claims | `TODO` |
+| `P9.17` | First working demo for instructor discussion | G3, P3.13; scheduling via P9.12 | bounded runner and focused contract tests are implemented; integrator rerun confirmed one real literal-loopback vulnerable development case with dual-lane agreement, a separate repair request, an ephemeral parse/rescan pass, source unchanged and matching redacted JSON/HTML hashes; instructor feedback remains pending | `IN PROGRESS` |
+| `P9.16` | Assemble and independently review M-A2026 snapshot | G4, P3.13, P7.1-P7.3, P7.17, P9.12 | fail-closed builder/validator, substantive experiment report, executed public CWE-89 audit notebook, Markdown, HTML, PDF, exact subject-bound quality receipt, real-local redacted receipt, delivery hashes and clean replay are present; canonical quality passes 1,613 tests at 81.61% Core branch coverage; `NOT_READY` pending durable final reviews, instructor confirmations and protected delivery | `IN PROGRESS` |
 
 Academic portions of P9.2–P9.6 and P9.13 are prepared during development and
 reused by P9.16; their final enterprise/v1 acceptance is not marked DONE early.

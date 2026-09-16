@@ -1,0 +1,92 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>M-A2026 academic snapshot</title><style>body{font:16px system-ui,sans-serif;line-height:1.5;margin:2rem;max-width:70rem}pre{white-space:pre-wrap;background:#f5f5f5;padding:1rem;border-radius:.4rem}</style></head><body><h1>SecureCode AI M-A2026 academic snapshot</h1><p>Reproducible academic experiment report.</p><pre># SecureCode AI M-A2026 academic snapshot
+
+## Problem statement
+
+SecureCode AI investigates whether a reproducible, evidence-gated pipeline can detect CWE-89 SQL injection, propose a bounded repair, validate it in an ephemeral workspace, and produce reviewable reports without changing the source checkout.
+
+The academic question is narrower than release readiness: what can the current deterministic and local-model paths demonstrate on pinned public fixtures, and where do the recorded experiments fail?
+
+## Solution and architecture
+
+The implementation separates parsing and language adapters from a language-neutral ProgramGraph, normalized raw signals, EvidenceGraph construction, verdict composition, repair proposal, ephemeral validation, and report rendering. Python supports the full reference composition. JavaScript, TypeScript, and Go contribute bounded CWE-89 source, flow, guard, and sink evidence through the same evidence and verdict contracts.
+
+Untrusted development-corpus execution is isolated behind the hardened Docker oracle. The local model is reached only through a literal loopback endpoint; retained receipts contain runtime identity and hashes but exclude prompts, raw model responses, patches, credentials, and source text.
+
+## Method
+
+The submission combines three evidence layers: a pinned synthetic CWE-89 detect, suggest, validate demonstration; a 312-cell development matrix across deterministic, scanner-seeded, model-native, one-shot, and hybrid configurations; and one real local-model instructor run with before-and-after runtime identity observation. The canonical offline quality command verifies the repository independently of those experiment results.
+
+## Experimental results
+
+- Development matrix: 312 of 312 cells recorded; 171 failed cells and the aggregate is incomplete.
+- Deterministic-only: TP=1, FP=0, TN=12, FN=11, precision=1.00, recall=0.0833, F1=0.1538.
+- One-shot local model: TP=9, FP=3, TN=24, FN=27, precision=0.75, recall=0.25, F1=0.375; 24 cells failed structured-output validation.
+- Repair study: 0 attempted patches and 0 independently validated patches; root-cause repair rate is unavailable.
+- Real local demo: outcome=COMPLETED, lane agreement=AGREED, patch=PROPOSED, ephemeral validation=PASSED, source unchanged=true.
+- Observed runtime: Ollama 0.16.2, model qwen2.5-coder:7b-instruct-q4_K_M, quantization Q4_K_M, digest sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364.
+- Repository quality: `PASS`, 1613 passed, 10 skipped, 81.61% Core branch coverage.
+
+## Conclusions
+
+The pinned Python reference demonstrates the intended detect, suggest, ephemeral-validate, and report flow while preserving the original checkout. The real local-model run demonstrates agreement between lanes for one bounded example. The development matrix does not support a general accuracy or repair-effectiveness claim: deterministic recall is low, model configurations contain 171 failed cells in total, and no patch entered the repair study. The evidence therefore supports an academic prototype snapshot, not a production or release claim.
+
+## Bound snapshot
+
+- Base implementation commit: d04f588fc323b6696cd0fbad2a76dcdbb0414c61
+- Meaning: The base commit anchors prior integrated work; subject_sha256 binds the complete current repository candidate except generated report/m-a2026 delivery bytes.
+- Included implementation evidence: Python CWE-89 repair, JavaScript, TypeScript, and Go CWE-89 adapters, bounded local-model instructor runner, and development-corpus recomputation.
+
+## Delivery status
+
+`NOT_READY`
+- Instructor reference, individual-work approval, exact defense slot, and upload deadline remain unconfirmed.
+- This academic snapshot does not claim G7, G9, v1.0, PROJECT CLOSED, or release readiness.
+- The development benchmark retains incomplete model cells and no repair-rate claim.
+- Independent reviews and protected delivery remain pending.
+
+## Evidence inventory
+
+| Path | SHA-256 |
+| --- | --- |
+| `README.md` | `a689f8164434b17609e5e81d0cdf92433e0260840e1f3a61141dca4c2117bf44` |
+| `artifacts/gates/G2/promotion-manifest.json` | `d63e16e891971b7f75d02a475716b323b0f92437fab0b006c5ffcd6b724f07e2` |
+| `artifacts/gates/G2/test-results/deterministic-core-validation.md` | `dd64d5feff2b62ddf9b3244cdb0e87da22d7b5e1c569a27032d71e80eb2264ce` |
+| `artifacts/gates/G3/promotion-manifest.json` | `012d85d83108e308cbf16801005a65b022859c5199a3d6f21355edf3b27ffd2d` |
+| `artifacts/gates/G3/test-results/g3-validation.md` | `0b1d8ffd2df4ef5d57bec2d9913162c9e3422d9d0d277baebb6c7dd150625eb9` |
+| `artifacts/gates/G4/promotion-manifest.json` | `c59d5428d8f068417da21064bac0cd98ac81f43c266ca116f3292765476ad5bb` |
+| `artifacts/gates/G4/test-results/g4-validation.md` | `41bf0550780127718aec1f6cbe2862347cb3515d8c63411361cc40fa25686da4` |
+| `demo/mvp_cwe89_demo.py` | `90babcd217c88199d559a54bfcb4e10871fa2eb224c1979dfc1720e61f8e1a1a` |
+| `demo/p917_real_local_demo.py` | `2550ce04ca5e39a3616fef5e3db730537c52794869345b9405bd355b264c4275` |
+| `docs/TEACHER_QUESTIONS.md` | `9265f214a84fc0187baf98a702a2a3f65c03927c3d55785ce26f44f037b9dddf` |
+| `evaluation/development/corpus-manifest.yaml` | `59ff6effc451cea622c258884daeb71582f52137e986b4eaf0e5f28d421202bf` |
+| `evaluation/development/results/aggregate.json` | `deae563fe08580a2ed3dc447ba19d020f31e63797eb8b83c8b6737ad3a674407` |
+| `evaluation/development/results/recomputed.json` | `deae563fe08580a2ed3dc447ba19d020f31e63797eb8b83c8b6737ad3a674407` |
+| `evaluation/development/results/run-records.jsonl` | `396667fc4e2a08046a4d487ed6306f670c76a356800e2ead5b56e6bf047790be` |
+| `evaluation/development/run-plan.yaml` | `fa294da989a423167f5a6bb04e693b4926b414d4c557bc1250b27b420d3b7728` |
+| `packages/adapters/src/securecode_ai/adapters/cwe89_multilanguage.py` | `f7b3a3d607a1d666a877e509852eacda617792b134af19b39ea32f2723d98751` |
+| `packages/adapters/src/securecode_ai/adapters/cwe_portfolio.py` | `dc20687e0fed7632e532f3f41ec91f0c3c439630e6da4227a203ce6dd30d9f38` |
+| `packages/adapters/src/securecode_ai/adapters/program_graph.py` | `a0b325ea18385156a6bab2ba1ef7977c94656ae05defaa57a3a1a5ccf4507e80` |
+| `pyproject.toml` | `c63f8b628e3cc3f5a3b25befaa17d517a4e886553f836dac065b5c6f057b70c7` |
+| `report/development-benchmark/README.md` | `df7b813d7e330c04bb05bfb62dbee9ead8addabb5de84649543505ed2dac5d15` |
+| `report/development-benchmark/limitations.md` | `2ec663f5f21ec7461b29a93bab8bea509c5aedb463797699b5ebc8d82f73756e` |
+| `report/m-a2026/evidence/p917-real-local/integrator-receipt.json` | `7fa7d9f106abdc8c991df34c25b43bf5fcd94687eebc5fe313667d061c540603` |
+| `report/m-a2026/evidence/p917-real-local/p917-ephemeral-validation.json` | `130c1595e7e5aee1847a5c7e79422efef2e685456f00f9c67034b310e2a89bd8` |
+| `report/m-a2026/evidence/p917-real-local/p917-local-demo.html` | `400ff949e73e65f6b6987551e75f8c105b47b95f83b69d648bcbcabed220c6be` |
+| `report/m-a2026/evidence/p917-real-local/p917-local-demo.json` | `d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b` |
+| `scripts/build_m_a2026_submission.py` | `59979d7c08db15d79f0c7b29ee8ba0dee6dcf3c3bf245480cefa88c2d6cf6d6d` |
+| `tests/integration/test_cwe_portfolio_pipeline.py` | `e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7` |
+| `tests/integration/test_m_a2026_submission.py` | `9ebac5b3da0850b79430096ec30917d3dfefd54e6f4f47a43ac0e6e5d77cec7b` |
+| `tests/integration/test_multilanguage_pipeline.py` | `00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc` |
+| `tests/integration/test_mvp_demo.py` | `2faa6dc45ebd7cb5719f27c90a778f8068cc8cf27f62ec97e7d61e10f3d84dfa` |
+| `tests/integration/test_p917_real_local_demo.py` | `91729ef1916df05e502d25bbb6e3b7b54955f804bd0eebc6a044fd8a7312b21a` |
+| `tests/unit/test_cwe_portfolio.py` | `738e0fd7b7752c59faac5d937272233c8248f90a9e2ab7539b3370bbbe85faf6` |
+| `uv.lock` | `ae181729916f2187aed41ccc6f241af5aee0546e0f4cfd22e00a9ac27260ebf7` |
+
+## Replay
+
+Use `clean-replay.md` to rebuild and validate the bundle. Execute `notebooks/m_a2026_submission.ipynb` to replay the pinned public demonstration and inspect the recorded benchmark and real-local receipts. The development benchmark limitations remain authoritative in the linked source report.
+
+## Data handling
+
+The manifest and reports retain aggregate measurements, paths, hashes, status, and bounded facts. They omit raw source, corpus content, prompts, model responses, credentials, and secrets.
+</pre></body></html>

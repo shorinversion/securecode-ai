@@ -1,6 +1,6 @@
 # SecureCode AI — актуальный контекст
 
-Последнее обновление: 6 сентября 2026 года.
+Последнее обновление: 16 сентября 2026 года.
 
 ## Текущая позиция
 
@@ -16,6 +16,42 @@
   [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
+- `P9.17` implementation candidate is in progress. Its bounded real-local runner
+  keeps deterministic and independent model-native discovery on one immutable
+  Python snapshot, makes a separate repair request only after agreement, writes
+  redacted JSON/HTML metadata and applies a proposed patch only to an ephemeral
+  copy. Focused contract checks passed (46 tests); one literal-loopback Qwen
+  development case completed with source unchanged, lane agreement and ephemeral
+  parse/rescan pass. The integrator independently reran the focused suite and
+  verified the redacted artifact hashes. The current rerun also observes Ollama
+  `0.16.2`, model digest
+  `dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364`
+  and `Q4_K_M` before and after the calls; retained public evidence excludes the
+  raw patch. Instructor feedback remains pending. This is not gate, release,
+  accuracy or readiness evidence.
+- `P9.16` M-A2026 snapshot implementation is `IN PROGRESS`. The fail-closed
+  builder and validator now produce a substantive problem, architecture,
+  method, experiment, metrics and conclusion report in Markdown, HTML and PDF.
+  The executed notebook runs the pinned public CWE-89 audit composition,
+  summarizes all 312 development cells and shows the redacted real-local
+  receipt. Exact deterministic report bytes, closed limitations and status,
+  evidence hashes, notebook execution and the subject-bound quality receipt are
+  validated. The snapshot remains `NOT_READY`: durable independent-review
+  receipts, instructor confirmations and protected delivery are pending.
+  Canonical quality passes with 1,613 tests, ten expected skips and 81.61% Core
+  branch coverage. It makes no G7, G9, v1.0, `PROJECT CLOSED`, accuracy or
+  readiness claim.
+- Independent review remediation is integrated in the candidate: JS/TS/Go facts
+  now use a production RawSignal conversion, ProgramGraph rejects aggregate
+  overflow before allocation, JSX/TSX and common callable forms are supported,
+  and Go receiver methods have stable qualified identities. The Docker oracle
+  isolates corpus execution from trusted framing and rejects frame/ACK and
+  `/proc` descriptor theft. All 24 cases passed the hardened oracle.
+- The hardened P7.17 study reran all 312 cells. Aggregate and independent
+  recomputation are byte-identical at
+  `deae563fe08580a2ed3dc447ba19d020f31e63797eb8b83c8b6737ad3a674407`.
+  Results remain incomplete: 171 model cells failed exact structured-output
+  validation and no repair was attempted.
 - G4 `Core MVP v0.1` is effective `GO`. `P4.1`-`P4.12` completed at
   implementation checkpoint `f76c4c803b3ca185e0c68c310a5d4674c49ba391`;
   canonical quality passed with 1514 unit tests, 5 platform skips, 81.20% Core

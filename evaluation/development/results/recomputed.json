@@ -1,0 +1,439 @@
+{
+  "additional_finding_overlap": {
+    "deterministic_only": {
+      "deterministic": 1,
+      "hybrid": 0,
+      "model_native": 0
+    },
+    "full_hybrid": {
+      "deterministic": 0,
+      "hybrid": 0,
+      "model_native": 0
+    },
+    "model_native_only": {
+      "deterministic": 0,
+      "hybrid": 0,
+      "model_native": 0
+    },
+    "one_shot_llm": {
+      "deterministic": 0,
+      "hybrid": 0,
+      "model_native": 4
+    },
+    "scanner_seeded_investigation": {
+      "deterministic": 0,
+      "hybrid": 0,
+      "model_native": 0
+    }
+  },
+  "configurations": {
+    "deterministic_only": {
+      "FN": 11,
+      "FP": 0,
+      "TN": 12,
+      "TP": 1,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 12,
+      "executed": 24,
+      "f1": 0.15384615384615385,
+      "f2": 0.10204081632653061,
+      "failed": 0,
+      "missing_safe": 0,
+      "not_run": 0,
+      "planned": 24,
+      "precision": 1.0,
+      "recall": 0.08333333333333333,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "full_hybrid": {
+      "FN": 36,
+      "FP": 0,
+      "TN": 0,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 0,
+      "f1": null,
+      "f2": null,
+      "failed": 72,
+      "missing_safe": 36,
+      "not_run": 0,
+      "planned": 72,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "model_native_only": {
+      "FN": 36,
+      "FP": 0,
+      "TN": 0,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 0,
+      "f1": null,
+      "f2": null,
+      "failed": 72,
+      "missing_safe": 36,
+      "not_run": 0,
+      "planned": 72,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "one_shot_llm": {
+      "FN": 27,
+      "FP": 3,
+      "TN": 24,
+      "TP": 9,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 48,
+      "f1": 0.375,
+      "f2": 0.28846153846153844,
+      "failed": 24,
+      "missing_safe": 9,
+      "not_run": 0,
+      "planned": 72,
+      "precision": 0.75,
+      "recall": 0.25,
+      "safe_FP": 3,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    },
+    "scanner_seeded_investigation": {
+      "FN": 36,
+      "FP": 0,
+      "TN": 36,
+      "TP": 0,
+      "development_e2e_remediation_rate": 0.0,
+      "eligible_vulnerable_repairs": 36,
+      "executed": 69,
+      "f1": null,
+      "f2": null,
+      "failed": 3,
+      "missing_safe": 0,
+      "not_run": 0,
+      "planned": 72,
+      "precision": null,
+      "recall": 0.0,
+      "safe_FP": 0,
+      "safe_reconciles": true,
+      "unmatched_FP": 0,
+      "validated_root_cause_repairs": 0,
+      "vulnerable_reconciles": true
+    }
+  },
+  "development_e2e_remediation": {
+    "micro": {
+      "eligible_vulnerable_repairs": 156,
+      "rate": 0.0,
+      "validated_root_cause_repairs": 0
+    },
+    "per_configuration_repetition": [
+      {
+        "configuration": "deterministic_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "scanner_seeded_investigation",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "scanner_seeded_investigation",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "scanner_seeded_investigation",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "model_native_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "model_native_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "model_native_only",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "one_shot_llm",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "one_shot_llm",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "one_shot_llm",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "full_hybrid",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 1,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "full_hybrid",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 2,
+        "validated_root_cause_repairs": 0
+      },
+      {
+        "configuration": "full_hybrid",
+        "eligible_vulnerable_repairs": 12,
+        "rate": 0.0,
+        "repetition": 3,
+        "validated_root_cause_repairs": 0
+      }
+    ]
+  },
+  "full_hybrid_origin_attribution": {
+    "confirmed_cell_origin_coverage": {
+      "attributed_cells": 0,
+      "complete": true,
+      "confirmed_cells": 0
+    },
+    "deterministic_candidate_auditor_receipt_coverage": {
+      "auditor_receipt_cells": 0,
+      "complete": false,
+      "coverage": 0.0,
+      "deterministic_candidate_cells": 3,
+      "dropped_candidate_cells": 3
+    },
+    "per_origin": {
+      "deterministic": {
+        "FP": 0,
+        "TP": 0,
+        "confirmed_precision": null,
+        "recall_contribution": 0.0
+      },
+      "hybrid": {
+        "FP": 0,
+        "TP": 0,
+        "confirmed_precision": null,
+        "recall_contribution": 0.0
+      },
+      "model_native": {
+        "FP": 0,
+        "TP": 0,
+        "confirmed_precision": null,
+        "recall_contribution": 0.0
+      }
+    },
+    "reconciliation": {
+      "FN": {
+        "global": 36,
+        "unattributed": 36
+      },
+      "FP": {
+        "attributed": 0,
+        "global": 0
+      },
+      "TN": {
+        "global": 0,
+        "unattributed": 0
+      },
+      "TP": {
+        "attributed": 0,
+        "global": 0
+      },
+      "complete": true,
+      "missing_safe": {
+        "global": 36,
+        "unattributed": 36
+      }
+    },
+    "unattributed": {
+      "FN": 36,
+      "TN": 0,
+      "missing_safe": 36
+    },
+    "zero_scanner_signal_stratum": {
+      "complete": false,
+      "matrix": {
+        "FN": 33,
+        "FP": 0,
+        "TN": 0,
+        "TP": 0,
+        "executed": 0,
+        "f1": null,
+        "f2": null,
+        "failed": 69,
+        "missing_safe": 36,
+        "not_run": 0,
+        "planned": 69,
+        "precision": null,
+        "recall": 0.0,
+        "safe_FP": 0,
+        "safe_reconciles": true,
+        "unmatched_FP": 0,
+        "vulnerable_reconciles": true
+      }
+    }
+  },
+  "incomplete": true,
+  "incomplete_reasons": {
+    "full_hybrid": {
+      "failed": 72,
+      "not_run": 0
+    },
+    "model_native_only": {
+      "failed": 72,
+      "not_run": 0
+    },
+    "one_shot_llm": {
+      "failed": 24,
+      "not_run": 0
+    },
+    "scanner_seeded_investigation": {
+      "failed": 3,
+      "not_run": 0
+    }
+  },
+  "planned_cells": 312,
+  "recorded_cells": 312,
+  "repair_metrics": {
+    "attempted_patches": 0,
+    "correct_and_secure_rate": null,
+    "independently_validated_patches": 0,
+    "root_cause_repair_rate": null,
+    "sandbox_validated_patches": 0
+  },
+  "resources": {
+    "deterministic_only": {
+      "failure_reason_counts": {},
+      "generated_tokens_total": 0,
+      "latency_p50_seconds": 0.0032053000177256763,
+      "latency_p95_seconds": 0.0048608999932184815,
+      "measured_wall_count": 24,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 24,
+      "prompt_tokens_total": 0,
+      "provider_cost": null,
+      "token_fact_count": 0,
+      "wall_seconds_total": 0.08544560009613633
+    },
+    "full_hybrid": {
+      "failure_reason_counts": {
+        "invalid_structured_finding": 72
+      },
+      "generated_tokens_total": 1026,
+      "latency_p50_seconds": 2.4277351000346243,
+      "latency_p95_seconds": 7.144865399983246,
+      "measured_wall_count": 72,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 12168,
+      "provider_cost": null,
+      "token_fact_count": 72,
+      "wall_seconds_total": 275.7561810997431
+    },
+    "model_native_only": {
+      "failure_reason_counts": {
+        "invalid_structured_finding": 72
+      },
+      "generated_tokens_total": 1299,
+      "latency_p50_seconds": 3.3568772000144236,
+      "latency_p95_seconds": 7.804472699994221,
+      "measured_wall_count": 72,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 10353,
+      "provider_cost": null,
+      "token_fact_count": 72,
+      "wall_seconds_total": 291.29248690011445
+    },
+    "one_shot_llm": {
+      "failure_reason_counts": {
+        "invalid_structured_finding": 24
+      },
+      "generated_tokens_total": 1044,
+      "latency_p50_seconds": 2.6561463000252843,
+      "latency_p95_seconds": 6.739566100004595,
+      "measured_wall_count": 72,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 8841,
+      "provider_cost": null,
+      "token_fact_count": 72,
+      "wall_seconds_total": 243.64672260032967
+    },
+    "scanner_seeded_investigation": {
+      "failure_reason_counts": {
+        "invalid_structured_finding": 3
+      },
+      "generated_tokens_total": 69,
+      "latency_p50_seconds": 0.00238540000282228,
+      "latency_p95_seconds": 0.004620600026100874,
+      "measured_wall_count": 72,
+      "peak_cpu_seconds": null,
+      "peak_ram_bytes": null,
+      "peak_vram_bytes": null,
+      "planned_calls": 72,
+      "prompt_tokens_total": 495,
+      "provider_cost": null,
+      "token_fact_count": 3,
+      "wall_seconds_total": 14.158597200119402
+    }
+  },
+  "schema_version": "development-benchmark-aggregate-1.1"
+}

@@ -231,6 +231,44 @@ def test_local_connector_uses_authorized_peer_and_normalizes_response(
     assert json.loads(request_body)["response_format"] == {"type": "json_object"}
 
 
+def test_local_connector_sends_explicit_sampling_controls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoint = _LocalEndpoint(status=200, body=_success_body())
+    endpoint.install(monkeypatch)
+    profile = _profile_for(endpoint.port)
+    outcome, _ = _execute(
+        profile=profile,
+        connector=OpenAICompatibleLocalHttpConnector(
+            profile=profile,
+            temperature=0.0,
+            seed=42,
+        ),
+    )
+    assert outcome.result is not None
+    assert outcome.result.status is ModelCallStatus.SUCCEEDED
+    body = json.loads(endpoint.requests[0][2])
+    assert body["temperature"] == 0.0
+    assert body["seed"] == 42
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "code"),
+    [
+        ({"temperature": -0.1}, "LOCAL_CONNECTOR_TEMPERATURE_REJECTED"),
+        ({"temperature": 2.1}, "LOCAL_CONNECTOR_TEMPERATURE_REJECTED"),
+        ({"temperature": True}, "LOCAL_CONNECTOR_TEMPERATURE_REJECTED"),
+        ({"seed": -1}, "LOCAL_CONNECTOR_SEED_REJECTED"),
+        ({"seed": True}, "LOCAL_CONNECTOR_SEED_REJECTED"),
+    ],
+)
+def test_local_connector_rejects_invalid_sampling_controls(
+    kwargs: dict[str, object], code: str
+) -> None:
+    with pytest.raises(ValueError, match=code):
+        OpenAICompatibleLocalHttpConnector(profile=_profile_for(11434), **kwargs)  # type: ignore[arg-type]
+
+
 def test_http_200_refusal_stays_a_typed_non_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

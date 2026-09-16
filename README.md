@@ -1,18 +1,55 @@
 # SecureCode AI
 
 SecureCode AI is a security-oriented code-audit platform under staged,
-evidence-gated development. The frozen definition baseline is `0.2.0`; the
-current implementation phase is `P1 — Engineering Foundation`.
+evidence-gated development. The frozen definition baseline is `0.2.0`.
+
+## Current academic snapshot
+
+`P9.16` assembles the M-A2026 academic evidence snapshot from effective G4 and
+the integrated development candidate. The bounded builder creates
+[`report/m-a2026`](report/m-a2026) with a deterministic manifest, Markdown,
+self-contained HTML and PDF reports, a machine-readable quality receipt,
+clean-replay instructions, an executed notebook, raw benchmark records and a
+redacted real-local demo receipt. Its recorded delivery status is `NOT_READY`:
+instructor confirmations, durable independent-review receipts and protected
+delivery remain pending. It does not claim G7, G9, v1.0,
+`PROJECT CLOSED`, or release readiness.
+
+Build and validate an empty local output directory with the locked project
+environment:
+
+```powershell
+.venv\Scripts\python.exe -I scripts\build_m_a2026_submission.py --output <new-empty-output-directory>
+.venv\Scripts\python.exe -I scripts\build_m_a2026_submission.py --validate <new-empty-output-directory>
+```
+
+Run the offline pinned CWE-89 product demonstration without network access or
+changes to the source checkout:
+
+```powershell
+.venv\Scripts\python.exe -I demo\mvp_cwe89_demo.py --output <new-empty-output-directory>
+```
+
+The expected manifest reports one vulnerable signal, zero safe-control signals,
+zero signals after the reference repair, a suggested patch, and completed
+ephemeral validation. It does not claim general product accuracy. For the
+executed academic walkthrough, open
+[`notebooks/m_a2026_submission.ipynb`](notebooks/m_a2026_submission.ipynb). It
+replays that public demonstration, summarizes the 312-cell experiment, shows
+the redacted real-local model receipt, and states the bounded interpretation.
+Re-execute it with the locked project Python environment registered as a Jupyter
+kernel. Re-executing the separate real-model path additionally requires Ollama
+on the literal loopback endpoint and the exact model described in the retained
+P9.17 receipt; the submission notebook itself makes no model call.
 
 This repository contains the completed specification baseline, reproducible
 Python workspace and quality gate, versioned domain/event/model contracts, the
-completed `P1.7` secret-safe configuration, `P1.8` model boundary and `P1.9`
-workflow-runtime substrate, the completed `P1.10` foundation CLI and the
-completed `P1.11` fixture-repository factory. The completed `P1.12` increment
-adds internal exact-version structured telemetry without creating a new public
-wire contract. `P1.13` is in progress: its deterministic specification gate
-validates the frozen baseline, schemas/examples, traceability and admitted Git
-candidate kinds without changing a public runtime contract.
+effective G2 deterministic analysis, effective G3 investigation workflow and
+effective G4 repair/validation MVP. The M-A2026 candidate adds bounded
+JavaScript, TypeScript and Go analysis, a language-neutral ProgramGraph,
+conservative CWE portfolio examples, a 312-cell development study and a real
+literal-loopback instructor demo. These additions remain development evidence
+until their integrated quality, review and protected delivery complete.
 `P1.8`
 provides
 provider-neutral request/result contracts, a hermetic fake, profile-bound
@@ -20,8 +57,8 @@ budgets/dialects, fail-closed native outcome normalization, payload/attempt
 identity, process-local idempotency and connect-time endpoint authorization.
 `P1.9` adds a graph-SDK-independent workflow state machine, replay-complete
 transition journal, definition-bound producer admission and a fail-closed
-in-memory adapter. It does **not** yet contain a working scanner, model agent,
-backend, SCM bot, durable runtime or sandbox.
+in-memory adapter. Backend, SCM bot, durable runtime and final production
+sandbox remain later gate work.
 
 ## Reproducible Python environment
 
@@ -121,21 +158,13 @@ quality matrix. The spec job uses full history and event-authoritative base and
 candidate SHAs. The stable aggregate status is `ci / gate`; skipped, cancelled
 or failed mandatory jobs make it fail.
 
-The repository has no GitHub remote yet, so CI configuration alone is **not a
-merge guarantee**. Before `P1.4` can be accepted, the repository owner must:
-
-1. push the reviewed commit to GitHub;
-2. protect `master` with a ruleset requiring `ci / gate` and merge-queue checks;
-3. require trusted review for changes to `.github/workflows/**`,
-   `scripts/ci_policy.py`, `.secrets.baseline` and branch/ruleset policy;
-4. demonstrate that a deliberately failing pull request cannot merge and retain
-   the ruleset/check-run receipt as gate evidence.
-
-Until that external evidence exists, the local P1.4 implementation is a
-verified candidate and the task remains open. Full untrusted-code execution
-isolation belongs to the later scanner/agent sandbox phases; the P1 workflow
-is configured for an ephemeral GitHub-hosted runner with no declared
-secrets, write/OIDC permission, cache or persisted checkout credential.
+The repository has a configured GitHub `origin`. `P1.4` is complete: protected
+rules require the stable `ci / gate` result, an intentional failing pull request
+was blocked, and a later ordinary pull request confirmed the successful path
+without bypass. Full untrusted-code execution isolation remains a separate
+scanner and agent boundary; the CI workflow uses ephemeral GitHub-hosted runners
+with no declared secrets, write/OIDC permission, cache or persisted checkout
+credential.
 
 Current first-party package graph:
 
@@ -220,9 +249,9 @@ packages/adapters/
   installable package boundaries and the single locked dependency authority.
 - `P1.3` completed the pinned Ruff/mypy/pytest quality toolchain and the single
   fail-closed local/CI entrypoint described above.
-- `P1.4` has a locally verified pre-commit/CI candidate, including secret and
-  dependency policy jobs; external GitHub ruleset and failing-PR evidence are
-  still required before completion.
+- `P1.4` completed the pre-commit and protected CI path, including secret and
+  dependency policy jobs, blocking evidence and a later green no-bypass pull
+  request.
 - `P1.5` completed the versioned domain contracts and independent acceptance.
 - `P1.6` completed append-only events/stable IDs after independent product,
   architecture and security/evaluation acceptance.
@@ -258,18 +287,16 @@ packages/adapters/
   `5ace16e80730d56f994cb6a24fa4748867a49646` passes 162 targeted and all 885
   repository tests, Ruff/mypy, 85.80% Core branch coverage, schema check and
   strict G0.
-- `P1.13` is in progress under constrained packet SHA-256
-  `b1b7e6ce50a46e62212a6ef74383c3699f5f498542e684915778a87ca7c05673`;
-  its remediation revision awaits renewed independent review.
-  The current candidate adds the offline specification/candidate gate, closed
-  D-026 completion/review/promotion records and mandatory CI composition; it
-  does not close `P1.4`, `G1` or authorize `P2`.
+- `P1.13` completed the offline specification/candidate gate, closed D-026
+  completion/review/promotion records and mandatory CI composition. Its clean
+  implementation checkpoint is `307a24a71cea25829c0b5541494bf01e13a2e6ed`;
+  effective G1 through G4 evidence is recorded in `docs/CONTEXT.md`.
 - `P6.12` owns a buildable production/demo `Dockerfile` and web-service launch
   instructions.
 
-The current `Dockerfile` remains a non-buildable ownership marker until P6.12.
-The clean Python install and foundation CLI entry point are supported, but the
-product scan commands remain intentionally unavailable until their later tasks.
+The clean Python install, foundation CLI entry point, offline CWE-89 demo and
+M-A2026 submission notebook are supported. Production server, SCM integration
+and protected-delivery claims remain governed by their later tasks.
 
 ## Durable project documentation
 
