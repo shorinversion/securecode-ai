@@ -934,3 +934,10 @@ chain-member diagnostic. Push validation translates the chain diagnostic.
 - Decision: scan each unique repository path and Git object ID pair once across the index and candidate commit trees.
 - Reason: an unchanged immutable blob has identical bytes, while retaining the path in the identity preserves path-sensitive baselines and forces renamed content to be checked again.
 - Consequence: secret coverage is unchanged and repeated CI work is bounded by unique path-object pairs.
+
+## D-112: Validate both supported platform API surfaces
+
+21 September 2026, CR-094. Canonical quality runs distinct Linux and Windows
+mypy stages over the same deterministic source inventory before executing unit
+tests. Either platform failure blocks unit execution and the candidate. This
+prevents a host-native check from hiding invalid guarded platform APIs.
