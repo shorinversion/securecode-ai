@@ -22,6 +22,8 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- P9.21 replaces dynamic Windows-only CLI imports with ordinary guarded imports so package boundaries, Linux typing and Windows typing validate the same atomic-output implementation.
+
 - CR-093 deduplicates immutable secret-scan blobs by repository path and object ID, retaining rename-sensitive coverage while reducing repeated CI work.
 
 - P9.19 fixes cross-platform static analysis of guarded Windows and POSIX APIs; Linux and Windows mypy now validate the same runtime code without weakening platform checks.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 import re
 import stat
@@ -190,6 +189,7 @@ def _revoke_and_remove(parent: Path, directory: int, name: str, descriptor: int)
 
 def _windows_delete_handle(descriptor: int) -> None:
     import ctypes
+    import msvcrt
     from ctypes import wintypes
 
     class FileDispositionInfo(ctypes.Structure):
@@ -200,7 +200,6 @@ def _windows_delete_handle(descriptor: int) -> None:
     operation.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong)
     operation.restype = wintypes.BOOL
     value = FileDispositionInfo(True)
-    msvcrt = importlib.import_module("msvcrt")
     handle = vars(msvcrt)["get_osfhandle"](descriptor)
     if not operation(handle, 4, ctypes.byref(value), ctypes.sizeof(value)):
         raise OSError(vars(ctypes)["get_last_error"](), "output handle deletion failed")
@@ -258,6 +257,7 @@ def _windows_open_existing(path: Path) -> int:
 
 def _windows_open(path: Path, *, disposition: int) -> int:
     import ctypes
+    import msvcrt
 
     kernel32 = vars(ctypes)["WinDLL"]("kernel32", use_last_error=True)
     create = kernel32.CreateFileW
@@ -282,7 +282,6 @@ def _windows_open(path: Path, *, disposition: int) -> int:
     )
     if handle == ctypes.c_void_p(-1).value:
         raise OSError(vars(ctypes)["get_last_error"](), "output could not be opened")
-    msvcrt = importlib.import_module("msvcrt")
     try:
         descriptor = cast(
             int,
