@@ -1,0 +1,422 @@
+"""Production-readable coordinator and handler for ``runs.create``."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+
+from pydantic import ValidationError
+from securecode_ai.contracts import RunExecutionIdentity
+from securecode_ai.core.resource_governor import (
+    ResourceGovernorError,
+    ResourceGovernorErrorCode,
+    ResourceReservationReceipt,
+)
+
+from .ports import (
+    ControlPlaneService,
+    ServiceRequest,
+    ServiceResponse,
+    ServiceUnavailableError,
+)
+from .run_admission_models import (
+    AdmissionClock,
+    AdmissionError,
+    AdmissionErrorCode,
+    AdmissionRecord,
+    AdmissionState,
+    AuthorizationPort,
+    ResourceRequestPolicy,
+    ResourceReservationPort,
+    RunAdmissionStore,
+    WorkerQueuePort,
+    canonical,
+    request_sha256,
+    safe_message,
+)
+
+
+class RunAdmissionService:
+    """Coordinate durable persistence, tenant quota, and exact-identity enqueue."""
+
+    __slots__ = (
+        "_authorization",
+        "_clock",
+        "_queue",
+        "_resource_policy",
+        "_resources",
+        "_store",
+    )
+
+    def __init__(
+        self,
+        *,
+        store: RunAdmissionStore,
+        resources: ResourceReservationPort,
+        queue: WorkerQueuePort,
+        authorization: AuthorizationPort,
+        clock: AdmissionClock,
+        default_resource_policy: ResourceRequestPolicy,
+    ) -> None:
+        for dependency in (
+            store,
+            resources,
+            queue,
+            authorization,
+            clock,
+            default_resource_policy,
+        ):
+            if dependency is None:
+                raise TypeError("run admission dependency is missing")
+        self._store = store
+        self._resources = resources
+        self._queue = queue
+        self._authorization = authorization
+        self._clock = clock
+        self._resource_policy = default_resource_policy
+
+    def create(self, request: ServiceRequest) -> ServiceResponse:
+        identity, run_id, idempotency_key = self._validate_request(request)
+        revision = identity.repository_revision
+        try:
+            allowed = self._authorization.allows(
+                request.identity,
+                action="runs.create",
+                repository_id=revision.repository_id,
+            )
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+        if revision.tenant_id != request.identity.tenant_id or not allowed:
+            raise AdmissionError(AdmissionErrorCode.FORBIDDEN, 403)
+
+        digest = request_sha256(request.method, request.route, request.raw_body)
+        record = self._store.find(
+            tenant_id=revision.tenant_id,
+            idempotency_key=idempotency_key,
+            request_sha256=digest,
+        )
+        if record is None:
+            now_ms = self._now_ms()
+            resource_request = self._resource_policy.build(
+                idempotency_key=idempotency_key,
+                run_id=run_id,
+                execution_identity=identity,
+                now_ms=now_ms,
+            )
+            record = self._store.begin(
+                tenant_id=revision.tenant_id,
+                idempotency_key=idempotency_key,
+                request_sha256=digest,
+                run_id=run_id,
+                execution_identity=identity,
+                resource_request=resource_request,
+                metadata=_safe_metadata(request.document),
+                now_ms=now_ms,
+            )
+        _require_exact_record(record, identity, run_id)
+        return self._resume(record, identity)
+
+    def _resume(self, record: AdmissionRecord, identity: RunExecutionIdentity) -> ServiceResponse:
+        if record.state is AdmissionState.ADMITTED:
+            return ServiceResponse(201, self._store.run_document(record))
+        if record.state in {AdmissionState.FAILED, AdmissionState.RECOVERY_REQUIRED}:
+            code = record.failure_code or AdmissionErrorCode.SERVICE_UNAVAILABLE
+            raise AdmissionError(code, _status_for(code, record.state))
+
+        if record.state is AdmissionState.PERSISTED:
+            receipt = self._reserve(record)
+            try:
+                record = self._store.reserved(record, receipt, now_ms=self._now_ms())
+            except Exception:
+                released = self._release(record, receipt)
+                self._fail_closed(
+                    record,
+                    AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                    recovery_required=not released,
+                )
+
+        if record.state is not AdmissionState.RESERVED:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
+        if self._now_ms() >= record.resource_request.lease_expires_at_ms:
+            released = self._release_record(record)
+            self._fail_closed(
+                record,
+                AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                recovery_required=not released,
+            )
+        try:
+            self._queue.enqueue(
+                tenant_id=record.tenant_id,
+                run_id=record.run_id,
+                execution_identity=identity,
+            )
+        except Exception:
+            released = self._release_record(record)
+            self._fail_closed(
+                record,
+                AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                recovery_required=not released,
+            )
+        try:
+            admitted = self._store.admitted(record, now_ms=self._now_ms())
+        except Exception:
+            released = self._release_record(record)
+            self._fail_closed(
+                record,
+                AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                recovery_required=not released,
+            )
+        return ServiceResponse(201, self._store.run_document(admitted))
+
+    def _reserve(self, record: AdmissionRecord) -> ResourceReservationReceipt:
+        try:
+            return self._resources.reserve(record.resource_request)
+        except ResourceGovernorError as error:
+            code, status = _resource_error(error.code)
+            self._fail_closed(record, code, recovery_required=False, status=status)
+        except Exception:
+            self._fail_closed(
+                record,
+                AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                recovery_required=True,
+            )
+        raise AssertionError("unreachable")
+
+    def _release(self, record: AdmissionRecord, receipt: ResourceReservationReceipt) -> bool:
+        try:
+            self._resources.release(
+                tenant_id=record.tenant_id,
+                repository_id=record.repository_id,
+                run_id=record.run_id,
+                execution_identity_hash=record.execution_identity_hash,
+                reservation_id=receipt.reservation_id,
+                expected_version=receipt.state_version,
+                now_ms=self._now_ms(),
+                cancelled=True,
+            )
+        except Exception:
+            return False
+        return True
+
+    def _release_record(self, record: AdmissionRecord) -> bool:
+        if record.reservation_id is None or record.reservation_version is None:
+            return False
+        try:
+            self._resources.release(
+                tenant_id=record.tenant_id,
+                repository_id=record.repository_id,
+                run_id=record.run_id,
+                execution_identity_hash=record.execution_identity_hash,
+                reservation_id=record.reservation_id,
+                expected_version=record.reservation_version,
+                now_ms=self._now_ms(),
+                cancelled=True,
+            )
+        except Exception:
+            return False
+        return True
+
+    def _fail_closed(
+        self,
+        record: AdmissionRecord,
+        code: AdmissionErrorCode,
+        *,
+        recovery_required: bool,
+        status: int = 503,
+    ) -> None:
+        try:
+            failed = self._store.failed(
+                record,
+                code=code,
+                recovery_required=recovery_required,
+                now_ms=self._now_ms(),
+            )
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+        terminal_code = failed.failure_code or AdmissionErrorCode.SERVICE_UNAVAILABLE
+        terminal_status = _status_for(terminal_code, failed.state)
+        if not recovery_required and terminal_code is code:
+            terminal_status = status
+        raise AdmissionError(terminal_code, terminal_status)
+
+    def _now_ms(self) -> int:
+        try:
+            value = self._clock()
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+        if type(value) is not int or not 0 <= value <= 9_223_372_036_854_775_807:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
+        return value
+
+    @staticmethod
+    def _validate_request(
+        request: ServiceRequest,
+    ) -> tuple[RunExecutionIdentity, str, str]:
+        if (
+            request.action != "runs.create"
+            or request.method != "POST"
+            or request.route != "/api/v1/runs"
+            or request.document is None
+            or request.idempotency_key is None
+        ):
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        run_id = request.document.get("run_id")
+        identity_document = request.document.get("execution_identity")
+        identity_hash = request.document.get("execution_identity_hash")
+        if (
+            type(run_id) is not str
+            or not _identifier(run_id)
+            or type(request.idempotency_key) is not str
+            or not _identifier(request.idempotency_key)
+            or type(identity_document) is not dict
+            or type(identity_hash) is not str
+        ):
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        try:
+            identity = RunExecutionIdentity.model_validate(identity_document)
+        except (TypeError, ValueError, ValidationError):
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
+        if identity_hash != identity.execution_identity_hash:
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        return identity, run_id, request.idempotency_key
+
+
+class RunAdmissionHandler:
+    """Handler-compatible safe boundary for ``CompositeService.optional``."""
+
+    __slots__ = ("_service",)
+
+    def __init__(self, service: RunAdmissionService) -> None:
+        if not isinstance(service, RunAdmissionService):
+            raise TypeError("service must be a RunAdmissionService")
+        self._service = service
+
+    async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
+        if request.action != "runs.create":
+            raise ServiceUnavailableError()
+        try:
+            return self._service.create(request)
+        except AdmissionError as error:
+            return ServiceResponse(
+                error.status,
+                {"error": {"code": error.code.value, "message": safe_message(error.code)}},
+            )
+        except Exception:
+            return ServiceResponse(
+                503,
+                {
+                    "error": {
+                        "code": AdmissionErrorCode.SERVICE_UNAVAILABLE.value,
+                        "message": safe_message(AdmissionErrorCode.SERVICE_UNAVAILABLE),
+                    }
+                },
+            )
+
+
+class RunAdmissionRoutingService:
+    """Install admission for one route while preserving the existing core handler."""
+
+    __slots__ = ("_admission", "_fallback")
+
+    def __init__(
+        self,
+        *,
+        admission: RunAdmissionHandler,
+        fallback: ControlPlaneService,
+    ) -> None:
+        if not isinstance(admission, RunAdmissionHandler) or not hasattr(fallback, "dispatch"):
+            raise TypeError("run admission routing dependencies are invalid")
+        self._admission = admission
+        self._fallback = fallback
+
+    async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
+        if request.action == "runs.create":
+            return await self._admission.dispatch(request)
+        response = await self._fallback.dispatch(request)
+        if not isinstance(response, ServiceResponse):
+            raise ServiceUnavailableError()
+        return response
+
+
+def _require_exact_record(
+    record: AdmissionRecord, identity: RunExecutionIdentity, run_id: str
+) -> None:
+    revision = identity.repository_revision
+    if (
+        record.run_id != run_id
+        or record.tenant_id != revision.tenant_id
+        or record.repository_id != revision.repository_id
+        or record.execution_identity_hash != identity.execution_identity_hash
+        or record.identity_json != canonical(identity.model_dump(mode="json"))
+    ):
+        raise AdmissionError(AdmissionErrorCode.RUN_CONFLICT, 409)
+
+
+def _safe_metadata(document: Mapping[str, object] | None) -> dict[str, object]:
+    if document is None:
+        return {}
+    return {
+        key: value
+        for key in ("request_id", "policy_id", "workflow_id")
+        if type(value := document.get(key)) is str and _identifier(value)
+    }
+
+
+def _resource_error(
+    code: ResourceGovernorErrorCode,
+) -> tuple[AdmissionErrorCode, int]:
+    mapping = {
+        ResourceGovernorErrorCode.QUOTA_EXCEEDED: (
+            AdmissionErrorCode.RESOURCE_QUOTA_EXCEEDED,
+            429,
+        ),
+        ResourceGovernorErrorCode.RATE_LIMITED: (
+            AdmissionErrorCode.RESOURCE_RATE_LIMITED,
+            429,
+        ),
+        ResourceGovernorErrorCode.CONCURRENCY_EXCEEDED: (
+            AdmissionErrorCode.RESOURCE_CONCURRENCY_EXCEEDED,
+            429,
+        ),
+        ResourceGovernorErrorCode.CONFLICT: (
+            AdmissionErrorCode.RESOURCE_CONFLICT,
+            409,
+        ),
+    }
+    return mapping.get(code, (AdmissionErrorCode.SERVICE_UNAVAILABLE, 503))
+
+
+def _status_for(code: AdmissionErrorCode, state: AdmissionState) -> int:
+    if state is AdmissionState.RECOVERY_REQUIRED:
+        return 503
+    if code in {
+        AdmissionErrorCode.RESOURCE_QUOTA_EXCEEDED,
+        AdmissionErrorCode.RESOURCE_RATE_LIMITED,
+        AdmissionErrorCode.RESOURCE_CONCURRENCY_EXCEEDED,
+    }:
+        return 429
+    if code in {
+        AdmissionErrorCode.IDEMPOTENCY_CONFLICT,
+        AdmissionErrorCode.RUN_CONFLICT,
+        AdmissionErrorCode.RESOURCE_CONFLICT,
+    }:
+        return 409
+    if code is AdmissionErrorCode.FORBIDDEN:
+        return 403
+    if code is AdmissionErrorCode.INVALID_REQUEST:
+        return 400
+    return 503
+
+
+def _identifier(value: object) -> bool:
+    if type(value) is not str or not 1 <= len(value) <= 128:
+        return False
+    return value[0].isalnum() and all(
+        character.isascii() and (character.isalnum() or character in "._:-") for character in value
+    )
+
+
+__all__ = [
+    "RunAdmissionHandler",
+    "RunAdmissionRoutingService",
+    "RunAdmissionService",
+]

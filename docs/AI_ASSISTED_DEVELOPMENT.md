@@ -3,8 +3,8 @@
 Статус: действующий operating model разработки.  
 Последнее обновление: 5 сентября 2026 года.
 Нормативные детали: [Spec-Driven Development](SPEC_DRIVEN_DEVELOPMENT.md),
-[план и gates](PLAN.md), решение [`D-016`](DECISIONS.md) и
-[project navigator](../.agents/skills/securecode-project-navigator/SKILL.md).
+[план и gates](PLAN.md) и решение [`D-016`](DECISIONS.md). Локальные инструкции
+агентов не входят в публикуемый продуктовый репозиторий.
 
 ## 1. Основной принцип
 

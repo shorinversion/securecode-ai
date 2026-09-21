@@ -1,0 +1,493 @@
+"""First-party static facts through the existing isolated scanner worker.
+
+Repository code is parsed, never imported or executed. This process boundary
+does not qualify an OCI sandbox or a full SAST baseline.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from time import monotonic_ns
+
+from securecode_ai.contracts import (
+    DataClass,
+    DiscoveryCandidate,
+    Evidence,
+    EvidenceKind,
+    ProducerRef,
+    RawSignal,
+    SourceLocation,
+    SourcePosition,
+    TrustLabel,
+)
+from securecode_ai.core.evidence_graph import (
+    EvidenceEdgeKind,
+    EvidenceGraph,
+    EvidenceGraphEdge,
+    EvidenceNodeKind,
+    EvidenceNodeRef,
+)
+from securecode_ai.core.model_discovery import RepositoryToolSession
+from securecode_ai.core.normalization import normalize_signals
+from securecode_ai.core.repository import RepositoryFile
+from securecode_ai.core.scanning import (
+    ScannerBudget,
+    ScannerExecution,
+    ScannerIdentity,
+    ScannerPluginOutput,
+    ScannerRequest,
+    ScannerRunStatus,
+    ScannerWorkerTarget,
+)
+from securecode_ai.core.tool_policy import (
+    ReadRangeArguments,
+    RepositoryToolBudget,
+    RepositoryToolGuard,
+    RepositoryToolScope,
+)
+
+from . import cst, cwe89, cwe89_multilanguage, cwe_portfolio, python_ast
+from .native_sources import NativeSourceCatalogue
+from .repository_view import SealedRepositoryView
+from .scanner_plugin import ScannerPluginBinding, register_scanner_worker, run_scanner_plugin
+
+
+def first_party_scanner_producer() -> ProducerRef:
+    """Pin host-installed detector implementation, not repository-controlled files."""
+    root = Path(__file__).resolve().parent
+    names = (
+        "product_scanner.py",
+        "cst.py",
+        "cwe89.py",
+        "cwe89_multilanguage.py",
+        "cwe_portfolio.py",
+        "python_ast.py",
+        "scanner_plugin.py",
+    )
+    manifest = [(name, hashlib.sha256((root / name).read_bytes()).hexdigest()) for name in names]
+    digest = hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
+    return ProducerRef(
+        schema_version="0.2.0",
+        producer_id="securecode-first-party-static",
+        producer_version="1.0.0",
+        producer_sha256=digest,
+    )
+
+
+class FirstPartyStaticWorker:
+    def scan(self, request: ScannerRequest) -> ScannerPluginOutput:
+        suffix = Path(request.file.path).suffix.lower()
+        builders = {
+            ".py": cst.build_python_symbol_index,
+            ".js": cst.build_javascript_symbol_index,
+            ".jsx": cst.build_javascript_symbol_index,
+            ".mjs": cst.build_javascript_symbol_index,
+            ".cjs": cst.build_javascript_symbol_index,
+            ".ts": cst.build_typescript_symbol_index,
+            ".tsx": cst.build_typescript_symbol_index,
+            ".go": cst.build_go_symbol_index,
+        }
+        builder = builders.get(suffix)
+        if builder is None:
+            raise ValueError("unsupported scanner language")
+        index = builder(
+            repository_id=request.repository_id,
+            revision=request.head_sha,
+            path=request.file.path,
+            content_sha256=request.file.content_sha256,
+            source=request.source,
+        )
+        producer = first_party_scanner_producer()
+        signals = list(
+            cwe_portfolio.portfolio_signals_to_raw_signals(
+                cwe_portfolio.scan_cwe_portfolio(index),
+                tenant_id=request.tenant_id,
+                producer=producer,
+            )
+        )
+        sql: cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult
+        if index.language == "python":
+            sql = cwe89.scan_python_cwe89(index, python_ast.analyze_python_ast(index))
+        else:
+            scanners = {
+                "javascript": cwe89_multilanguage.scan_javascript_cwe89,
+                "typescript": cwe89_multilanguage.scan_typescript_cwe89,
+                "go": cwe89_multilanguage.scan_go_cwe89,
+            }
+            sql = scanners[index.language](index)
+        sql_signals: tuple[
+            cwe89.Cwe89Signal | cwe89_multilanguage.MultilanguageCwe89Signal, ...
+        ] = sql.signals
+        for ordinal, signal in enumerate(sql_signals):
+            location = SourceLocation(
+                schema_version="0.2.0",
+                path=signal.path,
+                start=SourcePosition(
+                    schema_version="0.2.0",
+                    line=signal.sink.start_point.row + 1,
+                    column=signal.sink.start_point.column + 1,
+                ),
+                end=SourcePosition(
+                    schema_version="0.2.0",
+                    line=signal.sink.end_point.row + 1,
+                    column=signal.sink.end_point.column + 1,
+                ),
+                content_sha256=signal.content_sha256,
+            )
+            material = [
+                "product-sql-fact-v1",
+                request.tenant_id,
+                request.repository_id,
+                request.head_sha,
+                sql.scan_sha256,
+                ordinal,
+                producer.model_dump(mode="json"),
+            ]
+            digest = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+            signals.append(
+                RawSignal(
+                    schema_version="0.2.0",
+                    raw_signal_id="product-sql-" + digest,
+                    tenant_id=request.tenant_id,
+                    head_sha=request.head_sha,
+                    producer=producer,
+                    rule_id="cwe-89-sql-interpolation",
+                    location=location,
+                    payload_classification=DataClass.INTERNAL_METADATA,
+                    signal_sha256=digest,
+                )
+            )
+        return ScannerPluginOutput(tuple(sorted(signals, key=lambda item: item.raw_signal_id)))
+
+
+def create_first_party_static_worker() -> FirstPartyStaticWorker:
+    return FirstPartyStaticWorker()
+
+
+@dataclass(frozen=True, slots=True)
+class ProductScannerSourceBinding:
+    """Actual invocation inputs retained without source bytes."""
+
+    request_id: str
+    tenant_id: str
+    repository_id: str
+    head_sha: str
+    path: str
+    size_bytes: int
+    content_sha256: str
+    producer_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProductDeterministicScanResult:
+    graph: EvidenceGraph
+    receipts: tuple[ScannerExecution, ...]
+    is_complete: bool
+    source_aliases: tuple[tuple[str, bytes, str], ...] = field(repr=False)
+    source_bindings: tuple[ProductScannerSourceBinding, ...] = ()
+
+    def repository_view(self, catalogue: NativeSourceCatalogue) -> SealedRepositoryView:
+        if self.graph.head_sha != catalogue.snapshot.head_sha or any(
+            anchor.tenant_id != self.graph.tenant_id for anchor in catalogue.anchors
+        ):
+            raise ValueError("deterministic source view binding is invalid")
+        files = {file.path: file for file in catalogue.snapshot.files}
+        aliases = {
+            evidence_id: (content, digest) for evidence_id, content, digest in self.source_aliases
+        }
+        if len(aliases) != len(self.source_aliases) or set(aliases) != {
+            record.evidence_id for record in self.graph.evidence
+        }:
+            raise ValueError("deterministic source aliases are invalid")
+        for record in self.graph.evidence:
+            file = files.get(record.location.path) if record.location else None
+            content, digest = aliases[record.evidence_id]
+            if (
+                file is None
+                or record.location is None
+                or record.location.content_sha256 != file.content_sha256
+                or record.artifact_ref is None
+                or record.artifact_ref.tenant_id != self.graph.tenant_id
+                or record.artifact_ref.content_sha256 != digest
+                or record.artifact_ref.size_bytes != len(content)
+                or hashlib.sha256(content).hexdigest() != digest
+            ):
+                raise ValueError("deterministic source bytes are invalid")
+        native = tuple(
+            (
+                anchor.evidence_id,
+                catalogue._window_bytes(anchor),
+                anchor.read_artifact.content_sha256,
+            )
+            for anchor in catalogue.anchors
+        )
+        return SealedRepositoryView(catalogue.indexes, evidence=(*native, *self.source_aliases))
+
+
+def scan_product_sources(
+    catalogue: NativeSourceCatalogue,
+    *,
+    tenant_id: str,
+    total_budget_ns: int = 60_000_000_000,
+) -> ProductDeterministicScanResult:
+    if (
+        type(catalogue) is not NativeSourceCatalogue
+        or type(total_budget_ns) is not int
+        or not (0 < total_budget_ns <= 60_000_000_000)
+    ):
+        raise ValueError("product scanner request is invalid")
+    started = monotonic_ns()
+    catalogue.repository_view()  # Validate and seal all source/window bindings before workers.
+    if any(anchor.tenant_id != tenant_id for anchor in catalogue.anchors):
+        raise ValueError("product scanner tenant is invalid")
+    producer = first_party_scanner_producer()
+    target = ScannerWorkerTarget(__name__, "create_first_party_static_worker")
+    register_scanner_worker(target, create_first_party_static_worker)
+    binding = ScannerPluginBinding(ScannerIdentity(producer), target)
+    receipts = []
+    source_bindings = []
+    signals: list[RawSignal] = []
+    complete = True
+    for index in catalogue.indexes:
+        remaining = total_budget_ns - (monotonic_ns() - started)
+        if remaining <= 0:
+            complete = False
+            break
+        request = ScannerRequest(
+            request_id="static-" + hashlib.sha256(index.path.encode()).hexdigest(),
+            tenant_id=tenant_id,
+            repository_id=index.repository_id,
+            head_sha=index.revision,
+            file=RepositoryFile(index.path, len(index.source), index.content_sha256),
+            source=index.source,
+        )
+        receipt = run_scanner_plugin(
+            binding, request, budget=ScannerBudget(max_elapsed_ns=remaining)
+        )
+        receipts.append(receipt)
+        source_bindings.append(
+            ProductScannerSourceBinding(
+                request.request_id,
+                request.tenant_id,
+                request.repository_id,
+                request.head_sha,
+                request.file.path,
+                request.file.size_bytes,
+                request.file.content_sha256,
+                producer.producer_sha256,
+            )
+        )
+        if receipt.status is not ScannerRunStatus.SUCCEEDED:
+            complete = False
+        signals.extend(receipt.signals)
+        if monotonic_ns() - started > total_budget_ns:
+            complete = False
+    graph, aliases = _scanner_graph_from_signals(catalogue, tuple(signals), tenant_id, producer)
+    complete = complete and monotonic_ns() - started <= total_budget_ns
+    return ProductDeterministicScanResult(
+        graph, tuple(receipts), complete, tuple(aliases), tuple(source_bindings)
+    )
+
+
+def _scanner_graph_from_signals(
+    catalogue: NativeSourceCatalogue,
+    signals: tuple[RawSignal, ...],
+    tenant_id: str,
+    producer: ProducerRef,
+) -> tuple[EvidenceGraph, tuple[tuple[str, bytes, str], ...]]:
+    candidates = normalize_signals(raw_signals=tuple(signals))
+    records = []
+    aliases = []
+    for signal in signals:
+        windows = [
+            anchor
+            for anchor in catalogue.anchors
+            if isinstance(anchor.request.arguments, ReadRangeArguments)
+            and anchor.location.path == signal.location.path
+            and anchor.location.content_sha256 == signal.location.content_sha256
+            and anchor.request.arguments.start_line <= signal.location.start.line
+            and anchor.request.arguments.end_line >= signal.location.end.line
+        ]
+        if not windows:
+            raise ValueError("scanner root has no admitted source window")
+        anchor = min(windows, key=lambda item: (item.read_artifact.size_bytes, item.evidence_id))
+        content = catalogue._window_bytes(anchor)
+        record = Evidence(
+            schema_version="0.2.0",
+            evidence_id=signal.raw_signal_id,
+            tenant_id=tenant_id,
+            head_sha=catalogue.snapshot.head_sha,
+            evidence_kind=EvidenceKind.SCANNER_SIGNAL,
+            producer=producer,
+            trust_label=TrustLabel.UNTRUSTED_TOOL_OUTPUT,
+            data_class=anchor.read_artifact.data_class,
+            evidence_sha256=signal.signal_sha256,
+            location=signal.location,
+            artifact_ref=anchor.read_artifact,
+        )
+        records.append(record)
+        aliases.append((record.evidence_id, content, anchor.read_artifact.content_sha256))
+    bound = []
+    for candidate in candidates:
+        data = candidate.model_dump(mode="json")
+        ids = sorted({sid for lineage in candidate.lineage for sid in lineage.input_signal_ids})
+        data["evidence_ids"] = ids
+        for lineage in data["lineage"]:
+            lineage["evidence_ids"] = lineage["input_signal_ids"]
+        bound.append(DiscoveryCandidate.model_validate_json(json.dumps(data)))
+    edges = tuple(
+        EvidenceGraphEdge(
+            EvidenceEdgeKind.CANDIDATE_EVIDENCE,
+            EvidenceNodeRef(EvidenceNodeKind.CANDIDATE, candidate.candidate_id),
+            EvidenceNodeRef(EvidenceNodeKind.EVIDENCE, evidence_id),
+        )
+        for candidate in bound
+        for evidence_id in candidate.evidence_ids
+    )
+    graph = EvidenceGraph(
+        graph_id="product-deterministic",
+        tenant_id=tenant_id,
+        head_sha=catalogue.snapshot.head_sha,
+        candidates=tuple(bound),
+        evidence=tuple(records),
+        edges=edges,
+    )
+    return graph, tuple(aliases)
+
+
+def scanner_facts_match_receipts(
+    catalogue: NativeSourceCatalogue,
+    scan: ProductDeterministicScanResult,
+) -> bool:
+    """Close retained normalized facts over every original scanner signal."""
+    try:
+        graph, aliases = _scanner_graph_from_signals(
+            catalogue,
+            tuple(signal for receipt in scan.receipts for signal in receipt.signals),
+            scan.graph.tenant_id,
+            first_party_scanner_producer(),
+        )
+        return graph == scan.graph and aliases == scan.source_aliases
+    except Exception:
+        return False
+
+
+def build_product_auditor_tools(
+    catalogue: NativeSourceCatalogue,
+    graph: EvidenceGraph,
+    *,
+    budget: RepositoryToolBudget,
+    deterministic: ProductDeterministicScanResult | None = None,
+    child_artifacts: tuple[tuple[Evidence, bytes], ...] = (),
+    denied_source_paths: tuple[str, ...] = (),
+) -> RepositoryToolSession:
+    """Admit only graph evidence backed by retained host-owned source mappings."""
+    if (
+        type(graph) is not EvidenceGraph
+        or graph.head_sha != catalogue.snapshot.head_sha
+        or any(anchor.tenant_id != graph.tenant_id for anchor in catalogue.anchors)
+    ):
+        raise ValueError("Auditor source scope is invalid")
+    native = {anchor.evidence_id: anchor for anchor in catalogue.anchors}
+    static = {}
+    if deterministic is not None:
+        if (
+            type(deterministic) is not ProductDeterministicScanResult
+            or deterministic.graph.head_sha != graph.head_sha
+            or deterministic.graph.tenant_id != graph.tenant_id
+        ):
+            raise ValueError("Auditor deterministic source scope is invalid")
+        static = {record.evidence_id: record for record in deterministic.graph.evidence}
+    children = {}
+    aliases = []
+    files = {file.path: file for file in catalogue.snapshot.files}
+    for record, payload in child_artifacts:
+        artifact = record.artifact_ref
+        file = files.get(record.location.path) if record.location is not None else None
+        if (
+            record.evidence_id in children
+            or record.tenant_id != graph.tenant_id
+            or record.head_sha != graph.head_sha
+            or record.evidence_kind is not EvidenceKind.SCANNER_SIGNAL
+            or record.data_class not in {DataClass.INTERNAL_METADATA, DataClass.RESTRICTED}
+            or artifact is None
+            or artifact.tenant_id != graph.tenant_id
+            or artifact.data_class is not record.data_class
+            or hashlib.sha256(payload).hexdigest() != artifact.content_sha256
+            or record.evidence_sha256 != artifact.content_sha256
+            or len(payload) != artifact.size_bytes
+            or file is None
+            or record.location is None
+            or record.location.content_sha256 != file.content_sha256
+        ):
+            raise ValueError("Auditor child artifact is invalid")
+        children[record.evidence_id] = record
+        if record.data_class is not DataClass.RESTRICTED:
+            aliases.append((record.evidence_id, payload, artifact.content_sha256))
+    restricted_paths = {
+        record.location.path
+        for record in graph.evidence
+        if record.data_class is DataClass.RESTRICTED and record.location is not None
+    }
+    if any(path not in files for path in denied_source_paths):
+        raise ValueError("Auditor denied source scope is invalid")
+    restricted_paths.update(denied_source_paths)
+    paths = set()
+    admitted_ids = set()
+    for record in graph.evidence:
+        anchor = native.get(record.evidence_id)
+        if anchor is not None:
+            if (
+                record.location != anchor.location
+                or record.artifact_ref != anchor.read_artifact
+                or record.evidence_kind is not EvidenceKind.SOURCE_LOCATION
+                or record.data_class is not anchor.read_artifact.data_class
+                or record.trust_label is not TrustLabel.UNTRUSTED_REPOSITORY
+            ):
+                raise ValueError("Auditor native source scope is invalid")
+        elif (
+            static.get(record.evidence_id) != record and children.get(record.evidence_id) != record
+        ):
+            raise ValueError("Auditor evidence alias is not admitted")
+        if record.location is None:
+            raise ValueError("Auditor source location is unavailable")
+        if record.data_class is DataClass.RESTRICTED:
+            continue
+        if record.location.path in restricted_paths:
+            if record.evidence_id in children:
+                admitted_ids.add(record.evidence_id)
+            continue
+        if record.evidence_id in children:
+            admitted_ids.add(record.evidence_id)
+            continue
+        paths.add(record.location.path)
+        admitted_ids.add(record.evidence_id)
+    backend = (
+        deterministic.repository_view(catalogue) if deterministic else catalogue.repository_view()
+    )
+    if aliases:
+        native_aliases = tuple(
+            (
+                anchor.evidence_id,
+                catalogue._window_bytes(anchor),
+                anchor.read_artifact.content_sha256,
+            )
+            for anchor in catalogue.anchors
+        )
+        static_aliases = deterministic.source_aliases if deterministic else ()
+        backend = SealedRepositoryView(
+            catalogue.indexes, evidence=(*native_aliases, *static_aliases, *aliases)
+        )
+    scope = RepositoryToolScope(
+        graph.tenant_id,
+        catalogue.indexes[0].repository_id if catalogue.indexes else "empty-repository",
+        graph.head_sha,
+        tuple(sorted(paths)),
+        tuple(sorted(admitted_ids)),
+    )
+    return RepositoryToolSession(
+        guard=RepositoryToolGuard(scope=scope, budget=budget), backend=backend
+    )

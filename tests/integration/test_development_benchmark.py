@@ -1,8 +1,11 @@
 import importlib.util
 import json
+import platform
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -51,8 +54,11 @@ def _sample_record() -> tuple[dict[str, object], dict[str, object]]:
     return plan, record
 
 
-def test_dry_run_expands_frozen_matrix(tmp_path: Path) -> None:
-    plan = json.loads((ROOT / "evaluation/development/run-plan.yaml").read_text(encoding="utf-8"))
+def _portable_plan() -> dict[str, object]:
+    plan = cast(
+        dict[str, object],
+        json.loads((ROOT / "evaluation/development/run-plan.yaml").read_text(encoding="utf-8")),
+    )
     plan["bindings"] = {
         "component_sha256": RUNNER._sha256_bytes(
             (ROOT / "scripts/run_development_benchmark.py").read_bytes()
@@ -70,6 +76,28 @@ def test_dry_run_expands_frozen_matrix(tmp_path: Path) -> None:
         "policy_sha256": RUNNER._sha256_text(RUNNER.POLICY_TEXT),
         "schema_sha256": RUNNER._sha256_text(RUNNER.SCHEMA_TEXT),
     }
+    plan["environment"] = {
+        "host_mode": "local-native",
+        "evaluation_image": None,
+        "os": platform.platform(),
+        "architecture": platform.machine(),
+        "python_implementation": sys.implementation.name,
+        "python_version": platform.python_version(),
+        "uv_lock_sha256": RUNNER._sha256_bytes((ROOT / "uv.lock").read_bytes()),
+    }
+    return plan
+
+
+def _supplemental_plan() -> dict[str, object]:
+    plan = _portable_plan()
+    plan["schema_version"] = "development-benchmark-plan-1.1"
+    plan["bindings"] = RUNNER._current_bindings(admitted=True)
+    plan["execution"] = {"paths": {"recomputed": "recomputed.json"}}
+    return plan
+
+
+def test_dry_run_expands_frozen_matrix(tmp_path: Path) -> None:
+    plan = _portable_plan()
     plan_path = tmp_path / "run-plan.json"
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
     result = subprocess.run(
@@ -93,6 +121,18 @@ def test_dry_run_expands_frozen_matrix(tmp_path: Path) -> None:
     assert '"planned_cells":312' in result.stdout
 
 
+def test_verify_plan_rejects_environment_drift() -> None:
+    plan = _portable_plan()
+    environment = plan["environment"]
+    assert isinstance(environment, dict)
+    plan["environment"] = {**environment, "python_version": "0.0.0"}
+    corpus = json.loads(
+        (ROOT / "evaluation/development/corpus-manifest.yaml").read_text(encoding="utf-8")
+    )
+    with pytest.raises(ValueError, match="execution environment drift"):
+        RUNNER._verify_plan(plan, ROOT / "evaluation/development/run-plan.yaml", corpus)
+
+
 def test_model_projection_removes_expectation_comments_and_docstrings() -> None:
     source = '# Policy: safe\ndef run():\n    """Violation: vulnerable"""\n    return 1\n'
     projected = RUNNER._model_projection(source)
@@ -111,6 +151,25 @@ def test_recomputer_rejects_raw_source_echo() -> None:
     record["raw_source"] = "must-not-survive"
     with pytest.raises(ValueError, match="raw-source echo"):
         RECOMPUTE._validate_record_shape(record)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        {"remediation_attempted": True},
+        {
+            "remediation_sandbox_receipt_sha256": "sha256:" + "0" * 64,
+            "remediation_sandbox_validated": True,
+        },
+    ),
+)
+def test_supplemental_detection_recomputation_rejects_repair_claims(
+    mutation: dict[str, object],
+) -> None:
+    _, record = _sample_record()
+    record.update(mutation)
+    with pytest.raises(ValueError, match="detection-only run cannot claim remediation"):
+        RECOMPUTE._validate_detection_only_record(record)
 
 
 def test_recomputer_rejects_duplicate_keys_and_negative_resources() -> None:
@@ -238,6 +297,172 @@ def test_model_response_rejects_out_of_grammar_category(monkeypatch: pytest.Monk
             1,
             case["sources"][0]["path"],
         )
+
+
+def test_all_model_modes_request_schema_guided_bounded_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = json.loads((ROOT / "evaluation/development/run-plan.yaml").read_text(encoding="utf-8"))
+    corpus = json.loads(
+        (ROOT / "evaluation/development/corpus-manifest.yaml").read_text(encoding="utf-8")
+    )
+    case = corpus["cases"][1]
+    aliases = RUNNER._source_aliases(case)
+    seed_alias = next(iter(aliases))
+    captured: list[dict[str, object]] = []
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return json.dumps(
+                {
+                    "model": plan["ollama"]["model"],
+                    "response": '{"verdict":"no_finding"}',
+                    "done": True,
+                    "done_reason": "stop",
+                    "prompt_eval_count": 1,
+                    "eval_count": 1,
+                }
+            ).encode("utf-8")
+
+    class Opener:
+        def open(self, request: object, **_kwargs: object) -> Response:
+            captured.append(json.loads(request.data.decode("utf-8")))  # type: ignore[attr-defined]
+            return Response()
+
+    monkeypatch.setattr(RUNNER, "OPENER", Opener())
+    for mode in sorted(RUNNER.MODEL_CONFIGURATIONS):
+        kwargs: dict[str, object] = {"mode": mode}
+        if mode == "scanner_seeded_investigation":
+            kwargs.update(
+                seeded_aliases=(seed_alias,),
+                scanner_seed_facts=(("authz", seed_alias),),
+            )
+        RUNNER._ollama(
+            case,
+            ROOT / "evaluation/development",
+            plan["ollama"],
+            1,
+            aliases[seed_alias],
+            **kwargs,
+        )
+    assert len(captured) == len(RUNNER.MODEL_CONFIGURATIONS)
+    assert all(payload["format"] == RUNNER.MODEL_FINDING_FORMAT for payload in captured)
+    assert all(
+        payload["options"] == {"num_predict": 48, "temperature": 0.0} for payload in captured
+    )
+    assert all(
+        isinstance(payload["prompt"], str)
+        and RUNNER.SECURITY_SEMANTICS_INSTRUCTION in payload["prompt"]
+        and RUNNER.RESPONSE_INSTRUCTION in payload["prompt"]
+        for payload in captured
+    )
+    prompt_sha256 = RUNNER._prompt_sha256()
+    monkeypatch.setattr(RUNNER, "SECURITY_SEMANTICS_INSTRUCTION", "changed semantics")
+    assert RUNNER._prompt_sha256() != prompt_sha256
+    monkeypatch.setitem(RUNNER.MODEL_GENERATION_OPTIONS, "num_predict", 49)
+    assert RUNNER._prompt_sha256() != prompt_sha256
+
+
+@pytest.mark.parametrize(
+    ("response", "done_reason", "expected_reason"),
+    (
+        ('{"verdict":"confirmed"', "stop", "invalid_structured_finding"),
+        ('{"verdict":"no_finding"}', "length", "completion drift"),
+    ),
+)
+def test_malformed_or_truncated_model_finding_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    response: str,
+    done_reason: str,
+    expected_reason: str,
+) -> None:
+    plan = json.loads((ROOT / "evaluation/development/run-plan.yaml").read_text(encoding="utf-8"))
+    case = json.loads(
+        (ROOT / "evaluation/development/corpus-manifest.yaml").read_text(encoding="utf-8")
+    )["cases"][0]
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return json.dumps(
+                {
+                    "model": plan["ollama"]["model"],
+                    "response": response,
+                    "done": True,
+                    "done_reason": done_reason,
+                    "prompt_eval_count": 1,
+                    "eval_count": 1,
+                }
+            ).encode("utf-8")
+
+    class Opener:
+        def open(self, *_args: object, **_kwargs: object) -> Response:
+            return Response()
+
+    monkeypatch.setattr(RUNNER, "OPENER", Opener())
+    with pytest.raises(ValueError, match=expected_reason):
+        RUNNER._ollama(
+            case,
+            ROOT / "evaluation/development",
+            plan["ollama"],
+            1,
+            case["sources"][0]["path"],
+        )
+
+
+def test_non_successful_completed_response_retains_observed_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = json.loads((ROOT / "evaluation/development/run-plan.yaml").read_text(encoding="utf-8"))
+    case = json.loads(
+        (ROOT / "evaluation/development/corpus-manifest.yaml").read_text(encoding="utf-8")
+    )["cases"][0]
+
+    class Response:
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return json.dumps(
+                {
+                    "model": plan["ollama"]["model"],
+                    "response": '{"verdict":"no_finding"}',
+                    "done": True,
+                    "done_reason": "length",
+                    "prompt_eval_count": 7,
+                    "eval_count": 3,
+                }
+            ).encode("utf-8")
+
+    class Opener:
+        def open(self, *_args: object, **_kwargs: object) -> Response:
+            return Response()
+
+    monkeypatch.setattr(RUNNER, "OPENER", Opener())
+    with pytest.raises(RUNNER.ModelRunError) as error:
+        RUNNER._ollama(
+            case,
+            ROOT / "evaluation/development",
+            plan["ollama"],
+            1,
+            case["sources"][0]["path"],
+        )
+    assert error.value.prompt_tokens == 7
+    assert error.value.generated_tokens == 3
 
 
 def test_scanner_seeded_prompt_exposes_only_seeded_source_and_facts(
@@ -440,24 +665,7 @@ def test_model_native_prompt_is_distinct_and_has_no_scanner_context(
 def test_all_configurations_emit_records_without_a_live_model(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    plan = json.loads((ROOT / "evaluation/development/run-plan.yaml").read_text(encoding="utf-8"))
-    plan["bindings"] = {
-        "component_sha256": RUNNER._sha256_bytes(
-            (ROOT / "scripts/run_development_benchmark.py").read_bytes()
-        ),
-        "core_sha256": RUNNER._sha256_bytes(
-            (ROOT / "packages/core/src/securecode_ai/core/development_benchmark.py").read_bytes()
-        ),
-        "recompute_sha256": RUNNER._sha256_bytes(
-            (ROOT / "scripts/recompute_development_benchmark.py").read_bytes()
-        ),
-        "corpus_validator_sha256": RUNNER._sha256_bytes(
-            (ROOT / "scripts/development_corpus.py").read_bytes()
-        ),
-        "prompt_sha256": RUNNER._prompt_sha256(),
-        "policy_sha256": RUNNER._sha256_text(RUNNER.POLICY_TEXT),
-        "schema_sha256": RUNNER._sha256_text(RUNNER.SCHEMA_TEXT),
-    }
+    plan = _portable_plan()
     plan_path = tmp_path / "run-plan.json"
     records_path = tmp_path / "records.jsonl"
     aggregate_path = tmp_path / "aggregate.json"
@@ -546,8 +754,9 @@ def test_all_configurations_emit_records_without_a_live_model(
 def test_runtime_preflight_replaces_stale_results_with_complete_not_run_matrix(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: type[BaseException]
 ) -> None:
-    plan_path = ROOT / "evaluation/development/run-plan.yaml"
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    plan = _portable_plan()
+    plan_path = tmp_path / "run-plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
     records_path = tmp_path / "records.jsonl"
     aggregate_path = tmp_path / "aggregate.json"
     records_path.write_text("stale successful records", encoding="utf-8")
@@ -621,3 +830,123 @@ def test_runtime_preflight_replaces_stale_results_with_complete_not_run_matrix(
     )
     assert RECOMPUTE.main() == 0
     assert json.loads(recomputed_path.read_text()) == result
+
+
+def test_supplemental_interruption_keeps_completed_and_not_run_denominator_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plan = _supplemental_plan()
+    plan_path = tmp_path / "plan.json"
+    records_path = tmp_path / "records.jsonl"
+    aggregate_path = tmp_path / "aggregate.json"
+    receipt_path = tmp_path / "receipt.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    admission = SimpleNamespace(plan=plan, paths={"receipt": receipt_path})
+    monkeypatch.setattr(RUNNER, "admit_run", lambda **_kwargs: admission)
+    monkeypatch.setattr(RUNNER, "verify_imported_package_bindings", lambda _plan: None)
+    monkeypatch.setattr(RUNNER, "_verify_runtime", lambda *_args: None)
+    monkeypatch.setattr(
+        RUNNER,
+        "_deterministic",
+        lambda *_args: ("safe", False, False, None, None, 0),
+    )
+    monkeypatch.setattr(
+        RUNNER,
+        "_scanner_details",
+        lambda *_args: ("safe", False, False, None, None, 1, (), ()),
+    )
+    model_calls = 0
+
+    def interrupt_after_two_calls(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        nonlocal model_calls
+        model_calls += 1
+        if model_calls == 3:
+            raise KeyboardInterrupt
+        return ("safe", False, False, None, None, 1, 1)
+
+    monkeypatch.setattr(RUNNER, "_bounded_ollama", interrupt_after_two_calls)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_development_benchmark.py",
+            "--plan",
+            str(plan_path),
+            "--records",
+            str(records_path),
+            "--aggregate",
+            str(aggregate_path),
+            "--receipt",
+            str(receipt_path),
+        ],
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        RUNNER.main()
+
+    rows = [json.loads(line) for line in records_path.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 312
+    assert any(row["state"] == "executed" for row in rows)
+    assert any(row["state"] == "not_run" for row in rows)
+    assert not receipt_path.exists()
+
+
+def test_supplemental_post_call_runtime_drift_preserves_tokens_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plan = _supplemental_plan()
+    plan_path = tmp_path / "plan.json"
+    records_path = tmp_path / "records.jsonl"
+    aggregate_path = tmp_path / "aggregate.json"
+    receipt_path = tmp_path / "receipt.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    admission = SimpleNamespace(plan=plan, paths={"receipt": receipt_path})
+    monkeypatch.setattr(RUNNER, "admit_run", lambda **_kwargs: admission)
+    monkeypatch.setattr(RUNNER, "verify_imported_package_bindings", lambda _plan: None)
+    monkeypatch.setattr(RUNNER, "write_execution_receipt", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        RUNNER,
+        "_deterministic",
+        lambda *_args: ("safe", False, False, None, None, 0),
+    )
+    monkeypatch.setattr(
+        RUNNER,
+        "_scanner_details",
+        lambda *_args: ("safe", False, False, None, None, 1, (), ()),
+    )
+    responded = False
+
+    def runtime_identity(*_args: object) -> None:
+        if responded:
+            raise ValueError("model changed after call")
+
+    def response(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        nonlocal responded
+        responded = True
+        return ("safe", False, False, None, None, 7, 3)
+
+    monkeypatch.setattr(RUNNER, "_verify_runtime", runtime_identity)
+    monkeypatch.setattr(RUNNER, "_bounded_ollama", response)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_development_benchmark.py",
+            "--plan",
+            str(plan_path),
+            "--records",
+            str(records_path),
+            "--aggregate",
+            str(aggregate_path),
+            "--receipt",
+            str(receipt_path),
+        ],
+    )
+
+    assert RUNNER.main() == 0
+    rows = [json.loads(line) for line in records_path.read_text(encoding="utf-8").splitlines()]
+    drift = [row for row in rows if row["reason"] == "runtime_identity_drift"]
+    assert drift
+    assert drift[0]["state"] == "failed"
+    assert drift[0]["prompt_tokens"] == 7
+    assert drift[0]["generated_tokens"] == 3

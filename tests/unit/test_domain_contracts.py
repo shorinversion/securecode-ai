@@ -1118,8 +1118,163 @@ def test_manifest_rejects_dropped_model_candidate_lineage() -> None:
     receipt_values = manifest.model_discovery_receipts[0].model_dump(mode="python")
     receipt_values["candidate_ids"] = ()
     values["model_discovery_receipts"] = (ModelDiscoveryReceipt.model_validate(receipt_values),)
-    with pytest.raises(ValidationError, match="preserve all"):
+    with pytest.raises(ValidationError, match="current model-native lineage"):
         CoverageManifest.model_validate(values)
+
+
+def _normalized_model_manifest(*original_ids: str) -> CoverageManifest:
+    manifest = _coverage_manifest_with_candidate()
+    candidate_values = manifest.discovery_candidates[0].model_dump(mode="python")
+    candidate_values["candidate_id"] = "candidate-normalized"
+    for lineage in candidate_values["lineage"]:
+        if lineage["lane"] == DiscoveryLane.MODEL_NATIVE.value:
+            lineage["input_signal_ids"] = ()
+            lineage["input_candidate_ids"] = original_ids
+    candidate = DiscoveryCandidate.model_validate(candidate_values)
+    receipt = manifest.model_discovery_receipts[0].model_copy(
+        update={"candidate_ids": original_ids}
+    )
+    interpretation = manifest.candidate_interpretation_receipts[0].model_copy(
+        update={"candidate_id": candidate.candidate_id}
+    )
+    units = tuple(
+        unit.model_copy(
+            update={
+                "subject_id": candidate.candidate_id,
+                "coverage_unit_id": f"unit-{unit.stage_id}-{candidate.candidate_id}",
+            }
+        )
+        if unit.subject_id is not None
+        else unit
+        for unit in manifest.units
+    )
+    return CoverageManifest(
+        **WIRE,
+        catalogue=manifest.catalogue,
+        execution_identity_hash=manifest.execution_identity_hash,
+        scenario=manifest.scenario,
+        required_unit_ids=tuple(unit.coverage_unit_id for unit in units),
+        units=units,
+        discovery_candidates=(candidate,),
+        model_discovery_receipts=(receipt,),
+        candidate_interpretation_receipts=(interpretation,),
+        coverage_complete=True,
+    )
+
+
+def test_manifest_preserves_immutable_model_ids_through_normalization() -> None:
+    manifest = _normalized_model_manifest("candidate-native-original")
+
+    assert manifest.discovery_candidates[0].candidate_id == "candidate-normalized"
+    assert manifest.model_discovery_receipts[0].candidate_ids == ("candidate-native-original",)
+
+
+def test_manifest_allows_many_original_model_ids_to_one_normalized_candidate() -> None:
+    manifest = _normalized_model_manifest("candidate-native-a", "candidate-native-b")
+
+    assert manifest.model_discovery_receipts[0].candidate_ids == (
+        "candidate-native-a",
+        "candidate-native-b",
+    )
+
+
+def test_manifest_keeps_repeated_original_id_across_discovery_receipts_compatible() -> None:
+    manifest = _normalized_model_manifest("candidate-native-original")
+    repeated = manifest.model_discovery_receipts[0].model_copy(
+        update={"receipt_id": "receipt-discovery-repeated"}
+    )
+    values = manifest.model_dump(mode="python")
+    values["model_discovery_receipts"] = (*manifest.model_discovery_receipts, repeated)
+
+    rebuilt = CoverageManifest.model_validate(values)
+
+    assert len(rebuilt.model_discovery_receipts) == 2
+
+
+def test_manifest_rejects_ambiguous_or_unrelated_normalized_model_lineage() -> None:
+    manifest = _normalized_model_manifest("candidate-native-original")
+    values = manifest.model_dump(mode="python")
+    first = manifest.discovery_candidates[0]
+    second = first.model_copy(update={"candidate_id": "candidate-other"})
+    second_interpretation = manifest.candidate_interpretation_receipts[0].model_copy(
+        update={"candidate_id": second.candidate_id, "receipt_id": "receipt-other"}
+    )
+    second_units = (
+        _coverage_unit(
+            stage_id="auditor_investigation",
+            subject_id=second.candidate_id,
+            model_call_status=ModelCallStatus.SUCCEEDED,
+            schema_valid_result=True,
+            receipt_id="receipt-other",
+        ),
+        _coverage_unit(
+            stage_id="skeptic_review",
+            subject_id=second.candidate_id,
+            model_call_status=ModelCallStatus.SUCCEEDED,
+            schema_valid_result=True,
+            receipt_id="receipt-skeptic-other",
+        ),
+        _coverage_unit(stage_id="finding_gate", subject_id=second.candidate_id),
+    )
+    values["discovery_candidates"] = (first, second)
+    values["candidate_interpretation_receipts"] = (
+        *manifest.candidate_interpretation_receipts,
+        second_interpretation,
+    )
+    values["units"] = (*manifest.units, *second_units)
+    values["required_unit_ids"] = tuple(unit.coverage_unit_id for unit in values["units"])
+    with pytest.raises(ValidationError, match="current model-native lineage"):
+        CoverageManifest.model_validate(values)
+
+    direct = _coverage_manifest_with_candidate()
+    direct_values = direct.model_dump(mode="python")
+    second_values = direct.discovery_candidates[0].model_dump(mode="python")
+    second_values["candidate_id"] = "candidate-secondary"
+    for lineage in second_values["lineage"]:
+        if lineage["lane"] == DiscoveryLane.MODEL_NATIVE.value:
+            lineage["input_signal_ids"] = ()
+            lineage["input_candidate_ids"] = ("candidate-1",)
+    second = DiscoveryCandidate.model_validate(second_values)
+    second_receipt = direct.candidate_interpretation_receipts[0].model_copy(
+        update={"candidate_id": second.candidate_id, "receipt_id": "receipt-secondary"}
+    )
+    second_units = (
+        _coverage_unit(
+            stage_id="auditor_investigation",
+            subject_id=second.candidate_id,
+            model_call_status=ModelCallStatus.SUCCEEDED,
+            schema_valid_result=True,
+            receipt_id="receipt-secondary",
+        ),
+        _coverage_unit(
+            stage_id="skeptic_review",
+            subject_id=second.candidate_id,
+            model_call_status=ModelCallStatus.SUCCEEDED,
+            schema_valid_result=True,
+            receipt_id="receipt-skeptic-secondary",
+        ),
+        _coverage_unit(stage_id="finding_gate", subject_id=second.candidate_id),
+    )
+    direct_values["discovery_candidates"] = (*direct.discovery_candidates, second)
+    direct_values["candidate_interpretation_receipts"] = (
+        *direct.candidate_interpretation_receipts,
+        second_receipt,
+    )
+    direct_values["units"] = (*direct.units, *second_units)
+    direct_values["required_unit_ids"] = tuple(
+        unit.coverage_unit_id for unit in direct_values["units"]
+    )
+    with pytest.raises(ValidationError, match="current model-native lineage"):
+        CoverageManifest.model_validate(direct_values)
+
+    unrelated = _normalized_model_manifest("candidate-native-original").model_dump(mode="python")
+    candidate_values = unrelated["discovery_candidates"][0]
+    for lineage in candidate_values["lineage"]:
+        if lineage["lane"] == DiscoveryLane.MODEL_NATIVE.value:
+            lineage["input_candidate_ids"] = ("candidate-unrelated",)
+    unrelated["discovery_candidates"] = (DiscoveryCandidate.model_validate(candidate_values),)
+    with pytest.raises(ValidationError, match="current model-native lineage"):
+        CoverageManifest.model_validate(unrelated)
 
 
 def test_hybrid_candidate_rejects_distinct_root_cause_lineage() -> None:

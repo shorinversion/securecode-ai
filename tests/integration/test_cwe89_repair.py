@@ -57,7 +57,12 @@ from securecode_ai.core.regression import (
     build_security_regression_descriptor,
     evaluate_regression,
 )
-from securecode_ai.core.repair_loop import RepairState, RepairStopReason, run_repair_loop
+from securecode_ai.core.repair_loop import (
+    AttemptUsage,
+    RepairState,
+    RepairStopReason,
+    run_repair_loop,
+)
 from securecode_ai.core.root_cause import (
     RootCauseEvidenceRefs,
     RootCauseLocalizationStatus,
@@ -307,6 +312,7 @@ class _EphemeralDriver:
             ("host_access_disabled", True),
             ("rootless", True),
             ("read_only_root", True),
+            ("desktop_vm_isolation", False),
             ("attestation_sha256", "0" * 64),
             ("schema_version", "1.0.0"),
         ):
@@ -507,8 +513,9 @@ def test_pinned_cwe89_vulnerable_path_reaches_validated_candidate_ephemerally() 
     )
     repair = run_repair_loop(
         architect,
-        lambda patch, attempt: validation,
-        lambda feedback, attempt: architect,
+        lambda patch, attempt: (validation, AttemptUsage()),
+        lambda feedback, attempt: (architect, AttemptUsage()),
+        initial_usage=AttemptUsage(),
     )
     review = review_semantic_diff(architect, validation.validation)
     state = mark_patch_validated(

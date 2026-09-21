@@ -30,6 +30,8 @@ from securecode_ai.contracts import CONTRACT_SCHEMA_VERSION, CliExitCode
 from securecode_ai.core import IgnorePolicy, InventoryLimits, RepositoryFile, discover_repository
 from securecode_ai.core.reports import DeterministicReport, ReportFormat, render_report
 
+from .atomic_output import write_new_output
+
 DIAGNOSTIC_RESULT_VERSION = "1.0.0"
 DIAGNOSTIC_INVENTORY_LIMITS = InventoryLimits(
     max_files=4096,
@@ -59,6 +61,7 @@ class DiagnosticErrorCode(StrEnum):
 
     FACTS_UNAVAILABLE = "FACTS_UNAVAILABLE"
     FACTS_INVALID = "FACTS_INVALID"
+    FACTS_INCOMPLETE = "FACTS_INCOMPLETE"
     OUTPUT_UNAVAILABLE = "OUTPUT_UNAVAILABLE"
 
 
@@ -289,6 +292,8 @@ def run_deterministic_diagnostic(
         raise DiagnosticError(DiagnosticErrorCode.FACTS_INVALID) from None
     if output is not None:
         _write_new_output(output, rendered)
+    if type(report) is DiagnosticFacts and report.status is DiagnosticFactsStatus.INCOMPLETE:
+        raise DiagnosticError(DiagnosticErrorCode.FACTS_INCOMPLETE)
     return DiagnosticResult(
         report_format=report_format,
         report_sha256=hashlib.sha256(rendered).hexdigest(),
@@ -496,9 +501,7 @@ def canonical_diagnostic_json(result: DiagnosticResult) -> str:
 
 def _write_new_output(destination: Path, rendered: bytes) -> None:
     try:
-        with destination.open("xb") as stream:
-            stream.write(rendered)
-            stream.flush()
+        write_new_output(destination, rendered)
     except FileExistsError:
         raise DiagnosticError(DiagnosticErrorCode.OUTPUT_UNAVAILABLE) from None
     except OSError:

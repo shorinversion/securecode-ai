@@ -183,8 +183,22 @@ def emit_patch_candidate(
         or checked_root.record_id != checked_invariant.root_cause_id
         or checked_root.record_id != checked_regression.root_cause_id
         or checked_finding.finding_id != checked_regression.finding_id
-        or revision.tenant_id != checked_root.tenant_id != checked_regression.tenant_id
-        or revision.repository_id != checked_root.repository_id != checked_regression.repository_id
+        or any(
+            tenant_id != revision.tenant_id
+            for tenant_id in (
+                checked_root.tenant_id,
+                checked_invariant.tenant_id,
+                checked_regression.tenant_id,
+            )
+        )
+        or any(
+            repository_id != revision.repository_id
+            for repository_id in (
+                checked_root.repository_id,
+                checked_invariant.repository_id,
+                checked_regression.repository_id,
+            )
+        )
         or revision.head_sha != checked_root.head_sha
         or checked_regression.vulnerable_head_sha != checked_root.head_sha
         or revision.head_sha != checked_invariant.head_sha

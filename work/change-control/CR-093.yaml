@@ -1,0 +1,17 @@
+schema_version: "1.0.0"
+change_type: policy_amendment
+change_id: CR-093
+starting_commit_sha: a99b91c2e66bde37f17bf383edcc4fe02f56c64c  # pragma: allowlist secret
+protected_class: ci_evaluator
+gate_id: POLICY
+decision: CHANGE-PROPOSED
+evidence_bundle_sha256: 2a71655f073405ea438673db263aec96725e5020dc2bacb72a7ded5b53e99503  # pragma: allowlist secret
+review_subject_sha256: f36cd7f5047e3c70d2ad2a4c1315c39d91de77432f865e266d3868ed3cde1674  # pragma: allowlist secret
+allowed_paths:
+  - CHANGELOG.md
+  - docs/DECISIONS.md
+  - work/change-control/CR-093.yaml
+  - work/change-control/amendments/CR-093-manifest.json
+budgets:
+  max_changed_files: 4
+  max_diff_lines: 6000

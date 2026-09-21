@@ -22,6 +22,28 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- CR-094 makes canonical quality type-check every source file against both Linux and Windows APIs before unit tests.
+
+- P9.21 replaces dynamic Windows-only CLI imports with ordinary guarded imports so package boundaries, Linux typing and Windows typing validate the same atomic-output implementation.
+
+- CR-093 deduplicates immutable secret-scan blobs by repository path and object ID, retaining rename-sensitive coverage while reducing repeated CI work.
+
+- P9.19 fixes cross-platform static analysis of guarded Windows and POSIX APIs; Linux and Windows mypy now validate the same runtime code without weakening platform checks.
+
+- CR-092 makes a protected promotion tail validate every earlier pull-request
+  commit against its direct parent. An invalid implementation or direct
+  evaluator edit can no longer be hidden behind a valid final promotion.
+
+- CR-091 supersedes the unpromoted CR-090 target after independent review
+  found stale coupling to a five-package development base. The replacement
+  binds the actual four-package legacy workspace and the complete six-package
+  `1.0.0rc1` workspace, including both worker and server lock entries.
+
+- CR-090 prepares an atomic workspace policy migration for the private
+  `1.0.0rc1` publication candidate. The protected policy accepts exactly the
+  complete legacy workspace or the complete six-package rc1 workspace,
+  rejects mixed states and retains bounded quality execution.
+
 ### P9.16 academic-content and validator remediation (2026-09-16)
 
 - Replace the metadata inventory report with a reproducible academic report
@@ -771,10 +793,9 @@ Changelog отвечает на вопрос «что и когда измени
   [PLAN.md](docs/PLAN.md).
 - 2026-08-12 — создан постоянный компактный контекст проекта:
   [CONTEXT.md](docs/CONTEXT.md).
-- 2026-08-12 — добавлен project-local skill
-  [securecode-project-navigator](.agents/skills/securecode-project-navigator/SKILL.md),
-  read-only context snapshot helper и обязательное подключение через
-  [AGENTS.md](AGENTS.md).
+- 2026-08-12 — добавлен project-local skill `securecode-project-navigator`,
+  read-only context snapshot helper и обязательное подключение через локальные
+  инструкции агентов. Эти development-only файлы исключены из RC-публикации.
 - 2026-08-12 — принят Spec-Driven Development operating model, создан
   [specification guide](docs/SPEC_DRIVEN_DEVELOPMENT.md), namespace
   [`specs/`](specs/README.md) и constrained LLM

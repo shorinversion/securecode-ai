@@ -2363,6 +2363,78 @@ def test_pull_request_synthetic_merge_accepts_policy_promotion_chain(
     )
 
 
+def test_pull_request_synthetic_merge_validates_each_commit_before_policy_tail(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, implementation = _clone_index_candidate(lifecycle_parent)
+    pr_base = _run_git(repository, "rev-parse", f"{implementation}^")
+    _, _, proposal = _policy_amendment_proposal(repository)
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        _review_candidate(repository, role, proposal, gate_id="POLICY")
+    _, logical_head = _policy_amendment_promotion(repository, proposal)
+    synthetic = _synthetic_merge_commit(
+        repository,
+        tree=_run_git(repository, "rev-parse", f"{logical_head}^{{tree}}"),
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", synthetic)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    assert (
+        gate.validate_pull_request_candidate(
+            base=pr_base,
+            synthetic_candidate=synthetic,
+            pull_request_head=logical_head,
+        )
+        == ()
+    )
+
+
+def test_pull_request_policy_tail_does_not_hide_invalid_earlier_commit(
+    lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "Popen", ORIGINAL_POPEN)
+    monkeypatch.setattr(GATE.SpecGate, "validate_snapshot", lambda self: ())
+    repository, _ = _clone_index_candidate(lifecycle_parent)
+    pr_base = _run_git(repository, "rev-parse", "HEAD")
+    path = repository / "scripts/spec_gate.py"
+    path.write_bytes(path.read_bytes() + b"\n# unsupported direct evaluator change\n")
+    _commit_all(repository, "Modify protected evaluator without change control")
+    _, _, proposal = _policy_amendment_proposal(repository)
+    for role in ("product_scope", "architecture_contracts", "security_evaluation"):
+        _review_candidate(repository, role, proposal, gate_id="POLICY")
+    _, logical_head = _policy_amendment_promotion(repository, proposal)
+    synthetic = _synthetic_merge_commit(
+        repository,
+        tree=_run_git(repository, "rev-parse", f"{logical_head}^{{tree}}"),
+        parents=(pr_base, logical_head),
+    )
+    _run_git(repository, "switch", "--detach", synthetic)
+    gate = GATE.SpecGate(
+        root=repository,
+        policy_path=GATE.POLICY_PATH,
+        github_repository=("example", "repo"),
+    )
+    expected = ("PR_HEAD_CHAIN_COMMIT", "UNSUPPORTED_CHANGE_KIND")
+    assert (
+        gate.validate_pull_request_candidate(
+            base=pr_base,
+            synthetic_candidate=synthetic,
+            pull_request_head=logical_head,
+        )
+        == expected
+    )
+    assert gate.validate_push_candidate(base=pr_base, candidate=synthetic) == (
+        "PUSH_MERGE_HEAD_CHAIN_COMMIT",
+        "UNSUPPORTED_CHANGE_KIND",
+    )
+
+
 def test_push_merge_validates_bound_policy_promotion_chain(
     lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

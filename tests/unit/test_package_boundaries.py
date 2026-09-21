@@ -42,7 +42,9 @@ POLICIES = (
         frozenset(
             {
                 "securecode_ai.adapters",
+                "securecode_ai.contracts",
                 "securecode_ai.core",
+                "pydantic",
                 "tree_sitter",
                 "tree_sitter_go",
                 "tree_sitter_javascript",
@@ -64,7 +66,7 @@ POLICIES = (
 )
 DYNAMIC_IMPORT_NAMES = frozenset({"__import__", "compile", "eval", "exec"})
 DYNAMIC_IMPORT_ATTRIBUTES = frozenset({"importlib.import_module", "importlib.__import__"})
-BLOCKED_STDLIB_IMPORT_ROOTS = frozenset({"builtins", "importlib", "runpy"})
+BLOCKED_STDLIB_IMPORT_ROOTS = frozenset({"builtins", "runpy"})
 
 
 def _python_files(root: Path) -> Iterable[Path]:
@@ -126,7 +128,21 @@ def _policy_violations(path: Path, policy: PackagePolicy) -> list[str]:
                 violations.append(f"undeclared absolute import: {node.module}")
         elif isinstance(node, ast.Call):
             callable_name = _dotted_name(node.func)
-            if callable_name in DYNAMIC_IMPORT_NAMES | DYNAMIC_IMPORT_ATTRIBUTES:
+            if callable_name == "import_module":
+                literal_module = (
+                    node.args[0].value
+                    if len(node.args) == 1
+                    and not node.keywords
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    else None
+                )
+                if (
+                    literal_module is None
+                    or literal_module.partition(".")[0] not in sys.stdlib_module_names
+                ):
+                    violations.append("dynamic import is not a literal standard-library module")
+            elif callable_name in DYNAMIC_IMPORT_NAMES | DYNAMIC_IMPORT_ATTRIBUTES:
                 violations.append(f"dynamic import is not permitted: {callable_name}")
         elif isinstance(node, ast.Name) and node.id in DYNAMIC_IMPORT_NAMES:
             violations.append(f"dynamic loader reference is not permitted: {node.id}")
@@ -168,7 +184,9 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
         (
             "securecode-ai-adapters",
             (
-                "securecode-ai-core==0.1.0a0",
+                "pydantic>=2.12,<3",
+                "securecode-ai-contracts==1.0.0rc1",
+                "securecode-ai-core==1.0.0rc1",
                 "tree-sitter>=0.25,<0.26",
                 "tree-sitter-go==0.25.0",
                 "tree-sitter-javascript==0.25.0",
@@ -179,13 +197,13 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
         (
             "securecode-ai-cli",
             (
-                "securecode-ai-adapters==0.1.0a0",
-                "securecode-ai-contracts==0.1.0a0",
-                "securecode-ai-core==0.1.0a0",
+                "securecode-ai-adapters==1.0.0rc1",
+                "securecode-ai-contracts==1.0.0rc1",
+                "securecode-ai-core==1.0.0rc1",
             ),
         ),
         ("securecode-ai-contracts", "pydantic>=2.12,<3"),
-        ("securecode-ai-core", "securecode-ai-contracts==0.1.0a0"),
+        ("securecode-ai-core", "securecode-ai-contracts==1.0.0rc1"),
     ],
 )
 def test_declared_dependencies_point_inward(
@@ -263,7 +281,10 @@ def test_program_graph_contract_stays_internal_and_adapter_owned() -> None:
         ("from securecode_ai.adapters import llm\n", "securecode_ai.adapters"),
         ("import asyncpg\n", "asyncpg"),
         ("import importlib\nimportlib.import_module('redis')\n", "dynamic import"),
-        ("from importlib import import_module\nimport_module('redis')\n", "importlib"),
+        (
+            "from importlib import import_module\nimport_module('redis')\n",
+            "literal standard-library",
+        ),
         ("from builtins import __import__ as load\nload('redis')\n", "builtins"),
     ],
 )

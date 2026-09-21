@@ -1,5 +1,10 @@
-# GitLab integration boundary
+# GitLab integration
 
-This adapter will implement semantic conformance with the shared SCM contract
-for GitLab. It cannot own an alternate audit engine or verdict policy. GitLab
-implementation follows the GitHub reference adapter.
+The GitLab adapter validates project, merge-request and exact-head identity,
+publishes commit status, discussions and summaries, and reconciles retries and
+duplicate delivery. Renamed files preserve both old and new paths in inline
+findings. Publication fails closed when the merge-request head changes.
+
+The source project uses the credential-free trigger in `.gitlab-ci.yml`. The
+trusted project uses `deploy/gitlab/trusted-audit.yml`, holds the worker token,
+checks out the exact source SHA and runs the digest-pinned worker image.

@@ -11,6 +11,8 @@ members = [
     "securecode-ai-cli",
     "securecode-ai-contracts",
     "securecode-ai-core",
+    "securecode-ai-server",
+    "securecode-ai-worker",
     "securecode-ai-workspace",
 ]
 build-constraints = [{ name = "uv-build", specifier = ">=0.11.32,<0.13" }]
@@ -1139,9 +1141,11 @@ wheels = [
 
 [[package]]
 name = "securecode-ai-adapters"
-version = "0.1.0a0"
+version = "1.0.0rc1"
 source = { editable = "packages/adapters" }
 dependencies = [
+    { name = "pydantic" },
+    { name = "securecode-ai-contracts" },
     { name = "securecode-ai-core" },
     { name = "tree-sitter" },
     { name = "tree-sitter-go" },
@@ -1152,6 +1156,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "pydantic", specifier = ">=2.12,<3" },
+    { name = "securecode-ai-contracts", editable = "packages/contracts" },
     { name = "securecode-ai-core", editable = "packages/core" },
     { name = "tree-sitter", specifier = ">=0.25,<0.26" },
     { name = "tree-sitter-go", specifier = "==0.25.0" },
@@ -1162,7 +1168,7 @@ requires-dist = [
 
 [[package]]
 name = "securecode-ai-cli"
-version = "0.1.0a0"
+version = "1.0.0rc1"
 source = { editable = "apps/cli" }
 dependencies = [
     { name = "securecode-ai-adapters" },
@@ -1179,7 +1185,7 @@ requires-dist = [
 
 [[package]]
 name = "securecode-ai-contracts"
-version = "0.1.0a0"
+version = "1.0.0rc1"
 source = { editable = "packages/contracts" }
 dependencies = [
     { name = "pydantic" },
@@ -1190,7 +1196,7 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.12,<3" }]
 
 [[package]]
 name = "securecode-ai-core"
-version = "0.1.0a0"
+version = "1.0.0rc1"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "securecode-ai-contracts" },
@@ -1200,14 +1206,50 @@ dependencies = [
 requires-dist = [{ name = "securecode-ai-contracts", editable = "packages/contracts" }]
 
 [[package]]
+name = "securecode-ai-server"
+version = "1.0.0rc1"
+source = { editable = "apps/server" }
+dependencies = [
+    { name = "securecode-ai-adapters" },
+    { name = "securecode-ai-contracts" },
+    { name = "securecode-ai-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "securecode-ai-adapters", editable = "packages/adapters" },
+    { name = "securecode-ai-contracts", editable = "packages/contracts" },
+    { name = "securecode-ai-core", editable = "packages/core" },
+]
+
+[[package]]
+name = "securecode-ai-worker"
+version = "1.0.0rc1"
+source = { editable = "apps/worker" }
+dependencies = [
+    { name = "securecode-ai-adapters" },
+    { name = "securecode-ai-contracts" },
+    { name = "securecode-ai-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "securecode-ai-adapters", editable = "packages/adapters" },
+    { name = "securecode-ai-contracts", editable = "packages/contracts" },
+    { name = "securecode-ai-core", editable = "packages/core" },
+]
+
+[[package]]
 name = "securecode-ai-workspace"
-version = "0.1.0a0"
+version = "1.0.0rc1"
 source = { virtual = "." }
 dependencies = [
     { name = "securecode-ai-adapters" },
     { name = "securecode-ai-cli" },
     { name = "securecode-ai-contracts" },
     { name = "securecode-ai-core" },
+    { name = "securecode-ai-server" },
+    { name = "securecode-ai-worker" },
 ]
 
 [package.dev-dependencies]
@@ -1236,6 +1278,8 @@ requires-dist = [
     { name = "securecode-ai-cli", editable = "apps/cli" },
     { name = "securecode-ai-contracts", editable = "packages/contracts" },
     { name = "securecode-ai-core", editable = "packages/core" },
+    { name = "securecode-ai-server", editable = "apps/server" },
+    { name = "securecode-ai-worker", editable = "apps/worker" },
 ]
 
 [package.metadata.requires-dev]

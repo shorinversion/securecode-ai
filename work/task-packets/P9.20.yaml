@@ -1,0 +1,48 @@
+schema_version: 0.1-draft
+task:
+  id: P9.20
+  type: implementation
+  objective: Restore cross-platform static validation for the private 1.0.0rc1 candidate without changing runtime behavior.
+  baseline_id: securecode-definition-0.2.0
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"  # pragma: allowlist secret
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"  # pragma: allowlist secret
+  starting_commit_sha: "\x35\x34\x30\x62\x38\x34\x30\x62\x39\x39\x30\x66\x35\x39\x65\x38\x32\x63\x30\x30\x35\x30\x31\x32\x66\x38\x62\x37\x31\x39\x39\x30\x32\x63\x65\x39\x66\x32\x31\x31"  # pragma: allowlist secret
+  spec_refs:
+  - SC-PROD-001
+execution:
+  primary_integrator: codex-root
+  owner_role: release-candidate-integrator
+  mode: bounded_parallel_writers
+  exclusive_path_lease:
+  - CHANGELOG.md
+  - apps/cli/src/securecode_ai/cli/atomic_output.py
+  - apps/server/src/securecode_ai/server/subprocess_protocol.py
+  - apps/worker/src/securecode_ai/worker/execution.py
+  - apps/worker/src/securecode_ai/worker/usage.py
+  - packages/adapters/src/securecode_ai/adapters/git_snapshot.py
+  - packages/adapters/src/securecode_ai/adapters/local_durable_files.py
+  - packages/adapters/src/securecode_ai/adapters/local_patch_status_lock.py
+  - packages/adapters/src/securecode_ai/adapters/local_product_host_git.py
+  - packages/adapters/src/securecode_ai/adapters/local_product_host_windows.py
+  - packages/adapters/src/securecode_ai/adapters/local_product_runner_config.py
+  - packages/adapters/src/securecode_ai/adapters/local_repair_oci_runtime.py
+  - work/task-packets/P9.20.yaml
+scope:
+  allowed_paths:
+  - CHANGELOG.md
+  - apps/cli/src/securecode_ai/cli/atomic_output.py
+  - apps/server/src/securecode_ai/server/subprocess_protocol.py
+  - apps/worker/src/securecode_ai/worker/execution.py
+  - apps/worker/src/securecode_ai/worker/usage.py
+  - packages/adapters/src/securecode_ai/adapters/git_snapshot.py
+  - packages/adapters/src/securecode_ai/adapters/local_durable_files.py
+  - packages/adapters/src/securecode_ai/adapters/local_patch_status_lock.py
+  - packages/adapters/src/securecode_ai/adapters/local_product_host_git.py
+  - packages/adapters/src/securecode_ai/adapters/local_product_host_windows.py
+  - packages/adapters/src/securecode_ai/adapters/local_product_runner_config.py
+  - packages/adapters/src/securecode_ai/adapters/local_repair_oci_runtime.py
+  - work/task-packets/P9.20.yaml
+  forbidden_paths:
+  - specs/**
+  max_changed_files: 13
+  max_diff_lines: 2000

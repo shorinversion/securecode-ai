@@ -892,6 +892,34 @@
   their hash-complete lock records. Any additional dependency or version drift
   remains rejected.
 
+## D-108: Atomic workspace policy migration
+
+21 September 2026, CR-090. The policy migration accepts exactly two complete
+workspace states: the current five-package `0.1.0a0` state and the future
+six-package `1.0.0rc1` state with the server. One selector compares version,
+root dependencies, workspace sources, members and mypy roots as a single
+closed tuple. Cross-state mixtures fail. Package metadata and lock checks then
+use only the selected state. Secrets, SpecGate and publication checks remain
+unchanged.
+
+## D-109: Bind the rc1 migration to the clean publication base
+
+21 September 2026, CR-091. The effective migration selector uses the exact
+four-package `0.1.0a0` workspace present on the clean publication base and the
+complete six-package `1.0.0rc1` workspace containing worker and server. Test
+fixtures construct both missing rc1 packages before any mixed-state mutation.
+This supersedes the unpromoted CR-090 target, whose legacy tuple assumed an
+intermediate worker state that is absent from the clean base.
+
+## D-110: Validate every commit behind a protected PR tail
+
+21 September 2026, CR-092. A multi-commit pull request may end in one protected
+promotion, but every preceding commit is independently classified and validated
+against its direct parent. The final checkout snapshot is checked once; earlier
+commit checks reuse that immutable checkout only for repository-state binding.
+Any invalid earlier member returns its original diagnostic together with a
+chain-member diagnostic. Push validation translates the chain diagnostic.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
@@ -899,3 +927,17 @@
 - OPA/Rego против расширения typed policy evaluator после pilot evidence.
 - Web UI scope: до `P6` достаточно API + SCM/CLI; dashboard не входит в Core MVP.
 - MicroVM high-assurance sandbox после gVisor compatibility/performance evidence.
+
+## D-111: Deduplicate immutable secret-scan inputs
+
+- Status: proposed by CR-093.
+- Decision: scan each unique repository path and Git object ID pair once across the index and candidate commit trees.
+- Reason: an unchanged immutable blob has identical bytes, while retaining the path in the identity preserves path-sensitive baselines and forces renamed content to be checked again.
+- Consequence: secret coverage is unchanged and repeated CI work is bounded by unique path-object pairs.
+
+## D-112: Validate both supported platform API surfaces
+
+21 September 2026, CR-094. Canonical quality runs distinct Linux and Windows
+mypy stages over the same deterministic source inventory before executing unit
+tests. Either platform failure blocks unit execution and the candidate. This
+prevents a host-native check from hiding invalid guarded platform APIs.

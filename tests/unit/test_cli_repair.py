@@ -24,6 +24,6 @@ def test_main_routes_product_scan_without_claiming_pass() -> None:
     import io
 
     stdout, stderr = io.StringIO(), io.StringIO()
-    code = main(["scan", "repo", "--json"], stdout=stdout, stderr=stderr)
+    code = main(["scan", "repo", "--json"], repair=RepairCli(), stdout=stdout, stderr=stderr)
     assert code == int(CliExitCode.INDETERMINATE)
     assert json.loads(stdout.getvalue())["product_outcome"] == "NOT_EVALUATED"

@@ -16,8 +16,8 @@ from .domain import (
     ComponentPin,
     ModelCallStatus,
     RunExecutionIdentity,
-    _canonical_sha256,
 )
+from .domain_primitives import _canonical_sha256
 
 SafeModelId = Annotated[
     str,

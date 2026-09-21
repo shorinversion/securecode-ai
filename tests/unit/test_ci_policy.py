@@ -22,6 +22,7 @@ from detect_secrets.core import scan as detect_secrets_scan
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = REPOSITORY_ROOT / "scripts" / "ci_policy.py"
 PRECOMMIT_PATH = REPOSITORY_ROOT / "scripts" / "precommit_entry.py"
+QUALITY_PATH = REPOSITORY_ROOT / "scripts" / "quality.py"
 CANARY = "".join(("ghp_1234567890", "1234567890", "1234567890", "123456"))
 
 
@@ -49,6 +50,19 @@ def _load_precommit_entry() -> ModuleType:
 
 
 PRECOMMIT = _load_precommit_entry()
+
+
+def _load_quality() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("securecode_quality", QUALITY_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load quality module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+QUALITY = _load_quality()
 ORIGINAL_POPEN = subprocess.Popen
 
 
@@ -69,11 +83,94 @@ def _lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _workspace_inputs() -> dict[str, dict[str, Any]]:
+    pyproject, _ = _lock_inputs()
+    projects = POLICY._workspace_projects_for_root(pyproject)
     documents: dict[str, dict[str, Any]] = {}
-    for relative in POLICY.WORKSPACE_PROJECTS:
+    for relative in projects:
         with (REPOSITORY_ROOT / relative).open("rb") as handle:
             documents[relative] = tomllib.load(handle)
     return documents
+
+
+def _release_candidate_workspace_inputs() -> dict[str, dict[str, Any]]:
+    documents: dict[str, dict[str, Any]] = {}
+    for relative, (name, dependencies, sources, module_name) in POLICY.WORKSPACE_PROJECTS.items():
+        if relative == "apps/server/pyproject.toml":
+            project = copy.deepcopy(POLICY.EXPECTED_SERVER_PROJECT)
+        elif relative == "apps/worker/pyproject.toml":
+            project = copy.deepcopy(POLICY.EXPECTED_WORKER_PROJECT)
+        else:
+            project = {
+                "name": name,
+                "version": "1.0.0rc1",
+                "description": "reviewed release-candidate package",
+                "readme": "README.md",
+                "requires-python": ">=3.12,<3.15",
+                "dependencies": copy.deepcopy(dependencies),
+                "classifiers": ["Private :: Do Not Upload"],
+            }
+            scripts = POLICY.WORKSPACE_CONSOLE_SCRIPTS.get(relative)
+            if scripts is not None:
+                project["scripts"] = copy.deepcopy(scripts)
+        uv: dict[str, Any] = {"build-backend": {"module-name": module_name}}
+        if sources:
+            uv["sources"] = copy.deepcopy(sources)
+        documents[relative] = {
+            "build-system": {
+                "requires": ["uv_build>=0.11.32,<0.13"],
+                "build-backend": "uv_build",
+            },
+            "project": project,
+            "tool": {"uv": uv},
+        }
+    return documents
+
+
+def _release_candidate_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
+    pyproject, lock = _lock_inputs()
+    pyproject["project"]["version"] = "1.0.0rc1"
+    pyproject["project"]["dependencies"] = copy.deepcopy(POLICY.EXPECTED_ROOT_DEPENDENCIES)
+    pyproject["tool"]["uv"]["sources"] = copy.deepcopy(POLICY.RC_WORKSPACE_SOURCES)
+    pyproject["tool"]["uv"]["workspace"]["members"] = copy.deepcopy(POLICY.RC_WORKSPACE_MEMBERS)
+    pyproject["tool"]["mypy"]["mypy_path"] = copy.deepcopy(POLICY.EXPECTED_ROOT_MYPY_PATHS)
+    lock["manifest"]["members"] = [
+        "securecode-ai-adapters",
+        "securecode-ai-cli",
+        "securecode-ai-contracts",
+        "securecode-ai-core",
+        "securecode-ai-server",
+        "securecode-ai-worker",
+        "securecode-ai-workspace",
+    ]
+    workspace_names = set(lock["manifest"]["members"])
+    for package in lock["package"]:
+        if package.get("name") in workspace_names:
+            package["version"] = "1.0.0rc1"
+    if not any(package.get("name") == "securecode-ai-server" for package in lock["package"]):
+        lock["package"].append(
+            {
+                "name": "securecode-ai-server",
+                "version": "1.0.0rc1",
+                "source": {"editable": "apps/server"},
+            }
+        )
+    if not any(package.get("name") == "securecode-ai-worker" for package in lock["package"]):
+        lock["package"].append(
+            {
+                "name": "securecode-ai-worker",
+                "version": "1.0.0rc1",
+                "source": {"editable": "apps/worker"},
+            }
+        )
+    return pyproject, lock
+
+
+def _worker_workspace_inputs() -> dict[str, dict[str, Any]]:
+    return _workspace_inputs()
+
+
+def _worker_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
+    return _lock_inputs()
 
 
 def _first_step(workflow: dict[str, Any], action_name: str) -> dict[str, Any]:
@@ -254,6 +351,90 @@ def test_dependency_policy_rejects_source_integrity_and_tool_drift(mutation: str
     assert POLICY.lock_errors(pyproject, lock)
 
 
+def test_legacy_workspace_requires_one_closed_metadata_and_lock_shape() -> None:
+    pyproject, lock = _worker_lock_inputs()
+    assert POLICY.lock_errors(pyproject, lock) == []
+    assert POLICY.workspace_metadata_errors(_worker_workspace_inputs()) == []
+
+
+def test_release_candidate_workspace_state_passes_as_one_closed_shape() -> None:
+    pyproject, lock = _release_candidate_lock_inputs()
+    assert POLICY.lock_errors(pyproject, lock) == []
+    assert POLICY.workspace_metadata_errors(_release_candidate_workspace_inputs()) == []
+
+
+@pytest.mark.parametrize("field", ["version", "dependencies", "sources", "members", "mypy"])
+def test_release_candidate_workspace_rejects_mixed_state(field: str) -> None:
+    pyproject, lock = _release_candidate_lock_inputs()
+    if field == "version":
+        pyproject["project"]["version"] = "0.1.0a0"
+    elif field == "dependencies":
+        pyproject["project"]["dependencies"] = copy.deepcopy(
+            POLICY.LEGACY_EXPECTED_ROOT_DEPENDENCIES
+        )
+    elif field == "sources":
+        pyproject["tool"]["uv"]["sources"] = copy.deepcopy(POLICY.LEGACY_WORKSPACE_SOURCES)
+    elif field == "members":
+        pyproject["tool"]["uv"]["workspace"]["members"] = copy.deepcopy(
+            POLICY.LEGACY_WORKSPACE_MEMBERS
+        )
+    else:
+        pyproject["tool"]["mypy"]["mypy_path"] = copy.deepcopy(
+            POLICY.LEGACY_EXPECTED_ROOT_MYPY_PATHS
+        )
+    assert POLICY.lock_errors(pyproject, lock)
+
+
+def test_legacy_workspace_rejects_partial_or_substituted_inputs() -> None:
+    pyproject, lock = _worker_lock_inputs()
+    pyproject["tool"]["uv"]["workspace"]["members"].remove("packages/core")
+    assert POLICY.lock_errors(pyproject, lock)
+
+    pyproject, lock = _worker_lock_inputs()
+    pyproject["tool"]["mypy"]["mypy_path"].remove("packages/core/src")
+    assert POLICY.lock_errors(pyproject, lock)
+
+    pyproject, lock = _worker_lock_inputs()
+    lock["manifest"]["members"].remove("securecode-ai-core")
+    assert POLICY.lock_errors(pyproject, lock)
+
+    documents = _worker_workspace_inputs()
+    documents["apps/cli/pyproject.toml"]["project"]["scripts"] = {"securecode": "attacker:main"}
+    assert POLICY.workspace_metadata_errors(documents)
+
+
+def test_validate_lock_loads_and_enforces_the_selected_legacy_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "workspace"
+    root_pyproject, _ = _lock_inputs()
+    projects = POLICY._workspace_projects_for_root(root_pyproject)
+    for relative in projects:
+        target = workspace / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((REPOSITORY_ROOT / relative).read_bytes())
+    cli_path = workspace / "apps/cli/pyproject.toml"
+    pyproject_path = workspace / "pyproject.toml"
+    pyproject_path.write_bytes((REPOSITORY_ROOT / "pyproject.toml").read_bytes())
+    lock_path = workspace / "uv.lock"
+    lock_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(POLICY, "REPOSITORY_ROOT", workspace)
+    monkeypatch.setattr(POLICY, "PYPROJECT_PATH", pyproject_path)
+    monkeypatch.setattr(POLICY, "LOCK_PATH", lock_path)
+    monkeypatch.setattr(POLICY, "lock_errors", lambda *_: [])
+    monkeypatch.setattr(POLICY, "_git", lambda *_: "uv.lock\n")
+
+    assert POLICY.validate("lock") == []
+    cli_source = cli_path.read_text(encoding="utf-8")
+    cli_path.unlink()
+    assert POLICY.validate("lock") == ["workspace metadata could not be read"]
+
+    cli_path.write_text(
+        cli_source.replace("uv_build>=0.11.32,<0.13", "attacker>=1"), encoding="utf-8"
+    )
+    assert POLICY.validate("lock")
+
+
 def test_workspace_metadata_rejects_a_malicious_build_backend() -> None:
     documents = _workspace_inputs()
     documents["packages/core/pyproject.toml"]["build-system"]["build-backend"] = "attacker"
@@ -261,21 +442,23 @@ def test_workspace_metadata_rejects_a_malicious_build_backend() -> None:
 
 
 def test_workspace_metadata_accepts_only_reviewed_tree_sitter_dependencies() -> None:
-    documents = _workspace_inputs()
+    documents = _release_candidate_workspace_inputs()
     adapter_dependencies = documents["packages/adapters/pyproject.toml"]["project"]["dependencies"]
-    adapter_dependencies[:] = ["securecode-ai-core==0.1.0a0"]
-    assert POLICY.workspace_metadata_errors(documents) == []
+    adapter_dependencies[:] = ["securecode-ai-core==1.0.0rc1"]
+    assert POLICY.workspace_metadata_errors(documents)
 
     pre_grammar = [
-        "securecode-ai-core==0.1.0a0",
+        "securecode-ai-core==1.0.0rc1",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-python>=0.25,<0.26",
     ]
     adapter_dependencies[:] = pre_grammar
-    assert POLICY.workspace_metadata_errors(documents) == []
+    assert POLICY.workspace_metadata_errors(documents)
 
     reviewed = [
-        "securecode-ai-core==0.1.0a0",
+        "pydantic>=2.12,<3",
+        "securecode-ai-contracts==1.0.0rc1",
+        "securecode-ai-core==1.0.0rc1",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-go==0.25.0",
         "tree-sitter-javascript==0.25.0",
@@ -690,6 +873,60 @@ def test_git_blob_scanner_reads_object_ids_instead_of_checkout_paths(
     assert CANARY not in repr(findings)
 
 
+def test_git_blob_scanner_reuses_only_identical_path_object_pairs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[str] = []
+
+    def fake_git_bytes(*arguments: str) -> bytes:
+        assert arguments[:2] == ("cat-file", "blob")
+        reads.append(arguments[2])
+        return b"ordinary text\n"
+
+    monkeypatch.setattr(POLICY, "_git_bytes", fake_git_bytes)
+    seen: set[tuple[str, str]] = set()
+    records = [
+        ("same.txt", "a" * 40),
+        ("same.txt", "a" * 40),
+        ("same.txt", "b" * 40),
+    ]
+    assert POLICY._scan_git_blobs(records, _baseline(), prefix="candidate", seen=seen) == []
+    assert POLICY._scan_git_blobs(records, _baseline(), prefix="candidate", seen=seen) == []
+    assert (
+        POLICY._scan_git_blobs(
+            [("renamed.txt", "a" * 40)], _baseline(), prefix="candidate", seen=seen
+        )
+        == []
+    )
+    assert reads == ["a" * 40, "b" * 40, "a" * 40]
+
+
+def test_secret_errors_shares_deduplication_across_index_and_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[str] = []
+    baseline = _baseline()
+
+    def fake_git_bytes(*arguments: str) -> bytes:
+        assert arguments[:2] == ("cat-file", "blob")
+        reads.append(arguments[2])
+        return b"ordinary text\n"
+
+    monkeypatch.setattr(POLICY, "_read_json", lambda path: baseline)
+    monkeypatch.setattr(POLICY, "baseline_errors", lambda baseline: [])
+    monkeypatch.setattr(POLICY, "_index_blob_records", lambda: [("same.txt", "a" * 40)])
+    monkeypatch.setattr(POLICY, "_candidate_commits", lambda base: ["candidate"])
+    monkeypatch.setattr(
+        POLICY,
+        "_tree_blob_records",
+        lambda commit: [("same.txt", "a" * 40), ("same.txt", "b" * 40)],
+    )
+    monkeypatch.setattr(POLICY, "_git_bytes", fake_git_bytes)
+
+    assert POLICY.secret_errors("c" * 40) == []
+    assert reads == ["a" * 40, "b" * 40]
+
+
 @pytest.mark.parametrize("base_mode", ["zero", "head", "incremental"])
 def test_candidate_commit_walk_covers_full_history_and_merge_commits(
     monkeypatch: pytest.MonkeyPatch, base_mode: str
@@ -746,6 +983,61 @@ def test_precommit_launcher_uses_the_project_owned_uv_and_closed_commands() -> N
         PRECOMMIT.build_command("quality", ["untrusted.py"])
     with pytest.raises(RuntimeError, match="unknown"):
         PRECOMMIT.build_command("unknown", [])
+
+
+def test_canonical_type_stages_cover_linux_and_win32_before_unit() -> None:
+    targets = ("first.py", "second.py")
+    stages = QUALITY._stages(targets)
+    type_stages = tuple(stage for stage in stages if stage.name.startswith("types-"))
+
+    assert tuple(stage.name for stage in type_stages) == ("types-linux", "types-win32")
+    assert tuple(stage.arguments for stage in type_stages) == tuple(
+        (
+            "-m",
+            "mypy",
+            "--config-file",
+            "pyproject.toml",
+            "--no-incremental",
+            "--platform",
+            platform,
+            *targets,
+        )
+        for platform in ("linux", "win32")
+    )
+    assert all(not stage.executes_repository_code for stage in type_stages)
+    unit_index = next(index for index, stage in enumerate(stages) if stage.name == "unit")
+    assert all(stages.index(stage) < unit_index for stage in type_stages)
+
+
+@pytest.mark.parametrize("failed_stage", ["types-linux", "types-win32"])
+def test_type_failure_runs_remaining_static_checks_but_skips_unit(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_stage: str,
+) -> None:
+    observed: list[tuple[str, dict[str, str]]] = []
+    sanitized = {"PATH": "trusted-tools", "PYTHONHASHSEED": "0"}
+    snapshots = iter(("same", "same"))
+
+    monkeypatch.setattr(QUALITY, "_python_targets", lambda: ("target.py",))
+    monkeypatch.setattr(QUALITY, "_repository_snapshot", lambda: next(snapshots))
+    monkeypatch.setattr(QUALITY, "_sanitized_environment", lambda _root: sanitized)
+
+    def run(stage: Any, environment: dict[str, str]) -> int:
+        observed.append((stage.name, environment))
+        return 1 if stage.name == failed_stage else 0
+
+    monkeypatch.setattr(QUALITY, "_run_stage", run)
+
+    assert QUALITY.main() == 1
+    assert [name for name, _environment in observed] == [
+        "spec",
+        "format",
+        "lint",
+        "types-linux",
+        "types-win32",
+    ]
+    assert all(environment is sanitized for _name, environment in observed)
+    assert "unit" not in {name for name, _environment in observed}
 
 
 def test_hook_cadence_preserves_policy_secrets_and_workflow_without_full_quality() -> None:

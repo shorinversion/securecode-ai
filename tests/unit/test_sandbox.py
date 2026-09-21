@@ -69,6 +69,7 @@ def _attestation(profile: SandboxProfile) -> SandboxAttestation:
         ("credentials_disabled", True),
         ("host_access_disabled", True),
         ("rootless", True),
+        ("desktop_vm_isolation", False),
         ("read_only_root", True),
         ("schema_version", "1.0.0"),
         ("attestation_sha256", "0" * 64),
@@ -87,19 +88,23 @@ def _attestation(profile: SandboxProfile) -> SandboxAttestation:
     )
 
 
-def _observation() -> SandboxObservation:
-    usage = ResourceUsage(
-        schema_version="0.2.0",
-        elapsed_ms=1,
-        peak_memory_bytes=1,
-        cpu_time_ms=1,
+def _observation(*, usage: ResourceUsage | None = None) -> SandboxObservation:
+    resource = (
+        ResourceUsage(
+            schema_version="0.2.0",
+            elapsed_ms=1,
+            peak_memory_bytes=1,
+            cpu_time_ms=1,
+        )
+        if usage is None
+        else usage
     )
     value = object.__new__(SandboxObservation)
     for name, item in (
         ("outcome", SandboxOutcome.SUCCEEDED),
         ("output_sha256", "a" * 64),
         ("output_size_bytes", 1),
-        ("resource_usage", usage),
+        ("resource_usage", resource),
         ("schema_version", "1.0.0"),
         ("observation_sha256", "0" * 64),
     ):
@@ -108,7 +113,7 @@ def _observation() -> SandboxObservation:
         SandboxOutcome.SUCCEEDED,
         "a" * 64,
         1,
-        usage,
+        resource,
         _observation_hash(value),
     )
 
@@ -129,10 +134,15 @@ def _teardown() -> SandboxTeardownReceipt:
 
 class _Driver:
     def __init__(
-        self, *, attestation: SandboxAttestation | None = None, fail: bool = False
+        self,
+        *,
+        attestation: SandboxAttestation | None = None,
+        fail: bool = False,
+        observation: SandboxObservation | None = None,
     ) -> None:
         self.attestation = attestation
         self.fail = fail
+        self.observation = observation
         self.teardown_calls = 0
 
     def attest(self, profile: SandboxProfile) -> SandboxAttestation:
@@ -141,7 +151,7 @@ class _Driver:
     def execute(self, command: SandboxCommand, profile: SandboxProfile) -> SandboxObservation:
         if self.fail:
             raise RuntimeError("driver detail must not escape")
-        return _observation()
+        return self.observation or _observation()
 
     def teardown(self) -> SandboxTeardownReceipt:
         self.teardown_calls += 1
@@ -162,6 +172,51 @@ def test_driver_failure_is_sanitized_and_teardown_still_runs() -> None:
     assert result.outcome is SandboxOutcome.INDETERMINATE
     assert result.reason_code is SandboxErrorCode.DRIVER_FAILURE
     assert driver.teardown_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "limit", "reported"),
+    (
+        ("cpu_time_ms", 1000, 1001),
+        ("peak_memory_bytes", 1024, 1025),
+        ("elapsed_ms", 2000, 2001),
+    ),
+)
+def test_observed_resource_overrun_is_indeterminate_and_tears_down(
+    field: str, limit: int, reported: int
+) -> None:
+    elapsed_ms = reported if field == "elapsed_ms" else 1
+    peak_memory_bytes = reported if field == "peak_memory_bytes" else 1
+    cpu_time_ms = reported if field == "cpu_time_ms" else 1
+    observation = _observation(
+        usage=ResourceUsage(
+            schema_version="0.2.0",
+            elapsed_ms=elapsed_ms,
+            peak_memory_bytes=peak_memory_bytes,
+            cpu_time_ms=cpu_time_ms,
+        )
+    )
+    driver = _Driver(observation=observation)
+
+    result = run_in_sandbox(_profile(), SandboxCommand("pytest"), driver)
+
+    assert reported == limit + 1
+    assert result.outcome is SandboxOutcome.INDETERMINATE
+    assert result.reason_code is SandboxErrorCode.RESOURCE_LIMIT
+    assert result.observation_sha256 == observation.observation_sha256
+    assert driver.teardown_calls == 1
+
+
+def test_observed_resource_exact_boundary_succeeds() -> None:
+    usage = ResourceUsage(
+        schema_version="0.2.0", elapsed_ms=2000, peak_memory_bytes=1024, cpu_time_ms=1000
+    )
+    driver = _Driver(observation=_observation(usage=usage))
+
+    result = run_in_sandbox(_profile(), SandboxCommand("pytest"), driver)
+
+    assert result.outcome is SandboxOutcome.SUCCEEDED
+    assert result.reason_code is None
 
 
 def test_invalid_command_is_rejected_before_driver() -> None:

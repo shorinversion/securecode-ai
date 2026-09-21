@@ -22,6 +22,7 @@ from securecode_ai.core.normalization import (
     normalize_raw_signal,
     normalize_signals,
     root_cause_fingerprint,
+    root_cause_location_fingerprint,
 )
 
 SCHEMA_VERSION = "0.2.0"
@@ -194,3 +195,41 @@ def test_revision_and_duplicate_identity_conflicts_fail_closed() -> None:
             )
         )
     assert collision.value.code is NormalizationErrorCode.INTEGRITY_FAILURE
+
+
+def test_location_identity_preserves_pre_refactor_fingerprint_bytes() -> None:
+    signal = _signal()
+    expected = (
+        "sha256:09fe5c97425d48d0a573ce103425f59570749a8ce78ba06607eac2903f57ac32".removeprefix(
+            "sha256:"
+        )
+    )
+    assert root_cause_fingerprint(signal) == expected
+    assert (
+        root_cause_location_fingerprint(
+            tenant_id=signal.tenant_id, rule_id=signal.rule_id, location=signal.location
+        )
+        == expected
+    )
+
+
+def test_location_identity_remains_tenant_scoped_and_rejects_mutated_locations() -> None:
+    baseline = root_cause_location_fingerprint(
+        tenant_id=TENANT_ID, rule_id="python-cwe89", location=_location()
+    )
+    assert (
+        root_cause_location_fingerprint(
+            tenant_id="tenant-2", rule_id="python-cwe89", location=_location()
+        )
+        != baseline
+    )
+    with pytest.raises(NormalizationError):
+        root_cause_location_fingerprint(
+            tenant_id="invalid/tenant", rule_id="python-cwe89", location=_location()
+        )
+    mutated = _location()
+    object.__setattr__(mutated.start, "line", 0)
+    with pytest.raises(NormalizationError):
+        root_cause_location_fingerprint(
+            tenant_id=TENANT_ID, rule_id="python-cwe89", location=mutated
+        )

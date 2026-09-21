@@ -167,11 +167,13 @@ class RepairLoopReceipt:
 class RepairProposer(Protocol):
     def __call__(
         self, feedback: RetryFeedback, attempt: int
-    ) -> ArchitectPatchResult | tuple[ArchitectPatchResult, AttemptUsage]: ...
+    ) -> tuple[ArchitectPatchResult, AttemptUsage]: ...
 
 
 class RepairValidator(Protocol):
-    def __call__(self, patch: ArchitectPatchResult, attempt: int) -> ValidationLadderResult: ...
+    def __call__(
+        self, patch: ArchitectPatchResult, attempt: int
+    ) -> tuple[ValidationLadderResult, AttemptUsage]: ...
 
 
 def run_repair_loop(
@@ -179,6 +181,7 @@ def run_repair_loop(
     validate: RepairValidator,
     propose: RepairProposer,
     *,
+    initial_usage: AttemptUsage,
     budget: RepairBudget | None = None,
 ) -> RepairLoopReceipt:
     """Run at most three policy-controlled attempts; never widens capabilities."""
@@ -187,32 +190,36 @@ def run_repair_loop(
     if (
         type(initial_patch) is not ArchitectPatchResult
         or type(effective_budget) is not RepairBudget
+        or type(initial_usage) is not AttemptUsage
+        or _budget_exhausted(initial_usage, effective_budget)
     ):
         raise RepairLoopError()
     attempts: list[RepairAttemptReceipt] = []
-    total = AttemptUsage()
+    total = initial_usage
     patch = initial_patch
     seen_progress: set[str] = set()
     final_state = RepairState.HUMAN_ESCALATION
     stop = RepairStopReason.REQUEST_INVALID
     for number in range(1, effective_budget.max_attempts + 1):
-        result = validate(patch, number)
-        if type(result) is not ValidationLadderResult:
+        validated = validate(patch, number)
+        if (
+            type(validated) is not tuple
+            or len(validated) != 2
+            or type(validated[0]) is not ValidationLadderResult
+            or type(validated[1]) is not AttemptUsage
+        ):
             raise RepairLoopError()
-        usage = _validation_usage(result)
+        result, reported_usage = validated
+        usage = _sum_usage(_validation_usage(result), reported_usage)
         total = _sum_usage(total, usage)
         progress = _progress_hash(patch, result)
         feedback = _feedback(result, patch)
-        if result.validation.validation_outcome is ValidationOutcome.VALIDATED:
+        if _budget_exhausted(total, effective_budget):
+            state, stop = RepairState.HUMAN_ESCALATION, RepairStopReason.BUDGET_EXHAUSTED
+        elif result.validation.validation_outcome is ValidationOutcome.VALIDATED:
             state, stop = RepairState.VALIDATED_CANDIDATE, RepairStopReason.VALIDATED
         elif progress in seen_progress:
             state, stop = RepairState.HUMAN_ESCALATION, RepairStopReason.NO_PROGRESS
-        elif (
-            total.tokens_used > effective_budget.max_tokens
-            or total.tool_calls > effective_budget.max_tool_calls
-            or total.elapsed_ms > effective_budget.max_elapsed_ms
-        ):
-            state, stop = RepairState.HUMAN_ESCALATION, RepairStopReason.BUDGET_EXHAUSTED
         elif number >= effective_budget.max_attempts:
             state, stop = RepairState.HUMAN_ESCALATION, RepairStopReason.MAX_ATTEMPTS
         elif feedback is None:
@@ -238,20 +245,30 @@ def run_repair_loop(
         if feedback is None:
             raise RepairLoopError()
         proposed = propose(feedback, number + 1)
-        proposal_usage = AttemptUsage()
-        if isinstance(proposed, tuple):
-            if (
-                len(proposed) != 2
-                or type(proposed[0]) is not ArchitectPatchResult
-                or type(proposed[1]) is not AttemptUsage
-            ):
-                raise RepairLoopError()
-            patch, proposal_usage = proposed
-        elif type(proposed) is ArchitectPatchResult:
-            patch = proposed
-        else:
+        if (
+            type(proposed) is not tuple
+            or len(proposed) != 2
+            or type(proposed[0]) is not ArchitectPatchResult
+            or type(proposed[1]) is not AttemptUsage
+        ):
             raise RepairLoopError()
+        patch, proposal_usage = proposed
         total = _sum_usage(total, proposal_usage)
+        if _budget_exhausted(total, effective_budget):
+            previous = attempts[-1]
+            attempts[-1] = RepairAttemptReceipt(
+                previous.attempt,
+                RepairState.HUMAN_ESCALATION,
+                previous.patch_id,
+                previous.validation_id,
+                previous.validation_result_sha256,
+                previous.progress_sha256,
+                previous.feedback,
+                total,
+            )
+            final_state = RepairState.HUMAN_ESCALATION
+            stop = RepairStopReason.BUDGET_EXHAUSTED
+            break
     return _make_receipt(tuple(attempts), final_state, stop, total)
 
 
@@ -295,6 +312,14 @@ def _validation_usage(result: ValidationLadderResult) -> AttemptUsage:
     )
 
 
+def _budget_exhausted(usage: AttemptUsage, budget: RepairBudget) -> bool:
+    return (
+        usage.tokens_used > budget.max_tokens
+        or usage.tool_calls > budget.max_tool_calls
+        or usage.elapsed_ms > budget.max_elapsed_ms
+    )
+
+
 def _progress_hash(patch: ArchitectPatchResult, result: ValidationLadderResult) -> str:
     return _hash(
         {
@@ -327,6 +352,14 @@ def _receipt_hash(value: RepairLoopReceipt) -> str:
                     "patch_id": item.patch_id,
                     "progress_sha256": item.progress_sha256,
                     "state": item.state.value,
+                    "feedback_sha256": (
+                        None if item.feedback is None else item.feedback.feedback_sha256
+                    ),
+                    "usage": {
+                        "elapsed_ms": item.usage.elapsed_ms,
+                        "tool_calls": item.usage.tool_calls,
+                        "tokens_used": item.usage.tokens_used,
+                    },
                     "validation_id": item.validation_id,
                     "validation_result_sha256": item.validation_result_sha256,
                 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
 import io
 import json
 import multiprocessing
@@ -12,6 +13,7 @@ import platform
 import queue as queue_module
 import subprocess
 import sys
+import tempfile
 import time
 import tokenize
 import urllib.error
@@ -19,30 +21,81 @@ import urllib.request
 from pathlib import Path
 from typing import Any, cast
 
-from securecode_ai.adapters import build_python_symbol_index, scan_python_cwe89
-from securecode_ai.adapters.python_ast import analyze_python_ast
-from securecode_ai.core.development_benchmark import (
-    Configuration,
-    Label,
-    Record,
-    aggregate,
-    planned_cells,
+Configuration = str
+Label = str
+Record: Any = None
+aggregate: Any = None
+analyze_python_ast: Any = None
+build_python_symbol_index: Any = None
+planned_cells: Any = None
+scan_python_cwe89: Any = None
+
+_ADMISSION_SPEC = importlib.util.spec_from_file_location(
+    "development_run_admission", Path(__file__).with_name("development_run_admission.py")
 )
+if _ADMISSION_SPEC is None or _ADMISSION_SPEC.loader is None:
+    raise RuntimeError("development run admission module unavailable")
+_ADMISSION_MODULE = importlib.util.module_from_spec(_ADMISSION_SPEC)
+sys.modules[_ADMISSION_SPEC.name] = _ADMISSION_MODULE
+_ADMISSION_SPEC.loader.exec_module(_ADMISSION_MODULE)
+Admission = _ADMISSION_MODULE.Admission
+admit_run = _ADMISSION_MODULE.admit_run
+prepare_plan = _ADMISSION_MODULE.prepare_plan
+verify_imported_package_bindings = _ADMISSION_MODULE.verify_imported_package_bindings
+write_execution_receipt = _ADMISSION_MODULE.write_execution_receipt
+
+
+def _load_candidate_runtime() -> None:
+    """Import product code only after 1.1 admission has bound its exact bytes."""
+
+    global Record, aggregate, analyze_python_ast, build_python_symbol_index, planned_cells
+    global scan_python_cwe89
+    if Record is not None:
+        return
+    from securecode_ai.adapters import build_python_symbol_index as symbol_index
+    from securecode_ai.adapters import scan_python_cwe89 as scan_cwe89
+    from securecode_ai.adapters.python_ast import analyze_python_ast as analyze_ast
+    from securecode_ai.core.development_benchmark import (
+        Record as benchmark_record,
+    )
+    from securecode_ai.core.development_benchmark import (
+        aggregate as benchmark_aggregate,
+    )
+    from securecode_ai.core.development_benchmark import (
+        planned_cells as benchmark_planned_cells,
+    )
+
+    Record = benchmark_record
+    aggregate = benchmark_aggregate
+    analyze_python_ast = analyze_ast
+    build_python_symbol_index = symbol_index
+    planned_cells = benchmark_planned_cells
+    scan_python_cwe89 = scan_cwe89
+
 
 ENDPOINT = "http://127.0.0.1:11434"
+SECURITY_SEMANTICS_INSTRUCTION = (
+    "Treat literal SQL text with values passed as separately bound parameters as safe. "
+    "Follow only calls and helpers shown in the source projections. "
+    "Confirm a finding only for a concrete exploitable flow from a controllable source, "
+    "through a missing or insufficient relevant guard, to a security-sensitive sink; "
+    "do not infer one from an API name alone."
+)
+RESPONSE_INSTRUCTION = (
+    'Return only one compact JSON object: {"verdict":"no_finding"} or '
+    '{"verdict":"confirmed","category":"sql","source_file":"file_N.py"}. '
+    "For a confirmed finding, choose exactly one category from authz, path, sql, command; "
+    "do not use pipe-delimited text as a literal category. "
+    "Use only a shown opaque file alias. Do not explain."
+)
 PROMPT_TEMPLATE = (
-    "Review this educational Python example. Return only compact JSON using one of: "
-    '{{"verdict":"no_finding"}} or '
-    '{{"verdict":"confirmed","category":"authz|path|sql|command",'
-    '"source_file":"file_N.py"}}. Use only a shown opaque file alias. Do not explain.\n\n{source}'
+    "Review this educational Python example. {security_semantics} "
+    "{response_instruction}\n\n{source}"
 )
 MODEL_NATIVE_PROMPT_TEMPLATE = (
     "Perform independent model-native discovery on this educational Python example. "
     "Do not rely on deterministic scanner findings: inspect every shown opaque source alias yourself. "
-    "Return only compact JSON using one of: "
-    '{{"verdict":"no_finding"}} or '
-    '{{"verdict":"confirmed","category":"authz|path|sql|command",'
-    '"source_file":"file_N.py"}}. Use only a shown opaque file alias. Do not explain.\n\n{source}'
+    "{security_semantics} {response_instruction}\n\n{source}"
 )
 POLICY_TEXT = (
     "source-data-only; label-blind-sha256-alias-order; no corpus execution; "
@@ -60,21 +113,15 @@ SCHEMA_TEXT = (
 SCANNER_SEEDED_PROMPT_TEMPLATE = (
     "A deterministic scanner emitted the listed opaque seed facts. Investigate only those facts "
     "and only the corresponding shown source projections; do not discover any other candidate. "
-    "Return only compact JSON using one of: "
-    '{{"verdict":"no_finding"}} or '
-    '{{"verdict":"confirmed","category":"authz|path|sql|command",'
-    '"source_file":"file_N.py"}}. Allowed aliases: {aliases}. '
-    "Deterministic scanner seed facts: {seed_facts}. Do not explain.\n\n{source}"
+    "{security_semantics} {response_instruction} Allowed aliases: {aliases}. "
+    "Deterministic scanner seed facts: {seed_facts}.\n\n{source}"
 )
 FULL_HYBRID_PROMPT_TEMPLATE = (
     "Review this educational Python example using independent model discovery across every shown "
     "opaque source alias, while reconciling the listed deterministic scanner seed facts. "
     "A seed fact of none means the scanner reported zero signals; it is not a finding. "
-    "Return only compact JSON using one of: "
-    '{{"verdict":"no_finding"}} or '
-    '{{"verdict":"confirmed","category":"authz|path|sql|command",'
-    '"source_file":"file_N.py"}}. Use only a shown opaque file alias. '
-    "Deterministic scanner seed facts: {seed_facts}. Do not explain.\n\n{source}"
+    "{security_semantics} {response_instruction} "
+    "Deterministic scanner seed facts: {seed_facts}.\n\n{source}"
 )
 MODEL_CONFIGURATIONS = {
     "scanner_seeded_investigation",
@@ -82,6 +129,33 @@ MODEL_CONFIGURATIONS = {
     "one_shot_llm",
     "full_hybrid",
 }
+MODEL_FINDING_FORMAT = {
+    "oneOf": [
+        {
+            "type": "object",
+            "properties": {"verdict": {"type": "string", "enum": ["no_finding"]}},
+            "required": ["verdict"],
+            "additionalProperties": False,
+        },
+        {
+            "type": "object",
+            "properties": {
+                "verdict": {"type": "string", "enum": ["confirmed"]},
+                "category": {
+                    "type": "string",
+                    "enum": ["authz", "path", "sql", "command"],
+                },
+                "source_file": {
+                    "type": "string",
+                    "pattern": "^file_[1-9][0-9]*\\.py$",
+                },
+            },
+            "required": ["verdict", "category", "source_file"],
+            "additionalProperties": False,
+        },
+    ]
+}
+MODEL_GENERATION_OPTIONS = {"num_predict": 48}
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -133,8 +207,15 @@ def _sha256_text(value: str) -> str:
     return _sha256_bytes(value.encode("utf-8"))
 
 
+def _generation_request_provenance() -> dict[str, Any]:
+    return {
+        "format": MODEL_FINDING_FORMAT,
+        "options": {**MODEL_GENERATION_OPTIONS, "temperature": "plan.ollama.temperature"},
+    }
+
+
 def _prompt_sha256() -> str:
-    """Bind every declared model prompt mode without retaining corpus source."""
+    """Bind prompts and declared generation controls without retaining corpus source."""
 
     return _sha256_text(
         "\n---\n".join(
@@ -143,22 +224,16 @@ def _prompt_sha256() -> str:
                 MODEL_NATIVE_PROMPT_TEMPLATE,
                 SCANNER_SEEDED_PROMPT_TEMPLATE,
                 FULL_HYBRID_PROMPT_TEMPLATE,
+                SECURITY_SEMANTICS_INSTRUCTION,
+                RESPONSE_INSTRUCTION,
+                json.dumps(_generation_request_provenance(), sort_keys=True, separators=(",", ":")),
             )
         )
     )
 
 
-def _verify_plan(plan: dict[str, Any], plan_path: Path, corpus: dict[str, Any]) -> None:
-    if plan.get("schema_version") != "development-benchmark-plan-1.0":
-        raise ValueError("unsupported plan schema")
-    if plan.get("corpus_content_sha256") != corpus.get("corpus_content_sha256"):
-        raise ValueError("stale corpus binding")
-    if plan.get("ollama", {}).get("endpoint") != ENDPOINT:
-        raise ValueError("unsafe model endpoint")
-    bindings = plan.get("bindings")
-    if type(bindings) is not dict:
-        raise ValueError("missing bindings")
-    expected = {
+def _current_bindings(*, admitted: bool) -> dict[str, str]:
+    bindings = {
         "component_sha256": _sha256_bytes(Path(__file__).read_bytes()),
         "core_sha256": _sha256_bytes(
             Path("packages/core/src/securecode_ai/core/development_benchmark.py").read_bytes()
@@ -173,10 +248,15 @@ def _verify_plan(plan: dict[str, Any], plan_path: Path, corpus: dict[str, Any]) 
         "policy_sha256": _sha256_text(POLICY_TEXT),
         "schema_sha256": _sha256_text(SCHEMA_TEXT),
     }
-    if bindings != expected:
-        raise ValueError("component binding drift")
-    environment = plan.get("environment")
-    expected_environment = {
+    if admitted:
+        bindings["admission_sha256"] = _sha256_bytes(
+            Path(__file__).with_name("development_run_admission.py").read_bytes()
+        )
+    return bindings
+
+
+def _current_environment() -> dict[str, object]:
+    return {
         "host_mode": "local-native",
         "evaluation_image": None,
         "os": platform.platform(),
@@ -185,9 +265,27 @@ def _verify_plan(plan: dict[str, Any], plan_path: Path, corpus: dict[str, Any]) 
         "python_version": platform.python_version(),
         "uv_lock_sha256": _sha256_bytes(Path("uv.lock").read_bytes()),
     }
+
+
+def _verify_plan(plan: dict[str, Any], plan_path: Path, corpus: dict[str, Any]) -> None:
+    admitted = plan.get("schema_version") == "development-benchmark-plan-1.1"
+    if not admitted and plan.get("schema_version") != "development-benchmark-plan-1.0":
+        raise ValueError("unsupported plan schema")
+    if plan.get("corpus_content_sha256") != corpus.get("corpus_content_sha256"):
+        raise ValueError("stale corpus binding")
+    if plan.get("ollama", {}).get("endpoint") != ENDPOINT:
+        raise ValueError("unsafe model endpoint")
+    bindings = plan.get("bindings")
+    if type(bindings) is not dict:
+        raise ValueError("missing bindings")
+    expected = _current_bindings(admitted=admitted)
+    if bindings != expected:
+        raise ValueError("component binding drift")
+    environment = plan.get("environment")
+    expected_environment = _current_environment()
     if environment != expected_environment:
         raise ValueError("execution environment drift")
-    if plan.get("reproduction_commands") != [
+    if not admitted and plan.get("reproduction_commands") != [
         ".venv/Scripts/python.exe scripts/run_development_benchmark.py --plan evaluation/development/run-plan.yaml --records evaluation/development/results/run-records.jsonl --aggregate evaluation/development/results/aggregate.json",
         ".venv/Scripts/python.exe scripts/recompute_development_benchmark.py --plan evaluation/development/run-plan.yaml --records evaluation/development/results/run-records.jsonl --output evaluation/development/results/recomputed.json",
     ]:
@@ -288,6 +386,7 @@ def _deterministic(
     candidate_commit: str,
     expected_source_path: str,
 ) -> tuple[str, bool, bool, str | None, str | None, int]:
+    _load_candidate_runtime()
     details = _scanner_details(case, root, candidate_commit, expected_source_path)
     return details[:6]
 
@@ -308,6 +407,8 @@ def _scanner_details(
     tuple[tuple[str, str], ...],
 ]:
     """Use the sealed product scanner without consulting an oracle for discovery."""
+
+    _load_candidate_runtime()
 
     aliases = _source_aliases(case)
     aliases_by_path = {path: alias for alias, path in aliases.items()}
@@ -384,13 +485,21 @@ def _ollama(
         if seeded_aliases or scanner_seed_facts:
             raise ValueError("one-shot context must not contain scanner facts")
         source = _projected_source(case, root, all_aliases)
-        prompt = PROMPT_TEMPLATE.format(source=source)
+        prompt = PROMPT_TEMPLATE.format(
+            security_semantics=SECURITY_SEMANTICS_INSTRUCTION,
+            response_instruction=RESPONSE_INSTRUCTION,
+            source=source,
+        )
         allowed_aliases = set(aliases)
     elif mode == "model_native_only":
         if seeded_aliases or scanner_seed_facts:
             raise ValueError("model-native context must not contain scanner facts")
         source = _projected_source(case, root, all_aliases)
-        prompt = MODEL_NATIVE_PROMPT_TEMPLATE.format(source=source)
+        prompt = MODEL_NATIVE_PROMPT_TEMPLATE.format(
+            security_semantics=SECURITY_SEMANTICS_INSTRUCTION,
+            response_instruction=RESPONSE_INSTRUCTION,
+            source=source,
+        )
         allowed_aliases = set(aliases)
     elif mode == "scanner_seeded_investigation":
         if not seeded_aliases or not set(seeded_aliases).issubset(aliases):
@@ -403,6 +512,8 @@ def _ollama(
         prompt = SCANNER_SEEDED_PROMPT_TEMPLATE.format(
             aliases=", ".join(seeded_aliases),
             seed_facts=_seed_facts_text(scanner_seed_facts),
+            security_semantics=SECURITY_SEMANTICS_INSTRUCTION,
+            response_instruction=RESPONSE_INSTRUCTION,
             source=source,
         )
         allowed_aliases = set(seeded_aliases)
@@ -413,7 +524,10 @@ def _ollama(
             raise ValueError("invalid full-hybrid scanner facts")
         source = _projected_source(case, root, all_aliases)
         prompt = FULL_HYBRID_PROMPT_TEMPLATE.format(
-            seed_facts=_seed_facts_text(scanner_seed_facts), source=source
+            seed_facts=_seed_facts_text(scanner_seed_facts),
+            security_semantics=SECURITY_SEMANTICS_INSTRUCTION,
+            response_instruction=RESPONSE_INSTRUCTION,
+            source=source,
         )
         allowed_aliases = set(aliases)
     else:
@@ -425,8 +539,9 @@ def _ollama(
                 "model": profile["model"],
                 "prompt": prompt,
                 "stream": False,
+                "format": MODEL_FINDING_FORMAT,
                 "options": {
-                    "num_predict": 48,
+                    **MODEL_GENERATION_OPTIONS,
                     "temperature": profile["temperature"],
                 },
             },
@@ -464,12 +579,6 @@ def _ollama(
     }
     if not required <= set(value) or not set(value) <= allowed:
         raise ValueError("invalid model response shape")
-    if (
-        value["model"] != profile["model"]
-        or value["done"] is not True
-        or value["done_reason"] != "stop"
-    ):
-        raise ValueError("model response identity or completion drift")
     prompt_tokens = value["prompt_eval_count"]
     generated_tokens = value["eval_count"]
     if (
@@ -479,6 +588,16 @@ def _ollama(
         or generated_tokens < 0
     ):
         raise ValueError("invalid model resource facts")
+    if (
+        value["model"] != profile["model"]
+        or value["done"] is not True
+        or value["done_reason"] != "stop"
+    ):
+        raise ModelRunError(
+            "model response identity or completion drift",
+            prompt_tokens=prompt_tokens,
+            generated_tokens=generated_tokens,
+        )
     try:
         finding = (
             _strict_object(value["response"].encode("utf-8"))
@@ -565,6 +684,7 @@ def _record(
     scanner_signals: int | None,
     finding_origin: str | None,
 ) -> Record:
+    _load_candidate_runtime()
     model_stage = configuration in MODEL_CONFIGURATIONS
     profile = plan["ollama"]
     budget = plan["budget"]
@@ -575,11 +695,11 @@ def _record(
         case_id=case_id,
         root_cause_group=root_cause_group,
         source_aliases=source_aliases,
-        configuration=configuration,  # type: ignore[arg-type]
+        configuration=configuration,
         repetition=repetition,
-        expected_label=expected,  # type: ignore[arg-type]
-        state=state,  # type: ignore[arg-type]
-        predicted_label=predicted,  # type: ignore[arg-type]
+        expected_label=expected,
+        state=state,
+        predicted_label=predicted,
         confirmed_finding=confirmed_finding,
         policy_matched=policy_matched,
         returned_category=returned_category,
@@ -608,7 +728,7 @@ def _record(
         generated_tokens=generated_tokens,
         scanner_signal_count=scanner_signals,
         provider_cost=None,
-        finding_origin=finding_origin,  # type: ignore[arg-type]
+        finding_origin=finding_origin,
         remediation_attempted=False,
         remediation_data_only=None,
         remediation_sandbox_receipt_sha256=None,
@@ -728,26 +848,25 @@ def _write_outputs(
     planned: tuple[tuple[str, Configuration, int, Label], ...],
     output: list[Record],
 ) -> None:
+    _load_candidate_runtime()
     records_path.parent.mkdir(parents=True, exist_ok=True)
     aggregate_path.parent.mkdir(parents=True, exist_ok=True)
-    # Invalidate both previous files before writing either new artifact. A failed
-    # write cannot leave an old successful aggregate alongside fresh records.
-    records_path.unlink(missing_ok=True)
-    aggregate_path.unlink(missing_ok=True)
-    records_path.write_bytes(
-        (
-            "\n".join(
-                json.dumps(item.document(), sort_keys=True, separators=(",", ":"))
-                for item in output
-            )
-            + "\n"
-        ).encode("utf-8")
-    )
-    aggregate_path.write_bytes(
-        (json.dumps(aggregate(planned, tuple(output)), sort_keys=True, indent=2) + "\n").encode(
-            "utf-8"
+    records_bytes = (
+        "\n".join(
+            json.dumps(item.document(), sort_keys=True, separators=(",", ":")) for item in output
         )
-    )
+        + "\n"
+    ).encode("utf-8")
+    aggregate_bytes = (
+        json.dumps(aggregate(planned, tuple(output)), sort_keys=True, indent=2) + "\n"
+    ).encode("utf-8")
+    for path, content in ((records_path, records_bytes), (aggregate_path, aggregate_bytes)):
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=path.parent, prefix=f".{path.name}.", suffix=".checkpoint", delete=False
+        ) as handle:
+            handle.write(content)
+            temporary = Path(handle.name)
+        temporary.replace(path)
 
 
 def _not_run_records(
@@ -786,12 +905,54 @@ def _not_run_records(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--plan", type=Path, required=True)
-    parser.add_argument("--records", type=Path, required=True)
-    parser.add_argument("--aggregate", type=Path, required=True)
+    parser.add_argument("--prepare-plan", type=Path)
+    parser.add_argument("--plan", type=Path)
+    parser.add_argument("--records", type=Path)
+    parser.add_argument("--aggregate", type=Path)
+    parser.add_argument("--receipt", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    repository_root = Path(__file__).resolve().parents[1]
+    if args.prepare_plan is not None:
+        if any(
+            value is not None for value in (args.plan, args.records, args.aggregate, args.receipt)
+        ):
+            raise ValueError("prepare-plan cannot include execution paths")
+        plan = prepare_plan(
+            root=repository_root,
+            output=args.prepare_plan,
+            bindings=_current_bindings(admitted=True),
+            environment=_current_environment(),
+        )
+        print(json.dumps({"schema_version": plan["schema_version"]}, separators=(",", ":")))
+        return 0
+    if args.plan is None or args.records is None or args.aggregate is None:
+        raise ValueError("plan, records, and aggregate are required")
     plan = _load(args.plan)
+    admission: Any = None
+    if plan.get("schema_version") == "development-benchmark-plan-1.1":
+        if args.receipt is None:
+            raise ValueError("admitted plan requires receipt path")
+        execution = plan.get("execution")
+        if type(execution) is not dict or type(execution.get("paths")) is not dict:
+            raise ValueError("admitted plan lacks execution paths")
+        declared = execution["paths"]
+        plan_paths = {
+            "plan": args.plan,
+            "records": args.records,
+            "aggregate": args.aggregate,
+            "recomputed": repository_root / str(declared.get("recomputed", "")),
+            "receipt": args.receipt,
+        }
+        admission = admit_run(
+            root=repository_root,
+            plan_path=args.plan,
+            action="execute",
+            argv=tuple(sys.argv[1:]),
+            paths=plan_paths,
+        )
+        verify_imported_package_bindings(admission.plan)
+    _load_candidate_runtime()
     corpus_path = Path(plan["corpus_manifest"])
     corpus = _load(corpus_path)
     _verify_plan(plan, args.plan, corpus)
@@ -836,10 +997,26 @@ def main() -> int:
             plan, plan_sha256, cases, planned, "runtime_unavailable:" + _failure_reason(error)
         )
         _write_outputs(args.records, args.aggregate, planned, unavailable)
+        if admission is not None:
+            write_execution_receipt(admission=admission)
         print(json.dumps({"status": "not_run", "planned_cells": len(planned)}))
         return 1
     oracle_rules = _load(root / "corpus/oracle-rules.json")["rules"]
     output: list[Record] = []
+    pending_by_identity = {
+        (record.case_id, record.configuration, record.repetition): record for record in pending
+    }
+
+    def append_record(record: Record) -> None:
+        output.append(record)
+        if admission is not None:
+            pending_by_identity[(record.case_id, record.configuration, record.repetition)] = record
+            checkpoint = [
+                pending_by_identity[(case_id, configuration, repetition)]
+                for case_id, configuration, repetition, _expected in planned
+            ]
+            _write_outputs(args.records, args.aggregate, planned, checkpoint)
+
     for case_id, configuration, repetition, expected in planned:
         case = cases[case_id]
         source_aliases = tuple(_source_aliases(case))
@@ -854,7 +1031,7 @@ def main() -> int:
                         oracle_rules[case_id]["source_path"],
                     )
                 )
-                output.append(
+                append_record(
                     _record(
                         plan=plan,
                         plan_sha256=plan_sha256,
@@ -879,7 +1056,7 @@ def main() -> int:
                     )
                 )
             except Exception as error:
-                output.append(
+                append_record(
                     _record(
                         plan=plan,
                         plan_sha256=plan_sha256,
@@ -927,7 +1104,7 @@ def main() -> int:
                     del scanner_predicted, scanner_confirmed, scanner_matched
                     del scanner_category, scanner_alias
                     if configuration == "scanner_seeded_investigation" and scanner_signals == 0:
-                        output.append(
+                        append_record(
                             _record(
                                 plan=plan,
                                 plan_sha256=plan_sha256,
@@ -952,6 +1129,7 @@ def main() -> int:
                             )
                         )
                         continue
+                _verify_runtime(plan["ollama"], timeout)
                 (
                     predicted,
                     confirmed,
@@ -970,13 +1148,21 @@ def main() -> int:
                     seeded_aliases=seeded_aliases,
                     scanner_seed_facts=scanner_seed_facts,
                 )
+                try:
+                    _verify_runtime(plan["ollama"], timeout)
+                except Exception as error:
+                    raise ModelRunError(
+                        "runtime_identity_drift",
+                        prompt_tokens=prompt_tokens,
+                        generated_tokens=generated_tokens,
+                    ) from error
                 if prompt_tokens + generated_tokens > plan["budget"]["tokens"]:
                     raise ModelRunError(
                         "budget_exhausted",
                         prompt_tokens=prompt_tokens,
                         generated_tokens=generated_tokens,
                     )
-                output.append(
+                append_record(
                     _record(
                         plan=plan,
                         plan_sha256=plan_sha256,
@@ -1011,7 +1197,7 @@ def main() -> int:
                     )
                 )
             except Exception as error:
-                output.append(
+                append_record(
                     _record(
                         plan=plan,
                         plan_sha256=plan_sha256,
@@ -1041,7 +1227,10 @@ def main() -> int:
                 )
         else:
             raise ValueError("unknown configuration")
-    _write_outputs(args.records, args.aggregate, planned, output)
+    if admission is None:
+        _write_outputs(args.records, args.aggregate, planned, output)
+    else:
+        write_execution_receipt(admission=admission)
     return 0
 
 

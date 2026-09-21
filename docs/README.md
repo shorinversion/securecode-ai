@@ -7,6 +7,8 @@
 
 ## Документы
 
+- [RELEASE_EXECUTION.md](RELEASE_EXECUTION.md): full v1.0 checkpoints, evaluation criteria and current blockers (CR-061).
+
 - [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md) — дедлайн 27 сентября 2026,
   календарь, приёмка M-A2026 и сохранённая enterprise roadmap (CR-046).
 - [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md) — ранняя
@@ -30,11 +32,6 @@
 - [CONTEXT.md](CONTEXT.md) — компактная актуальная сводка для продолжения работы.
 - [TEACHER_QUESTIONS.md](TEACHER_QUESTIONS.md) — вопросы куратору, default assumptions и gates, до которых нужен ответ.
 - [READINESS_AUDIT.md](READINESS_AUDIT.md) — requirement-by-requirement completion audit и точная граница effective G0/P1.
-
-## Навигация для агентов
-
-- [securecode-project-navigator](../.agents/skills/securecode-project-navigator/SKILL.md) — обязательный протокол восстановления и сохранения контекста.
-- [AGENTS.md](../AGENTS.md) — корневые инструкции, автоматически направляющие агента к skill.
 
 ## Правило ведения
 
