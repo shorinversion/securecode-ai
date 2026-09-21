@@ -48,6 +48,7 @@ _CHILD_PREFIX: Final = (
 )
 _SAFE_CONTAINER: Final = re.compile(r"[a-z0-9][a-z0-9_.-]{0,62}\Z")
 _MAX_DOCKER_OUTPUT: Final = 1024 * 1024
+_CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _SENSITIVE_ENV: Final = re.compile(
     r"(?:TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|API_KEY|ACCESS_KEY)", re.IGNORECASE
@@ -529,7 +530,7 @@ class DockerCliOciRuntime:
         self._ensure_open()
         self._verify_docker_executable()
         argv = (str(self._docker), *arguments)
-        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        flags = _CREATE_NO_WINDOW if os.name == "nt" else 0
         try:
             with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
                 process = subprocess.Popen(

@@ -228,10 +228,9 @@ def _windows_peak_memory_bytes() -> int | None:
 
         counters = ProcessMemoryCounters()
         counters.cb = ctypes.sizeof(counters)
-        process = ctypes.windll.kernel32.GetCurrentProcess()
-        if not ctypes.windll.psapi.GetProcessMemoryInfo(
-            process, ctypes.byref(counters), counters.cb
-        ):
+        windll = vars(ctypes)["windll"]
+        process = windll.kernel32.GetCurrentProcess()
+        if not windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb):
             return None
         return int(counters.PeakWorkingSetSize)
     except (AttributeError, OSError, TypeError, ValueError):

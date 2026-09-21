@@ -17,6 +17,7 @@ from typing import Final
 _SHA256: Final = frozenset("0123456789abcdef")
 _MAX_EXECUTABLE_BYTES: Final = 268_435_456
 _MAX_INPUT_BYTES: Final = 1_048_576
+_CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class SubprocessProtocolError(RuntimeError):
@@ -68,7 +69,7 @@ class PinnedJsonProcess:
         pass_fds: tuple[int, ...],
     ) -> bytes:
         environment = _sanitized_environment()
-        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        flags = _CREATE_NO_WINDOW if os.name == "nt" else 0
         process: subprocess.Popen[bytes] | None = None
         output: list[bytes] = []
         overflow = threading.Event()
@@ -333,7 +334,10 @@ def _lock_windows_executable(path: Path) -> tuple[int, Callable[[int], object]]:
     try:
         import ctypes
 
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        loader = getattr(ctypes, "WinDLL", None)
+        if not callable(loader):
+            raise SubprocessProtocolError("EXECUTABLE_UNAVAILABLE")
+        kernel = loader("kernel32", use_last_error=True)
         opener = kernel.CreateFileW
         opener.argtypes = [
             ctypes.c_wchar_p,

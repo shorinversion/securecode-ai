@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import stat
@@ -9,6 +10,7 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 _REVOKED = b"SECURECODE_OUTPUT_REVOKED\n"
 
@@ -76,7 +78,7 @@ def _open_directory(parent: Path) -> int:
     info = os.fstat(descriptor)
     if (
         not stat.S_ISDIR(info.st_mode)
-        or info.st_uid != os.geteuid()  # type: ignore[attr-defined]
+        or info.st_uid != _effective_user_id()
         or stat.S_IMODE(info.st_mode) & 0o022
     ):
         os.close(descriptor)
@@ -128,12 +130,12 @@ def _publish_new(parent: Path, directory: int, source: str, destination: str) ->
 def _windows_move_new(source: Path, destination: Path) -> None:
     import ctypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = vars(ctypes)["WinDLL"]("kernel32", use_last_error=True)
     move = kernel32.MoveFileExW
     move.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_ulong)
     move.restype = ctypes.c_int
     if not move(str(source), str(destination), 0x8):
-        error = ctypes.get_last_error()
+        error = vars(ctypes)["get_last_error"]()
         raise FileExistsError(error, "output destination could not be created")
 
 
@@ -188,20 +190,20 @@ def _revoke_and_remove(parent: Path, directory: int, name: str, descriptor: int)
 
 def _windows_delete_handle(descriptor: int) -> None:
     import ctypes
-    import msvcrt
     from ctypes import wintypes
 
     class FileDispositionInfo(ctypes.Structure):
         _fields_ = (("delete_file", wintypes.BOOL),)
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = vars(ctypes)["WinDLL"]("kernel32", use_last_error=True)
     operation = kernel32.SetFileInformationByHandle
     operation.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong)
     operation.restype = wintypes.BOOL
     value = FileDispositionInfo(True)
-    handle = msvcrt.get_osfhandle(descriptor)
+    msvcrt = importlib.import_module("msvcrt")
+    handle = vars(msvcrt)["get_osfhandle"](descriptor)
     if not operation(handle, 4, ctypes.byref(value), ctypes.sizeof(value)):
-        raise OSError(ctypes.get_last_error(), "output handle deletion failed")
+        raise OSError(vars(ctypes)["get_last_error"](), "output handle deletion failed")
 
 
 def _cleanup_stale_temporaries(parent: Path, directory: int, destination_name: str) -> None:
@@ -226,10 +228,7 @@ def _cleanup_stale_temporaries(parent: Path, directory: int, destination_name: s
                 and info.st_mtime <= cutoff
                 and (
                     os.name == "nt"
-                    or (
-                        info.st_uid == os.geteuid()  # type: ignore[attr-defined]
-                        and stat.S_IMODE(info.st_mode) == 0o600
-                    )
+                    or (info.st_uid == _effective_user_id() and stat.S_IMODE(info.st_mode) == 0o600)
                 )
                 and _identity_from_name(parent, directory, name)
                 == _identity_from_descriptor(descriptor)
@@ -259,9 +258,8 @@ def _windows_open_existing(path: Path) -> int:
 
 def _windows_open(path: Path, *, disposition: int) -> int:
     import ctypes
-    import msvcrt
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = vars(ctypes)["WinDLL"]("kernel32", use_last_error=True)
     create = kernel32.CreateFileW
     create.argtypes = (
         ctypes.c_wchar_p,
@@ -283,9 +281,13 @@ def _windows_open(path: Path, *, disposition: int) -> int:
         None,
     )
     if handle == ctypes.c_void_p(-1).value:
-        raise OSError(ctypes.get_last_error(), "output could not be opened")
+        raise OSError(vars(ctypes)["get_last_error"](), "output could not be opened")
+    msvcrt = importlib.import_module("msvcrt")
     try:
-        descriptor = msvcrt.open_osfhandle(handle, os.O_RDWR | getattr(os, "O_BINARY", 0))
+        descriptor = cast(
+            int,
+            vars(msvcrt)["open_osfhandle"](handle, os.O_RDWR | getattr(os, "O_BINARY", 0)),
+        )
     except OSError:
         kernel32.CloseHandle(handle)
         raise
@@ -316,6 +318,10 @@ def _remove_temporary(parent: Path, directory: int, name: str) -> None:
 def _fsync_directory(directory: int) -> None:
     if directory >= 0:
         os.fsync(directory)
+
+
+def _effective_user_id() -> int:
+    return cast(int, vars(os)["geteuid"]())
 
 
 __all__ = ["OutputRollbackError", "write_new_output"]

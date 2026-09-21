@@ -38,8 +38,16 @@ def _windows_function(library: object, name: str) -> _WindowsFunction:
     return cast(_WindowsFunction, function)
 
 
+def _windows_library(name: str) -> object:
+    loader: object = getattr(ctypes, "WinDLL", None)
+    if not callable(loader):
+        _reject()
+    library: object = loader(name, use_last_error=True)
+    return library
+
+
 def _read_windows_anchor() -> _ProtectedAnchor:
-    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    advapi = _windows_library("advapi32")
     handles: list[int] = []
     try:
         root = _open_windows_key(advapi, _WINDOWS_HKLM, "")
@@ -159,11 +167,11 @@ def _assert_windows_key_protected(
     object_type: int = _WINDOWS_SE_REGISTRY_KEY,
     allow_ancestor_directory_creation: bool = False,
 ) -> None:
-    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    advapi = _windows_library("advapi32")
     descriptor = ctypes.c_void_p()
     owner = ctypes.c_void_p()
     dacl = ctypes.c_void_p()
-    getter = advapi.GetSecurityInfo
+    getter = _windows_function(advapi, "GetSecurityInfo")
     getter.argtypes = [
         ctypes.c_void_p,
         ctypes.c_uint32,
@@ -202,7 +210,8 @@ def _assert_windows_key_protected(
             allow_ancestor_directory_creation=allow_ancestor_directory_creation,
         )
     finally:
-        ctypes.WinDLL("kernel32", use_last_error=True).LocalFree(descriptor)
+        local_free = _windows_function(_windows_library("kernel32"), "LocalFree")
+        local_free(descriptor)
 
 
 def _windows_sid_text(advapi: object, sid: int) -> str:
@@ -215,7 +224,8 @@ def _windows_sid_text(advapi: object, sid: int) -> str:
     try:
         return output.value
     finally:
-        ctypes.WinDLL("kernel32", use_last_error=True).LocalFree(output)
+        local_free = _windows_function(_windows_library("kernel32"), "LocalFree")
+        local_free(output)
 
 
 class _AclSizeInformation(ctypes.Structure):

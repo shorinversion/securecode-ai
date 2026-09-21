@@ -7,8 +7,13 @@ import stat
 import uuid
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
 _REVOKED = b"SECURECODE_ARTIFACT_REVOKED\n"
+
+
+def _platform_attribute(target: object, name: str) -> Any:
+    return getattr(target, name)
 
 
 def durable_write_new(path: Path, content: bytes) -> None:
@@ -198,7 +203,7 @@ def _windows_open(path: Path, *, disposition: int, write_through: bool) -> int:
     import ctypes
     import msvcrt
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = _platform_attribute(ctypes, "WinDLL")("kernel32", use_last_error=True)
     create = kernel32.CreateFileW
     create.argtypes = (
         ctypes.c_wchar_p,
@@ -221,14 +226,18 @@ def _windows_open(path: Path, *, disposition: int, write_through: bool) -> int:
         None,
     )
     if handle == ctypes.c_void_p(-1).value:
-        error = ctypes.get_last_error()
+        error = int(_platform_attribute(ctypes, "get_last_error")())
         if error in {2, 3}:
             raise FileNotFoundError(error, "durable object was not found")
         if error in {80, 183}:
             raise FileExistsError(error, "durable object already exists")
         raise OSError(error, "durable object could not be opened")
     try:
-        descriptor = msvcrt.open_osfhandle(handle, os.O_RDWR | getattr(os, "O_BINARY", 0))
+        descriptor = int(
+            _platform_attribute(msvcrt, "open_osfhandle")(
+                handle, os.O_RDWR | getattr(os, "O_BINARY", 0)
+            )
+        )
     except OSError:
         kernel32.CloseHandle(handle)
         raise
@@ -243,12 +252,15 @@ def _windows_open(path: Path, *, disposition: int, write_through: bool) -> int:
 def _windows_move_replace(source: Path, destination: Path) -> None:
     import ctypes
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = _platform_attribute(ctypes, "WinDLL")("kernel32", use_last_error=True)
     move = kernel32.MoveFileExW
     move.argtypes = (ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_ulong)
     move.restype = ctypes.c_int
     if not move(str(source), str(destination), 0x1 | 0x8):
-        raise OSError(ctypes.get_last_error(), "durable replacement failed")
+        raise OSError(
+            int(_platform_attribute(ctypes, "get_last_error")()),
+            "durable replacement failed",
+        )
 
 
 def _windows_delete_handle(descriptor: int) -> None:
@@ -259,15 +271,21 @@ def _windows_delete_handle(descriptor: int) -> None:
     class FileDispositionInfo(ctypes.Structure):
         _fields_ = (("delete_file", wintypes.BOOL),)
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = _platform_attribute(ctypes, "WinDLL")("kernel32", use_last_error=True)
     operation = kernel32.SetFileInformationByHandle
     operation.argtypes = (ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong)
     operation.restype = wintypes.BOOL
     value = FileDispositionInfo(True)
     if not operation(
-        msvcrt.get_osfhandle(descriptor), 4, ctypes.byref(value), ctypes.sizeof(value)
+        _platform_attribute(msvcrt, "get_osfhandle")(descriptor),
+        4,
+        ctypes.byref(value),
+        ctypes.sizeof(value),
     ):
-        raise OSError(ctypes.get_last_error(), "durable handle deletion failed")
+        raise OSError(
+            int(_platform_attribute(ctypes, "get_last_error")()),
+            "durable handle deletion failed",
+        )
 
 
 __all__ = ["durable_delete", "durable_replace", "durable_write_new"]

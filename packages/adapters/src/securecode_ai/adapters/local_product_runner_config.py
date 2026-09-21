@@ -15,6 +15,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from securecode_ai.contracts import (
     ArtifactRef,
@@ -39,6 +40,7 @@ _RULES = {
     "portfolio-cwe-862": "CWE-862",
     "portfolio-cwe-918": "CWE-918",
 }
+_CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class LocalProductConfigurationError(ValueError):
@@ -176,7 +178,7 @@ def _git(checkout: Path, executable: Path, *arguments: str) -> str:
         env=env,
         timeout=10,
         check=False,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        creationflags=_CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     if result.returncode or len(result.stdout) > 65536:
         raise LocalProductUnavailableError()

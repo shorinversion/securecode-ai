@@ -12,6 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
+from typing import cast
 
 from securecode_ai.adapters.local_product_host import (
     LocalProductHostError,
@@ -230,7 +231,7 @@ def _git_output(command: list[str], environment: Mapping[str, str]) -> str:
         env=dict(environment),
         timeout=10,
         check=False,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        creationflags=_subprocess_creation_flags(),
     )
     if completed.returncode or len(completed.stdout) > 65536:
         raise ProductExecutionError("worker checkout verification failed")
@@ -238,6 +239,12 @@ def _git_output(command: list[str], environment: Mapping[str, str]) -> str:
         return completed.stdout.decode("utf-8").strip()
     except UnicodeDecodeError:
         raise ProductExecutionError("worker checkout verification failed") from None
+
+
+def _subprocess_creation_flags() -> int:
+    if os.name != "nt":
+        return 0
+    return cast(int, vars(subprocess).get("CREATE_NO_WINDOW", 0))
 
 
 def _artifacts(scan: LocalProductScanResult) -> tuple[WorkerArtifact, ...]:

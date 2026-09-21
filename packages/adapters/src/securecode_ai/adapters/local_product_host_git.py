@@ -22,6 +22,7 @@ from .local_product_host_primitives import (
 from .local_product_host_windows import (
     _assert_windows_key_protected as _assert_windows_key_protected,
 )
+from .local_product_host_windows import _windows_function, _windows_library
 
 
 def verify_local_git_executable(expected_digest: str) -> Path:
@@ -45,8 +46,8 @@ def verify_local_git_executable(expected_digest: str) -> Path:
             descriptors.append(leaf)
             _assert_linux_object_protected(leaf, directory=False)
         elif os.name == "nt":
-            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-            opener = kernel.CreateFileW
+            kernel = _windows_library("kernel32")
+            opener = _windows_function(kernel, "CreateFileW")
             opener.argtypes = [
                 ctypes.c_wchar_p,
                 ctypes.c_uint32,
@@ -57,7 +58,7 @@ def verify_local_git_executable(expected_digest: str) -> Path:
                 ctypes.c_void_p,
             ]
             opener.restype = ctypes.c_void_p
-            attribute = kernel.GetFileInformationByHandleEx
+            attribute = _windows_function(kernel, "GetFileInformationByHandleEx")
             attribute.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
             attribute.restype = ctypes.c_int
             for current in (*reversed(path.parents), path):
@@ -103,7 +104,7 @@ def verify_local_git_executable(expected_digest: str) -> Path:
         for descriptor in reversed(descriptors):
             os.close(descriptor)
         if handles:
-            closer = kernel.CloseHandle
+            closer = _windows_function(kernel, "CloseHandle")
             closer.argtypes = [ctypes.c_void_p]
             closer.restype = ctypes.c_int
             for handle in reversed(handles):

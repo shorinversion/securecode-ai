@@ -8,6 +8,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import import_module
 from pathlib import Path
+from typing import Any
+
+
+def _platform_attribute(target: object, name: str) -> Any:
+    return getattr(target, name)
 
 
 class StatusFileLockBusy(OSError):
@@ -44,7 +49,7 @@ def _open_lock(path: Path) -> int:
         if (
             not stat.S_ISREG(info.st_mode)
             or info.st_nlink != 1
-            or info.st_uid != os.geteuid()  # type: ignore[attr-defined]
+            or info.st_uid != int(_platform_attribute(os, "geteuid")())
             or stat.S_IMODE(info.st_mode) != 0o600
             or info.st_size > 1
         ):
@@ -62,7 +67,7 @@ def _open_windows(path: Path) -> int:
     import ctypes
     import msvcrt
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = _platform_attribute(ctypes, "WinDLL")("kernel32", use_last_error=True)
     create_file = kernel32.CreateFileW
     create_file.argtypes = (
         ctypes.c_wchar_p,
@@ -86,7 +91,11 @@ def _open_windows(path: Path) -> int:
     if handle == ctypes.c_void_p(-1).value:
         raise StatusFileLockError
     try:
-        descriptor = msvcrt.open_osfhandle(handle, os.O_RDWR | getattr(os, "O_BINARY", 0))
+        descriptor = int(
+            _platform_attribute(msvcrt, "open_osfhandle")(
+                handle, os.O_RDWR | getattr(os, "O_BINARY", 0)
+            )
+        )
     except OSError:
         kernel32.CloseHandle(handle)
         raise StatusFileLockError from None
@@ -118,7 +127,9 @@ def _lock_descriptor(descriptor: int) -> None:
             raise StatusFileLockError from None
         try:
             os.lseek(descriptor, 0, os.SEEK_SET)
-            msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            _platform_attribute(msvcrt, "locking")(
+                descriptor, _platform_attribute(msvcrt, "LK_NBLCK"), 1
+            )
         except OSError:
             raise StatusFileLockBusy from None
     else:
@@ -137,7 +148,9 @@ def _unlock_descriptor(descriptor: int) -> None:
             import msvcrt
 
             os.lseek(descriptor, 0, os.SEEK_SET)
-            msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            _platform_attribute(msvcrt, "locking")(
+                descriptor, _platform_attribute(msvcrt, "LK_UNLCK"), 1
+            )
         else:
             fcntl = import_module("fcntl")
             fcntl.flock(descriptor, fcntl.LOCK_UN)

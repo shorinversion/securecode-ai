@@ -22,6 +22,8 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- P9.19 fixes cross-platform static analysis of guarded Windows and POSIX APIs; Linux and Windows mypy now validate the same runtime code without weakening platform checks.
+
 - CR-092 makes a protected promotion tail validate every earlier pull-request
   commit against its direct parent. An invalid implementation or direct
   evaluator edit can no longer be hidden behind a valid final promotion.

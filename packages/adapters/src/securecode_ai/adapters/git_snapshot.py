@@ -11,11 +11,12 @@ import threading
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Final, Protocol
 
 from securecode_ai.core.tool_policy import TOOL_ARGUMENT_SCHEMA_VERSION, ReadRangeArguments
 
 _OID = re.compile(r"[0-9a-f]{40}\Z")
+_CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class GitObjectReader(Protocol):
@@ -114,7 +115,7 @@ class OfflineGitObjectReader:
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                    creationflags=_CREATE_NO_WINDOW if os.name == "nt" else 0,
                 ) as process:
 
                     def terminate() -> None:
