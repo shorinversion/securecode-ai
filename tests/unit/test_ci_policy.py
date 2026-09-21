@@ -859,6 +859,60 @@ def test_git_blob_scanner_reads_object_ids_instead_of_checkout_paths(
     assert CANARY not in repr(findings)
 
 
+def test_git_blob_scanner_reuses_only_identical_path_object_pairs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[str] = []
+
+    def fake_git_bytes(*arguments: str) -> bytes:
+        assert arguments[:2] == ("cat-file", "blob")
+        reads.append(arguments[2])
+        return b"ordinary text\n"
+
+    monkeypatch.setattr(POLICY, "_git_bytes", fake_git_bytes)
+    seen: set[tuple[str, str]] = set()
+    records = [
+        ("same.txt", "a" * 40),
+        ("same.txt", "a" * 40),
+        ("same.txt", "b" * 40),
+    ]
+    assert POLICY._scan_git_blobs(records, _baseline(), prefix="candidate", seen=seen) == []
+    assert POLICY._scan_git_blobs(records, _baseline(), prefix="candidate", seen=seen) == []
+    assert (
+        POLICY._scan_git_blobs(
+            [("renamed.txt", "a" * 40)], _baseline(), prefix="candidate", seen=seen
+        )
+        == []
+    )
+    assert reads == ["a" * 40, "b" * 40, "a" * 40]
+
+
+def test_secret_errors_shares_deduplication_across_index_and_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[str] = []
+    baseline = _baseline()
+
+    def fake_git_bytes(*arguments: str) -> bytes:
+        assert arguments[:2] == ("cat-file", "blob")
+        reads.append(arguments[2])
+        return b"ordinary text\n"
+
+    monkeypatch.setattr(POLICY, "_read_json", lambda path: baseline)
+    monkeypatch.setattr(POLICY, "baseline_errors", lambda baseline: [])
+    monkeypatch.setattr(POLICY, "_index_blob_records", lambda: [("same.txt", "a" * 40)])
+    monkeypatch.setattr(POLICY, "_candidate_commits", lambda base: ["candidate"])
+    monkeypatch.setattr(
+        POLICY,
+        "_tree_blob_records",
+        lambda commit: [("same.txt", "a" * 40), ("same.txt", "b" * 40)],
+    )
+    monkeypatch.setattr(POLICY, "_git_bytes", fake_git_bytes)
+
+    assert POLICY.secret_errors("c" * 40) == []
+    assert reads == ["a" * 40, "b" * 40]
+
+
 @pytest.mark.parametrize("base_mode", ["zero", "head", "incremental"])
 def test_candidate_commit_walk_covers_full_history_and_merge_commits(
     monkeypatch: pytest.MonkeyPatch, base_mode: str

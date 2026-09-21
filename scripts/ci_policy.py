@@ -1726,11 +1726,17 @@ def _scan_git_blobs(
     baseline: Mapping[str, Any],
     *,
     prefix: str,
+    seen: set[tuple[str, str]] | None = None,
 ) -> list[str]:
     """Scan immutable object-database blobs and emit secret-safe diagnostics."""
 
     errors: list[str] = []
     for path, object_id in records:
+        identity = (path, object_id)
+        if seen is not None:
+            if identity in seen:
+                continue
+            seen.add(identity)
         if path.replace("\\", "/") == ".secrets.baseline":
             continue
         blob = _git_bytes("cat-file", "blob", object_id)
@@ -1765,11 +1771,13 @@ def secret_errors(base_sha: str | None) -> list[str]:
 
     baseline_data = _read_json(BASELINE_PATH)
     errors = baseline_errors(baseline_data)
+    seen: set[tuple[str, str]] = set()
     errors.extend(
         _scan_git_blobs(
             _index_blob_records(),
             baseline_data,
             prefix="unapproved index secret candidate",
+            seen=seen,
         )
     )
 
@@ -1784,6 +1792,7 @@ def secret_errors(base_sha: str | None) -> list[str]:
                             _tree_blob_records(commit),
                             baseline_data,
                             prefix="candidate-history secret candidate",
+                            seen=seen,
                         )
                     )
             except subprocess.SubprocessError:
