@@ -31,6 +31,80 @@ WORKSPACE_PROJECTS: Final = {
     "apps/cli/pyproject.toml": (
         "securecode-ai-cli",
         [
+            "securecode-ai-adapters==1.0.0rc1",
+            "securecode-ai-contracts==1.0.0rc1",
+            "securecode-ai-core==1.0.0rc1",
+        ],
+        {
+            "securecode-ai-adapters": {"workspace": True},
+            "securecode-ai-contracts": {"workspace": True},
+            "securecode-ai-core": {"workspace": True},
+        },
+        "securecode_ai.cli",
+    ),
+    "apps/server/pyproject.toml": (
+        "securecode-ai-server",
+        [
+            "securecode-ai-adapters==1.0.0rc1",
+            "securecode-ai-contracts==1.0.0rc1",
+            "securecode-ai-core==1.0.0rc1",
+        ],
+        {
+            "securecode-ai-adapters": {"workspace": True},
+            "securecode-ai-contracts": {"workspace": True},
+            "securecode-ai-core": {"workspace": True},
+        },
+        "securecode_ai.server",
+    ),
+    "apps/worker/pyproject.toml": (
+        "securecode-ai-worker",
+        [
+            "securecode-ai-adapters==1.0.0rc1",
+            "securecode-ai-contracts==1.0.0rc1",
+            "securecode-ai-core==1.0.0rc1",
+        ],
+        {
+            "securecode-ai-adapters": {"workspace": True},
+            "securecode-ai-contracts": {"workspace": True},
+            "securecode-ai-core": {"workspace": True},
+        },
+        "securecode_ai.worker",
+    ),
+    "packages/contracts/pyproject.toml": (
+        "securecode-ai-contracts",
+        ["pydantic>=2.12,<3"],
+        {},
+        "securecode_ai.contracts",
+    ),
+    "packages/core/pyproject.toml": (
+        "securecode-ai-core",
+        ["securecode-ai-contracts==1.0.0rc1"],
+        {"securecode-ai-contracts": {"workspace": True}},
+        "securecode_ai.core",
+    ),
+    "packages/adapters/pyproject.toml": (
+        "securecode-ai-adapters",
+        [
+            "pydantic>=2.12,<3",
+            "securecode-ai-contracts==1.0.0rc1",
+            "securecode-ai-core==1.0.0rc1",
+            "tree-sitter>=0.25,<0.26",
+            "tree-sitter-go==0.25.0",
+            "tree-sitter-javascript==0.25.0",
+            "tree-sitter-python>=0.25,<0.26",
+            "tree-sitter-typescript==0.23.2",
+        ],
+        {
+            "securecode-ai-contracts": {"workspace": True},
+            "securecode-ai-core": {"workspace": True},
+        },
+        "securecode_ai.adapters",
+    ),
+}
+LEGACY_WORKSPACE_PROJECTS: Final = {
+    "apps/cli/pyproject.toml": (
+        "securecode-ai-cli",
+        [
             "securecode-ai-adapters==0.1.0a0",
             "securecode-ai-contracts==0.1.0a0",
             "securecode-ai-core==0.1.0a0",
@@ -69,14 +143,19 @@ WORKSPACE_PROJECTS: Final = {
     ),
 }
 WORKSPACE_CONSOLE_SCRIPTS: Final = {
-    "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"}
+    "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"},
+    "apps/server/pyproject.toml": {
+        "securecode-maintenance": "securecode_ai.server.maintenance_cli:main",
+        "securecode-server": "securecode_ai.server.main:main",
+    },
+    "apps/worker/pyproject.toml": {
+        "securecode-worker": "securecode_ai.worker.cli:main",
+        "securecode-worker-service": "securecode_ai.worker.service:main",
+    },
 }
-LEGACY_ADAPTER_DEPENDENCIES: Final = ["securecode-ai-core==0.1.0a0"]
-PRE_GRAMMAR_ADAPTER_DEPENDENCIES: Final = [
-    "securecode-ai-core==0.1.0a0",
-    "tree-sitter>=0.25,<0.26",
-    "tree-sitter-python>=0.25,<0.26",
-]
+LEGACY_WORKSPACE_CONSOLE_SCRIPTS: Final = {
+    "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"},
+}
 PYPI_INDEX: Final = "https://pypi.org/simple"
 PYPI_ARTIFACT_HOST: Final = "files.pythonhosted.org"
 ACTION_REFS: Final = {
@@ -121,11 +200,177 @@ EXPECTED_QUALITY_DEPENDENCIES: Final = {
     "zizmor==1.28.0",
 }
 EXPECTED_ROOT_DEPENDENCIES: Final = [
+    "securecode-ai-adapters==1.0.0rc1",
+    "securecode-ai-cli==1.0.0rc1",
+    "securecode-ai-contracts==1.0.0rc1",
+    "securecode-ai-core==1.0.0rc1",
+    "securecode-ai-server==1.0.0rc1",
+    "securecode-ai-worker==1.0.0rc1",
+]
+LEGACY_EXPECTED_ROOT_DEPENDENCIES: Final = [
     "securecode-ai-adapters==0.1.0a0",
     "securecode-ai-cli==0.1.0a0",
     "securecode-ai-contracts==0.1.0a0",
     "securecode-ai-core==0.1.0a0",
 ]
+
+
+EXPECTED_ROOT_MYPY_PATHS: Final = [
+    "apps/cli/src",
+    "apps/server/src",
+    "apps/worker/src",
+    "packages/adapters/src",
+    "packages/contracts/src",
+    "packages/core/src",
+]
+LEGACY_EXPECTED_ROOT_MYPY_PATHS: Final = [
+    "apps/cli/src",
+    "packages/adapters/src",
+    "packages/contracts/src",
+    "packages/core/src",
+]
+RC_WORKSPACE_SOURCES: Final = {
+    "securecode-ai-adapters": {"workspace": True},
+    "securecode-ai-cli": {"workspace": True},
+    "securecode-ai-contracts": {"workspace": True},
+    "securecode-ai-core": {"workspace": True},
+    "securecode-ai-server": {"workspace": True},
+    "securecode-ai-worker": {"workspace": True},
+}
+LEGACY_WORKSPACE_SOURCES: Final = {
+    key: value
+    for key, value in RC_WORKSPACE_SOURCES.items()
+    if key not in {"securecode-ai-server", "securecode-ai-worker"}
+}
+RC_WORKSPACE_MEMBERS: Final = [
+    "apps/cli",
+    "apps/server",
+    "apps/worker",
+    "packages/adapters",
+    "packages/contracts",
+    "packages/core",
+]
+LEGACY_WORKSPACE_MEMBERS: Final = [
+    "apps/cli",
+    "packages/adapters",
+    "packages/contracts",
+    "packages/core",
+]
+EXPECTED_SERVER_PROJECT: Final = {
+    "name": "securecode-ai-server",
+    "version": "1.0.0rc1",
+    "description": "SecureCode AI ASGI control-plane boundary",
+    "readme": "README.md",
+    "requires-python": ">=3.12,<3.15",
+    "dependencies": [
+        "securecode-ai-adapters==1.0.0rc1",
+        "securecode-ai-contracts==1.0.0rc1",
+        "securecode-ai-core==1.0.0rc1",
+    ],
+    "classifiers": ["Private :: Do Not Upload"],
+    "scripts": {
+        "securecode-server": "securecode_ai.server.main:main",
+        "securecode-maintenance": "securecode_ai.server.maintenance_cli:main",
+    },
+}
+EXPECTED_WORKER_PROJECT: Final = {
+    "name": "securecode-ai-worker",
+    "version": "1.0.0rc1",
+    "description": "Linux-only offline SecureCode AI CI metadata worker",
+    "readme": "README.md",
+    "requires-python": ">=3.12,<3.15",
+    "dependencies": [
+        "securecode-ai-adapters==1.0.0rc1",
+        "securecode-ai-contracts==1.0.0rc1",
+        "securecode-ai-core==1.0.0rc1",
+    ],
+    "classifiers": [
+        "Private :: Do Not Upload",
+        "Operating System :: POSIX :: Linux",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+    ],
+    "scripts": {
+        "securecode-worker": "securecode_ai.worker.cli:main",
+        "securecode-worker-service": "securecode_ai.worker.service:main",
+    },
+}
+LEGACY_EXPECTED_WORKER_PROJECT: Final = {
+    "name": "securecode-ai-worker",
+    "version": "0.1.0a0",
+    "description": "Linux-only offline SecureCode AI CI metadata worker",
+    "readme": "README.md",
+    "requires-python": ">=3.12,<3.15",
+    "dependencies": ["securecode-ai-contracts==0.1.0a0"],
+    "classifiers": [
+        "Private :: Do Not Upload",
+        "Operating System :: POSIX :: Linux",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
+    ],
+    "scripts": {"securecode-worker": "securecode_ai.worker.cli:main"},
+}
+
+
+def _workspace_projects_for_paths(
+    paths: set[str],
+) -> Mapping[str, tuple[str, list[str], Mapping[str, Any], str]] | None:
+    if paths == set(WORKSPACE_PROJECTS):
+        return WORKSPACE_PROJECTS
+    if paths == set(LEGACY_WORKSPACE_PROJECTS):
+        return LEGACY_WORKSPACE_PROJECTS
+    return None
+
+
+def _workspace_state_for_root(pyproject: Mapping[str, Any]) -> str:
+    project = _mapping(pyproject.get("project"), "project")
+    tool = _mapping(pyproject.get("tool"), "pyproject.tool")
+    uv = _mapping(tool.get("uv"), "pyproject.tool.uv")
+    mypy = _mapping(tool.get("mypy"), "pyproject.tool.mypy")
+    observed = (
+        project.get("version"),
+        list(_sequence(project.get("dependencies"), "project.dependencies")),
+        _mapping(uv.get("sources"), "pyproject.tool.uv.sources"),
+        list(
+            _sequence(
+                _mapping(uv.get("workspace"), "pyproject.tool.uv.workspace").get("members"),
+                "workspace members",
+            )
+        ),
+        list(_sequence(mypy.get("mypy_path"), "pyproject.tool.mypy.mypy_path")),
+    )
+    states = {
+        "rc1": (
+            "1.0.0rc1",
+            EXPECTED_ROOT_DEPENDENCIES,
+            RC_WORKSPACE_SOURCES,
+            RC_WORKSPACE_MEMBERS,
+            EXPECTED_ROOT_MYPY_PATHS,
+        ),
+        "legacy": (
+            "0.1.0a0",
+            LEGACY_EXPECTED_ROOT_DEPENDENCIES,
+            LEGACY_WORKSPACE_SOURCES,
+            LEGACY_WORKSPACE_MEMBERS,
+            LEGACY_EXPECTED_ROOT_MYPY_PATHS,
+        ),
+    }
+    matches = [name for name, expected in states.items() if observed == expected]
+    if len(matches) != 1:
+        raise PolicyError("workspace release state differs from the closed states")
+    return matches[0]
+
+
+def _workspace_projects_for_root(
+    pyproject: Mapping[str, Any],
+) -> Mapping[str, tuple[str, list[str], Mapping[str, Any], str]]:
+    if _workspace_state_for_root(pyproject) == "rc1":
+        return WORKSPACE_PROJECTS
+    return LEGACY_WORKSPACE_PROJECTS
+
+
 EXPECTED_VULNERABLE_HASHES: Final = [
     "".join(
         (
@@ -622,23 +867,34 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
         "uv_build>=0.11.32,<0.13"
     }:
         errors.append("build backend constraint differs from the reviewed range")
+    project = _mapping(pyproject.get("project"), "project")
+    direct_dependencies = list(_sequence(project.get("dependencies"), "project.dependencies"))
+    try:
+        release_candidate = _workspace_state_for_root(pyproject) == "rc1"
+    except PolicyError:
+        errors.append("root workspace release state differs from the closed states")
+        return sorted(set(errors))
+    expected_root_dependencies = (
+        EXPECTED_ROOT_DEPENDENCIES if release_candidate else LEGACY_EXPECTED_ROOT_DEPENDENCIES
+    )
+    expected_mypy_paths = (
+        EXPECTED_ROOT_MYPY_PATHS if release_candidate else LEGACY_EXPECTED_ROOT_MYPY_PATHS
+    )
+    expected_source_declarations = (
+        RC_WORKSPACE_SOURCES if release_candidate else LEGACY_WORKSPACE_SOURCES
+    )
+    mypy = _mapping(tool.get("mypy"), "pyproject.tool.mypy")
+    if (
+        list(_sequence(mypy.get("mypy_path"), "pyproject.tool.mypy.mypy_path"))
+        != expected_mypy_paths
+    ):
+        errors.append("root mypy path inventory differs from the closed set")
     workspace_sources = _mapping(uv.get("sources"), "pyproject.tool.uv.sources")
-    if workspace_sources != {
-        "securecode-ai-adapters": {"workspace": True},
-        "securecode-ai-cli": {"workspace": True},
-        "securecode-ai-contracts": {"workspace": True},
-        "securecode-ai-core": {"workspace": True},
-    }:
+    if workspace_sources != expected_source_declarations:
         errors.append("workspace source declarations differ from the closed set")
+    expected_members = RC_WORKSPACE_MEMBERS if release_candidate else LEGACY_WORKSPACE_MEMBERS
     workspace = _mapping(uv.get("workspace"), "pyproject.tool.uv.workspace")
-    if workspace != {
-        "members": [
-            "apps/cli",
-            "packages/adapters",
-            "packages/contracts",
-            "packages/core",
-        ]
-    }:
+    if workspace != {"members": expected_members}:
         errors.append("workspace member inventory differs from the closed set")
 
     dependency_groups = _mapping(pyproject.get("dependency-groups"), "dependency-groups")
@@ -651,7 +907,6 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
     quality = set(_sequence(dependency_groups.get("quality"), "dependency-groups.quality"))
     if quality != EXPECTED_QUALITY_DEPENDENCIES:
         errors.append("quality dependencies differ from the exact reviewed set")
-    project = _mapping(pyproject.get("project"), "project")
     if set(project) != {
         "name",
         "version",
@@ -665,12 +920,12 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
     direct_dependencies = list(_sequence(project.get("dependencies"), "project.dependencies"))
     if (
         project.get("name") != "securecode-ai-workspace"
-        or project.get("version") != "0.1.0a0"
+        or project.get("version") != ("1.0.0rc1" if release_candidate else "0.1.0a0")
         or project.get("description") != "Reproducible workspace authority for SecureCode AI"
         or project.get("readme") != "README.md"
         or project.get("requires-python") != ">=3.12,<3.15"
         or project.get("classifiers") != ["Private :: Do Not Upload"]
-        or direct_dependencies != EXPECTED_ROOT_DEPENDENCIES
+        or direct_dependencies != expected_root_dependencies
     ):
         errors.append("root project identity or dependencies differ from the closed set")
     for dependency in [*direct_dependencies, *quality]:
@@ -679,21 +934,46 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
         ):
             errors.append(f"direct dependency uses a forbidden source: {dependency!r}")
 
+    manifest = _mapping(lock.get("manifest"), "uv.lock manifest")
+    expected_manifest_members = [
+        "securecode-ai-adapters",
+        "securecode-ai-cli",
+        "securecode-ai-contracts",
+        "securecode-ai-core",
+        *(["securecode-ai-server"] if release_candidate else []),
+        *(["securecode-ai-worker"] if release_candidate else []),
+        "securecode-ai-workspace",
+    ]
+    if (
+        list(_sequence(manifest.get("members"), "uv.lock manifest.members"))
+        != expected_manifest_members
+    ):
+        errors.append("workspace lock manifest members differ from the closed set")
+
     packages = _sequence(lock.get("package"), "uv.lock package")
-    expected_workspace_sources = {
+    expected_lock_sources = {
         "securecode-ai-adapters": {"editable": "packages/adapters"},
         "securecode-ai-cli": {"editable": "apps/cli"},
         "securecode-ai-contracts": {"editable": "packages/contracts"},
         "securecode-ai-core": {"editable": "packages/core"},
+        **({"securecode-ai-server": {"editable": "apps/server"}} if release_candidate else {}),
+        **({"securecode-ai-worker": {"editable": "apps/worker"}} if release_candidate else {}),
         "securecode-ai-workspace": {"virtual": "."},
     }
+    observed_workspace_sources: dict[str, Mapping[str, Any]] = {}
     for raw_package in packages:
         package = _mapping(raw_package, "uv.lock package entry")
         name = package.get("name")
         source = _mapping(package.get("source"), f"uv.lock source for {name}")
-        if name in expected_workspace_sources:
-            if source != expected_workspace_sources[name]:
+        if name in expected_lock_sources:
+            if name in observed_workspace_sources:
+                errors.append(f"duplicate workspace package entry for {name}")
+            observed_workspace_sources[name] = source
+            if source != expected_lock_sources[name]:
                 errors.append(f"workspace source mismatch for {name}")
+            expected_workspace_version = "1.0.0rc1" if release_candidate else "0.1.0a0"
+            if package.get("version") != expected_workspace_version:
+                errors.append(f"workspace version mismatch for {name}")
             continue
         if source != {"registry": PYPI_INDEX}:
             errors.append(f"non-PyPI or unknown source for {name}")
@@ -717,6 +997,8 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
                 errors.append(f"artifact URL is not approved for {name}")
             if not isinstance(digest, str) or not ARTIFACT_HASH_PATTERN.fullmatch(digest):
                 errors.append(f"artifact SHA-256 is missing for {name}")
+    if observed_workspace_sources != expected_lock_sources:
+        errors.append("workspace lock package inventory differs from the closed set")
     return sorted(set(errors))
 
 
@@ -724,10 +1006,19 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
     """Reject build hooks, scripts or dependencies outside the reviewed workspace metadata."""
 
     errors: list[str] = []
-    if set(documents) != set(WORKSPACE_PROJECTS):
+    projects = _workspace_projects_for_paths(set(documents))
+    if projects is None:
         errors.append("workspace pyproject inventory differs from the closed set")
         return errors
-    for path, (name, dependencies, sources, module_name) in WORKSPACE_PROJECTS.items():
+    release_candidate = projects is WORKSPACE_PROJECTS
+    expected_version = "1.0.0rc1" if release_candidate else "0.1.0a0"
+    expected_console_scripts = (
+        WORKSPACE_CONSOLE_SCRIPTS if release_candidate else LEGACY_WORKSPACE_CONSOLE_SCRIPTS
+    )
+    expected_worker_project = (
+        EXPECTED_WORKER_PROJECT if release_candidate else LEGACY_EXPECTED_WORKER_PROJECT
+    )
+    for path, (name, dependencies, sources, module_name) in projects.items():
         document = _mapping(documents[path], path)
         if set(document) != {"build-system", "project", "tool"}:
             errors.append(f"{path}: top-level metadata keys differ from the closed set")
@@ -747,22 +1038,16 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
             "dependencies",
             "classifiers",
         }
-        expected_scripts = WORKSPACE_CONSOLE_SCRIPTS.get(path)
+        expected_scripts = expected_console_scripts.get(path)
         if expected_scripts is not None:
             expected_project_keys.add("scripts")
         if set(project) != expected_project_keys:
             errors.append(f"{path}: project metadata keys differ from the closed set")
-        project_dependencies = project.get("dependencies")
-        dependencies_match = project_dependencies == dependencies or (
-            path == "packages/adapters/pyproject.toml"
-            and project_dependencies
-            in (LEGACY_ADAPTER_DEPENDENCIES, PRE_GRAMMAR_ADAPTER_DEPENDENCIES)
-        )
         if (
             project.get("name") != name
-            or project.get("version") != "0.1.0a0"
+            or project.get("version") != expected_version
             or project.get("requires-python") != ">=3.12,<3.15"
-            or not dependencies_match
+            or project.get("dependencies") != dependencies
         ):
             errors.append(f"{path}: identity or dependencies differ from the reviewed values")
         if (
@@ -781,6 +1066,10 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
             errors.append(f"{path}: module ownership differs from the reviewed value")
         if sources and _mapping(uv.get("sources"), f"{path}.tool.uv.sources") != sources:
             errors.append(f"{path}: workspace dependency sources differ from the reviewed set")
+        if path == "apps/worker/pyproject.toml" and project != expected_worker_project:
+            errors.append(f"{path}: project metadata differs from the reviewed worker contract")
+        if path == "apps/server/pyproject.toml" and project != EXPECTED_SERVER_PROJECT:
+            errors.append(f"{path}: project metadata differs from the reviewed server contract")
     return sorted(set(errors))
 
 
@@ -1581,10 +1870,14 @@ def validate(selection: str, base_sha: str | None = None) -> list[str]:
             lock = tomllib.load(handle)
         errors.extend(lock_errors(pyproject, lock))
         workspace_documents: dict[str, Mapping[str, Any]] = {}
-        for relative in WORKSPACE_PROJECTS:
-            with (REPOSITORY_ROOT / relative).open("rb") as handle:
-                workspace_documents[relative] = tomllib.load(handle)
-        errors.extend(workspace_metadata_errors(workspace_documents))
+        try:
+            for relative in _workspace_projects_for_root(pyproject):
+                with (REPOSITORY_ROOT / relative).open("rb") as handle:
+                    workspace_documents[relative] = tomllib.load(handle)
+        except (OSError, PolicyError, tomllib.TOMLDecodeError):
+            errors.append("workspace metadata could not be read")
+        else:
+            errors.extend(workspace_metadata_errors(workspace_documents))
         tracked_lockfiles = _git("ls-files", "*uv.lock").splitlines()
         if tracked_lockfiles != ["uv.lock"]:
             errors.append("repository must contain exactly one root uv.lock")

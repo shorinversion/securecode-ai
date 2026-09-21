@@ -16,6 +16,7 @@ REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
 PYTHON_ROOTS: Final = ("packages", "apps", "integrations", "scripts", "tests")
 EXCLUDED_PYTHON_TARGETS: Final = frozenset({"scripts/validate_g0.py"})
 STAGE_TIMEOUT_SECONDS: Final = 360
+UNIT_STAGE_TIMEOUT_SECONDS: Final = 540
 GIT_TIMEOUT_SECONDS: Final = 30
 SAFE_PARENT_VARIABLES: Final = (
     "COMSPEC",
@@ -35,6 +36,7 @@ class QualityStage:
     name: str
     arguments: tuple[str, ...]
     executes_repository_code: bool = False
+    timeout_seconds: int = STAGE_TIMEOUT_SECONDS
 
 
 def _python_targets() -> tuple[str, ...]:
@@ -90,6 +92,7 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 "tests/unit",
             ),
             executes_repository_code=True,
+            timeout_seconds=UNIT_STAGE_TIMEOUT_SECONDS,
         ),
     )
 
@@ -192,10 +195,10 @@ def _run_stage(stage: QualityStage, environment: dict[str, str]) -> int:
             cwd=REPOSITORY_ROOT,
             env=environment,
             check=False,
-            timeout=STAGE_TIMEOUT_SECONDS,
+            timeout=stage.timeout_seconds,
         )
     except subprocess.TimeoutExpired:
-        print(f"{stage.name}: timed out after {STAGE_TIMEOUT_SECONDS}s", file=sys.stderr)
+        print(f"{stage.name}: timed out after {stage.timeout_seconds}s", file=sys.stderr)
         return 124
     return completed.returncode
 

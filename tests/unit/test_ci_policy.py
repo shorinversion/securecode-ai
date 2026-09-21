@@ -69,11 +69,94 @@ def _lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _workspace_inputs() -> dict[str, dict[str, Any]]:
+    pyproject, _ = _lock_inputs()
+    projects = POLICY._workspace_projects_for_root(pyproject)
     documents: dict[str, dict[str, Any]] = {}
-    for relative in POLICY.WORKSPACE_PROJECTS:
+    for relative in projects:
         with (REPOSITORY_ROOT / relative).open("rb") as handle:
             documents[relative] = tomllib.load(handle)
     return documents
+
+
+def _release_candidate_workspace_inputs() -> dict[str, dict[str, Any]]:
+    documents: dict[str, dict[str, Any]] = {}
+    for relative, (name, dependencies, sources, module_name) in POLICY.WORKSPACE_PROJECTS.items():
+        if relative == "apps/server/pyproject.toml":
+            project = copy.deepcopy(POLICY.EXPECTED_SERVER_PROJECT)
+        elif relative == "apps/worker/pyproject.toml":
+            project = copy.deepcopy(POLICY.EXPECTED_WORKER_PROJECT)
+        else:
+            project = {
+                "name": name,
+                "version": "1.0.0rc1",
+                "description": "reviewed release-candidate package",
+                "readme": "README.md",
+                "requires-python": ">=3.12,<3.15",
+                "dependencies": copy.deepcopy(dependencies),
+                "classifiers": ["Private :: Do Not Upload"],
+            }
+            scripts = POLICY.WORKSPACE_CONSOLE_SCRIPTS.get(relative)
+            if scripts is not None:
+                project["scripts"] = copy.deepcopy(scripts)
+        uv: dict[str, Any] = {"build-backend": {"module-name": module_name}}
+        if sources:
+            uv["sources"] = copy.deepcopy(sources)
+        documents[relative] = {
+            "build-system": {
+                "requires": ["uv_build>=0.11.32,<0.13"],
+                "build-backend": "uv_build",
+            },
+            "project": project,
+            "tool": {"uv": uv},
+        }
+    return documents
+
+
+def _release_candidate_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
+    pyproject, lock = _lock_inputs()
+    pyproject["project"]["version"] = "1.0.0rc1"
+    pyproject["project"]["dependencies"] = copy.deepcopy(POLICY.EXPECTED_ROOT_DEPENDENCIES)
+    pyproject["tool"]["uv"]["sources"] = copy.deepcopy(POLICY.RC_WORKSPACE_SOURCES)
+    pyproject["tool"]["uv"]["workspace"]["members"] = copy.deepcopy(POLICY.RC_WORKSPACE_MEMBERS)
+    pyproject["tool"]["mypy"]["mypy_path"] = copy.deepcopy(POLICY.EXPECTED_ROOT_MYPY_PATHS)
+    lock["manifest"]["members"] = [
+        "securecode-ai-adapters",
+        "securecode-ai-cli",
+        "securecode-ai-contracts",
+        "securecode-ai-core",
+        "securecode-ai-server",
+        "securecode-ai-worker",
+        "securecode-ai-workspace",
+    ]
+    workspace_names = set(lock["manifest"]["members"])
+    for package in lock["package"]:
+        if package.get("name") in workspace_names:
+            package["version"] = "1.0.0rc1"
+    if not any(package.get("name") == "securecode-ai-server" for package in lock["package"]):
+        lock["package"].append(
+            {
+                "name": "securecode-ai-server",
+                "version": "1.0.0rc1",
+                "source": {"editable": "apps/server"},
+            }
+        )
+    if not any(package.get("name") == "securecode-ai-worker" for package in lock["package"]):
+        lock["package"].append(
+            {
+                "name": "securecode-ai-worker",
+                "version": "1.0.0rc1",
+                "source": {"editable": "apps/worker"},
+            }
+        )
+    return pyproject, lock
+
+
+def _worker_workspace_inputs() -> dict[str, dict[str, Any]]:
+    return _workspace_inputs()
+
+
+def _worker_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
+    return _lock_inputs()
 
 
 def _first_step(workflow: dict[str, Any], action_name: str) -> dict[str, Any]:
@@ -254,6 +337,90 @@ def test_dependency_policy_rejects_source_integrity_and_tool_drift(mutation: str
     assert POLICY.lock_errors(pyproject, lock)
 
 
+def test_legacy_workspace_requires_one_closed_metadata_and_lock_shape() -> None:
+    pyproject, lock = _worker_lock_inputs()
+    assert POLICY.lock_errors(pyproject, lock) == []
+    assert POLICY.workspace_metadata_errors(_worker_workspace_inputs()) == []
+
+
+def test_release_candidate_workspace_state_passes_as_one_closed_shape() -> None:
+    pyproject, lock = _release_candidate_lock_inputs()
+    assert POLICY.lock_errors(pyproject, lock) == []
+    assert POLICY.workspace_metadata_errors(_release_candidate_workspace_inputs()) == []
+
+
+@pytest.mark.parametrize("field", ["version", "dependencies", "sources", "members", "mypy"])
+def test_release_candidate_workspace_rejects_mixed_state(field: str) -> None:
+    pyproject, lock = _release_candidate_lock_inputs()
+    if field == "version":
+        pyproject["project"]["version"] = "0.1.0a0"
+    elif field == "dependencies":
+        pyproject["project"]["dependencies"] = copy.deepcopy(
+            POLICY.LEGACY_EXPECTED_ROOT_DEPENDENCIES
+        )
+    elif field == "sources":
+        pyproject["tool"]["uv"]["sources"] = copy.deepcopy(POLICY.LEGACY_WORKSPACE_SOURCES)
+    elif field == "members":
+        pyproject["tool"]["uv"]["workspace"]["members"] = copy.deepcopy(
+            POLICY.LEGACY_WORKSPACE_MEMBERS
+        )
+    else:
+        pyproject["tool"]["mypy"]["mypy_path"] = copy.deepcopy(
+            POLICY.LEGACY_EXPECTED_ROOT_MYPY_PATHS
+        )
+    assert POLICY.lock_errors(pyproject, lock)
+
+
+def test_legacy_workspace_rejects_partial_or_substituted_inputs() -> None:
+    pyproject, lock = _worker_lock_inputs()
+    pyproject["tool"]["uv"]["workspace"]["members"].remove("packages/core")
+    assert POLICY.lock_errors(pyproject, lock)
+
+    pyproject, lock = _worker_lock_inputs()
+    pyproject["tool"]["mypy"]["mypy_path"].remove("packages/core/src")
+    assert POLICY.lock_errors(pyproject, lock)
+
+    pyproject, lock = _worker_lock_inputs()
+    lock["manifest"]["members"].remove("securecode-ai-core")
+    assert POLICY.lock_errors(pyproject, lock)
+
+    documents = _worker_workspace_inputs()
+    documents["apps/cli/pyproject.toml"]["project"]["scripts"] = {"securecode": "attacker:main"}
+    assert POLICY.workspace_metadata_errors(documents)
+
+
+def test_validate_lock_loads_and_enforces_the_selected_legacy_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    workspace = tmp_path / "workspace"
+    root_pyproject, _ = _lock_inputs()
+    projects = POLICY._workspace_projects_for_root(root_pyproject)
+    for relative in projects:
+        target = workspace / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((REPOSITORY_ROOT / relative).read_bytes())
+    cli_path = workspace / "apps/cli/pyproject.toml"
+    pyproject_path = workspace / "pyproject.toml"
+    pyproject_path.write_bytes((REPOSITORY_ROOT / "pyproject.toml").read_bytes())
+    lock_path = workspace / "uv.lock"
+    lock_path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(POLICY, "REPOSITORY_ROOT", workspace)
+    monkeypatch.setattr(POLICY, "PYPROJECT_PATH", pyproject_path)
+    monkeypatch.setattr(POLICY, "LOCK_PATH", lock_path)
+    monkeypatch.setattr(POLICY, "lock_errors", lambda *_: [])
+    monkeypatch.setattr(POLICY, "_git", lambda *_: "uv.lock\n")
+
+    assert POLICY.validate("lock") == []
+    cli_source = cli_path.read_text(encoding="utf-8")
+    cli_path.unlink()
+    assert POLICY.validate("lock") == ["workspace metadata could not be read"]
+
+    cli_path.write_text(
+        cli_source.replace("uv_build>=0.11.32,<0.13", "attacker>=1"), encoding="utf-8"
+    )
+    assert POLICY.validate("lock")
+
+
 def test_workspace_metadata_rejects_a_malicious_build_backend() -> None:
     documents = _workspace_inputs()
     documents["packages/core/pyproject.toml"]["build-system"]["build-backend"] = "attacker"
@@ -261,21 +428,23 @@ def test_workspace_metadata_rejects_a_malicious_build_backend() -> None:
 
 
 def test_workspace_metadata_accepts_only_reviewed_tree_sitter_dependencies() -> None:
-    documents = _workspace_inputs()
+    documents = _release_candidate_workspace_inputs()
     adapter_dependencies = documents["packages/adapters/pyproject.toml"]["project"]["dependencies"]
-    adapter_dependencies[:] = ["securecode-ai-core==0.1.0a0"]
-    assert POLICY.workspace_metadata_errors(documents) == []
+    adapter_dependencies[:] = ["securecode-ai-core==1.0.0rc1"]
+    assert POLICY.workspace_metadata_errors(documents)
 
     pre_grammar = [
-        "securecode-ai-core==0.1.0a0",
+        "securecode-ai-core==1.0.0rc1",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-python>=0.25,<0.26",
     ]
     adapter_dependencies[:] = pre_grammar
-    assert POLICY.workspace_metadata_errors(documents) == []
+    assert POLICY.workspace_metadata_errors(documents)
 
     reviewed = [
-        "securecode-ai-core==0.1.0a0",
+        "pydantic>=2.12,<3",
+        "securecode-ai-contracts==1.0.0rc1",
+        "securecode-ai-core==1.0.0rc1",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-go==0.25.0",
         "tree-sitter-javascript==0.25.0",
