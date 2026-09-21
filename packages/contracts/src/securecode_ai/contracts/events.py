@@ -34,10 +34,9 @@ from .domain import (
     PatchCandidate,
     ProducerRef,
     RawSignal,
-    UtcTimestamp,
     ValidationResult,
-    _require_extension_tenant,
 )
+from .domain_primitives import UtcTimestamp, _require_extension_tenant
 from .ids import derive_event_id
 
 PositiveSequence = Annotated[int, Field(ge=1, le=9_007_199_254_740_991)]

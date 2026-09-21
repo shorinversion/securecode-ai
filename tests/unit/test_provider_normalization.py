@@ -692,6 +692,10 @@ def test_scripted_fake_concurrent_duplicates_share_one_exact_effect(
 
     class BlockingValidator:
         @property
+        def _content_identifier(self) -> HmacContentIdentifier:
+            return delegate._content_identifier
+
+        @property
         def validator(self) -> ComponentPin:
             return delegate.validator
 

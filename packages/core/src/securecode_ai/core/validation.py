@@ -28,11 +28,16 @@ from .regression import (
     RegressionRevisionRole,
 )
 from .sandbox import (
+    SandboxAttestation,
+    SandboxCommand,
     SandboxDriver,
     SandboxError,
+    SandboxErrorCode,
     SandboxExecutionReceipt,
+    SandboxObservation,
     SandboxOutcome,
     SandboxProfile,
+    SandboxTeardownReceipt,
     run_in_sandbox,
 )
 
@@ -76,7 +81,6 @@ class ValidationStage(StrEnum):
     POST_PATCH_SCAN = "validation-post-patch-scan"
     REGRESSION_SCAN = "validation-regression-scan"
     RESOURCE_POLICY = "validation-resource-policy"
-    HUMAN_POLICY = "validation-human-policy"
 
 
 _STAGES: Final = tuple(ValidationStage)
@@ -183,7 +187,7 @@ def run_validation_ladder(
     request: ValidationLadderRequest,
     driver: SandboxDriver,
 ) -> ValidationLadderResult:
-    """Run the twelve ordered gates, stopping positive authority at first failure.
+    """Run the eleven automated gates, stopping positive authority at first failure.
 
     The optional later branch retains diagnostics only when explicitly requested;
     those receipts are marked non-authoritative and cannot restore validation.
@@ -248,21 +252,33 @@ def _run_stage(
 ) -> ValidationStageReceipt:
     resource = request.stage_resources[ordinal - 1]
     reason: str | None = _resource_reason(resource, profile)
+    gate_outcome = ValidationGateOutcome.FAILED
     sandbox_receipt: SandboxExecutionReceipt | None = None
     if reason is None:
         try:
-            from .sandbox import SandboxCommand
-
-            sandbox_receipt = run_in_sandbox(profile, SandboxCommand(stage.value), driver)
+            capturing_driver = _CapturingDriver(driver)
+            sandbox_receipt = run_in_sandbox(profile, SandboxCommand(stage.value), capturing_driver)
         except SandboxError:
             reason = "SANDBOX_CONTRACT_FAILURE"
         else:
-            if (
-                sandbox_receipt.outcome is not SandboxOutcome.SUCCEEDED
-                or sandbox_receipt.reason_code is not None
-                or not sandbox_receipt.teardown.completed
-            ):
+            observation = capturing_driver.observation
+            if observation is not None:
+                resource = observation.resource_usage
+            if sandbox_receipt.reason_code is not None or not sandbox_receipt.teardown.completed:
                 reason = "SANDBOX_NON_SUCCESS"
+            elif sandbox_receipt.outcome is SandboxOutcome.INDETERMINATE:
+                reason = (
+                    "VALIDATION_DEPENDENCIES_UNAVAILABLE"
+                    if stage in {ValidationStage.COMPILE_TYPES, ValidationStage.EXISTING_TESTS}
+                    else "SANDBOX_INDETERMINATE"
+                )
+                gate_outcome = ValidationGateOutcome.INDETERMINATE
+            elif sandbox_receipt.outcome is not SandboxOutcome.SUCCEEDED:
+                reason = "SANDBOX_NON_SUCCESS"
+            elif observation is None:
+                reason = "OBSERVATION_EVIDENCE_MISSING"
+            elif sandbox_receipt.observation_sha256 != observation.observation_sha256:
+                reason = "OBSERVATION_EVIDENCE_MISMATCH"
     if (
         reason is None
         and stage
@@ -300,9 +316,7 @@ def _run_stage(
         schema_version=CONTRACT_SCHEMA_VERSION,
         ordinal=ordinal,
         gate_id=stage.value,
-        gate_outcome=(
-            ValidationGateOutcome.PASSED if reason is None else ValidationGateOutcome.FAILED
-        ),
+        gate_outcome=gate_outcome if reason is not None else ValidationGateOutcome.PASSED,
         producer=request.producer,
         input_hashes=inputs,
         output_hashes=outputs if reason is None else (),
@@ -310,6 +324,41 @@ def _run_stage(
         resource_usage=resource,
     )
     return ValidationStageReceipt(stage, gate, sandbox_receipt, authoritative)
+
+
+class _CapturingDriver:
+    """Snapshots a validated observation before teardown can mutate driver-owned state."""
+
+    def __init__(self, driver: SandboxDriver) -> None:
+        self._driver = driver
+        self.observation: SandboxObservation | None = None
+
+    def attest(self, profile: SandboxProfile) -> SandboxAttestation:
+        return self._driver.attest(profile)
+
+    def execute(self, command: SandboxCommand, profile: SandboxProfile) -> SandboxObservation:
+        value = self._driver.execute(command, profile)
+        self.observation = _copy_observed_observation(value)
+        return self.observation
+
+    def teardown(self) -> SandboxTeardownReceipt:
+        return self._driver.teardown()
+
+
+def _copy_observed_observation(value: SandboxObservation) -> SandboxObservation:
+    if type(value) is not SandboxObservation:
+        raise SandboxError(SandboxErrorCode.DRIVER_FAILURE)
+    try:
+        return SandboxObservation(
+            value.outcome,
+            value.output_sha256,
+            value.output_size_bytes,
+            ResourceUsage.model_validate(value.resource_usage.model_dump(mode="python")),
+            value.observation_sha256,
+            value.schema_version,
+        )
+    except (AttributeError, TypeError, ValueError):
+        raise SandboxError(SandboxErrorCode.DRIVER_FAILURE) from None
 
 
 def _skipped_stage(

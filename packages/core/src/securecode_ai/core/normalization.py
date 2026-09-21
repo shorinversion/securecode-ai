@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -20,8 +21,10 @@ from securecode_ai.contracts import (
     LineageRef,
     ProducerRef,
     RawSignal,
+    SourceLocation,
 )
 
+_OPAQUE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _FINGERPRINT_DOMAIN = b"securecode-ai/root-cause-fingerprint/v1\x00"
 _CANDIDATE_ID_PREFIX = "candidate-"
 _LINEAGE_ID_PREFIX = "lineage-"
@@ -91,7 +94,33 @@ def root_cause_fingerprint(signal: RawSignal) -> str:
     """
 
     validated_signal = _validated_signal(signal)
-    location = validated_signal.location
+    return root_cause_location_fingerprint(
+        tenant_id=validated_signal.tenant_id,
+        rule_id=validated_signal.rule_id,
+        location=validated_signal.location,
+    )
+
+
+def root_cause_location_fingerprint(
+    *, tenant_id: str, rule_id: str, location: SourceLocation
+) -> str:
+    """Compute host-owned identity without creating a synthetic scanner fact.
+
+    Both discovery lanes use the unchanged v1 domain and exact location/rule
+    material. This proves identity equivalence only, never vulnerability truth.
+    """
+    if (
+        type(tenant_id) is not str
+        or _OPAQUE_ID.fullmatch(tenant_id) is None
+        or type(rule_id) is not str
+        or _OPAQUE_ID.fullmatch(rule_id) is None
+        or type(location) is not SourceLocation
+    ):
+        raise NormalizationError(NormalizationErrorCode.REQUEST_INVALID)
+    try:
+        location = SourceLocation.model_validate_json(location.model_dump_json())
+    except (AttributeError, TypeError, ValueError):
+        raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE) from None
     material = {
         "location": {
             "content_sha256": location.content_sha256,
@@ -99,8 +128,8 @@ def root_cause_fingerprint(signal: RawSignal) -> str:
             "path": location.path,
             "start": {"column": location.start.column, "line": location.start.line},
         },
-        "rule_id": validated_signal.rule_id,
-        "tenant_id": validated_signal.tenant_id,
+        "rule_id": rule_id,
+        "tenant_id": tenant_id,
     }
     return hashlib.sha256(_FINGERPRINT_DOMAIN + _canonical_json_bytes(material)).hexdigest()
 
@@ -415,4 +444,5 @@ __all__ = [
     "normalize_raw_signal",
     "normalize_signals",
     "root_cause_fingerprint",
+    "root_cause_location_fingerprint",
 ]

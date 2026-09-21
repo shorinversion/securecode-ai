@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import platform
 import sys
@@ -301,14 +302,72 @@ def _f(precision: float | None, recall: float | None, beta2: int) -> float | Non
     return (1 + beta2) * precision * recall / (beta2 * precision + recall)
 
 
+def _validate_detection_only_record(record: dict[str, Any]) -> None:
+    """A supplemental detection run cannot attest to patches it never executed."""
+    if record.get("remediation_attempted") is not False or any(
+        record.get(key) is not None
+        for key in (
+            "remediation_data_only",
+            "remediation_sandbox_receipt_sha256",
+            "remediation_sandbox_validated",
+            "remediation_oracle_validated",
+            "remediation_existing_regression_passed",
+            "remediation_no_new_blocking_regressions",
+        )
+    ):
+        raise ValueError("detection-only run cannot claim remediation")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--records", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--receipt", type=Path)
     args = parser.parse_args()
     plan = _load(args.plan)
     root = Path(__file__).resolve().parents[1]
+    supplemental = plan.get("schema_version") == "development-benchmark-plan-1.1"
+    if plan.get("schema_version") not in {
+        "development-benchmark-plan-1.0",
+        "development-benchmark-plan-1.1",
+    }:
+        raise ValueError("unsupported development plan schema")
+    admission = None
+    if supplemental:
+        if args.receipt is None:
+            raise ValueError("supplemental recomputation requires execution receipt")
+        helper_path = root / "scripts/development_run_admission.py"
+        spec = importlib.util.spec_from_file_location(
+            "_securecode_recompute_admission", helper_path
+        )
+        if spec is None or spec.loader is None:
+            raise ValueError("supplemental admission helper unavailable")
+        helper = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = helper
+        spec.loader.exec_module(helper)
+        declared = plan.get("execution", {}).get("paths", {})
+        if (
+            type(declared) is not dict
+            or set(declared) != {"plan", "records", "aggregate", "recomputed", "receipt"}
+            or any(type(value) is not str for value in declared.values())
+        ):
+            raise ValueError("missing closed supplemental output paths")
+        paths = {name: root / value for name, value in declared.items()}
+        paths.update(
+            plan=args.plan.resolve(),
+            records=args.records.resolve(),
+            recomputed=args.output.resolve(),
+            receipt=args.receipt.resolve(),
+        )
+        admission = helper.admit_run(
+            root=root,
+            plan_path=args.plan,
+            action="recompute",
+            argv=tuple(sys.argv[1:]),
+            paths=paths,
+        )
+        helper.verify_imported_package_bindings(admission.plan)
     expected_bindings = {
         "component_sha256": f"sha256:{hashlib.sha256((root / 'scripts/run_development_benchmark.py').read_bytes()).hexdigest()}",
         "core_sha256": f"sha256:{hashlib.sha256((root / 'packages/core/src/securecode_ai/core/development_benchmark.py').read_bytes()).hexdigest()}",
@@ -318,6 +377,18 @@ def main() -> int:
         "policy_sha256": plan["bindings"]["policy_sha256"],
         "schema_sha256": plan["bindings"]["schema_sha256"],
     }
+    if supplemental:
+        # Share candidate identity hashing only; metric recomputation stays independent.
+        identity_spec = importlib.util.spec_from_file_location(
+            "_securecode_recompute_candidate_identity",
+            root / "scripts/run_development_benchmark.py",
+        )
+        if identity_spec is None or identity_spec.loader is None:
+            raise ValueError("candidate identity implementation unavailable")
+        identity_module = importlib.util.module_from_spec(identity_spec)
+        sys.modules[identity_spec.name] = identity_module
+        identity_spec.loader.exec_module(identity_module)
+        expected_bindings = identity_module._current_bindings(admitted=True)
     if plan["bindings"] != expected_bindings:
         raise ValueError("component binding drift")
     expected_environment = {
@@ -348,6 +419,8 @@ def main() -> int:
     for line in args.records.read_text(encoding="utf-8").splitlines():
         record = _validate_record_shape(_strict_json(line))
         _validate_record_values(record, plan)
+        if plan.get("schema_version") == "development-benchmark-plan-1.1":
+            _validate_detection_only_record(record)
         identity = (record["case_id"], record["configuration"], record["repetition"])
         if identity in records or planned.get(identity) != record["expected_label"]:
             raise ValueError("duplicate or unbound record")
@@ -565,6 +638,11 @@ def main() -> int:
         },
     }
     args.output.write_bytes((json.dumps(result, sort_keys=True, indent=2) + "\n").encode("utf-8"))
+    if (
+        admission is not None
+        and args.output.read_bytes() != admission.paths["aggregate"].read_bytes()
+    ):
+        raise ValueError("independent aggregate bytes differ from execution aggregate")
     return 0
 
 

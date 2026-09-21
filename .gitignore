@@ -4,6 +4,11 @@
 !.env.example
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
+*.jks
+secrets/
 
 # Python
 __pycache__/
@@ -14,19 +19,33 @@ __pycache__/
 .coverage
 coverage.xml
 htmlcov/
-.venv/
+.venv*/
 venv/
+.tox/
+.nox/
+.ipynb_checkpoints/
 
 # Build and packaging
 build/
 dist/
 *.egg-info/
+node_modules/
+*.whl
+
+# Local model weights and caches
+.ollama/
+/models/
+*.gguf
+*.safetensors
+*.onnx
 
 # IDE and operating system
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
 
 # Local runtime output; committed gate evidence lives under artifacts/gates/
 .securecode/
@@ -38,4 +57,22 @@ work/*
 !work/task-attestations/*.json
 !work/change-control/
 !work/change-control/**
+# Local draft packets that are not part of the published gate history
+work/task-packets/CR-088-*.yaml
+work/task-packets/P3.14-product-runtime-refactor.yaml
+work/task-packets/P7.92.yaml
+work/task-packets/P9.16-audit.yaml
+work/task-packets/P9.16-code-inventory.yaml
+work/task-packets/P9.16-notebook-executor.yaml
 tmp/
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+*.db
+docker-compose.override.yml
+compose.override.yaml
+
+# Local agent orchestration is not part of the public product
+.agents/
+AGENTS.md

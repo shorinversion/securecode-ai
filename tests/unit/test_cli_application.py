@@ -51,9 +51,18 @@ def _machine_result(stdout: str) -> dict[str, Any]:
 def test_help_is_bounded_human_stdout(flag: str) -> None:
     code, stdout, stderr = _run([flag])
     assert code == CliExitCode.COMPLETED
-    assert "doctor" in stdout
-    assert "scan" not in stdout
-    assert "fix" not in stdout
+    assert stdout.startswith("usage: securecode ")
+    assert all(
+        command in stdout for command in ("doctor", "scan", "fix", "validate", "approve", "release")
+    )
+    assert stderr == ""
+
+
+@pytest.mark.parametrize("command", ("doctor", "scan", "fix", "validate", "approve", "release"))
+def test_product_command_help_is_bounded_human_stdout(command: str) -> None:
+    code, stdout, stderr = _run([command, "--help"])
+    assert code == CliExitCode.COMPLETED
+    assert stdout.startswith(f"usage: securecode {command} ")
     assert stderr == ""
 
 
@@ -90,7 +99,6 @@ def test_machine_doctor_success_is_one_json_line(argv: list[str]) -> None:
         ["doctor", "--unknown"],
         ["doctor", "extra"],
         ["--json", "--json", "doctor"],
-        ["doctor", "--help"],
     ],
 )
 def test_invalid_human_or_nonmachine_grammar_is_safe(argv: list[str]) -> None:

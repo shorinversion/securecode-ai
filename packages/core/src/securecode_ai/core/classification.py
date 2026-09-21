@@ -61,10 +61,20 @@ class ClassificationProvenance:
     calibration_record_id: None = None
 
     def __post_init__(self) -> None:
+        expected = _provenance_config(self.mapping_id)
+        if self.mapping_id == "securecode-core-mvp-classification":
+            mapping_valid = (
+                _SEMVER.fullmatch(self.mapping_version) is not None
+                and _SHA256.fullmatch(self.mapping_sha256) is not None
+            )
+        else:
+            mapping_valid = (
+                expected is not None
+                and self.mapping_version == expected[0]
+                and self.mapping_sha256 == expected[1]
+            )
         if (
-            self.mapping_id != "securecode-core-mvp-classification"
-            or _SEMVER.fullmatch(self.mapping_version) is None
-            or _SHA256.fullmatch(self.mapping_sha256) is None
+            not mapping_valid
             or self.severity_basis != "RULE_CATALOG"
             or self.confidence_basis != "PRE_CALIBRATION_UNSCORED"
             or self.calibration_record_id is not None
@@ -122,10 +132,46 @@ _MAPPING_SHA256: Final = hashlib.sha256(
 _MAPPINGS: Final[Mapping[str, _MappingEntry]] = MappingProxyType(
     {cwe: _MappingEntry(owasp, severity) for cwe, owasp, severity in _MAPPING_ROWS}
 )
+_PRODUCT_MAPPING_ID: Final = "securecode-product-portfolio-classification"
+_PRODUCT_MAPPING_VERSION: Final = "1.0.0"
+_PRODUCT_MAPPING_ROWS: Final = (
+    ("CWE-22", "A01:2021", FindingSeverity.HIGH),
+    ("CWE-78", "A03:2021", FindingSeverity.HIGH),
+    ("CWE-862", "A01:2021", FindingSeverity.HIGH),
+    ("CWE-918", "A10:2021", FindingSeverity.HIGH),
+)
+_PRODUCT_MAPPING_SHA256: Final = hashlib.sha256(
+    json.dumps(
+        [(cwe, owasp, severity.value) for cwe, owasp, severity in _PRODUCT_MAPPING_ROWS],
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+    ).encode("ascii")
+).hexdigest()
+_PRODUCT_MAPPINGS: Final[Mapping[str, _MappingEntry]] = MappingProxyType(
+    {cwe: _MappingEntry(owasp, severity) for cwe, owasp, severity in _PRODUCT_MAPPING_ROWS}
+)
+
+
+def _provenance_config(mapping_id: str) -> tuple[str, str] | None:
+    """Return only one exact, versioned policy family for each closed mapping ID."""
+
+    if mapping_id == _PRODUCT_MAPPING_ID:
+        return (_PRODUCT_MAPPING_VERSION, _PRODUCT_MAPPING_SHA256)
+    return None
+
+
 DEFAULT_CLASSIFICATION_PROVENANCE: Final = ClassificationProvenance(
     mapping_id="securecode-core-mvp-classification",
     mapping_version=_MAPPING_VERSION,
     mapping_sha256=_MAPPING_SHA256,
+    severity_basis="RULE_CATALOG",
+    confidence_basis="PRE_CALIBRATION_UNSCORED",
+)
+PRODUCT_CLASSIFICATION_PROVENANCE: Final = ClassificationProvenance(
+    mapping_id=_PRODUCT_MAPPING_ID,
+    mapping_version=_PRODUCT_MAPPING_VERSION,
+    mapping_sha256=_PRODUCT_MAPPING_SHA256,
     severity_basis="RULE_CATALOG",
     confidence_basis="PRE_CALIBRATION_UNSCORED",
 )
@@ -140,6 +186,39 @@ def classify_cwe(cwe_id: str) -> FindingClassification:
     if entry is None:
         raise ClassificationError(ClassificationErrorCode.UNSUPPORTED_CWE)
     provenance = DEFAULT_CLASSIFICATION_PROVENANCE
+    confidence = FindingConfidence.UNSCORED
+    return FindingClassification(
+        cwe_id=cwe_id,
+        owasp_category=entry.owasp_category,
+        severity=entry.severity,
+        confidence=confidence,
+        provenance=provenance,
+        classification_sha256=_classification_hash(
+            cwe_id,
+            entry.owasp_category,
+            entry.severity,
+            confidence,
+            provenance,
+        ),
+    )
+
+
+def classify_product_cwe(cwe_id: str) -> FindingClassification:
+    """Classify the closed product portfolio without changing Core-MVP bytes.
+
+    CWE-89 delegates to the historical Core entrypoint.  The four existing
+    product rules use a separately pinned policy family, so extending reports
+    never redefines the original Core-MVP mapping.
+    """
+
+    if type(cwe_id) is not str or _CWE.fullmatch(cwe_id) is None:
+        raise ClassificationError(ClassificationErrorCode.INPUT_INVALID)
+    if cwe_id == "CWE-89":
+        return classify_cwe(cwe_id)
+    entry = _PRODUCT_MAPPINGS.get(cwe_id)
+    if entry is None:
+        raise ClassificationError(ClassificationErrorCode.UNSUPPORTED_CWE)
+    provenance = PRODUCT_CLASSIFICATION_PROVENANCE
     confidence = FindingConfidence.UNSCORED
     return FindingClassification(
         cwe_id=cwe_id,
@@ -191,6 +270,7 @@ def _classification_hash(
 
 __all__ = [
     "DEFAULT_CLASSIFICATION_PROVENANCE",
+    "PRODUCT_CLASSIFICATION_PROVENANCE",
     "ClassificationError",
     "ClassificationErrorCode",
     "ClassificationProvenance",
@@ -198,4 +278,5 @@ __all__ = [
     "FindingConfidence",
     "FindingSeverity",
     "classify_cwe",
+    "classify_product_cwe",
 ]

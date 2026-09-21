@@ -49,8 +49,8 @@ artifacts, as required by the frozen domain contract:
 ```
 
 Omit `--check` only when intentionally regenerating artifacts during an
-accepted contract change. `P1.13` now owns repository-wide exact-byte,
-compatibility and protected-drift enforcement; it does not redefine these
-public schemas. Stable IDs accept only validated hashed semantic material.
+accepted contract change. Repository CI enforces exact schema bytes,
+compatibility and protected drift; it does not redefine the public schemas.
+Stable IDs accept only validated hashed semantic material.
 Event append/replay behavior lives in framework-independent Core and is
 intentionally not claimed by the single-document schema validator.

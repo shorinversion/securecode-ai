@@ -781,10 +781,9 @@ Changelog отвечает на вопрос «что и когда измени
   [PLAN.md](docs/PLAN.md).
 - 2026-08-12 — создан постоянный компактный контекст проекта:
   [CONTEXT.md](docs/CONTEXT.md).
-- 2026-08-12 — добавлен project-local skill
-  [securecode-project-navigator](.agents/skills/securecode-project-navigator/SKILL.md),
-  read-only context snapshot helper и обязательное подключение через
-  [AGENTS.md](AGENTS.md).
+- 2026-08-12 — добавлен project-local skill `securecode-project-navigator`,
+  read-only context snapshot helper и обязательное подключение через локальные
+  инструкции агентов. Эти development-only файлы исключены из RC-публикации.
 - 2026-08-12 — принят Spec-Driven Development operating model, создан
   [specification guide](docs/SPEC_DRIVEN_DEVELOPMENT.md), namespace
   [`specs/`](specs/README.md) и constrained LLM

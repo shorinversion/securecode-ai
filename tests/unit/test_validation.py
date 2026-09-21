@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+import securecode_ai.core.validation as VALIDATION
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ArtifactRef,
@@ -26,6 +27,8 @@ from securecode_ai.core.regression import (
 from securecode_ai.core.sandbox import (
     SandboxAttestation,
     SandboxCommand,
+    SandboxDriver,
+    SandboxExecutionReceipt,
     SandboxObservation,
     SandboxOutcome,
     SandboxProfile,
@@ -35,10 +38,14 @@ from securecode_ai.core.sandbox import (
     _profile_hash,
     _teardown_hash,
 )
+from securecode_ai.core.sandbox import (
+    run_in_sandbox as validation_run_in_sandbox,
+)
 from securecode_ai.core.validation import (
     ValidationLadderError,
     ValidationLadderRequest,
     ValidationStage,
+    _CapturingDriver,
     run_validation_ladder,
 )
 
@@ -104,6 +111,7 @@ def _attestation(profile: SandboxProfile) -> SandboxAttestation:
         ("credentials_disabled", True),
         ("host_access_disabled", True),
         ("rootless", True),
+        ("desktop_vm_isolation", False),
         ("read_only_root", True),
         ("attestation_sha256", "0" * 64),
         ("schema_version", "1.0.0"),
@@ -122,24 +130,31 @@ def _attestation(profile: SandboxProfile) -> SandboxAttestation:
     )
 
 
-def _observation(outcome: SandboxOutcome = SandboxOutcome.SUCCEEDED) -> SandboxObservation:
+def _observation(
+    outcome: SandboxOutcome = SandboxOutcome.SUCCEEDED,
+    usage: ResourceUsage | None = None,
+) -> SandboxObservation:
     value = object.__new__(SandboxObservation)
-    usage = ResourceUsage(
-        schema_version=CONTRACT_SCHEMA_VERSION,
-        elapsed_ms=1,
-        peak_memory_bytes=1,
-        cpu_time_ms=1,
+    resource = (
+        ResourceUsage(
+            schema_version=CONTRACT_SCHEMA_VERSION,
+            elapsed_ms=1,
+            peak_memory_bytes=1,
+            cpu_time_ms=1,
+        )
+        if usage is None
+        else usage
     )
     for name, item in (
         ("outcome", outcome),
         ("output_sha256", "d" * 64),
         ("output_size_bytes", 1),
-        ("resource_usage", usage),
+        ("resource_usage", resource),
         ("observation_sha256", "0" * 64),
         ("schema_version", "1.0.0"),
     ):
         object.__setattr__(value, name, item)
-    return SandboxObservation(outcome, "d" * 64, 1, usage, _observation_hash(value))
+    return SandboxObservation(outcome, "d" * 64, 1, resource, _observation_hash(value))
 
 
 def _teardown() -> SandboxTeardownReceipt:
@@ -157,8 +172,15 @@ def _teardown() -> SandboxTeardownReceipt:
 
 
 class _Driver:
-    def __init__(self, failure: ValidationStage | None = None) -> None:
+    def __init__(
+        self,
+        failure: ValidationStage | None = None,
+        observation: SandboxObservation | None = None,
+        mutate_on_teardown: bool = False,
+    ) -> None:
         self.failure = failure
+        self.observation = observation
+        self.mutate_on_teardown = mutate_on_teardown
         self.commands: list[str] = []
 
     def attest(self, profile: SandboxProfile) -> SandboxAttestation:
@@ -166,13 +188,24 @@ class _Driver:
 
     def execute(self, command: SandboxCommand, profile: SandboxProfile) -> SandboxObservation:
         self.commands.append(command.command_id)
-        return _observation(
+        return self.observation or _observation(
             SandboxOutcome.FAILED
             if self.failure is not None and command.command_id == self.failure.value
             else SandboxOutcome.SUCCEEDED
         )
 
     def teardown(self) -> SandboxTeardownReceipt:
+        if self.mutate_on_teardown and self.observation is not None:
+            object.__setattr__(
+                self.observation,
+                "resource_usage",
+                ResourceUsage(
+                    schema_version=CONTRACT_SCHEMA_VERSION,
+                    elapsed_ms=1,
+                    peak_memory_bytes=1,
+                    cpu_time_ms=1,
+                ),
+            )
         return _teardown()
 
 
@@ -261,13 +294,13 @@ def _request(
     )
 
 
-def test_all_twelve_stages_pass_in_order_for_a_fixed_candidate() -> None:
+def test_all_eleven_automated_stages_pass_in_order_for_a_fixed_candidate() -> None:
     driver = _Driver()
     result = run_validation_ladder(_request(), driver)
 
     assert result.validation.validation_outcome.value == "VALIDATED"
     assert result.first_failed_stage is None
-    assert tuple(item.gate.ordinal for item in result.stages) == tuple(range(1, 13))
+    assert tuple(item.gate.ordinal for item in result.stages) == tuple(range(1, 12))
     assert all(item.gate.gate_outcome.value == "PASSED" for item in result.stages)
     assert driver.commands == [stage.value for stage in ValidationStage]
 
@@ -320,11 +353,81 @@ def test_resource_limit_and_stale_head_fail_closed() -> None:
         run_validation_ladder(request, _Driver())
 
 
+def test_observed_resources_replace_low_caller_estimate_and_stop_authority() -> None:
+    observed = ResourceUsage(
+        schema_version=CONTRACT_SCHEMA_VERSION,
+        elapsed_ms=101,
+        peak_memory_bytes=1,
+        cpu_time_ms=1,
+    )
+    driver = _Driver(observation=_observation(usage=observed), mutate_on_teardown=True)
+    result = run_validation_ladder(_request(), driver)
+
+    assert result.first_failed_stage is ValidationStage.DIFF_PARSE
+    assert result.stages[0].gate.resource_usage == observed
+    assert result.stages[0].gate.reason_code == "SANDBOX_NON_SUCCESS"
+    assert driver.commands == [ValidationStage.DIFF_PARSE.value]
+
+
+def test_observation_hash_drift_cannot_pass_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = validation_run_in_sandbox
+
+    def drift(
+        profile: SandboxProfile,
+        command: SandboxCommand,
+        driver: SandboxDriver,
+    ) -> SandboxExecutionReceipt:
+        receipt = original(profile, command, driver)
+        object.__setattr__(receipt, "observation_sha256", "e" * 64)
+        return receipt
+
+    monkeypatch.setattr(VALIDATION, "run_in_sandbox", drift)
+    result = run_validation_ladder(_request(), _Driver())
+
+    assert result.first_failed_stage is ValidationStage.DIFF_PARSE
+    assert result.stages[0].gate.reason_code == "OBSERVATION_EVIDENCE_MISMATCH"
+
+
 def test_explicit_non_authoritative_diagnostics_cannot_restore_validation() -> None:
     driver = _Driver(ValidationStage.PATCH_APPLY)
     result = run_validation_ladder(_request(diagnostics=True), driver)
 
     assert result.first_failed_stage is ValidationStage.PATCH_APPLY
     assert result.validation.validation_outcome.value == "FAILED"
-    assert len(driver.commands) == 12
+    assert len(driver.commands) == 11
     assert all(not item.authoritative for item in result.stages[3:])
+
+
+def test_within_limit_observed_usage_replaces_caller_estimate() -> None:
+    observed = ResourceUsage(
+        schema_version=CONTRACT_SCHEMA_VERSION,
+        elapsed_ms=2,
+        peak_memory_bytes=3,
+        cpu_time_ms=4,
+    )
+    result = run_validation_ladder(_request(), _Driver(observation=_observation(usage=observed)))
+
+    assert result.validation.validation_outcome.value == "VALIDATED"
+    assert all(item.gate.resource_usage == observed for item in result.stages)
+    assert observed != _request().stage_resources[0]
+
+
+def test_missing_observation_evidence_cannot_pass_stage(monkeypatch: pytest.MonkeyPatch) -> None:
+    original = validation_run_in_sandbox
+
+    def omit_capture(
+        profile: SandboxProfile,
+        command: SandboxCommand,
+        capturing_driver: _CapturingDriver,
+    ) -> SandboxExecutionReceipt:
+        return original(profile, command, capturing_driver._driver)
+
+    monkeypatch.setattr(VALIDATION, "run_in_sandbox", omit_capture)
+    result = run_validation_ladder(_request(), _Driver())
+
+    assert result.first_failed_stage is ValidationStage.DIFF_PARSE
+    assert result.stages[0].gate.reason_code == "OBSERVATION_EVIDENCE_MISSING"
+    assert result.validation.validation_outcome.value == "FAILED"
+    assert all(not item.authoritative for item in result.stages[1:])

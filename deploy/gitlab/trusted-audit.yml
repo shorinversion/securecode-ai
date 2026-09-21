@@ -1,0 +1,160 @@
+spec:
+  inputs:
+    source_project_id:
+      type: string
+      regex: '^[1-9][0-9]{0,19}$'
+    source_merge_request_iid:
+      type: string
+      regex: '^[1-9][0-9]{0,19}$'
+    source_commit_sha:
+      type: string
+      regex: '^[0-9a-f]{40}$'
+---
+stages:
+  - security
+
+workflow:
+  rules:
+    - if: >-
+        $CI_PIPELINE_SOURCE == "pipeline" &&
+        $CI_COMMIT_REF_PROTECTED == "true"
+      when: always
+    - when: never
+
+securecode-trusted-audit:
+  stage: security
+  image:
+    # Operator must replace the invalid registry path without changing the reviewed digest.
+    name: "registry.example.invalid/securecode-ai/worker@sha256:e1a913d942bc9360c6d2f1eabb72db0935d6489b4cbb9243057d44bd8fc5767d"
+    entrypoint: [""]
+    pull_policy: always
+  tags:
+    - securecode-ai-gpu
+  timeout: 10m
+  interruptible: true
+  allow_failure: false
+  resource_group: "securecode-$SECURECODE_SOURCE_PROJECT_ID"
+  variables:
+    GIT_STRATEGY: none
+    GIT_SUBMODULE_STRATEGY: none
+    SECURECODE_SOURCE_PROJECT_ID: "$[[ inputs.source_project_id ]]"
+    SECURECODE_SOURCE_MERGE_REQUEST_IID: "$[[ inputs.source_merge_request_iid ]]"
+    SECURECODE_SOURCE_COMMIT_SHA: "$[[ inputs.source_commit_sha ]]"
+  script:
+    - |
+      set -eu
+      test -n "$SECURECODE_ALLOWED_SOURCE_PROJECT_ID"
+      test "$SECURECODE_SOURCE_PROJECT_ID" = "$SECURECODE_ALLOWED_SOURCE_PROJECT_ID"
+      printf '%s' "$SECURECODE_SOURCE_PROJECT_ID" | grep -Eq '^[1-9][0-9]{0,19}$'
+      printf '%s' "$SECURECODE_SOURCE_MERGE_REQUEST_IID" | grep -Eq '^[1-9][0-9]{0,19}$'
+      printf '%s' "$SECURECODE_SOURCE_COMMIT_SHA" | grep -Eq '^[0-9a-f]{40}$'
+      test -n "$SECURECODE_CONTROL_PLANE_URL"
+      test -n "$SECURECODE_WORKER_TOKEN_FILE"
+      test -f "$SECURECODE_WORKER_TOKEN_FILE"
+      test ! -L "$SECURECODE_WORKER_TOKEN_FILE"
+      chmod 600 "$SECURECODE_WORKER_TOKEN_FILE"
+    - |
+      python - <<'PY'
+      import json
+      import os
+      import re
+      import urllib.parse
+      import urllib.request
+
+      project_id = os.environ["SECURECODE_SOURCE_PROJECT_ID"]
+      merge_request_iid = os.environ["SECURECODE_SOURCE_MERGE_REQUEST_IID"]
+      expected_sha = os.environ["SECURECODE_SOURCE_COMMIT_SHA"]
+      api = os.environ["CI_API_V4_URL"].rstrip("/")
+      token = os.environ["CI_JOB_TOKEN"]
+      headers = {"JOB-TOKEN": token, "Accept": "application/json"}
+
+      def load(path: str) -> dict[str, object]:
+          request = urllib.request.Request(api + path, headers=headers)
+          with urllib.request.urlopen(request, timeout=15) as response:
+              if response.status != 200:
+                  raise RuntimeError("GitLab API request failed")
+              payload = response.read(1_048_577)
+          if len(payload) > 1_048_576:
+              raise RuntimeError("GitLab API response is too large")
+          value = json.loads(payload)
+          if type(value) is not dict:
+              raise RuntimeError("GitLab API response is invalid")
+          return value
+
+      project = load("/projects/" + urllib.parse.quote(project_id, safe=""))
+      merge_request = load(
+          "/projects/"
+          + urllib.parse.quote(project_id, safe="")
+          + "/merge_requests/"
+          + urllib.parse.quote(merge_request_iid, safe="")
+      )
+      diff_refs = merge_request.get("diff_refs")
+      head_sha = diff_refs.get("head_sha") if type(diff_refs) is dict else None
+      repository_url = project.get("http_url_to_repo")
+      if (
+          project.get("id") != int(project_id)
+          or merge_request.get("source_project_id") != int(project_id)
+          or merge_request.get("target_project_id") != int(project_id)
+          or merge_request.get("iid") != int(merge_request_iid)
+          or merge_request.get("state") != "opened"
+          or head_sha != expected_sha
+          or type(repository_url) is not str
+          or not repository_url.startswith(os.environ["CI_SERVER_URL"].rstrip("/") + "/")
+          or not repository_url.endswith(".git")
+          or re.search(r"[\r\n]", repository_url)
+      ):
+          raise RuntimeError("GitLab merge request identity is invalid")
+      output = "/tmp/securecode-repository-url"
+      descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+      with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+          stream.write(repository_url + "\n")
+      PY
+    - |
+      set -eu
+      checkout="$CI_PROJECT_DIR/source"
+      test ! -e "$checkout"
+      mkdir -m 0700 "$checkout"
+      askpass="/tmp/securecode-git-askpass-$CI_JOB_ID"
+      cat >"$askpass" <<'SH'
+      #!/bin/sh
+      case "$1" in
+        *Username*) printf '%s\n' 'gitlab-ci-token' ;;
+        *Password*) printf '%s\n' "$CI_JOB_TOKEN" ;;
+        *) exit 1 ;;
+      esac
+      SH
+      chmod 0700 "$askpass"
+      repository_url="$(cat /tmp/securecode-repository-url)"
+      rm -f /tmp/securecode-repository-url
+      export GIT_ASKPASS="$askpass"
+      export GIT_TERMINAL_PROMPT=0
+      export GIT_CONFIG_GLOBAL=/dev/null
+      export GIT_CONFIG_NOSYSTEM=1
+      git -C "$checkout" init --quiet
+      git -C "$checkout" remote add origin "$repository_url"
+      git -C "$checkout" fetch --quiet --no-tags --depth=1 origin \
+        "+refs/merge-requests/$SECURECODE_SOURCE_MERGE_REQUEST_IID/head:refs/remotes/origin/securecode-mr-head"
+      git -C "$checkout" checkout --quiet --detach "$SECURECODE_SOURCE_COMMIT_SHA"
+      test "$SECURECODE_SOURCE_COMMIT_SHA" = "$(git -C "$checkout" rev-parse --verify HEAD)"
+      rm -f "$askpass"
+      unset GIT_ASKPASS CI_JOB_TOKEN CI_REGISTRY_PASSWORD
+      mkdir -m 0700 "/tmp/securecode-home-$CI_JOB_ID"
+      cd /app
+      set -- env -i \
+        PATH="$PATH" \
+        PYTHONPATH="$PYTHONPATH" \
+        PYTHONDONTWRITEBYTECODE=1 \
+        PYTHONNOUSERSITE=1 \
+        PYTHONUNBUFFERED=1 \
+        HOME="/tmp/securecode-home-$CI_JOB_ID" \
+        SECURECODE_CONTROL_PLANE_URL="$SECURECODE_CONTROL_PLANE_URL" \
+        SECURECODE_WORKER_TOKEN_FILE="$SECURECODE_WORKER_TOKEN_FILE" \
+        SECURECODE_WORKER_TARGET="$checkout" \
+        SECURECODE_WORKER_ID="gitlab-$SECURECODE_SOURCE_PROJECT_ID-$CI_PIPELINE_ID-$CI_JOB_ID" \
+        CI_PROJECT_ID="$SECURECODE_SOURCE_PROJECT_ID" \
+        CI_MERGE_REQUEST_IID="$SECURECODE_SOURCE_MERGE_REQUEST_IID" \
+        CI_COMMIT_SHA="$SECURECODE_SOURCE_COMMIT_SHA"
+      if test -n "${SECURECODE_WORKER_ARTIFACT_HOSTS:-}"; then
+        set -- "$@" SECURECODE_WORKER_ARTIFACT_HOSTS="$SECURECODE_WORKER_ARTIFACT_HOSTS"
+      fi
+      exec "$@" python -P -m securecode_ai.worker.service

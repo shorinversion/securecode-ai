@@ -11,13 +11,17 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from securecode_ai.contracts import CliCommand, CliExitCode
+
+if TYPE_CHECKING:
+    from securecode_ai.adapters.local_repair_validation import LocalRepairValidationPort
 
 
 class RepairFormat(StrEnum):
@@ -85,7 +89,23 @@ class RepairCli:
         scan: RepairWorker | None = None,
         fix: RepairWorker | None = None,
         validate: RepairWorker | None = None,
+        environment: Mapping[str, str] | None = None,
+        validation_port: LocalRepairValidationPort | None = None,
+        patch_selector: str | None = None,
     ) -> None:
+        if (
+            scan is None
+            and fix is None
+            and validate is None
+            and (
+                environment is not None or validation_port is not None or patch_selector is not None
+            )
+        ):
+            fix, validate = _installed_workers(
+                os.environ if environment is None else environment,
+                validation_port=validation_port,
+                patch_selector=patch_selector,
+            )
         self._workers = {CliCommand.SCAN: scan, CliCommand.FIX: fix, CliCommand.VALIDATE: validate}
 
     def run(self, command: CliCommand, target: str) -> RepairReceipt:
@@ -107,7 +127,7 @@ class RepairCli:
                 command,
                 RepairOutcome.INDETERMINATE,
                 CliExitCode.INDETERMINATE,
-                {"reason": "backend_unavailable"},
+                {"reason": "worker_unavailable"},
             )
         try:
             raw = worker(target)
@@ -142,6 +162,86 @@ def _receipt(
     }
     digest = hashlib.sha256(_canonical(document)).hexdigest()
     return RepairReceipt(command, outcome, code, "NOT_EVALUATED", dict(metadata), digest)
+
+
+def _installed_workers(
+    environment: Mapping[str, str],
+    *,
+    validation_port: LocalRepairValidationPort | None,
+    patch_selector: str | None,
+) -> tuple[RepairWorker, RepairWorker]:
+    selected_environment = {
+        key: value for key, value in environment.items() if type(key) is str and type(value) is str
+    }
+
+    def fix(target: str) -> Mapping[str, Any]:
+        from securecode_ai.adapters.local_repair import (
+            propose_local_repairs,
+            repair_failure_receipt,
+        )
+
+        from .scan import (
+            ProductScanArguments,
+            execute_installed_product_scan,
+            load_installed_product_host,
+        )
+
+        try:
+            scan_result = execute_installed_product_scan(
+                ProductScanArguments(target, RepairFormat.JSON, None),
+                environment=selected_environment,
+            )
+            scan_result.require_publication()
+            host = load_installed_product_host()
+            scan_result.require_publication()
+            return propose_local_repairs(
+                target=target,
+                host=host,
+                scan_result=scan_result,
+                environment=selected_environment,
+            )
+        except Exception as error:
+            return repair_failure_receipt(error)
+
+    def validate(target: str) -> Mapping[str, Any]:
+        from securecode_ai.adapters.local_repair import (
+            repair_failure_receipt,
+            validate_local_repair_artifact,
+        )
+
+        from .scan import load_installed_product_host
+
+        selector = patch_selector or selected_environment.get("SECURECODE_AI_PATCH_SELECTOR")
+        if not selector:
+            return {"exit_code": 4, "reason": "PATCH_SELECTOR_REQUIRED"}
+        try:
+            host = load_installed_product_host()
+            return validate_local_repair_artifact(
+                target=target,
+                selector=selector,
+                host=host,
+                environment=selected_environment,
+                validation_port=validation_port,
+            )
+        except Exception as error:
+            return repair_failure_receipt(error)
+
+    return fix, validate
+
+
+def build_installed_repair_cli(
+    *,
+    environment: Mapping[str, str],
+    patch_selector: str | None = None,
+    validation_port: LocalRepairValidationPort | None = None,
+) -> RepairCli:
+    """Compose installed workers while preserving direct injected-worker construction."""
+
+    return RepairCli(
+        environment=environment,
+        patch_selector=patch_selector,
+        validation_port=validation_port,
+    )
 
 
 def _safe_metadata(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -224,5 +324,6 @@ __all__ = [
     "RepairOutcome",
     "RepairReceipt",
     "RepairWorker",
+    "build_installed_repair_cli",
     "render_receipt",
 ]

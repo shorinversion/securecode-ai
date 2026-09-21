@@ -1,0 +1,46 @@
+stages:
+  - security
+
+securecode-audit-dispatch:
+  stage: security
+  rules:
+    - if: >-
+        $CI_PIPELINE_SOURCE == "merge_request_event" &&
+        $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID &&
+        $SECURECODE_TRUSTED_AUDIT_PROJECT != "" &&
+        $SECURECODE_TRUSTED_AUDIT_REF != ""
+      when: on_success
+    - when: never
+  inherit:
+    variables: false
+  trigger:
+    project: "$SECURECODE_TRUSTED_AUDIT_PROJECT"
+    branch: "$SECURECODE_TRUSTED_AUDIT_REF"
+    strategy: mirror
+    inputs:
+      source_project_id: "$CI_PROJECT_ID"
+      source_merge_request_iid: "$CI_MERGE_REQUEST_IID"
+      source_commit_sha: "$CI_COMMIT_SHA"
+    forward:
+      yaml_variables: false
+      pipeline_variables: false
+
+securecode-audit-configuration-error:
+  stage: security
+  image:
+    name: "python:3.12-slim-bookworm@sha256:d5ae74acb8026b32a2f6deea45003c5bd4e2880700c19c44bda54670ad3eff90"
+    entrypoint: [""]
+    pull_policy: always
+  rules:
+    - if: >-
+        $CI_PIPELINE_SOURCE == "merge_request_event" &&
+        $CI_MERGE_REQUEST_SOURCE_PROJECT_ID == $CI_PROJECT_ID &&
+        ($SECURECODE_TRUSTED_AUDIT_PROJECT == "" ||
+        $SECURECODE_TRUSTED_AUDIT_REF == "")
+      when: on_success
+    - when: never
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - 'echo "trusted SecureCode audit project/ref is not configured" >&2'
+    - 'exit 1'

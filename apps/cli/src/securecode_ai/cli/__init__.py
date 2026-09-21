@@ -7,6 +7,7 @@ from .application import (
     build_foundation_profile,
     main,
 )
+from .approval import run_patch_approval_command
 from .diagnostic import (
     DIAGNOSTIC_RESULT_VERSION,
     DeterministicDiagnostic,
@@ -21,6 +22,7 @@ from .diagnostic import (
     canonical_diagnostic_json,
     run_deterministic_diagnostic,
 )
+from .release import ReleaseCliError, run_release_command
 from .repair import RepairCli, RepairFormat, RepairOutcome, RepairReceipt, render_receipt
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "DiagnosticResult",
     "FoundationDoctor",
     "LocalDeterministicDiagnostic",
+    "ReleaseCliError",
     "RepairCli",
     "RepairFormat",
     "RepairOutcome",
@@ -46,4 +49,6 @@ __all__ = [
     "main",
     "render_receipt",
     "run_deterministic_diagnostic",
+    "run_patch_approval_command",
+    "run_release_command",
 ]

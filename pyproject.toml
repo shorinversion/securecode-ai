@@ -1,14 +1,16 @@
 [project]
 name = "securecode-ai-workspace"
-version = "0.1.0a0"
+version = "1.0.0rc1"
 description = "Reproducible workspace authority for SecureCode AI"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "securecode-ai-adapters==0.1.0a0",
-    "securecode-ai-cli==0.1.0a0",
-    "securecode-ai-contracts==0.1.0a0",
-    "securecode-ai-core==0.1.0a0",
+    "securecode-ai-adapters==1.0.0rc1",
+    "securecode-ai-cli==1.0.0rc1",
+    "securecode-ai-contracts==1.0.0rc1",
+    "securecode-ai-core==1.0.0rc1",
+    "securecode-ai-server==1.0.0rc1",
+    "securecode-ai-worker==1.0.0rc1",
 ]
 classifiers = ["Private :: Do Not Upload"]
 
@@ -42,10 +44,14 @@ securecode-ai-adapters = { workspace = true }
 securecode-ai-cli = { workspace = true }
 securecode-ai-contracts = { workspace = true }
 securecode-ai-core = { workspace = true }
+securecode-ai-server = { workspace = true }
+securecode-ai-worker = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "apps/cli",
+    "apps/server",
+    "apps/worker",
     "packages/adapters",
     "packages/contracts",
     "packages/core",
@@ -78,6 +84,8 @@ namespace_packages = true
 explicit_package_bases = true
 mypy_path = [
     "apps/cli/src",
+    "apps/server/src",
+    "apps/worker/src",
     "packages/adapters/src",
     "packages/contracts/src",
     "packages/core/src",
@@ -87,6 +95,7 @@ exclude = ["scripts/validate_g0.py"]
 [tool.pytest.ini_options]
 minversion = "9.1"
 testpaths = ["tests/unit"]
+pythonpath = ["."]
 addopts = ["--strict-config", "--strict-markers", "--import-mode=importlib", "-ra"]
 xfail_strict = true
 

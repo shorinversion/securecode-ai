@@ -25,6 +25,15 @@ REPLAY = "clean-replay.md"
 QUALITY_RECEIPT = "quality-receipt.json"
 README = "README.md"
 MAX_OUTPUT_BYTES = 1_000_000
+PDF_BODY_START_Y = 778.0
+PDF_BODY_TOP_Y = 802.0
+PDF_FOOTER_Y = 32.0
+PDF_FOOTER_FONT_SIZE = 8.0
+PDF_FOOTER_CLEARANCE = 14.0
+PDF_ASCENT_RATIO = 0.8
+PDF_DESCENT_RATIO = 0.2
+PDF_LINE_LEADING = 5.0
+PDF_BLANK_LEADING = 4.0
 SNAPSHOT_BASE_COMMIT = "\x64\x30\x34\x66\x35\x38\x38\x66\x63\x33\x32\x33\x62\x36\x36\x39\x36\x63\x64\x30\x66\x62\x61\x64\x32\x61\x37\x36\x64\x63\x64\x62\x62\x30\x34\x31\x34\x63\x36\x31"
 BENCHMARK_SHA256 = "\x64\x65\x61\x65\x35\x36\x33\x66\x65\x30\x38\x35\x38\x30\x61\x32\x65\x64\x33\x64\x63\x34\x34\x37\x62\x61\x31\x39\x64\x30\x32\x30\x66\x33\x31\x65\x36\x33\x37\x39\x37\x65\x62\x38\x62\x38\x33\x63\x38\x62\x36\x37\x33\x37\x61\x64\x33\x61\x36\x37\x34\x34\x30\x37"
 SNAPSHOT_MEANING = (
@@ -627,13 +636,8 @@ def _pdf_page_stream(
     commands = ["q", "0.05 0.16 0.31 rg"]
     commands.append(_pdf_text("F2", 8.0, 54.0, 812.0, "SecureCode AI | M-A2026 Academic Snapshot"))
     commands.append("0 g")
-    y = 778.0
-    for text, size, bold in lines:
-        if not text:
-            y -= size + 4.0
-            continue
+    for (text, size, bold), y in _pdf_page_layout(lines):
         commands.append(_pdf_text("F2" if bold else "F1", size, 54.0, y, text))
-        y -= size + 5.0
     commands.extend(
         [
             "0.4 g",
@@ -648,6 +652,43 @@ def _pdf_page_stream(
         ]
     )
     return "\n".join(commands).encode("ascii")
+
+
+def _pdf_page_layout(
+    lines: list[tuple[str, float, bool]],
+) -> list[tuple[tuple[str, float, bool], float]]:
+    """Place body baselines with mixed-font spacing and fixed header/footer clearance."""
+
+    layout: list[tuple[tuple[str, float, bool], float]] = []
+    y = PDF_BODY_START_Y
+    previous_size: float | None = None
+    pending_blank_space = 0.0
+    for line in lines:
+        text, size, _bold = line
+        if size <= 0.0:
+            raise SubmissionError("PDF line size is invalid")
+        if not text:
+            pending_blank_space += size + PDF_BLANK_LEADING
+            continue
+        if previous_size is not None:
+            y -= max(previous_size, size) + PDF_LINE_LEADING + pending_blank_space
+        else:
+            y -= pending_blank_space
+        pending_blank_space = 0.0
+        _validate_pdf_body_position(size, y)
+        layout.append((line, y))
+        previous_size = size
+    return layout
+
+
+def _validate_pdf_body_position(size: float, y: float) -> None:
+    top = y + size * PDF_ASCENT_RATIO
+    bottom = y - size * PDF_DESCENT_RATIO
+    footer_top = PDF_FOOTER_Y + PDF_FOOTER_FONT_SIZE * PDF_ASCENT_RATIO
+    if top > PDF_BODY_TOP_Y:
+        raise SubmissionError("PDF body overlaps header")
+    if bottom < footer_top + PDF_FOOTER_CLEARANCE:
+        raise SubmissionError("PDF body overflows footer separation")
 
 
 def _pdf_text(font: str, size: float, x: float, y: float, text: str) -> str:

@@ -309,6 +309,7 @@ def test_canonical_renderer_snapshots_nested_state_before_render(
     import securecode_ai.core.telemetry as telemetry_module
     from securecode_ai.adapters import InMemoryTelemetrySink
     from securecode_ai.core import TelemetryEmitter
+    from securecode_ai.core.telemetry_primitives import _revalidate_record
 
     authority, authorization = authority_and_root()
     sink = InMemoryTelemetrySink()
@@ -320,7 +321,7 @@ def test_canonical_renderer_snapshots_nested_state_before_render(
     record = parse_telemetry_bytes(sink.records[0][0])
     expected_trace_id = record.trace.trace_id
     retained_trace = record.trace
-    original_revalidate = telemetry_module._revalidate_record
+    original_revalidate = _revalidate_record
 
     def snapshot_then_mutate(value: TelemetryRecord) -> TelemetryRecord:
         snapshot = original_revalidate(value)

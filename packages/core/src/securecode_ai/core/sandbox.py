@@ -143,6 +143,7 @@ class SandboxAttestation:
     read_only_root: bool
     attestation_sha256: str
     schema_version: str = _SCHEMA_VERSION
+    desktop_vm_isolation: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -151,15 +152,21 @@ class SandboxAttestation:
             or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", self.profile_version)
             or _SHA256.fullmatch(self.profile_sha256) is None
             or any(
-                type(value) is not bool or not value
+                type(value) is not bool
                 for value in (
                     self.network_disabled,
                     self.credentials_disabled,
                     self.host_access_disabled,
                     self.rootless,
+                    self.desktop_vm_isolation,
                     self.read_only_root,
                 )
             )
+            or not all(
+                (self.network_disabled, self.credentials_disabled, self.host_access_disabled)
+            )
+            or self.rootless == self.desktop_vm_isolation
+            or not self.read_only_root
             or _SHA256.fullmatch(self.attestation_sha256) is None
             or self.attestation_sha256 != _attestation_hash(self)
         ):
@@ -280,7 +287,10 @@ def run_in_sandbox(
             reason = SandboxErrorCode.ATTESTATION_FAILED
         else:
             observation = _copy_observation(driver.execute(checked_command, checked_profile))
-            if observation.output_size_bytes > checked_profile.max_output_bytes:
+            if (
+                observation.output_size_bytes > checked_profile.max_output_bytes
+                or _observed_resource_exceeded(observation.resource_usage, checked_profile)
+            ):
                 reason = SandboxErrorCode.RESOURCE_LIMIT
     except Exception:
         reason = SandboxErrorCode.DRIVER_FAILURE
@@ -361,8 +371,16 @@ def _attestation_matches(value: SandboxAttestation, profile: SandboxProfile) -> 
         and value.network_disabled == profile.network_disabled
         and value.credentials_disabled == profile.credentials_disabled
         and value.host_access_disabled == profile.host_access_disabled
-        and value.rootless == profile.rootless
+        and (value.rootless or value.desktop_vm_isolation) == profile.rootless
         and value.read_only_root == profile.read_only_root
+    )
+
+
+def _observed_resource_exceeded(value: ResourceUsage, profile: SandboxProfile) -> bool:
+    return (
+        value.elapsed_ms > profile.max_elapsed_ms
+        or value.cpu_time_ms > profile.max_cpu_time_ms
+        or value.peak_memory_bytes > profile.max_memory_bytes
     )
 
 

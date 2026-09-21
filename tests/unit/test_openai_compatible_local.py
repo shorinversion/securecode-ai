@@ -80,13 +80,36 @@ def _ollama_success_body(*, extra_choice_control: bool = False) -> bytes:
     ).encode()
 
 
+def _native_no_tool_body(*, finish_reason: str = "stop") -> bytes:
+    return json.dumps(
+        {
+            "id": "native-no-tool-id",
+            "choices": [
+                {
+                    "finish_reason": finish_reason,
+                    "message": {"role": "assistant", "content": '{"candidates":[]}'},
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+
+
 class _ScriptedSocket:
     def __init__(self, endpoint: _LocalEndpoint) -> None:
         self._endpoint = endpoint
         self._remaining = bytearray(endpoint.response)
+        self._sent = bytearray()
+        self._request_recorded = False
         self._closed = False
         self.timeouts: list[float] = []
+        self.blocking_modes: list[bool] = []
         self.connect_addresses: list[tuple[str, int]] = []
+
+    def setblocking(self, value: bool) -> None:
+        self.blocking_modes.append(value)
 
     def settimeout(self, value: float) -> None:
         self.timeouts.append(value)
@@ -96,11 +119,34 @@ class _ScriptedSocket:
         if address != ("127.0.0.1", self._endpoint.port):
             raise OSError("scripted peer rejected")
 
+    def connect_ex(self, address: tuple[str, int]) -> int:
+        self.connect(address)
+        return 0
+
+    def getsockopt(self, level: int, option: int) -> int:
+        assert (level, option) == (socket.SOL_SOCKET, socket.SO_ERROR)
+        return 0
+
     def getpeername(self) -> tuple[str, int]:
         return "127.0.0.1", self._endpoint.port
 
     def sendall(self, request: bytes) -> None:
         self._endpoint._record_request(request)
+
+    def send(self, request: bytes | bytearray | memoryview) -> int:
+        chunk = bytes(request)
+        self._sent.extend(chunk)
+        if not self._request_recorded and b"\r\n\r\n" in self._sent:
+            raw_headers, body = bytes(self._sent).split(b"\r\n\r\n", 1)
+            content_lengths = [
+                line.split(b":", 1)[1].strip()
+                for line in raw_headers.split(b"\r\n")[1:]
+                if line.lower().startswith(b"content-length:")
+            ]
+            if len(content_lengths) == 1 and len(body) == int(content_lengths[0]):
+                self._endpoint._record_request(bytes(self._sent))
+                self._request_recorded = True
+        return len(chunk)
 
     def recv(self, maximum: int) -> bytes:
         if self._endpoint.times_out:
@@ -224,11 +270,40 @@ def test_local_connector_uses_authorized_peer_and_normalizes_response(
     assert outcome.result is not None
     assert outcome.result.status is ModelCallStatus.SUCCEEDED
     assert len(endpoint.requests) == 1
+    assert endpoint.sockets[0].blocking_modes == [False, True]
+    assert endpoint.sockets[0].connect_addresses == [("127.0.0.1", endpoint.port)]
     path, headers, request_body = endpoint.requests[0]
     assert path == "/v1/chat/completions"
     assert headers["Host"] == f"127.0.0.1:{endpoint.port}"
     assert "Proxy-Authorization" not in headers
     assert json.loads(request_body)["response_format"] == {"type": "json_object"}
+    assert json.loads(request_body)["max_tokens"] == profile.capabilities.max_output_tokens
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, 4097])
+def test_local_connector_rejects_invalid_generation_limit(limit: bool | int) -> None:
+    profile = _profile_for(11434)
+    with pytest.raises(ValueError, match="OUTPUT_LIMIT_REJECTED"):
+        OpenAICompatibleLocalHttpConnector(profile=profile, max_output_tokens=limit)
+
+
+def test_invocation_clone_preserves_stricter_configured_generation_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    endpoint = _LocalEndpoint(status=200, body=_success_body())
+    endpoint.install(monkeypatch)
+    profile = _profile_for(endpoint.port)
+    original = OpenAICompatibleLocalHttpConnector(
+        profile=profile, max_output_tokens=16, temperature=0.0, seed=42
+    )
+    clone = original.with_output_token_limit(32)
+    outcome, _ = _execute(profile=profile, connector=clone)
+    assert outcome.result is not None
+    assert outcome.result.status is ModelCallStatus.SUCCEEDED
+    sent = json.loads(endpoint.requests[0][2])
+    assert sent["max_tokens"] == original._max_output_tokens == 16
+    assert sent["temperature"] == 0.0
+    assert sent["seed"] == 42
 
 
 def test_local_connector_sends_explicit_sampling_controls(
@@ -296,6 +371,78 @@ def test_ollama_0162_envelope_is_canonicalized_before_normalization(
     )
     assert outcome.result is not None
     assert outcome.result.status is ModelCallStatus.SUCCEEDED
+
+
+@pytest.mark.parametrize(
+    ("finish_reason", "expected_status"),
+    [("stop", ModelCallStatus.SUCCEEDED), ("length", ModelCallStatus.TRUNCATED)],
+)
+def test_validated_native_no_tool_response_gets_explicit_non_refusal_signal(
+    monkeypatch: pytest.MonkeyPatch,
+    finish_reason: str,
+    expected_status: ModelCallStatus,
+) -> None:
+    endpoint = _LocalEndpoint(status=200, body=_native_no_tool_body(finish_reason=finish_reason))
+    endpoint.install(monkeypatch)
+    profile = _profile_for(endpoint.port)
+    outcome, _ = _execute(
+        profile=profile,
+        connector=OpenAICompatibleLocalHttpConnector(profile=profile),
+    )
+    assert outcome.result is not None
+    assert outcome.result.status is expected_status
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        json.dumps(
+            {
+                "id": "native-tool-id",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [],
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            }
+        ).encode(),
+        json.dumps(
+            {
+                "id": "malformed-native-id",
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "role": "assistant",
+                            "content": '{"candidates":[]}',
+                            "unexpected": None,
+                        },
+                    }
+                ],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            }
+        ).encode(),
+    ],
+)
+def test_native_tool_and_malformed_messages_remain_rejected(
+    monkeypatch: pytest.MonkeyPatch, body: bytes
+) -> None:
+    endpoint = _LocalEndpoint(status=200, body=body)
+    endpoint.install(monkeypatch)
+    profile = _profile_for(endpoint.port)
+    outcome, _ = _execute(
+        profile=profile,
+        connector=OpenAICompatibleLocalHttpConnector(profile=profile),
+    )
+    assert outcome.result is not None
+    assert outcome.result.status is ModelCallStatus.PROVIDER_ERROR
+    assert outcome.payload is None
 
 
 def test_ollama_envelope_drift_is_rejected_without_retaining_native_body(

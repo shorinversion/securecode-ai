@@ -1,0 +1,573 @@
+"""Durable, source-free secret lease accounting and rotation."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sqlite3
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Final
+
+from .secret_provider import OpaqueSecretLease, SecretProvider
+
+_IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}\Z")
+_PURPOSES: Final = frozenset({"github_installation", "provider_api", "artifact_store"})
+
+
+class SecretDenied(RuntimeError):
+    """A secret operation failed closed without exposing provider details."""
+
+    def __init__(self, code: str = "SECRET_DENIED") -> None:
+        self.code = code
+        super().__init__(code)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class SecretGrant:
+    _handle: str
+    grant_id: str = ""
+    version: int = 1
+
+    def __post_init__(self) -> None:
+        if type(self._handle) is not str or not self._handle:
+            raise SecretDenied("INVALID_PROVIDER_LEASE")
+        if self.grant_id and _IDENTIFIER.fullmatch(self.grant_id) is None:
+            raise SecretDenied("INVALID_GRANT_ID")
+        if type(self.version) is not int or self.version < 1:
+            raise SecretDenied("INVALID_VERSION")
+
+    def __repr__(self) -> str:
+        return "SecretGrant(<redacted>)"
+
+
+@dataclass(frozen=True, slots=True)
+class SecretReceipt:
+    """Source-free receipt. It contains only hashes and control metadata."""
+
+    tenant_id: str
+    workload_id: str
+    purpose: str
+    handle_sha256: str
+    expires_at: int
+    grant_id: str = ""
+    state: str = "ACTIVE"
+    version: int = 1
+    issued_at: int = 0
+
+
+SECRET_SCHEMA_STATEMENTS: Final = (
+    """CREATE TABLE IF NOT EXISTS secret_grants (
+        tenant_id TEXT NOT NULL,
+        grant_id TEXT NOT NULL,
+        workload_id TEXT NOT NULL,
+        purpose TEXT NOT NULL,
+        reference_sha256 TEXT NOT NULL,
+        handle_sha256 TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        issued_at INTEGER NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('ACTIVE', 'REVOKED', 'EXPIRED')),
+        version INTEGER NOT NULL,
+        rotated_from_grant_id TEXT,
+        revoked_at INTEGER,
+        PRIMARY KEY (tenant_id, grant_id),
+        UNIQUE (tenant_id, handle_sha256)
+    )""",
+    """CREATE INDEX IF NOT EXISTS secret_grants_active_idx
+       ON secret_grants (tenant_id, workload_id, state, expires_at)""",
+    """CREATE TABLE IF NOT EXISTS secret_grant_idempotency (
+        tenant_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        request_sha256 TEXT NOT NULL,
+        grant_id TEXT NOT NULL,
+        PRIMARY KEY (tenant_id, idempotency_key),
+        FOREIGN KEY (tenant_id, grant_id)
+            REFERENCES secret_grants (tenant_id, grant_id)
+    )""",
+)
+
+
+class SecretService:
+    """Issues ephemeral grants while persisting only source-free receipts."""
+
+    def __init__(
+        self,
+        provider: SecretProvider,
+        connection: sqlite3.Connection | None = None,
+        *,
+        clock: Callable[[], int] | None = None,
+    ) -> None:
+        self.p = provider
+        self._connection = connection or sqlite3.connect(":memory:")
+        if not isinstance(self._connection, sqlite3.Connection):
+            raise TypeError("connection must be a sqlite3 connection")
+        self._connection.row_factory = sqlite3.Row
+        self._connection.execute("PRAGMA foreign_keys = ON")
+        self._connection.execute("PRAGMA busy_timeout = 5000")
+        self._clock = clock or (lambda: int(time.time()))
+        try:
+            for statement in SECRET_SCHEMA_STATEMENTS:
+                self._connection.execute(statement)
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
+
+    @contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Cursor]:
+        cursor = self._connection.cursor()
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+            yield cursor
+            self._connection.commit()
+        except Exception:
+            self._connection.rollback()
+            raise
+        finally:
+            cursor.close()
+
+    def grant(
+        self,
+        *,
+        tenant_id: str,
+        workload_id: str,
+        reference: str,
+        purpose: str,
+        idempotency_key: str,
+    ) -> tuple[SecretGrant | None, SecretReceipt]:
+        _validate_request(tenant_id, workload_id, reference, purpose, idempotency_key)
+        request_hash = _request_hash(workload_id, reference, purpose)
+        cache_key = (tenant_id, idempotency_key)
+        with self._transaction() as cursor:
+            replay = cursor.execute(
+                """SELECT operation, request_sha256, grant_id
+                   FROM secret_grant_idempotency
+                   WHERE tenant_id=? AND idempotency_key=?""",
+                cache_key,
+            ).fetchone()
+            if replay is not None:
+                if (replay["operation"], replay["request_sha256"]) != (
+                    "grant",
+                    request_hash,
+                ):
+                    raise SecretDenied("IDEMPOTENCY_CONFLICT")
+                return None, _receipt(self._load(cursor, tenant_id, replay["grant_id"]))
+
+            grant_id = (
+                "grant-"
+                + hashlib.sha256(
+                    f"{tenant_id}\0{idempotency_key}\0{request_hash}".encode()
+                ).hexdigest()[:40]
+            )
+            lease = self._issue(reference, purpose, grant_id)
+            handle_hash = _hash_text(lease.handle)
+            issued_at = self._now()
+            receipt = SecretReceipt(
+                tenant_id=tenant_id,
+                workload_id=workload_id,
+                purpose=purpose,
+                handle_sha256=handle_hash,
+                expires_at=lease.expires_at,
+                grant_id=grant_id,
+                state="ACTIVE",
+                version=1,
+                issued_at=issued_at,
+            )
+            grant = SecretGrant(lease.handle, grant_id, 1)
+            try:
+                cursor.execute(
+                    """INSERT INTO secret_grants (
+                        tenant_id, grant_id, workload_id, purpose,
+                        reference_sha256, handle_sha256, expires_at, issued_at,
+                        state, version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1)""",
+                    (
+                        tenant_id,
+                        grant_id,
+                        workload_id,
+                        purpose,
+                        _hash_text(reference),
+                        handle_hash,
+                        lease.expires_at,
+                        issued_at,
+                    ),
+                )
+                cursor.execute(
+                    """INSERT INTO secret_grant_idempotency (
+                        tenant_id, idempotency_key, operation,
+                        request_sha256, grant_id
+                    ) VALUES (?, ?, 'grant', ?, ?)""",
+                    (tenant_id, idempotency_key, request_hash, grant_id),
+                )
+            except sqlite3.IntegrityError as error:
+                self._best_effort_revoke(grant_id)
+                raise SecretDenied("GRANT_CONFLICT") from error
+            return grant, receipt
+
+    def revoke(
+        self,
+        grant_id: str,
+        *,
+        tenant_id: str,
+        expected_version: int | None = None,
+        idempotency_key: str | None = None,
+    ) -> SecretReceipt:
+        _require_identifier(grant_id, "grant_id")
+        with self._transaction() as cursor:
+            row = self._find_grant(cursor, grant_id, tenant_id)
+            resolved_tenant = row["tenant_id"]
+            fingerprint = _hash_values("revoke", resolved_tenant, row["grant_id"], expected_version)
+            replay = self._operation_replay(
+                cursor,
+                tenant_id=resolved_tenant,
+                idempotency_key=idempotency_key,
+                operation="revoke",
+                request_sha256=fingerprint,
+            )
+            if replay is not None:
+                return replay
+            if row["state"] == "REVOKED":
+                return _receipt(row)
+            if row["state"] != "ACTIVE":
+                raise SecretDenied("GRANT_NOT_ACTIVE")
+            if expected_version is not None and row["version"] != expected_version:
+                raise SecretDenied("VERSION_CONFLICT")
+            self._revoke_provider(row["grant_id"])
+            now = self._now()
+            cursor.execute(
+                """UPDATE secret_grants
+                   SET state='REVOKED', version=version+1, revoked_at=?
+                   WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
+                     AND version=?""",
+                (now, resolved_tenant, row["grant_id"], row["version"]),
+            )
+            if cursor.rowcount != 1:
+                raise SecretDenied("VERSION_CONFLICT")
+            updated = self._load(cursor, resolved_tenant, row["grant_id"])
+            self._remember_operation(
+                cursor,
+                tenant_id=resolved_tenant,
+                idempotency_key=idempotency_key,
+                operation="revoke",
+                request_sha256=fingerprint,
+                grant_id=row["grant_id"],
+            )
+            return _receipt(updated)
+
+    def rotate(
+        self,
+        *,
+        tenant_id: str,
+        workload_id: str,
+        reference: str,
+        purpose: str,
+        previous_grant_id: str,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> tuple[SecretGrant | None, SecretReceipt]:
+        _validate_request(tenant_id, workload_id, reference, purpose, idempotency_key)
+        _require_identifier(previous_grant_id, "grant_id")
+        if type(expected_version) is not int or expected_version < 1:
+            raise SecretDenied("INVALID_VERSION")
+        fingerprint = _request_hash(
+            workload_id,
+            reference,
+            purpose,
+            previous_grant_id,
+            expected_version,
+        )
+        with self._transaction() as cursor:
+            replay = self._operation_replay(
+                cursor,
+                tenant_id=tenant_id,
+                idempotency_key=idempotency_key,
+                operation="rotate",
+                request_sha256=fingerprint,
+            )
+            if replay is not None:
+                return None, replay
+            old = self._find_grant(cursor, previous_grant_id, tenant_id)
+            if (
+                old["workload_id"] != workload_id
+                or old["purpose"] != purpose
+                or old["state"] != "ACTIVE"
+                or old["version"] != expected_version
+            ):
+                raise SecretDenied("ROTATION_PRECONDITION_FAILED")
+            issued_at = self._now()
+            grant_id = (
+                "grant-"
+                + hashlib.sha256(
+                    f"{tenant_id}\0{idempotency_key}\0{fingerprint}".encode()
+                ).hexdigest()[:40]
+            )
+            lease = self._rotate_provider(
+                reference,
+                purpose,
+                previous_grant_id,
+                grant_id,
+            )
+            handle_hash = _hash_text(lease.handle)
+            try:
+                cursor.execute(
+                    """INSERT INTO secret_grants (
+                        tenant_id, grant_id, workload_id, purpose,
+                        reference_sha256, handle_sha256, expires_at, issued_at,
+                        state, version, rotated_from_grant_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?)""",
+                    (
+                        tenant_id,
+                        grant_id,
+                        workload_id,
+                        purpose,
+                        _hash_text(reference),
+                        handle_hash,
+                        lease.expires_at,
+                        issued_at,
+                        old["grant_id"],
+                    ),
+                )
+                cursor.execute(
+                    """UPDATE secret_grants
+                       SET state='REVOKED', version=version+1, revoked_at=?
+                       WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
+                         AND version=?""",
+                    (issued_at, tenant_id, old["grant_id"], expected_version),
+                )
+                if cursor.rowcount != 1:
+                    raise SecretDenied("VERSION_CONFLICT")
+                self._remember_operation(
+                    cursor,
+                    tenant_id=tenant_id,
+                    idempotency_key=idempotency_key,
+                    operation="rotate",
+                    request_sha256=fingerprint,
+                    grant_id=grant_id,
+                )
+            except Exception:
+                self._best_effort_revoke(grant_id)
+                raise
+            receipt = SecretReceipt(
+                tenant_id,
+                workload_id,
+                purpose,
+                handle_hash,
+                lease.expires_at,
+                grant_id,
+                "ACTIVE",
+                1,
+                issued_at,
+            )
+            return SecretGrant(lease.handle, grant_id, 1), receipt
+
+    def receipt(self, *, tenant_id: str, grant_id: str) -> SecretReceipt:
+        _require_identifier(tenant_id, "tenant_id")
+        _require_identifier(grant_id, "grant_id")
+        row = self._connection.execute(
+            """SELECT * FROM secret_grants
+               WHERE tenant_id=? AND grant_id=?""",
+            (tenant_id, grant_id),
+        ).fetchone()
+        if row is None:
+            raise SecretDenied("GRANT_UNKNOWN")
+        return _receipt(row)
+
+    def expire(self, *, tenant_id: str, now: int | None = None) -> int:
+        _require_identifier(tenant_id, "tenant_id")
+        effective_now = self._now() if now is None else now
+        if type(effective_now) is not int or effective_now < 0:
+            raise SecretDenied("INVALID_TIME")
+        with self._transaction() as cursor:
+            cursor.execute(
+                """UPDATE secret_grants
+                   SET state='EXPIRED', version=version+1
+                   WHERE tenant_id=? AND state='ACTIVE' AND expires_at<=?""",
+                (tenant_id, effective_now),
+            )
+            return cursor.rowcount
+
+    def _issue(self, reference: str, purpose: str, grant_id: str) -> OpaqueSecretLease:
+        try:
+            lease = self.p.issue(reference, purpose=purpose, grant_id=grant_id)
+        except Exception as error:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from error
+        if not isinstance(lease, OpaqueSecretLease):
+            raise SecretDenied("INVALID_PROVIDER_LEASE")
+        return lease
+
+    def _rotate_provider(
+        self,
+        reference: str,
+        purpose: str,
+        previous_grant_id: str,
+        grant_id: str,
+    ) -> OpaqueSecretLease:
+        try:
+            lease = self.p.rotate(
+                reference,
+                purpose=purpose,
+                previous_grant_id=previous_grant_id,
+                grant_id=grant_id,
+            )
+        except Exception as error:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from error
+        if not isinstance(lease, OpaqueSecretLease):
+            raise SecretDenied("INVALID_PROVIDER_LEASE")
+        return lease
+
+    def _revoke_provider(self, grant_id: str) -> None:
+        try:
+            self.p.revoke(grant_id)
+        except Exception as error:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from error
+
+    def _best_effort_revoke(self, grant_id: str) -> None:
+        try:
+            self.p.revoke(grant_id)
+        except Exception:
+            return
+
+    def _now(self) -> int:
+        value = self._clock()
+        if type(value) is not int or value < 0:
+            raise SecretDenied("INVALID_TIME")
+        return value
+
+    @staticmethod
+    def _find_grant(cursor: sqlite3.Cursor, grant_id: str, tenant_id: str) -> sqlite3.Row:
+        _require_identifier(tenant_id, "tenant_id")
+        row: sqlite3.Row | None = cursor.execute(
+            """SELECT * FROM secret_grants
+               WHERE tenant_id=? AND grant_id=?""",
+            (tenant_id, grant_id),
+        ).fetchone()
+        if row is None:
+            raise SecretDenied("GRANT_UNKNOWN")
+        return row
+
+    @staticmethod
+    def _load(cursor: sqlite3.Cursor, tenant_id: str, grant_id: str) -> sqlite3.Row:
+        row: sqlite3.Row | None = cursor.execute(
+            """SELECT * FROM secret_grants
+               WHERE tenant_id=? AND grant_id=?""",
+            (tenant_id, grant_id),
+        ).fetchone()
+        if row is None:
+            raise SecretDenied("GRANT_UNKNOWN")
+        return row
+
+    @classmethod
+    def _operation_replay(
+        cls,
+        cursor: sqlite3.Cursor,
+        *,
+        tenant_id: str,
+        idempotency_key: str | None,
+        operation: str,
+        request_sha256: str,
+    ) -> SecretReceipt | None:
+        if idempotency_key is None:
+            return None
+        _require_identifier(idempotency_key, "idempotency_key")
+        row = cursor.execute(
+            """SELECT operation, request_sha256, grant_id
+               FROM secret_grant_idempotency
+               WHERE tenant_id=? AND idempotency_key=?""",
+            (tenant_id, idempotency_key),
+        ).fetchone()
+        if row is None:
+            return None
+        if (row["operation"], row["request_sha256"]) != (
+            operation,
+            request_sha256,
+        ):
+            raise SecretDenied("IDEMPOTENCY_CONFLICT")
+        return _receipt(cls._load(cursor, tenant_id, row["grant_id"]))
+
+    @staticmethod
+    def _remember_operation(
+        cursor: sqlite3.Cursor,
+        *,
+        tenant_id: str,
+        idempotency_key: str | None,
+        operation: str,
+        request_sha256: str,
+        grant_id: str,
+    ) -> None:
+        if idempotency_key is None:
+            return
+        cursor.execute(
+            """INSERT INTO secret_grant_idempotency (
+                tenant_id, idempotency_key, operation, request_sha256, grant_id
+            ) VALUES (?, ?, ?, ?, ?)""",
+            (tenant_id, idempotency_key, operation, request_sha256, grant_id),
+        )
+
+
+def _receipt(row: sqlite3.Row) -> SecretReceipt:
+    return SecretReceipt(
+        tenant_id=row["tenant_id"],
+        workload_id=row["workload_id"],
+        purpose=row["purpose"],
+        handle_sha256=row["handle_sha256"],
+        expires_at=row["expires_at"],
+        grant_id=row["grant_id"],
+        state=row["state"],
+        version=row["version"],
+        issued_at=row["issued_at"],
+    )
+
+
+def _validate_request(
+    tenant_id: str,
+    workload_id: str,
+    reference: str,
+    purpose: str,
+    idempotency_key: str,
+) -> None:
+    _require_identifier(tenant_id, "tenant_id")
+    _require_identifier(workload_id, "workload_id")
+    _require_identifier(idempotency_key, "idempotency_key")
+    if purpose not in _PURPOSES:
+        raise SecretDenied("PURPOSE_DENIED")
+    if type(reference) is not str or not reference or len(reference) > 2048:
+        raise SecretDenied("INVALID_REFERENCE")
+
+
+def _require_identifier(value: str, field: str) -> None:
+    if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+        raise SecretDenied(f"INVALID_{field.upper()}")
+
+
+def _request_hash(*values: object) -> str:
+    redacted = list(values)
+    if len(redacted) >= 2 and isinstance(redacted[1], str):
+        redacted[1] = _hash_text(redacted[1])
+    return _hash_values(*redacted)
+
+
+def _hash_values(*values: object) -> str:
+    payload = json.dumps(
+        values,
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _hash_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+__all__ = [
+    "SECRET_SCHEMA_STATEMENTS",
+    "SecretDenied",
+    "SecretGrant",
+    "SecretReceipt",
+    "SecretService",
+]
