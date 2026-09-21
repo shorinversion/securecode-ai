@@ -22,6 +22,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- CR-091 supersedes the unpromoted CR-090 target after independent review
+  found stale coupling to a five-package development base. The replacement
+  binds the actual four-package legacy workspace and the complete six-package
+  `1.0.0rc1` workspace, including both worker and server lock entries.
+
 - CR-090 prepares an atomic workspace policy migration for the private
   `1.0.0rc1` publication candidate. The protected policy accepts exactly the
   complete legacy workspace or the complete six-package rc1 workspace,

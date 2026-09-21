@@ -902,6 +902,15 @@ closed tuple. Cross-state mixtures fail. Package metadata and lock checks then
 use only the selected state. Secrets, SpecGate and publication checks remain
 unchanged.
 
+## D-109: Bind the rc1 migration to the clean publication base
+
+21 September 2026, CR-091. The effective migration selector uses the exact
+four-package `0.1.0a0` workspace present on the clean publication base and the
+complete six-package `1.0.0rc1` workspace containing worker and server. Test
+fixtures construct both missing rc1 packages before any mixed-state mutation.
+This supersedes the unpromoted CR-090 target, whose legacy tuple assumed an
+intermediate worker state that is absent from the clean base.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
