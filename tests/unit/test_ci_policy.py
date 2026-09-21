@@ -22,6 +22,7 @@ from detect_secrets.core import scan as detect_secrets_scan
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = REPOSITORY_ROOT / "scripts" / "ci_policy.py"
 PRECOMMIT_PATH = REPOSITORY_ROOT / "scripts" / "precommit_entry.py"
+QUALITY_PATH = REPOSITORY_ROOT / "scripts" / "quality.py"
 CANARY = "".join(("ghp_1234567890", "1234567890", "1234567890", "123456"))
 
 
@@ -49,6 +50,19 @@ def _load_precommit_entry() -> ModuleType:
 
 
 PRECOMMIT = _load_precommit_entry()
+
+
+def _load_quality() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("securecode_quality", QUALITY_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load quality module")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+QUALITY = _load_quality()
 ORIGINAL_POPEN = subprocess.Popen
 
 
@@ -969,6 +983,61 @@ def test_precommit_launcher_uses_the_project_owned_uv_and_closed_commands() -> N
         PRECOMMIT.build_command("quality", ["untrusted.py"])
     with pytest.raises(RuntimeError, match="unknown"):
         PRECOMMIT.build_command("unknown", [])
+
+
+def test_canonical_type_stages_cover_linux_and_win32_before_unit() -> None:
+    targets = ("first.py", "second.py")
+    stages = QUALITY._stages(targets)
+    type_stages = tuple(stage for stage in stages if stage.name.startswith("types-"))
+
+    assert tuple(stage.name for stage in type_stages) == ("types-linux", "types-win32")
+    assert tuple(stage.arguments for stage in type_stages) == tuple(
+        (
+            "-m",
+            "mypy",
+            "--config-file",
+            "pyproject.toml",
+            "--no-incremental",
+            "--platform",
+            platform,
+            *targets,
+        )
+        for platform in ("linux", "win32")
+    )
+    assert all(not stage.executes_repository_code for stage in type_stages)
+    unit_index = next(index for index, stage in enumerate(stages) if stage.name == "unit")
+    assert all(stages.index(stage) < unit_index for stage in type_stages)
+
+
+@pytest.mark.parametrize("failed_stage", ["types-linux", "types-win32"])
+def test_type_failure_runs_remaining_static_checks_but_skips_unit(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_stage: str,
+) -> None:
+    observed: list[tuple[str, dict[str, str]]] = []
+    sanitized = {"PATH": "trusted-tools", "PYTHONHASHSEED": "0"}
+    snapshots = iter(("same", "same"))
+
+    monkeypatch.setattr(QUALITY, "_python_targets", lambda: ("target.py",))
+    monkeypatch.setattr(QUALITY, "_repository_snapshot", lambda: next(snapshots))
+    monkeypatch.setattr(QUALITY, "_sanitized_environment", lambda _root: sanitized)
+
+    def run(stage: Any, environment: dict[str, str]) -> int:
+        observed.append((stage.name, environment))
+        return 1 if stage.name == failed_stage else 0
+
+    monkeypatch.setattr(QUALITY, "_run_stage", run)
+
+    assert QUALITY.main() == 1
+    assert [name for name, _environment in observed] == [
+        "spec",
+        "format",
+        "lint",
+        "types-linux",
+        "types-win32",
+    ]
+    assert all(environment is sanitized for _name, environment in observed)
+    assert "unit" not in {name for name, _environment in observed}
 
 
 def test_hook_cadence_preserves_policy_secrets_and_workflow_without_full_quality() -> None:
