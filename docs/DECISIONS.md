@@ -892,6 +892,16 @@
   their hash-complete lock records. Any additional dependency or version drift
   remains rejected.
 
+## D-108: Atomic workspace policy migration
+
+21 September 2026, CR-090. The policy migration accepts exactly two complete
+workspace states: the current five-package `0.1.0a0` state and the future
+six-package `1.0.0rc1` state with the server. One selector compares version,
+root dependencies, workspace sources, members and mypy roots as a single
+closed tuple. Cross-state mixtures fail. Package metadata and lock checks then
+use only the selected state. Secrets, SpecGate and publication checks remain
+unchanged.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).

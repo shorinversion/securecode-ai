@@ -22,6 +22,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- CR-090 prepares an atomic workspace policy migration for the private
+  `1.0.0rc1` publication candidate. The protected policy accepts exactly the
+  complete legacy workspace or the complete six-package rc1 workspace,
+  rejects mixed states and retains bounded quality execution.
+
 ### P9.16 academic-content and validator remediation (2026-09-16)
 
 - Replace the metadata inventory report with a reproducible academic report
