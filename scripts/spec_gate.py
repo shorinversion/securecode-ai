@@ -3997,12 +3997,27 @@ class SpecGate:
                     raise GateInputError("PR_HEAD_CHAIN_KIND")
         except GateInputError as error:
             return (error.code,)
-        return self.validate_candidate(
+        errors = self.validate_candidate(
             "committed-candidate",
             base=logical_base,
             candidate=pull_request_head,
             expected_checkout=synthetic_candidate,
         )
+        if errors:
+            return errors
+        previous = base
+        for commit in commits[:-1]:
+            errors = self.validate_candidate(
+                "committed-candidate",
+                base=previous,
+                candidate=commit,
+                expected_checkout=synthetic_candidate,
+                _check_snapshot=False,
+            )
+            if errors:
+                return tuple(sorted({"PR_HEAD_CHAIN_COMMIT", *errors}))
+            previous = commit
+        return ()
 
     def validate_push_candidate(self, *, base: str, candidate: str) -> tuple[str, ...]:
 
@@ -4029,6 +4044,7 @@ class SpecGate:
                 "PR_SYNTHETIC_TREE": "PUSH_MERGE_TREE",
                 "PR_HEAD_CHAIN": "PUSH_MERGE_HEAD_CHAIN",
                 "PR_HEAD_CHAIN_KIND": "PUSH_MERGE_HEAD_CHAIN_KIND",
+                "PR_HEAD_CHAIN_COMMIT": "PUSH_MERGE_HEAD_CHAIN_COMMIT",
             }
             return tuple(translations.get(error, error) for error in errors)
         except GateInputError as error:
@@ -4041,6 +4057,7 @@ class SpecGate:
         base: str,
         candidate: str | None,
         expected_checkout: str | None = None,
+        _check_snapshot: bool = True,
     ) -> tuple[str, ...]:
         self.diagnostics = Diagnostics(self.limits)
         try:
@@ -4248,7 +4265,8 @@ class SpecGate:
                 self.diagnostics.add("HISTORICAL_CHANGE_PACKET_MUTATION")
             if historical_reviews:
                 self.diagnostics.add("HISTORICAL_REVIEW_MUTATION")
-            self.diagnostics.extend(self.validate_snapshot())
+            if _check_snapshot:
+                self.diagnostics.extend(self.validate_snapshot())
             state_after = git_bytes(
                 self.root, "status", "--porcelain=v1", "-z", "--untracked-files=all"
             )
