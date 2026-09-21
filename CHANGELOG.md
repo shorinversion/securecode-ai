@@ -22,6 +22,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- CR-092 makes a protected promotion tail validate every earlier pull-request
+  commit against its direct parent. An invalid implementation or direct
+  evaluator edit can no longer be hidden behind a valid final promotion.
+
 - CR-091 supersedes the unpromoted CR-090 target after independent review
   found stale coupling to a five-package development base. The replacement
   binds the actual four-package legacy workspace and the complete six-package

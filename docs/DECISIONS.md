@@ -911,6 +911,15 @@ fixtures construct both missing rc1 packages before any mixed-state mutation.
 This supersedes the unpromoted CR-090 target, whose legacy tuple assumed an
 intermediate worker state that is absent from the clean base.
 
+## D-110: Validate every commit behind a protected PR tail
+
+21 September 2026, CR-092. A multi-commit pull request may end in one protected
+promotion, but every preceding commit is independently classified and validated
+against its direct parent. The final checkout snapshot is checked once; earlier
+commit checks reuse that immutable checkout only for repository-state binding.
+Any invalid earlier member returns its original diagnostic together with a
+chain-member diagnostic. Push validation translates the chain diagnostic.
+
 ## Открытые решения, не блокирующие P1
 
 - Конкретные external beta datasets после license/leakage review (`P7.6`).
