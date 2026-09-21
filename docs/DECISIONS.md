@@ -927,3 +927,10 @@ chain-member diagnostic. Push validation translates the chain diagnostic.
 - OPA/Rego против расширения typed policy evaluator после pilot evidence.
 - Web UI scope: до `P6` достаточно API + SCM/CLI; dashboard не входит в Core MVP.
 - MicroVM high-assurance sandbox после gVisor compatibility/performance evidence.
+
+## D-111: Deduplicate immutable secret-scan inputs
+
+- Status: proposed by CR-093.
+- Decision: scan each unique repository path and Git object ID pair once across the index and candidate commit trees.
+- Reason: an unchanged immutable blob has identical bytes, while retaining the path in the identity preserves path-sensitive baselines and forces renamed content to be checked again.
+- Consequence: secret coverage is unchanged and repeated CI work is bounded by unique path-object pairs.

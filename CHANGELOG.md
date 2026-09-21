@@ -22,6 +22,8 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- CR-093 deduplicates immutable secret-scan blobs by repository path and object ID, retaining rename-sensitive coverage while reducing repeated CI work.
+
 - P9.19 fixes cross-platform static analysis of guarded Windows and POSIX APIs; Linux and Windows mypy now validate the same runtime code without weakening platform checks.
 
 - CR-092 makes a protected promotion tail validate every earlier pull-request
