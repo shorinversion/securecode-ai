@@ -833,6 +833,45 @@ def parse_health_arguments(tokens: tuple[str, ...]) -> bool:
     return live
 
 
+def decide_finding(
+    settings: ConnectedRunSettings,
+    finding_id: str,
+    *,
+    run_id: str,
+    revision_sha: str,
+    decision_type: str,
+    reason: str,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Record one human decision on a finding at an exact revision."""
+
+    if not _identifier(finding_id) or not _identifier(run_id) or not _identifier(decision_type):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    if not _commit(revision_sha) or not _precondition(if_match) or not reason:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    if len(decision_type) > 64 or len(reason) > 1024:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        f"/api/v1/findings/{finding_id}/decisions",
+        document={
+            "run_id": run_id,
+            "revision_sha": revision_sha,
+            "decision_type": decision_type,
+            "reason": reason,
+        },
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=run_id, kind=ResultKind.FINDINGS, document=document)
+
+
 __all__ = [
     "ApprovalDraft",
     "ConnectedApi",
@@ -848,6 +887,7 @@ __all__ = [
     "check_health",
     "create_approval",
     "decide_approval",
+    "decide_finding",
     "fetch_finding",
     "fetch_policies",
     "fetch_results",

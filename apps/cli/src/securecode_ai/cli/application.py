@@ -48,6 +48,7 @@ from .connected import (
     check_health,
     create_approval,
     decide_approval,
+    decide_finding,
     fetch_finding,
     fetch_policies,
     fetch_results,
@@ -151,10 +152,18 @@ def main(
             "finding",
             "policies",
             "health",
+            "decisions",
         }
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] == "decisions":
+        return run_connected_decision(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
     if stripped and stripped[0] in {"finding", "policies", "health"}:
         return run_connected_readout(
             stripped,
@@ -296,6 +305,43 @@ def main(
     else:
         errors.write(_HUMAN_SUCCESS + "\n")
     return int(result.exit_code)
+
+
+def run_connected_decision(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Record one operator decision on a finding."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        finding_id = tokens[1]
+        fields = parse_approval_arguments(tokens[2:])
+        required = {"if-match", "run", "revision", "decision", "reason"}
+        if not required.issubset(fields):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        settings = settings_from_environment(environment)
+        collection = decide_finding(
+            settings,
+            finding_id,
+            run_id=fields["run"],
+            revision_sha=fields["revision"],
+            decision_type=fields["decision"],
+            reason=fields["reason"],
+            if_match=fields["if-match"],
+        )
+    except ConnectedCliError as error:
+        stderr.write("connected decision was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected decision failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
 
 
 def run_connected_readout(
@@ -484,6 +530,7 @@ __all__ = [
     "main",
     "run_connect_command",
     "run_connected_approval",
+    "run_connected_decision",
     "run_connected_inspection",
     "run_connected_readout",
     "run_connected_results",

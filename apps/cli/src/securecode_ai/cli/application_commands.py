@@ -134,6 +134,11 @@ def _parser() -> argparse.ArgumentParser:
         help="read the control plane's effective policy documents",
     )
     subparsers.add_parser(
+        "decisions",
+        add_help=False,
+        help="record an operator decision on one finding",
+    )
+    subparsers.add_parser(
         "health",
         add_help=False,
         help="check readiness or liveness of the configured control plane",
@@ -157,6 +162,7 @@ def _command_help(command: str) -> str:
         "finding": "read one finding from the control plane",
         "policies": "read the control plane's effective policy documents",
         "health": "check readiness or liveness of the configured control plane",
+        "decisions": "record an operator decision on one finding",
     }
     description = descriptions.get(command)
     if description is None:
@@ -207,6 +213,15 @@ def _command_help(command: str) -> str:
         parser.add_argument("finding_id", help="control plane finding identifier")
     elif command == "policies":
         pass
+    elif command == "decisions":
+        parser.add_argument("finding_id", help="control plane finding identifier")
+        parser.add_argument("--if-match", required=True, help="observed finding state")
+        parser.add_argument("--run", required=True, help="owning run identifier")
+        parser.add_argument(
+            "--revision", required=True, help="exact revision the decision binds to"
+        )
+        parser.add_argument("--decision", required=True, help="decision type to record")
+        parser.add_argument("--reason", required=True, help="short bounded reason")
     elif command == "health":
         parser.add_argument(
             "--live",
