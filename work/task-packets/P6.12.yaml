@@ -1,0 +1,110 @@
+schema_version: "0.1-draft"
+
+task:
+  id: "P6.12"
+  type: "implementation"
+  objective: "Provide a clean-start container deployment for the control-plane server and connected worker with non-root execution, real readiness health checking, least-privilege Compose controls and a source-verified environment inventory."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"
+  starting_commit_sha: "\x38\x37\x30\x30\x63\x37\x65\x65\x35\x36\x38\x30\x34\x63\x63\x37\x39\x65\x38\x65\x33\x65\x66\x33\x36\x30\x39\x63\x33\x62\x63\x63\x32\x30\x63\x65\x30\x33\x63\x33"
+  spec_refs: [SC-PROD-020, SC-SYS-006]
+  decision_refs: []
+  preconditions:
+    - "P6.11 connected server and worker executables are present in the repository."
+    - "The deployment runs the backend/worker only and does not claim to provide per-run sandbox isolation."
+  non_goals:
+    - "Changing server or worker application behavior."
+    - "Granting the worker Docker socket, privileged execution or write access to the host checkout."
+    - "Publishing images or exposing the service publicly."
+
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "P6.12-implementer"
+  mode: "direct"
+  exclusive_path_lease:
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "deploy/docker/README.md"
+    - "deploy/docker/compose.yaml"
+    - "deploy/docker/healthcheck.py"
+    - "deploy/docker/server.Dockerfile"
+    - "tests/integration/test_container_deployment.py"
+    - "work/task-packets/P6.12.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+
+scope:
+  allowed_paths:
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "deploy/docker/README.md"
+    - "deploy/docker/compose.yaml"
+    - "deploy/docker/healthcheck.py"
+    - "deploy/docker/server.Dockerfile"
+    - "tests/integration/test_container_deployment.py"
+    - "work/task-packets/P6.12.yaml"
+  forbidden_paths: ["specs/**", "tests/evaluator/**", "artifacts/gates/**", "report/m-a2026/**", "scripts/build_m_a2026_submission.py", "tests/integration/test_m_a2026_submission.py"]
+  max_changed_files: 8
+  max_diff_lines: 3000
+
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands:
+    - "docker compose config"
+    - "docker build for deploy/docker/server.Dockerfile and deploy/docker/worker.Dockerfile"
+    - "pytest tests/integration/test_container_deployment.py"
+    - "ruff format/check for added Python deployment files"
+    - "git diff --check"
+    - "python scripts/spec_gate.py index-candidate/committed-candidate"
+  network: "deny except pinned base-image pulls during explicit image build"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+
+outputs:
+  required_artifacts:
+    - "Server image with an API readiness healthcheck and non-root runtime."
+    - "Compose configuration for a loopback-published server and least-privilege worker."
+    - "Clean-start instructions and complete application runtime environment inventory."
+
+constraints:
+  invariants:
+    - "The worker mounts its repository checkout read-only."
+    - "No service receives a Docker socket or privileged mode."
+    - "Server readiness is determined by the actual versioned API readiness route."
+    - "Secrets are mounted from files and are never placed in the image or committed environment file."
+    - "The worker waits for server readiness and validates the server certificate."
+  compatibility:
+    - "Existing server and worker commands and environment contracts remain unchanged."
+    - "The Compose deployment does not claim sandbox isolation for untrusted repository code."
+  security:
+    - "Images run as UID/GID 65532; Compose drops capabilities and enables no-new-privileges."
+    - "The host listener binds to loopback and the checkout mount is read-only."
+    - "TLS is required for the server's non-loopback container listener."
+  privacy:
+    - "No secrets, source contents or private repository paths are added to durable example artifacts."
+
+verification:
+  acceptance_commands:
+    - "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --group quality python -m pytest tests/integration/test_container_deployment.py -q"
+    - "uv run --group quality python -I -m ruff format --check deploy/docker/healthcheck.py tests/integration/test_container_deployment.py"
+    - "uv run --group quality python -I -m ruff check deploy/docker/healthcheck.py tests/integration/test_container_deployment.py"
+    - "docker compose -f deploy/docker/compose.yaml config"
+    - "docker build -f deploy/docker/server.Dockerfile -t securecode-ai/server:p6.12 ."
+    - "docker build -f deploy/docker/worker.Dockerfile -t securecode-ai/worker:p6.12 ."
+  negative_cases:
+    - "Invalid or not-ready API response must make the server healthcheck fail."
+    - "Compose must not publish the server on a non-loopback host address."
+    - "Compose must not grant privileged mode or mount the Docker socket."
+  required_evidence:
+    - "Docker Compose resolves and validates with externally supplied secret and checkout paths."
+    - "Both service images build from the repository context."
+    - "Environment inventory test has no undocumented SECURECODE_* names from apps/server/src or apps/worker/src."
+  independent_validator_required: true
+  primary_integrator_rerun_required: true
+
+completion:
+  definition_of_done_refs: ["P6.12", "SC-PROD-020"]
+  changelog_required: true
+  adr_required: false

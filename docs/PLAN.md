@@ -430,7 +430,7 @@ approvals и audit trail без обязательной передачи пол
 | `P6.9` | Minimal developer/AppSec UI or API view | P6.2, P6.8 | run/finding/evidence/approval journey | `TODO` |
 | `P6.10` | Immutable audit export and operational telemetry | P6.2–P6.8 | provenance completeness and redaction checks | `IN PROGRESS` |
 | `P6.11` | Enterprise MVP end-to-end scenario | P6.1–P6.10 | CI runner + backend + SCM + approval + supersession | `TODO` |
-| `P6.12` | Containerize backend/worker and document launch | P6.11 | Dockerfile image build, health, non-root runtime and clean-start instructions | `TODO` |
+| `P6.12` | Containerize backend/worker and document launch | P6.11 | Dockerfile image build, health, non-root runtime and clean-start instructions | `IN PROGRESS` |
 
 ### G6 — Enterprise Workflow MVP v0.2 pilot
 

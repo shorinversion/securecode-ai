@@ -12,6 +12,7 @@ WORKDIR /app
 COPY apps/server/src /app/apps/server/src
 COPY packages /app/packages
 COPY deploy/docker/entrypoint.py /app/entrypoint.py
+COPY deploy/docker/healthcheck.py /app/healthcheck.py
 ENV PYTHONPATH=/app/apps/server/src:/app/packages/adapters/src:/app/packages/contracts/src:/app/packages/core/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONNOUSERSITE=1 \
@@ -29,5 +30,6 @@ RUN mkdir -p /var/lib/securecode /tmp/securecode \
     && chmod -R a-w /app
 USER 65532:65532
 EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 CMD ["python", "/app/healthcheck.py"]
 ENTRYPOINT ["python","/app/entrypoint.py"]
 CMD ["python","-m","securecode_ai.server.main"]
