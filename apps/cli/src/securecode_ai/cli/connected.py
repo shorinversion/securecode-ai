@@ -1046,8 +1046,111 @@ def read_secret_grant(
     return ConnectedCollection(run_id=grant_id, kind=ResultKind.FINDINGS, document=document)
 
 
+@dataclass(frozen=True, slots=True)
+class BackupDraft:
+    """Operator-supplied metadata for one backup request."""
+
+    backup_id: str
+    repository_id: str
+    component_hashes: tuple[str, ...]
+    region: str
+    key_reference: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _identifier(self.backup_id)
+            or not _identifier(self.repository_id)
+            or not _identifier(self.region)
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not _printable(self.key_reference, maximum=512):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if (
+            not isinstance(self.component_hashes, tuple)
+            or not 1 <= len(self.component_hashes) <= 10_000
+            or len(set(self.component_hashes)) != len(self.component_hashes)
+            or any(not _sha256(item) for item in self.component_hashes)
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+
+
+def _printable(value: object, *, maximum: int) -> bool:
+    if not isinstance(value, str) or not 1 <= len(value) <= maximum:
+        return False
+    return all(33 <= ord(character) <= 126 for character in value)
+
+
+def create_backup(
+    settings: ConnectedRunSettings,
+    draft: BackupDraft,
+    *,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Open one backup request over the declared component hashes."""
+
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/backups",
+        document={
+            "backup_id": draft.backup_id,
+            "repository_id": draft.repository_id,
+            "component_hashes": list(draft.component_hashes),
+            "region": draft.region,
+            "encryption_key_ref": draft.key_reference,
+        },
+        token=settings.token,
+        idempotency_key=key,
+    )
+    return ConnectedCollection(run_id=draft.backup_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def read_backup(
+    settings: ConnectedRunSettings, backup_id: str, *, api: ConnectedApi | None = None
+) -> ConnectedCollection:
+    """Read one backup's durable state."""
+
+    if not _identifier(backup_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read("/api/v1/backups/" + backup_id, token=settings.token)
+    return ConnectedCollection(run_id=backup_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def transition_backup(
+    settings: ConnectedRunSettings,
+    backup_id: str,
+    *,
+    restore: bool,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Execute a backup, or restore from it, against an exact observed state."""
+
+    if not _identifier(backup_id) or not _precondition(if_match) or type(restore) is not bool:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    action = "restore" if restore else "execute"
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/backups/" + backup_id + ":" + action,
+        document={},
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=backup_id, kind=ResultKind.FINDINGS, document=document)
+
+
 __all__ = [
     "ApprovalDraft",
+    "BackupDraft",
     "ConnectedApi",
     "ConnectedCliError",
     "ConnectedCliErrorCode",
@@ -1061,6 +1164,7 @@ __all__ = [
     "cancel_run",
     "check_health",
     "create_approval",
+    "create_backup",
     "decide_approval",
     "decide_finding",
     "fetch_events",
@@ -1078,10 +1182,12 @@ __all__ = [
     "parse_run_arguments",
     "parse_single_argument",
     "read_approval",
+    "read_backup",
     "read_secret_grant",
     "render_receipt",
     "resumable_idempotency_key",
     "run_connected",
     "settings_from_environment",
     "timestamp",
+    "transition_backup",
 ]

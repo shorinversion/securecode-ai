@@ -42,12 +42,14 @@ from .application_profiles import (
 from .approval import run_patch_approval_command
 from .connected import (
     ApprovalDraft,
+    BackupDraft,
     ConnectedCliError,
     ConnectedCliErrorCode,
     SecretGrantDraft,
     cancel_run,
     check_health,
     create_approval,
+    create_backup,
     decide_approval,
     decide_finding,
     fetch_events,
@@ -64,9 +66,11 @@ from .connected import (
     parse_run_arguments,
     parse_single_argument,
     read_approval,
+    read_backup,
     read_secret_grant,
     run_connected,
     settings_from_environment,
+    transition_backup,
 )
 from .connected import (
     render_receipt as render_connected_receipt,
@@ -160,6 +164,7 @@ def main(
             "decisions",
             "secrets",
             "events",
+            "backups",
         }
     ):
         output.write(_command_help(stripped[0]))
@@ -173,6 +178,13 @@ def main(
         )
     if stripped and stripped[0] == "decisions":
         return run_connected_decision(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
+    if stripped and stripped[0] == "backups":
+        return run_connected_backups(
             stripped,
             stdout=output,
             stderr=errors,
@@ -411,6 +423,64 @@ def run_connected_decision(
     return int(CliExitCode.COMPLETED)
 
 
+def run_connected_backups(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Create, read, execute or restore one backup through the control plane."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        action = tokens[1]
+        settings = settings_from_environment(environment)
+        if action == "create":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {"backup-id", "repository", "region", "key-ref", "components"}
+            if not required.issubset(fields):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = create_backup(
+                settings,
+                BackupDraft(
+                    backup_id=fields["backup-id"],
+                    repository_id=fields["repository"],
+                    component_hashes=tuple(
+                        item for item in fields["components"].split(",") if item
+                    ),
+                    region=fields["region"],
+                    key_reference=fields["key-ref"],
+                ),
+            )
+        elif action == "show":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"backup-id"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = read_backup(settings, fields["backup-id"])
+        elif action in {"execute", "restore"}:
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"backup-id", "if-match"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = transition_backup(
+                settings,
+                fields["backup-id"],
+                restore=action == "restore",
+                if_match=fields["if-match"],
+            )
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    except ConnectedCliError as error:
+        stderr.write("connected backup operation was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected backup operation failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
 def run_connected_events(
     tokens: tuple[str, ...],
     *,
@@ -620,6 +690,7 @@ __all__ = [
     "main",
     "run_connect_command",
     "run_connected_approval",
+    "run_connected_backups",
     "run_connected_decision",
     "run_connected_events",
     "run_connected_inspection",
