@@ -38,3 +38,33 @@ def test_recorded_empty_baseline_replays_and_is_loadable() -> None:
         == second
         == store.load(tenant_id="tenant", repository_id="repository", revision_sha="a" * 40)
     )
+
+
+def test_compare_uses_the_exact_persisted_base_and_trusted_lineage() -> None:
+    store = DurableBaselineStore(sqlite3.connect(":memory:"))
+    base = "a" * 40
+    head = "b" * 40
+    base_audit = AuditRun.model_construct(
+        execution_identity=SimpleNamespace(
+            repository_revision=SimpleNamespace(
+                tenant_id="tenant", repository_id="repository", head_sha=base
+            )
+        ),
+        coverage_manifest=SimpleNamespace(discovery_candidates=()),
+    )
+    head_audit = AuditRun.model_construct(
+        execution_identity=SimpleNamespace(
+            repository_revision=SimpleNamespace(
+                tenant_id="tenant", repository_id="repository", base_sha=base, head_sha=head
+            )
+        ),
+        coverage_manifest=SimpleNamespace(discovery_candidates=()),
+        current_head_sha=head,
+    )
+    store.record(base_audit)
+
+    comparison = store.compare_for_audit(head_audit, commit_lineage=(base, head))
+
+    assert comparison.base_sha == base
+    assert comparison.head_sha == head
+    assert comparison.new_fingerprints == ()

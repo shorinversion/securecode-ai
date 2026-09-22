@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from securecode_ai.contracts import AuditRun, DiscoveryCandidate
 from securecode_ai.core.baseline_fingerprints import (
     BASELINE_FINGERPRINT_SCHEMA_VERSION,
+    BaselineFingerprintComparison,
     BaselineFingerprintSnapshot,
+    compare_baseline_fingerprints,
 )
 
 
@@ -99,3 +101,34 @@ class DurableBaselineStore:
             )
         except (TypeError, ValueError, json.JSONDecodeError):
             raise BaselineStoreError("stored baseline is invalid") from None
+
+    def compare_for_audit(
+        self,
+        audit_run: AuditRun,
+        *,
+        commit_lineage: tuple[str, ...],
+    ) -> BaselineFingerprintComparison:
+        """Compare one verified head run with its exact persisted base revision."""
+
+        if type(audit_run) is not AuditRun:
+            raise BaselineStoreError("baseline audit run is invalid")
+        revision = audit_run.execution_identity.repository_revision
+        if revision.base_sha is None:
+            raise BaselineStoreError("baseline revision is unavailable")
+        baseline = self.load(
+            tenant_id=revision.tenant_id,
+            repository_id=revision.repository_id,
+            revision_sha=revision.base_sha,
+        )
+        head = BaselineFingerprintSnapshot(
+            schema_version=BASELINE_FINGERPRINT_SCHEMA_VERSION,
+            tenant_id=revision.tenant_id,
+            revision_sha=revision.head_sha,
+            findings=audit_run.coverage_manifest.discovery_candidates,
+        )
+        return compare_baseline_fingerprints(
+            baseline=baseline,
+            head=head,
+            current_head_sha=audit_run.current_head_sha,
+            commit_lineage=commit_lineage,
+        )
