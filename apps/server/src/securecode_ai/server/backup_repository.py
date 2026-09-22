@@ -204,9 +204,9 @@ class BackupRepository:
         request_sha256: str,
     ) -> BackupRecord | None:
         _require_identifier(tenant_id, "tenant_id")
-        _validate_operation_fields(idempotency_key, operation, request_sha256)
         if idempotency_key is None:
             return None
+        _validate_operation_fields(idempotency_key, operation, request_sha256)
         row = self.db.execute(
             """SELECT operation, request_sha256, result_json
                FROM backup_idempotency
