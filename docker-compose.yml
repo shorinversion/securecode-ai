@@ -1,0 +1,64 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: deploy/docker/server.Dockerfile
+    environment:
+      SECURECODE_BOOTSTRAP_TENANT_ID: ${SECURECODE_BOOTSTRAP_TENANT_ID:?set tenant id}
+      SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+      SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES: ${SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES:?set repository scope}
+      SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE: /run/secrets/worker_token
+      SECURECODE_TLS_CERT_FILE: /run/secrets/server_tls_cert
+      SECURECODE_TLS_KEY_FILE: /run/secrets/server_tls_key
+    ports:
+      - "127.0.0.1:8080:8080"
+    secrets:
+      - admin_token
+      - source: server_tls_cert
+        target: server_tls_cert
+        mode: 0444
+      - source: server_tls_key
+        target: server_tls_key
+        mode: 0400
+      - worker_token
+    volumes:
+      - securecode_server_data:/var/lib/securecode
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/docker/worker.Dockerfile
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      SECURECODE_CONTROL_PLANE_URL: https://server:8080
+      SSL_CERT_FILE: /run/secrets/server_ca
+      SECURECODE_WORKER_ID: ${SECURECODE_WORKER_ID:?set worker id}
+      SECURECODE_WORKER_TARGET: /workspace
+      SECURECODE_WORKER_TOKEN_FILE: /run/secrets/worker_token
+    read_only: true
+    secrets:
+      - source: server_tls_cert
+        target: server_ca
+        mode: 0444
+      - worker_token
+    tmpfs:
+      - /tmp/securecode:mode=0700,uid=65532,gid=65532
+    volumes:
+      - ${SECURECODE_WORKER_TARGET:?set absolute checkout path}:/workspace:ro
+      - securecode_worker_data:/var/lib/securecode
+
+secrets:
+  admin_token:
+    file: ${SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE:?set admin token file}
+  worker_token:
+    file: ${SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE:?set worker token file}
+  server_tls_cert:
+    file: ${SECURECODE_TLS_CERT_FILE:?set TLS certificate file}
+  server_tls_key:
+    file: ${SECURECODE_TLS_KEY_FILE:?set TLS private key file}
+
+volumes:
+  securecode_server_data:
+  securecode_worker_data:
