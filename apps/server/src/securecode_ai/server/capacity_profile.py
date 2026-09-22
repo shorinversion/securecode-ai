@@ -13,6 +13,7 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Final
 
@@ -93,19 +94,17 @@ class InProcessCapacityExecutor:
             or not 1 <= iterations <= MAX_ITERATIONS
         ):
             raise ValueError("capacity execution request is invalid")
+        measurement = self._measure(scenario, concurrency=concurrency, iterations=iterations)
         try:
-            return asyncio.run(
-                self._measure(scenario, concurrency=concurrency, iterations=iterations)
-            )
+            asyncio.get_running_loop()
         except RuntimeError:
-            # an enclosing loop is already running: measure on a private loop
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(
-                    self._measure(scenario, concurrency=concurrency, iterations=iterations)
-                )
-            finally:
-                loop.close()
+            return asyncio.run(measurement)
+
+        # asyncio prohibits driving a second loop in a thread that already owns
+        # one. Capacity profiling is synchronous by design, so move its private
+        # loop to one bounded worker when an API handler invokes it.
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="securecode-capacity") as pool:
+            return pool.submit(asyncio.run, measurement).result()
 
     async def _measure(
         self,

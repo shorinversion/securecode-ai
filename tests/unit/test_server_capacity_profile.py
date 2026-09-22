@@ -42,3 +42,14 @@ def test_duplicate_capacity_profile_reports_a_passing_real_application_cell() ->
     assert receipt.cells[0].scenario == "duplicate_delivery"
     assert receipt.cells[0].completed
     assert receipt.cells[0].cancellations == 0
+
+
+def test_capacity_executor_can_run_from_an_async_server_path() -> None:
+    async def invoke() -> str:
+        return (
+            InProcessCapacityExecutor(_application)
+            .execute(ChaosScenario.DUPLICATE, concurrency=2, iterations=4)
+            .scenario
+        )
+
+    assert asyncio.run(invoke()) == "duplicate_delivery"
