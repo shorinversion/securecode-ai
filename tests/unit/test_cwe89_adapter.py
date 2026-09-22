@@ -138,6 +138,32 @@ def safe(request, db):
     )
 
 
+def test_known_request_wrapper_vocabulary_has_no_generic_method_source_rule() -> None:
+    source = b'''def vulnerable(wrapped, db):
+    value = wrapped.get_form_parameter("password")
+    db.execute(f"SELECT * FROM users WHERE password = '{value}'")
+
+def safe(wrapped, db):
+    value = wrapped.get_safe_value("password")
+    db.execute(f"SELECT * FROM users WHERE password = '{value}'")
+'''
+    result = _scan(source)
+    assert len(result.signals) == 1
+    assert source[result.signals[0].source.start_byte : result.signals[0].source.end_byte].startswith(
+        b"wrapped.get_form_parameter"
+    )
+
+
+def test_assignment_from_a_branch_is_joined_without_executing_the_condition() -> None:
+    source = b'''def get_user(request, db):
+    value = "safe"
+    if request.args.get("enabled"):
+        value = request.headers.get("password")
+    db.execute(f"SELECT * FROM users WHERE password = '{value}'")
+'''
+    assert len(_scan(source).signals) == 1
+
+
 def test_simple_first_party_function_summary_preserves_source_interpolation_sink_chain() -> None:
     source = b"""def load_id(request):
     return request.args.get("user_id")

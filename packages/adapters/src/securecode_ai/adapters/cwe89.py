@@ -318,26 +318,32 @@ def _scan_scope(
                         if len(output) > limits.max_signals:
                             raise Cwe89ScanError(Cwe89ScanErrorCode.SIGNAL_LIMIT)
         if isinstance(statement, ast.If):
+            body_environment = dict(environment)
+            body_fields = dict(object_fields)
             _scan_scope(
                 statement.body,
-                dict(environment),
-                dict(object_fields),
+                body_environment,
+                body_fields,
                 functions,
                 source,
                 line_starts,
                 limits,
                 output,
             )
+            else_environment = dict(environment)
+            else_fields = dict(object_fields)
             _scan_scope(
                 statement.orelse,
-                dict(environment),
-                dict(object_fields),
+                else_environment,
+                else_fields,
                 functions,
                 source,
                 line_starts,
                 limits,
                 output,
             )
+            _merge_flows(environment, body_environment, else_environment)
+            _merge_flows(object_fields, body_fields, else_fields)
         elif isinstance(
             statement, (ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try)
         ):
@@ -368,7 +374,7 @@ def _resolve(
         raise Cwe89ScanError(Cwe89ScanErrorCode.SIGNAL_LIMIT)
     if isinstance(expression, ast.Name):
         return environment.get(expression.id, ())
-    if _is_http_get(expression):
+    if _is_http_get(expression) or _is_known_request_wrapper_source(expression):
         return (_Flow(_node_range(expression, source, line_starts), None),)
     field_key = _object_field_read_key(expression)
     if field_key is not None:
@@ -461,6 +467,27 @@ def _resolve_function_call(
 
 def _with_interpolation(flows: tuple[_Flow, ...], location: SourceRange) -> tuple[_Flow, ...]:
     return tuple(_Flow(flow.source, location) for flow in flows)
+
+
+def _merge_flows[FlowKey](
+    target: dict[FlowKey, tuple[_Flow, ...]],
+    left: dict[FlowKey, tuple[_Flow, ...]],
+    right: dict[FlowKey, tuple[_Flow, ...]],
+) -> None:
+    """Join bounded branch facts after an unknown condition without execution."""
+
+    target.clear()
+    for key in left.keys() | right.keys():
+        target[key] = tuple(sorted(set(left.get(key, ()) + right.get(key, ())), key=_flow_key))
+
+
+def _flow_key(flow: _Flow) -> tuple[int, int, int, int]:
+    return (
+        flow.source.start_byte,
+        -1 if flow.interpolation is None else flow.interpolation.start_byte,
+        flow.source.end_byte,
+        -1 if flow.interpolation is None else flow.interpolation.end_byte,
+    )
 
 
 def _record_object_field_write(
@@ -569,6 +596,19 @@ def _is_http_get(expression: ast.expr) -> bool:
         and expression.func.value.attr in {"args", "form", "headers", "cookies", "values"}
         and isinstance(expression.func.value.value, ast.Name)
         and expression.func.value.value.id == "request"
+    )
+
+
+def _is_known_request_wrapper_source(expression: ast.expr) -> bool:
+    """Recognize the narrow first-party wrapper vocabulary without imports."""
+
+    return (
+        isinstance(expression, ast.Call)
+        and isinstance(expression.func, ast.Attribute)
+        and isinstance(expression.func.value, ast.Name)
+        and expression.func.attr in {"get_form_parameter", "get_query_parameter", "get_cookie"}
+        and len(expression.args) == 1
+        and not expression.keywords
     )
 
 
