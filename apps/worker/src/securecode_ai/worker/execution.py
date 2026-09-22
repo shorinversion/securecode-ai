@@ -259,6 +259,12 @@ def _artifacts(scan: LocalProductScanResult) -> tuple[WorkerArtifact, ...]:
         ),
         _artifact(
             tenant_id=tenant_id,
+            purpose="sarif-report",
+            prefix="worker-sarif",
+            content=scan.sarif_rendered,
+        ),
+        _artifact(
+            tenant_id=tenant_id,
             purpose="evidence-graph",
             prefix="worker-graph",
             content=scan.graph_artifact,
