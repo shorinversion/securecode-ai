@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
-from securecode_ai.adapters.github_api import GitHubResponse
+from securecode_ai.adapters.github_api import GitHubError, GitHubResponse
 from securecode_ai.adapters.github_comments import (
+    MAX_GITHUB_INLINE_COMMENTS,
     GithubCommentPublisher,
+    GithubCommentReceipt,
     GithubCommentSuppression,
     GithubInlineProjection,
-    MAX_GITHUB_INLINE_COMMENTS,
 )
-
 
 HEAD = "a" * 40
 
@@ -20,20 +20,38 @@ class FakeApi:
         self.responses = responses
         self.calls: list[dict[str, Any]] = []
 
-    def request(self, method: str, path: str, **kwargs: object) -> GitHubResponse:
-        self.calls.append({"method": method, "path": path, **kwargs})
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        installation_id: str,
+        document: dict[str, object] | None = None,
+        idempotency_key: str | None = None,
+    ) -> GitHubResponse:
+        self.calls.append(
+            {
+                "document": document,
+                "idempotency_key": idempotency_key,
+                "installation_id": installation_id,
+                "method": method,
+                "path": path,
+            }
+        )
         return self.responses.pop(0)
 
 
-def response(status: int, document: dict[str, object] | None) -> GitHubResponse:
-    return GitHubResponse(status, document, {})
+def response(status: int, document: object) -> GitHubResponse:
+    return GitHubResponse(status, cast(dict[str, object] | None, document), {})
 
 
 def publisher(api: FakeApi, head: str = HEAD) -> GithubCommentPublisher:
     return GithubCommentPublisher(api, pull_request_head=lambda *_: head)  # type: ignore[arg-type]
 
 
-def invoke(api: FakeApi, **kwargs: object) -> object:
+def invoke(
+    api: FakeApi, *, inline: tuple[GithubInlineProjection, ...] = ()
+) -> GithubCommentReceipt:
     return publisher(api).publish(
         installation_id="i",
         repository_id="42",
@@ -42,7 +60,7 @@ def invoke(api: FakeApi, **kwargs: object) -> object:
         external_id="run-1",
         summary="summary",
         delivery_key="delivery",
-        **kwargs,
+        inline=inline,
     )
 
 
@@ -129,7 +147,7 @@ def test_rejects_invalid_inline_lines(line: object) -> None:
 @pytest.mark.parametrize("document", [None, {}, {"id": "1"}, {"id": 0}])
 def test_rejects_invalid_summary_receipts(document: dict[str, object] | None) -> None:
     api = FakeApi([response(200, []), response(201, document)])
-    with pytest.raises(Exception):
+    with pytest.raises(GitHubError):
         invoke(api)
 
 
@@ -144,6 +162,6 @@ def test_rejects_invalid_summary_receipts(document: dict[str, object] | None) ->
     ],
 )
 def test_rejects_ambiguous_or_malformed_summary_listing(comments: list[object]) -> None:
-    api = FakeApi([response(200, comments)])  # type: ignore[arg-type]
-    with pytest.raises(Exception):
+    api = FakeApi([response(200, comments)])
+    with pytest.raises(GitHubError):
         invoke(api)

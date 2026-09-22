@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from .github_api import GitHubApi, GitHubError, GitHubResponse, repository_path
+from .github_api import GitHubApi, GitHubError
 
 MAX_GITHUB_INLINE_COMMENTS = 50
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -221,11 +221,11 @@ def _safe_path(path: str) -> bool:
 
 
 __all__ = [
+    "MAX_GITHUB_INLINE_COMMENTS",
     "GithubCommentError",
     "GithubCommentPublisher",
     "GithubCommentReceipt",
     "GithubCommentSuppression",
     "GithubInlineProjection",
-    "MAX_GITHUB_INLINE_COMMENTS",
     "PullRequestHeadResolver",
 ]
