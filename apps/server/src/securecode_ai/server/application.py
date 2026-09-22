@@ -57,6 +57,8 @@ _ROUTES: Final = (
     _Route("GET", "/api/v1/runs/{run_id}/events", "runs.events.read"),
     _Route("GET", "/api/v1/runs/{run_id}/findings", "runs.findings.read"),
     _Route("GET", "/api/v1/runs/{run_id}/artifacts", "runs.artifacts.read"),
+    _Route("GET", "/api/v1/runs/{run_id}/audit", "runs.audit.read"),
+    _Route("GET", "/api/v1/operations/metrics", "operations.metrics.read"),
     _Route("GET", "/api/v1/findings/{finding_id}", "findings.read"),
     _Route(
         "POST",

@@ -428,7 +428,7 @@ approvals и audit trail без обязательной передачи пол
 | `P6.7` | EvidencePackage egress enforcement | P6.5, P6.6 | `no_code_egress` integration tests | `TODO` |
 | `P6.8` | Human approval, suppression and expiring waiver | P6.2 | audit-complete state transitions and expiry tests | `TODO` |
 | `P6.9` | Minimal developer/AppSec UI or API view | P6.2, P6.8 | run/finding/evidence/approval journey | `TODO` |
-| `P6.10` | Immutable audit export and operational telemetry | P6.2–P6.8 | provenance completeness and redaction checks | `TODO` |
+| `P6.10` | Immutable audit export and operational telemetry | P6.2–P6.8 | provenance completeness and redaction checks | `IN PROGRESS` |
 | `P6.11` | Enterprise MVP end-to-end scenario | P6.1–P6.10 | CI runner + backend + SCM + approval + supersession | `TODO` |
 | `P6.12` | Containerize backend/worker and document launch | P6.11 | Dockerfile image build, health, non-root runtime and clean-start instructions | `TODO` |
 

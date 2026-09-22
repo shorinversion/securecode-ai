@@ -1,0 +1,83 @@
+schema_version: "0.1-draft"
+task:
+  id: "P6.10"
+  type: "implementation"
+  objective: "Connect the durable run audit chain and source-free operational telemetry to the authenticated control-plane API."
+  baseline_id: "securecode-definition-0.2.0"
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"
+  starting_commit_sha: "\x38\x66\x35\x63\x38\x30\x36\x66\x38\x39\x36\x33\x61\x32\x66\x33\x32\x61\x36\x33\x63\x30\x65\x65\x32\x66\x34\x62\x61\x36\x36\x38\x66\x38\x39\x35\x62\x32\x36\x63"
+  spec_refs: [SC-API-010, SC-RET-004]
+  decision_refs: []
+  preconditions: ["Durable run persistence, approvals and audit-chain primitives exist on the base."]
+  non_goals: ["Changing accepted API schemas or security specifications.", "Collecting source, credentials, request bodies or high-cardinality telemetry labels."]
+execution:
+  primary_integrator: "codex-root"
+  owner_role: "P6.10-implementer"
+  mode: "direct"
+  exclusive_path_lease:
+    - "apps/server/src/securecode_ai/server/application.py"
+    - "apps/server/src/securecode_ai/server/audit_log.py"
+    - "apps/server/src/securecode_ai/server/bootstrap.py"
+    - "apps/server/src/securecode_ai/server/openapi.py"
+    - "apps/server/src/securecode_ai/server/operations_audit.py"
+    - "apps/server/src/securecode_ai/server/operations_telemetry.py"
+    - "tests/unit/test_server_audit_operations.py"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "work/task-packets/P6.10.yaml"
+  parallel_sibling_tasks: []
+  may_delegate_further: false
+  integration_owner: "codex-root"
+scope:
+  allowed_paths:
+    - "apps/server/src/securecode_ai/server/application.py"
+    - "apps/server/src/securecode_ai/server/audit_log.py"
+    - "apps/server/src/securecode_ai/server/bootstrap.py"
+    - "apps/server/src/securecode_ai/server/openapi.py"
+    - "apps/server/src/securecode_ai/server/operations_audit.py"
+    - "apps/server/src/securecode_ai/server/operations_telemetry.py"
+    - "tests/unit/test_server_audit_operations.py"
+    - "CHANGELOG.md"
+    - "docs/PLAN.md"
+    - "work/task-packets/P6.10.yaml"
+  forbidden_paths: ["specs/**", "tests/evaluator/**", "artifacts/gates/**", "report/m-a2026/**", "scripts/build_m_a2026_submission.py", "tests/integration/test_m_a2026_submission.py", "apps/cli/**"]
+  max_changed_files: 10
+  max_diff_lines: 1800
+capabilities:
+  allowed_tools: [apply_patch, shell_command]
+  allowed_commands: ["pytest focused server unit tests", "ruff format/check", "mypy", "git diff --check", "python scripts/spec_gate.py index-candidate/committed-candidate"]
+  network: "deny except normal protected git delivery"
+  "\x73\x65\x63\x72\x65\x74\x73": "deny"
+  dependency_changes: "deny"
+outputs:
+  required_artifacts:
+    - "Tenant and repository scoped audit export with whole-chain verification and bounded pagination."
+    - "Durable source-free audit records for run mutations, finding decisions, approvals and worker completion."
+    - "Authenticated operational counters and accumulated latency with fixed labels only."
+constraints:
+  invariants:
+    - "Audit export never grants authority and fails closed on corrupted chains."
+    - "Audit material contains only existing allowlisted metadata and is retry-safe."
+    - "Operational telemetry contains no tenant, repository, source or secret values."
+  compatibility: ["No accepted public schema or existing route behavior changes."]
+  security: ["Audit reads are repository scoped and chain integrity is checked before response."]
+  privacy: ["Only source-free identifiers, hashes, fixed actions, outcomes and counters are retained or returned."]
+verification:
+  acceptance_commands:
+    - "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --group quality python -m pytest tests/unit/test_server_audit_export.py tests/unit/test_server_audit_operations.py tests/unit/test_server_api.py tests/unit/test_server_approvals.py -q"
+    - "uv run --group quality python -I -m ruff format --check apps/server/src/securecode_ai/server/application.py apps/server/src/securecode_ai/server/audit_log.py apps/server/src/securecode_ai/server/bootstrap.py apps/server/src/securecode_ai/server/openapi.py apps/server/src/securecode_ai/server/operations_audit.py apps/server/src/securecode_ai/server/operations_telemetry.py tests/unit/test_server_audit_operations.py"
+    - "uv run --group quality python -I -m ruff check apps/server/src/securecode_ai/server/application.py apps/server/src/securecode_ai/server/audit_log.py apps/server/src/securecode_ai/server/bootstrap.py apps/server/src/securecode_ai/server/openapi.py apps/server/src/securecode_ai/server/operations_audit.py apps/server/src/securecode_ai/server/operations_telemetry.py tests/unit/test_server_audit_operations.py"
+    - "uv run --group quality python -I -m mypy --config-file pyproject.toml --no-incremental apps/server/src/securecode_ai/server/application.py apps/server/src/securecode_ai/server/audit_log.py apps/server/src/securecode_ai/server/bootstrap.py apps/server/src/securecode_ai/server/openapi.py apps/server/src/securecode_ai/server/operations_audit.py apps/server/src/securecode_ai/server/operations_telemetry.py tests/unit/test_server_audit_operations.py"
+  negative_cases:
+    - "A caller outside the run repository cannot export its audit chain."
+    - "Duplicate delivery does not create another audit event."
+    - "A corrupted chain causes a service-unavailable response without returning event data."
+    - "Invalid, future, oversized or unknown audit range parameters are rejected."
+    - "A non-admin cannot read operational metrics; admin metrics contain no tenant or repository labels."
+  primary_integrator_rerun_required: true
+completion:
+  definition_of_done_refs: [P6.10]
+  gate_contribution: "Adds run-scoped immutable provenance export and redacted operational visibility; does not establish G6."
+  changelog_required: true
+  adr_required: false

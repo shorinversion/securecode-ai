@@ -123,7 +123,6 @@ class AuditLog:
             actor_id=actor_id,
             action=action,
             identity_hash=identity_hash,
-            expected_sequence=expected_sequence,
             attributes=normalized_attributes,
         )
         with self._lock:
@@ -243,27 +242,52 @@ class AuditLog:
 
     def verify(self, *, tenant_id: str, run_id: str) -> bool:
         """Recompute the complete chain and reject gaps or modified events."""
-        events = self.range(tenant_id, run_id)
-        previous_hash = "0" * 64
-        for expected_sequence, event in enumerate(events, start=1):
-            if event.sequence != expected_sequence or event.previous_hash != previous_hash:
-                return False
-            material = {
-                "tenant_id": event.tenant_id,
-                "repository_id": event.repository_id,
-                "run_id": event.run_id,
-                "actor_id": event.actor_id,
-                "action": event.action,
-                "execution_identity_hash": event.execution_identity_hash,
-                "sequence": event.sequence,
-                "previous_hash": event.previous_hash,
-                "attributes": event.attributes,
-                "created_at": event.created_at,
-            }
-            if _digest(material) != event.event_hash:
-                return False
-            previous_hash = event.event_hash
-        return True
+        _require_identifier(tenant_id)
+        _require_identifier(run_id)
+        with self._lock:
+            cursor = self._db.execute(
+                """SELECT tenant_id, repository_id, run_id, actor_id, action,
+                          execution_identity_hash, sequence, previous_hash,
+                          attributes_json, created_at, event_hash
+                   FROM audit_chain_events
+                   WHERE tenant_id = ? AND run_id = ?
+                   ORDER BY sequence""",
+                (tenant_id, run_id),
+            )
+            previous_hash = "0" * 64
+            expected_sequence = 1
+            for row in cursor:
+                event = _from_row(tuple(row))
+                if event.sequence != expected_sequence or event.previous_hash != previous_hash:
+                    return False
+                material = {
+                    "tenant_id": event.tenant_id,
+                    "repository_id": event.repository_id,
+                    "run_id": event.run_id,
+                    "actor_id": event.actor_id,
+                    "action": event.action,
+                    "execution_identity_hash": event.execution_identity_hash,
+                    "sequence": event.sequence,
+                    "previous_hash": event.previous_hash,
+                    "attributes": event.attributes,
+                    "created_at": event.created_at,
+                }
+                if _digest(material) != event.event_hash:
+                    return False
+                previous_hash = event.event_hash
+                expected_sequence += 1
+            return True
+
+    def head_sequence(self, *, tenant_id: str, run_id: str) -> int:
+        _require_identifier(tenant_id)
+        _require_identifier(run_id)
+        row = self._db.execute(
+            """SELECT sequence FROM audit_chain_events
+               WHERE tenant_id = ? AND run_id = ?
+               ORDER BY sequence DESC LIMIT 1""",
+            (tenant_id, run_id),
+        ).fetchone()
+        return 0 if row is None else int(row[0])
 
     def require_valid(self, *, tenant_id: str, run_id: str) -> None:
         if not self.verify(tenant_id=tenant_id, run_id=run_id):
@@ -343,7 +367,6 @@ def _request_hash(
     actor_id: str,
     action: str,
     identity_hash: str,
-    expected_sequence: int,
     attributes: dict[str, object],
 ) -> str:
     return _digest(
@@ -354,7 +377,6 @@ def _request_hash(
             "actor_id": actor_id,
             "action": action,
             "execution_identity_hash": identity_hash,
-            "expected_sequence": expected_sequence,
             "attributes": attributes,
         }
     )

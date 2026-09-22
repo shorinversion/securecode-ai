@@ -17,6 +17,7 @@ from .artifact_upload_verifier import LocalArtifactUploadVerifier
 from .assurance_repository import AssuranceRepository
 from .assurance_service import AssuranceService
 from .assurance_verifiers import load_assurance_verifier_registry
+from .audit_log import AuditLog
 from .auth_configuration import build_oidc_verifier
 from .auth_runtime import CompositeIdentityVerifier
 from .bootstrap_identity import (
@@ -31,6 +32,7 @@ from .feedback_repository import FeedbackRepository
 from .feedback_service import FeedbackService
 from .idempotency import SqliteRequestReplayStore
 from .openapi import CAPABILITIES
+from .operations_audit import AuditTelemetryControlPlane
 from .operations_handler_evidence import (
     AssuranceOperationsHandler,
     FeedbackOperationsHandler,
@@ -41,6 +43,7 @@ from .operations_handler_governance import (
     LifecycleScopeRepository,
 )
 from .operations_runtime import build_operational_handlers
+from .operations_telemetry import OperationsTelemetry
 from .persistence import DevelopmentRepository
 from .ports import (
     ControlPlaneService,
@@ -129,6 +132,7 @@ class RoleAuthorization:
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",
+                "runs.audit.read",
                 "findings.read",
                 "policies.read",
                 "artifacts.authorize",
@@ -379,6 +383,12 @@ def build_local_app(
         },
     )
     service = SCMRunResolutionHandler(store=scm_publications, fallback=service)
+    service = AuditTelemetryControlPlane(
+        fallback=service,
+        audit_log=AuditLog(connection),
+        telemetry=OperationsTelemetry(),
+        runs=repository,
+    )
     disabled_capabilities = {
         name
         for name, available in (
