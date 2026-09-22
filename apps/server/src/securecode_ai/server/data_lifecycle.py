@@ -227,6 +227,7 @@ class LifecycleLedger:
         expected_version: int,
         idempotency_key: str | None = None,
     ) -> DeletionRequest:
+        require_identifier(deletion_id, "deletion_id")
         require_identifier(tenant_id, "tenant_id")
         require_identifier(actor_id, "actor_id")
         require_sha256(identity_hash, "identity_hash")
@@ -295,6 +296,7 @@ class LifecycleLedger:
         actor_id: str = "lifecycle-executor",
         idempotency_key: str | None = None,
     ) -> DeletionRequest:
+        require_identifier(deletion_id, "deletion_id")
         require_identifier(tenant_id, "tenant_id")
         require_identifier(actor_id, "actor_id")
         require_sha256(identity_hash, "identity_hash")
@@ -352,6 +354,8 @@ class LifecycleLedger:
             return updated
 
     def receipt(self, *, tenant_id: str, deletion_id: str) -> DeletionReceipt:
+        require_identifier(tenant_id, "tenant_id")
+        require_identifier(deletion_id, "deletion_id")
         row = self._connection.execute(
             """SELECT * FROM lifecycle_deletions
                WHERE tenant_id=? AND deletion_id=?""",
