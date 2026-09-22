@@ -14,6 +14,7 @@ decides whether it is fresh.
 from __future__ import annotations
 
 import secrets
+import time
 from collections import deque
 from dataclasses import dataclass
 from enum import StrEnum
@@ -28,11 +29,13 @@ NONCE_BYTES: Final = 32
 MAX_SESSION_SECONDS: Final = 86_400
 DEFAULT_ATTEMPT_LIMIT: Final = 60
 ATTEMPT_WINDOW_SECONDS: Final = 60
+LOGIN_STATE_TTL_SECONDS: Final = 600
 
 
 class OidcLoginErrorCode(StrEnum):
     INVALID_CONFIGURATION = "INVALID_CONFIGURATION"
     TOKEN_REJECTED = "TOKEN_REJECTED"
+    STATE_REJECTED = "STATE_REJECTED"
     REPLAY_REJECTED = "REPLAY_REJECTED"
     RATE_LIMITED = "RATE_LIMITED"
 
@@ -79,7 +82,16 @@ class OidcLoginReceipt:
 class OidcLoginService:
     """Compose admission, replay protection and session issuance for one login."""
 
-    __slots__ = ("_admission", "_attempt_limit", "_attempts", "_issuer", "_ledger", "_lock")
+    __slots__ = (
+        "_admission",
+        "_attempt_limit",
+        "_attempts",
+        "_issuer",
+        "_ledger",
+        "_lock",
+        "_pending_states",
+        "_state_expiry",
+    )
 
     def __init__(
         self,
@@ -102,21 +114,32 @@ class OidcLoginService:
         self._issuer = issuer
         self._attempt_limit = attempt_limit
         self._attempts: deque[float] = deque(maxlen=attempt_limit)
+        self._pending_states: dict[str, tuple[str, float]] = {}
+        self._state_expiry: deque[tuple[float, str]] = deque()
         self._lock = Lock()
 
     def start(self) -> OidcLoginStart:
         """Begin one login attempt with a fresh, unguessable nonce and state."""
 
-        return OidcLoginStart(
-            nonce=secrets.token_urlsafe(NONCE_BYTES),
-            state=secrets.token_urlsafe(NONCE_BYTES),
-        )
+        nonce = secrets.token_urlsafe(NONCE_BYTES)
+        state = secrets.token_urlsafe(NONCE_BYTES)
+        self._remember_start(state=state, nonce=nonce)
+        return OidcLoginStart(nonce=nonce, state=state)
 
-    def callback(self, *, token: str, nonce: str) -> OidcLoginReceipt:
+    def callback(self, *, token: str, nonce: str, state: str) -> OidcLoginReceipt:
         """Verify the callback token, refuse a replayed nonce, and issue a session."""
 
-        if type(token) is not str or not token or type(nonce) is not str or not nonce:
+        if (
+            type(token) is not str
+            or not token
+            or type(nonce) is not str
+            or not nonce
+            or type(state) is not str
+            or not state
+        ):
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED)
+        if not self._consume_start(state=state, nonce=nonce):
+            raise OidcLoginError(OidcLoginErrorCode.STATE_REJECTED)
         self._charge_attempt()
         try:
             principal, receipt = self._admission.admit(token, nonce=nonce)
@@ -136,8 +159,6 @@ class OidcLoginService:
     def _charge_attempt(self) -> None:
         """Refuse login work once the bounded attempt window is exhausted."""
 
-        import time
-
         now = time.monotonic()
         with self._lock:
             while self._attempts and now - self._attempts[0] >= ATTEMPT_WINDOW_SECONDS:
@@ -145,6 +166,32 @@ class OidcLoginService:
             if len(self._attempts) >= self._attempt_limit:
                 raise OidcLoginError(OidcLoginErrorCode.RATE_LIMITED)
             self._attempts.append(now)
+
+    def _remember_start(self, *, state: str, nonce: str) -> None:
+        """Store one bounded, short-lived state to nonce binding."""
+
+        now = time.monotonic()
+        expires_at = now + LOGIN_STATE_TTL_SECONDS
+        with self._lock:
+            self._discard_expired_states(now)
+            if len(self._pending_states) >= self._attempt_limit:
+                raise OidcLoginError(OidcLoginErrorCode.RATE_LIMITED)
+            self._pending_states[state] = (nonce, expires_at)
+            self._state_expiry.append((expires_at, state))
+
+    def _consume_start(self, *, state: str, nonce: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            self._discard_expired_states(now)
+            binding = self._pending_states.pop(state, None)
+            return binding is not None and secrets.compare_digest(binding[0], nonce)
+
+    def _discard_expired_states(self, now: float) -> None:
+        while self._state_expiry and self._state_expiry[0][0] <= now:
+            expires_at, state = self._state_expiry.popleft()
+            binding = self._pending_states.get(state)
+            if binding is not None and binding[1] == expires_at:
+                del self._pending_states[state]
 
     def _issued(self, principal: Principal, receipt: OidcReceipt) -> OidcReceipt:
         issuer = self._issuer
