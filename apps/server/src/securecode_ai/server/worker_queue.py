@@ -57,6 +57,7 @@ from .worker_queue_models import (
 from .worker_queue_models import (
     utc as _utc,
 )
+from .worker_resource_models import WorkerResourceSettlement
 
 
 class SqliteWorkerQueue:
@@ -399,6 +400,8 @@ class SqliteWorkerQueue:
         expected_version: int,
         outcome: str,
         findings: tuple[WorkerFindingRecord, ...] = (),
+        resource_settlement: WorkerResourceSettlement | None = None,
+        resource_clock: Callable[[], int] | None = None,
     ) -> WorkerQueueLease:
         return complete_worker_run(
             self._connection,
@@ -412,6 +415,8 @@ class SqliteWorkerQueue:
             expected_version=expected_version,
             outcome=outcome,
             findings=findings,
+            resource_settlement=resource_settlement,
+            resource_clock=resource_clock,
         )
 
     def request_command(
