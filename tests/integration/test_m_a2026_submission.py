@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import stat
 import subprocess
@@ -14,8 +15,8 @@ import pytest
 
 CURRENT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = CURRENT_ROOT / "scripts" / "build_m_a2026_submission.py"
-HISTORICAL_COMMIT = "git-sha1:c0e949f53bea69a61f892155b42396b3a7ef3952".removeprefix("git-sha1:")
-HISTORICAL_TREE = "git-sha1:61e75620509001a983f5eb9ea8fd5a72b78d9312".removeprefix("git-sha1:")
+HISTORICAL_COMMIT = "git-sha1:77992d1a5814531d5327f5f14cc04bd2e771af4d".removeprefix("git-sha1:")
+HISTORICAL_TREE = "git-sha1:3755ea60846789ffa56a17a1431e48e0f01efe8c".removeprefix("git-sha1:")
 QUALITY_RECEIPT_PATH = Path("report/m-a2026/quality-receipt.json")
 HISTORICAL_EVIDENCE_PATHS = (
     Path("scripts/build_m_a2026_submission.py"),
@@ -322,9 +323,13 @@ def test_builder_rejects_historical_input_drift(
     if mutation == "current_builder":
         shutil.copyfile(SCRIPT, root / HISTORICAL_EVIDENCE_PATHS[0])
         mutated_builder = root / HISTORICAL_EVIDENCE_PATHS[0]
-        mutated_builder.write_bytes(
-            mutated_builder.read_bytes().replace(b'"tests_passed": 2620', b'"tests_passed": 2621')
+        mutated_bytes, substitutions = re.subn(
+            rb'"tests_passed": (\d+)',
+            lambda match: b'"tests_passed": ' + str(int(match.group(1)) + 1).encode(),
+            mutated_builder.read_bytes(),
         )
+        assert substitutions == 1, "builder drift fixture requires one measurable constant"
+        mutated_builder.write_bytes(mutated_bytes)
     elif mutation == "ordinary_source":
         source = root / "packages/adapters/src/securecode_ai/adapters/program_graph.py"
         source.write_bytes(source.read_bytes() + b"\n# negative historical fixture\n")
