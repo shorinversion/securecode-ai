@@ -153,6 +153,8 @@ class ConnectedApi(Protocol):
         self, run_id: str, *, token: str, if_match: str, idempotency_key: str
     ) -> dict[str, object]: ...
 
+    def read(self, path: str, *, token: str) -> dict[str, object]: ...
+
 
 class HttpConnectedApi:
     """Minimal control-plane client: no redirects, bounded body, bearer auth."""
@@ -188,6 +190,13 @@ class HttpConnectedApi:
         if not _identifier(run_id):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         return self._call("GET", f"/api/v1/runs/{run_id}", document=None, token=token)
+
+    def read(self, path: str, *, token: str) -> dict[str, object]:
+        """Read one bounded collection document; the path is fixed by the caller."""
+
+        if not isinstance(path, str) or not path.startswith("/api/v1/runs/"):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        return self._call("GET", path, document=None, token=token)
 
     def cancel(
         self, run_id: str, *, token: str, if_match: str, idempotency_key: str
@@ -456,18 +465,92 @@ def timestamp() -> str:
     return datetime.now(UTC).isoformat()
 
 
+class ResultKind(StrEnum):
+    """Readable run outputs exposed by the control plane."""
+
+    FINDINGS = "findings"
+    ARTIFACTS = "artifacts"
+    EVENTS = "events"
+
+    @property
+    def path(self) -> str:
+        return f"/api/v1/runs/{{run_id}}/{self.value}"
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectedCollection:
+    """One bounded, source-free readout document for a run."""
+
+    run_id: str
+    kind: ResultKind
+    document: Mapping[str, object]
+
+    def render(self) -> str:
+        return json.dumps(self.document, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
+def fetch_results(
+    settings: ConnectedRunSettings,
+    run_id: str,
+    kind: ResultKind,
+    *,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read findings, artifacts or events for one run without mutating anything."""
+
+    if not _identifier(run_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    if type(kind) is not ResultKind:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(kind.path.format(run_id=run_id), token=settings.token)
+    if not isinstance(document, Mapping) or not document:
+        raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
+    return ConnectedCollection(run_id=run_id, kind=kind, document=document)
+
+
+def parse_results_arguments(tokens: tuple[str, ...]) -> tuple[str, ResultKind]:
+    """Parse `securecode results <run_id> --kind findings|artifacts|events`."""
+
+    run_id: str | None = None
+    kind: ResultKind | None = None
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--kind":
+            if index + 1 >= len(tokens):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            try:
+                kind = ResultKind(tokens[index + 1])
+            except ValueError:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION) from None
+            index += 2
+            continue
+        if token.startswith("-") or run_id is not None:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        run_id = token
+        index += 1
+    if run_id is None or not _identifier(run_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    return run_id, kind if kind is not None else ResultKind.FINDINGS
+
+
 __all__ = [
     "ConnectedApi",
     "ConnectedCliError",
     "ConnectedCliErrorCode",
+    "ConnectedCollection",
     "ConnectedRunReceipt",
     "ConnectedRunRequest",
     "ConnectedRunSettings",
     "HttpConnectedApi",
+    "ResultKind",
     "cancel_run",
+    "fetch_results",
     "fetch_run",
     "new_idempotency_key",
     "parse_connected_arguments",
+    "parse_results_arguments",
     "parse_run_arguments",
     "render_receipt",
     "run_connected",

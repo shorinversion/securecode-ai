@@ -113,6 +113,11 @@ def _parser() -> argparse.ArgumentParser:
         add_help=False,
         help="request cancellation of one run with an exact state precondition",
     )
+    subparsers.add_parser(
+        "results",
+        add_help=False,
+        help="read one run's findings, artifacts or events from the control plane",
+    )
     return parser
 
 
@@ -127,6 +132,7 @@ def _command_help(command: str) -> str:
         "connect": "submit one checkout to a control plane and follow the run",
         "status": "read one run's current durable state from the control plane",
         "cancel": "request cancellation of one run with an exact state precondition",
+        "results": "read one run's findings, artifacts or events from the control plane",
     }
     description = descriptions.get(command)
     if description is None:
@@ -167,6 +173,14 @@ def _command_help(command: str) -> str:
             "--wait",
             action="store_true",
             help="poll until the control plane reports a terminal outcome",
+        )
+    elif command == "results":
+        parser.add_argument("run_id", help="control plane run identifier")
+        parser.add_argument(
+            "--kind",
+            choices=("findings", "artifacts", "events"),
+            default="findings",
+            help="which run collection to read",
         )
     elif command in {"status", "cancel"}:
         parser.add_argument("run_id", help="control plane run identifier")

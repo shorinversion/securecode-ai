@@ -43,8 +43,10 @@ from .approval import run_patch_approval_command
 from .connected import (
     ConnectedCliError,
     cancel_run,
+    fetch_results,
     fetch_run,
     parse_connected_arguments,
+    parse_results_arguments,
     parse_run_arguments,
     run_connected,
     settings_from_environment,
@@ -133,10 +135,18 @@ def main(
             "connect",
             "status",
             "cancel",
+            "results",
         }
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] == "results":
+        return run_connected_results(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
     if stripped and stripped[0] in {"status", "cancel"}:
         return run_connected_inspection(
             stripped,
@@ -259,6 +269,29 @@ def main(
     return int(result.exit_code)
 
 
+def run_connected_results(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Print one bounded, source-free run collection document."""
+
+    try:
+        run_id, kind = parse_results_arguments(tokens[1:])
+        settings = settings_from_environment(environment)
+        collection = fetch_results(settings, run_id, kind)
+    except ConnectedCliError as error:
+        stderr.write("connected read was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected read failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
 def run_connected_inspection(
     tokens: tuple[str, ...],
     *,
@@ -322,4 +355,5 @@ __all__ = [
     "main",
     "run_connect_command",
     "run_connected_inspection",
+    "run_connected_results",
 ]
