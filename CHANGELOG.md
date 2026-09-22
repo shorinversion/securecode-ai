@@ -22,6 +22,8 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- P6.10 wires source-free run-action audit events to verified, repository-scoped audit exports and exposes bounded low-cardinality operational telemetry.
+
 - CR-094 makes canonical quality type-check every source file against both Linux and Windows APIs before unit tests.
 
 - P9.21 replaces dynamic Windows-only CLI imports with ordinary guarded imports so package boundaries, Linux typing and Windows typing validate the same atomic-output implementation.

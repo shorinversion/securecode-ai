@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from threading import RLock
 
-_OPERATIONS = frozenset({"run", "worker", "artifact", "export"})
+_OPERATIONS = frozenset({"run", "worker", "artifact", "approval", "export"})
 _OUTCOMES = frozenset({"success", "error", "cancelled", "superseded"})
 _MAX_ELAPSED_MS = 86_400_000
 
