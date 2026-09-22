@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -16,6 +17,10 @@ REPOSITORY_ROOT: Final = Path(__file__).resolve().parents[1]
 PYTHON_ROOTS: Final = ("packages", "apps", "integrations", "scripts", "tests")
 EXCLUDED_PYTHON_TARGETS: Final = frozenset({"scripts/validate_g0.py"})
 STAGE_TIMEOUT_SECONDS: Final = 360
+
+# Windows refuses to spawn a process whose command line exceeds 32767
+# characters; batches stay well below that while the file set is unchanged.
+MAX_ARGUMENT_BYTES: Final = 24_000
 UNIT_STAGE_TIMEOUT_SECONDS: Final = 540
 GIT_TIMEOUT_SECONDS: Final = 30
 SAFE_PARENT_VARIABLES: Final = (
@@ -37,6 +42,8 @@ class QualityStage:
     arguments: tuple[str, ...]
     executes_repository_code: bool = False
     timeout_seconds: int = STAGE_TIMEOUT_SECONDS
+    chunked: bool = False
+    response_file: bool = False
 
 
 def _python_targets() -> tuple[str, ...]:
@@ -55,8 +62,16 @@ def _python_targets() -> tuple[str, ...]:
 def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
     return (
         QualityStage("spec", ("scripts/spec_gate.py", "snapshot")),
-        QualityStage("format", ("-m", "ruff", "format", "--no-cache", "--check", *targets)),
-        QualityStage("lint", ("-m", "ruff", "check", "--no-cache", *targets)),
+        QualityStage(
+            "format",
+            ("-m", "ruff", "format", "--no-cache", "--check", *targets),
+            chunked=True,
+        ),
+        QualityStage(
+            "lint",
+            ("-m", "ruff", "check", "--no-cache", *targets),
+            chunked=True,
+        ),
         QualityStage(
             "types-linux",
             (
@@ -69,6 +84,7 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 "linux",
                 *targets,
             ),
+            response_file=True,
         ),
         QualityStage(
             "types-win32",
@@ -82,6 +98,7 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 "win32",
                 *targets,
             ),
+            response_file=True,
         ),
         QualityStage(
             "unit",
@@ -201,21 +218,111 @@ def _repository_snapshot() -> str:
     return digest.hexdigest()
 
 
-def _run_stage(stage: QualityStage, environment: dict[str, str]) -> int:
-    command = (sys.executable, "-I", *stage.arguments)
-    print(f"==> {stage.name}: {' '.join(command)}", flush=True)
+def _chunked_commands(arguments: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    """Split a trailing file list into batches the host can actually spawn."""
+
+    boundary = next(
+        (index for index, value in enumerate(arguments) if value.endswith(".py")),
+        len(arguments),
+    )
+    prefix = arguments[:boundary]
+    files = arguments[boundary:]
+    if not files:
+        return (arguments,)
+    batches: list[tuple[str, ...]] = []
+    current: list[str] = []
+    size = 0
+    for name in files:
+        cost = len(name) + 1
+        if current and size + cost > MAX_ARGUMENT_BYTES:
+            batches.append((*prefix, *current))
+            current = []
+            size = 0
+        current.append(name)
+        size += cost
+    if current:
+        batches.append((*prefix, *current))
+    return tuple(batches)
+
+
+def _run_response_file_stage(
+    stage: QualityStage,
+    arguments: tuple[str, ...],
+    environment: dict[str, str],
+) -> int:
+    """Run one mypy invocation, passing the file list through a response file.
+
+    Splitting the file set would change module mapping (sibling ``app.py``
+    fixtures would collide), so the list travels in a file the tool expands
+    itself while the command line stays short enough for the host to spawn.
+    """
+
+    boundary = next(
+        (index for index, value in enumerate(arguments) if value.endswith(".py")),
+        len(arguments),
+    )
+    prefix = arguments[:boundary]
+    files = arguments[boundary:]
+    if not files:
+        return _run_command(stage.name, prefix, environment, stage.timeout_seconds)
+    descriptor, name = tempfile.mkstemp(prefix="securecode-quality-args-", suffix=".txt")
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(chr(10).join(files))
+        command = (*prefix, "@" + name)
+        return _run_command(stage.name, command, environment, stage.timeout_seconds)
+    finally:
+        with suppress(OSError):
+            Path(name).unlink()
+
+
+def _run_command(
+    label: str,
+    arguments: tuple[str, ...],
+    environment: dict[str, str],
+    timeout_seconds: int,
+) -> int:
+    """Spawn one stage command and report a bounded, sanitized outcome."""
+
+    command = (sys.executable, "-I", *arguments)
+    print(f"==> {label}: {' '.join(command)}", flush=True)
     try:
         completed = subprocess.run(
             command,
             cwd=REPOSITORY_ROOT,
             env=environment,
             check=False,
-            timeout=stage.timeout_seconds,
+            timeout=timeout_seconds,
         )
     except subprocess.TimeoutExpired:
-        print(f"{stage.name}: timed out after {stage.timeout_seconds}s", file=sys.stderr)
+        print(f"{label}: timed out after {timeout_seconds}s", file=sys.stderr)
         return 124
     return completed.returncode
+
+
+def _run_stage(stage: QualityStage, environment: dict[str, str]) -> int:
+    commands = _chunked_commands(stage.arguments) if stage.chunked else (stage.arguments,)
+    if stage.response_file:
+        return _run_response_file_stage(stage, commands[0], environment)
+    outcome = 0
+    for index, arguments in enumerate(commands):
+        command = (sys.executable, "-I", *arguments)
+        label = stage.name if len(commands) == 1 else f"{stage.name} [{index + 1}/{len(commands)}]"
+        print(f"==> {label}: {' '.join(command)}", flush=True)
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=REPOSITORY_ROOT,
+                env=environment,
+                check=False,
+                timeout=stage.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"{label}: timed out after {stage.timeout_seconds}s", file=sys.stderr)
+            return 124
+        if completed.returncode != 0 and outcome == 0:
+            outcome = completed.returncode
+    return outcome
 
 
 def main() -> int:
