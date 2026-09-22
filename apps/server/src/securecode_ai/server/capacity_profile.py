@@ -151,6 +151,13 @@ class InProcessCapacityExecutor:
         elapsed = time.monotonic() - started
         cancelled_workers = 0
         for entry in results:
+            # A task cancelled before its coroutine receives its first time slice
+            # never reaches ``worker``'s CancelledError handler. Gather returns
+            # that cancellation directly, and it still represents a deliberately
+            # interrupted worker that must appear in the receipt.
+            if isinstance(entry, asyncio.CancelledError):
+                cancelled_workers += 1
+                continue
             if isinstance(entry, tuple) and len(entry) == 2:
                 collected, cancelled = entry
                 samples.extend(collected)
@@ -162,7 +169,9 @@ class InProcessCapacityExecutor:
         throughput = len(answered) if elapsed <= 0 else int(len(answered) / elapsed)
         return CapacityCell(
             scenario=scenario.value,
-            completed=len(answered) == iterations,
+            # A cancelled workload cannot be reported as a completed capacity
+            # sample even when the remaining workers drain the whole queue.
+            completed=len(answered) == iterations and cancelled_workers == 0,
             throughput=throughput,
             queue_p50=_percentile(queue_waits, 0.5),
             queue_p95=_percentile(queue_waits, 0.95),
