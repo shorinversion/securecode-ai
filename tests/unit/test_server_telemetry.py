@@ -82,7 +82,7 @@ def test_drain_empties_the_buffer() -> None:
 
 def test_flush_accepted_exports_and_releases_the_buffer() -> None:
     sink = _Sink(True)
-    recorder = TelemetryRecorder(exporter=sink, capacity=8)
+    recorder = TelemetryRecorder(exporter=sink, capacity=8)  # type: ignore[arg-type]
     recorder.record(action="runs.create", status=201, duration_ms=2)
     result = recorder.flush()
     assert result.accepted and result.exported == 1
@@ -101,7 +101,7 @@ def test_flush_without_an_exporter_retains_observations() -> None:
 @pytest.mark.parametrize("outcome", [False, "raise"])
 def test_failing_exporter_retains_observations(outcome: object) -> None:
     sink = _Sink(outcome)
-    recorder = TelemetryRecorder(exporter=sink, capacity=4)
+    recorder = TelemetryRecorder(exporter=sink, capacity=4)  # type: ignore[arg-type]
     recorder.record(action="runs.read", status=200, duration_ms=1)
     result = recorder.flush()
     assert not result.accepted and result.exported == 0
@@ -110,7 +110,7 @@ def test_failing_exporter_retains_observations(outcome: object) -> None:
 
 def test_empty_flush_is_accepted_without_touching_the_exporter() -> None:
     sink = _Sink(True)
-    recorder = TelemetryRecorder(exporter=sink, capacity=4)
+    recorder = TelemetryRecorder(exporter=sink, capacity=4)  # type: ignore[arg-type]
     result = recorder.flush()
     assert result.accepted and result.exported == 0
     assert sink.batches == []
@@ -123,13 +123,21 @@ def test_counters_collapse_actions_and_status_classes() -> None:
     recorder.record(action="runs.create", status=201, duration_ms=4)
     recorder.record(action="secrets.grant", status=403, duration_ms=1)
     snapshot = counters.snapshot()
-    counters_by_key = {
-        (item["operation"], item["outcome"]): item["count"] for item in snapshot["counters"]
-    }
+    counter_rows = snapshot["counters"]
+    assert isinstance(counter_rows, tuple)
+    counters_by_key = {}
+    for row in counter_rows:
+        assert isinstance(row, dict)
+        counters_by_key[(row["operation"], row["outcome"])] = row["count"]
     assert counters_by_key[("worker", "success")] == 1
     assert counters_by_key[("run", "success")] == 1
     assert counters_by_key[("run", "error")] == 1
-    latency = {item["operation"]: item["total"] for item in snapshot["latency_ms"]}
+    latency_rows = snapshot["latency_ms"]
+    assert isinstance(latency_rows, tuple)
+    latency = {}
+    for row in latency_rows:
+        assert isinstance(row, dict)
+        latency[row["operation"]] = row["total"]
     assert latency["worker"] == 3
 
 
