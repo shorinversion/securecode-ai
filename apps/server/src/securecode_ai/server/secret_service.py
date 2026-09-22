@@ -166,6 +166,7 @@ class SecretService:
             lease = self._issue(reference, purpose, grant_id)
             handle_hash = _hash_text(lease.handle)
             issued_at = self._now()
+            self._require_live_lease(lease, issued_at, grant_id)
             receipt = SecretReceipt(
                 tenant_id=tenant_id,
                 workload_id=workload_id,
@@ -312,6 +313,7 @@ class SecretService:
                 grant_id,
             )
             handle_hash = _hash_text(lease.handle)
+            self._require_live_lease(lease, issued_at, grant_id)
             try:
                 cursor.execute(
                     """INSERT INTO secret_grants (
@@ -430,6 +432,11 @@ class SecretService:
             self.p.revoke(grant_id)
         except Exception:
             return
+
+    def _require_live_lease(self, lease: OpaqueSecretLease, issued_at: int, grant_id: str) -> None:
+        if type(lease.expires_at) is not int or lease.expires_at <= issued_at:
+            self._best_effort_revoke(grant_id)
+            raise SecretDenied("EXPIRED_PROVIDER_LEASE")
 
     def _now(self) -> int:
         value = self._clock()
