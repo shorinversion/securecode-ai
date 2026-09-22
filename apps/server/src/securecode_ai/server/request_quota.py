@@ -93,6 +93,8 @@ class QuotaLedger:
             raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
         if len({policy.tenant_id for policy in policies}) != len(policies):
             raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
+        if len(policies) > MAX_TENANTS:
+            raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
         self._policies = {policy.tenant_id: policy for policy in policies}
         self._windows: dict[str, _Window] = {}
         self._lock = Lock()
@@ -127,8 +129,6 @@ class QuotaLedger:
             return QuotaDecision(True, MAX_REQUESTS_PER_WINDOW, MAX_SPEND_MICROUNITS, 0)
         window_ms = policy.window_seconds * 1000
         with self._lock:
-            if tenant_id not in self._windows and len(self._windows) >= MAX_TENANTS:
-                raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
             window = self._windows.get(tenant_id)
             if window is None or now_ms - window.started_ms >= window_ms:
                 window = _Window(started_ms=now_ms, requests=0, spend_microunits=0)
