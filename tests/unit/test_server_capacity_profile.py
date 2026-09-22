@@ -122,3 +122,38 @@ def test_explicit_request_set_is_used() -> None:
     cell = executor.execute(ChaosScenario.LEASE_EXPIRY, concurrency=2, iterations=6)
     assert cell.completed
     assert app.calls == 6
+
+
+async def _cooperative_application(
+    scope: Mapping[str, object],
+    receive: Callable[[], Awaitable[Mapping[str, object]]],
+    send: Callable[[Mapping[str, object]], Awaitable[None]],
+) -> None:
+    del scope
+    await receive()
+    await asyncio.sleep(0)
+    await send({"type": "http.response.start", "status": 200})
+    await send({"type": "http.response.body", "body": b"{}"})
+
+
+def test_cancellation_counts_workers_cancelled_before_they_start() -> None:
+    cell = InProcessCapacityExecutor(_cooperative_application).execute(
+        ChaosScenario.CANCEL, concurrency=4, iterations=8
+    )
+
+    assert cell.scenario == "cancellation"
+    assert cell.cancellations == 2
+    assert not cell.completed
+    assert not cell.passed
+    assert cell.live_leases == 0
+
+
+def test_capacity_executor_can_run_from_an_async_server_path() -> None:
+    async def invoke() -> str:
+        return (
+            InProcessCapacityExecutor(_cooperative_application)
+            .execute(ChaosScenario.DUPLICATE, concurrency=2, iterations=4)
+            .scenario
+        )
+
+    assert asyncio.run(invoke()) == "duplicate_delivery"
