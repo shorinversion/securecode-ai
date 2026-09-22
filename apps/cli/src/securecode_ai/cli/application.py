@@ -42,12 +42,14 @@ from .application_profiles import (
 from .approval import run_patch_approval_command
 from .connected import (
     ApprovalDraft,
+    AssuranceDraft,
     BackupDraft,
     ConnectedCliError,
     ConnectedCliErrorCode,
     DeletionDraft,
     FeedbackDraft,
     SecretGrantDraft,
+    append_assurance,
     approve_deletion,
     cancel_run,
     check_health,
@@ -68,10 +70,12 @@ from .connected import (
     parse_connected_arguments,
     parse_event_arguments,
     parse_health_arguments,
+    parse_payload,
     parse_results_arguments,
     parse_run_arguments,
     parse_single_argument,
     read_approval,
+    read_assurance,
     read_backup,
     read_deletion,
     read_feedback_metrics,
@@ -176,6 +180,7 @@ def main(
             "backups",
             "deletions",
             "feedback",
+            "assurance",
         }
     ):
         output.write(_command_help(stripped[0]))
@@ -189,6 +194,13 @@ def main(
         )
     if stripped and stripped[0] == "decisions":
         return run_connected_decision(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
+    if stripped and stripped[0] == "assurance":
+        return run_connected_assurance(
             stripped,
             stdout=output,
             stderr=errors,
@@ -443,6 +455,64 @@ def run_connected_decision(
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
     except Exception:
         stderr.write("connected decision failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
+def run_connected_assurance(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Append or read assurance records for one repository."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        action = tokens[1]
+        settings = settings_from_environment(environment)
+        if action == "append":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {
+                "repository",
+                "identity-hash",
+                "record-id",
+                "kind",
+                "outcome",
+                "payload",
+                "if-match",
+            }
+            if not required.issubset(fields):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = append_assurance(
+                settings,
+                AssuranceDraft(
+                    repository_id=fields["repository"],
+                    identity_hash=fields["identity-hash"],
+                    record_id=fields["record-id"],
+                    kind=fields["kind"],
+                    outcome=fields["outcome"],
+                    payload=parse_payload(fields["payload"]),
+                ),
+                if_match=fields["if-match"],
+            )
+        elif action == "show":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) - {"repository"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = read_assurance(settings, repository_id=fields.get("repository"))
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    except ConnectedCliError as error:
+        stderr.write(
+            "connected assurance operation was rejected (" + error.code.value + ")" + chr(10)
+        )
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected assurance operation failed" + chr(10))
         return int(CliExitCode.OPERATIONAL_ERROR)
     stdout.write(collection.render() + chr(10))
     return int(CliExitCode.COMPLETED)
@@ -855,6 +925,7 @@ __all__ = [
     "main",
     "run_connect_command",
     "run_connected_approval",
+    "run_connected_assurance",
     "run_connected_backups",
     "run_connected_decision",
     "run_connected_deletions",

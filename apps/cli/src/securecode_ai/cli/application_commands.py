@@ -137,6 +137,11 @@ def _parser() -> argparse.ArgumentParser:
         help="read the control plane's effective policy documents",
     )
     subparsers.add_parser(
+        "assurance",
+        add_help=False,
+        help="append or read assurance records for one repository",
+    )
+    subparsers.add_parser(
         "feedback",
         add_help=False,
         help="submit a pilot review or read aggregated feedback metrics",
@@ -196,6 +201,7 @@ def _command_help(command: str) -> str:
         "backups": "create, read, execute or restore a backup through the control plane",
         "deletions": "open, approve, hold, execute or read an erasure request",
         "feedback": "submit a pilot review or read aggregated feedback metrics",
+        "assurance": "append or read assurance records for one repository",
     }
     description = descriptions.get(command)
     if description is None:
@@ -246,6 +252,13 @@ def _command_help(command: str) -> str:
         parser.add_argument("finding_id", help="control plane finding identifier")
     elif command == "policies":
         pass
+    elif command == "assurance":
+        parser.add_argument(
+            "action",
+            choices=("append", "show"),
+            help="assurance operation to perform",
+        )
+        parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "feedback":
         parser.add_argument(
             "action",

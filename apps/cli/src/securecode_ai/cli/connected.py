@@ -1399,8 +1399,99 @@ def read_feedback_metrics(
     return ConnectedCollection(run_id="feedback", kind=ResultKind.FINDINGS, document=document)
 
 
+@dataclass(frozen=True, slots=True)
+class AssuranceDraft:
+    """Operator-supplied assurance record for one repository."""
+
+    repository_id: str
+    identity_hash: str
+    record_id: str
+    kind: str
+    outcome: str
+    payload: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        for value in (self.repository_id, self.record_id, self.kind, self.outcome):
+            if not _identifier(value) or len(value) > 256:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not _sha256(self.identity_hash):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not isinstance(self.payload, Mapping) or not self.payload:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if len(self.payload) > 128:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+
+
+def append_assurance(
+    settings: ConnectedRunSettings,
+    draft: AssuranceDraft,
+    *,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Append one assurance record at an exact observed state."""
+
+    if not _precondition(if_match):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/assurance",
+        document={
+            "repository_id": draft.repository_id,
+            "execution_identity_hash": draft.identity_hash,
+            "record_id": draft.record_id,
+            "kind": draft.kind,
+            "outcome": draft.outcome,
+            "payload": dict(draft.payload),
+        },
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(
+        run_id=draft.repository_id, kind=ResultKind.FINDINGS, document=document
+    )
+
+
+def read_assurance(
+    settings: ConnectedRunSettings,
+    *,
+    repository_id: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read the assurance records and failure summary for a repository."""
+
+    query: dict[str, str] = {}
+    if repository_id is not None:
+        if not _identifier(repository_id):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        query["repository_id"] = repository_id
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read("/api/v1/assurance", token=settings.token, query=query or None)
+    return ConnectedCollection(run_id="assurance", kind=ResultKind.FINDINGS, document=document)
+
+
+def parse_payload(value: str) -> dict[str, object]:
+    """Parse one bounded JSON object supplied on the command line."""
+
+    if not isinstance(value, str) or not 2 <= len(value) <= 16_384:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION) from None
+    if not isinstance(parsed, dict) or not parsed:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    return parsed
+
+
 __all__ = [
     "ApprovalDraft",
+    "AssuranceDraft",
     "BackupDraft",
     "ConnectedApi",
     "ConnectedCliError",
@@ -1414,6 +1505,7 @@ __all__ = [
     "HttpConnectedApi",
     "ResultKind",
     "SecretGrantDraft",
+    "append_assurance",
     "approve_deletion",
     "cancel_run",
     "check_health",
@@ -1435,10 +1527,12 @@ __all__ = [
     "parse_connected_arguments",
     "parse_event_arguments",
     "parse_health_arguments",
+    "parse_payload",
     "parse_results_arguments",
     "parse_run_arguments",
     "parse_single_argument",
     "read_approval",
+    "read_assurance",
     "read_backup",
     "read_deletion",
     "read_feedback_metrics",
