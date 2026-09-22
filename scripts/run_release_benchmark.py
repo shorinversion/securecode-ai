@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -150,6 +152,50 @@ def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool
     return value, tokens
 
 
+def _semgrep_prediction(
+    case: Case,
+    source: str,
+    *,
+    command: str,
+    config: Path,
+) -> bool:
+    """Run one pinned local Semgrep configuration without retaining source bytes."""
+    if not command or not config.is_file():
+        raise ValueError("Semgrep command or configuration is unavailable")
+    suffix = LANGUAGE_EXTENSIONS[case.language]
+    with tempfile.TemporaryDirectory(prefix="securecode-ai-benchmark-") as directory:
+        source_path = Path(directory) / ("case" + suffix)
+        source_path.write_text(source, encoding="utf-8", newline="\n")
+        try:
+            completed = subprocess.run(
+                (
+                    command,
+                    "scan",
+                    "--config",
+                    str(config),
+                    "--json",
+                    "--no-git-ignore",
+                    "--quiet",
+                    str(source_path),
+                ),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ValueError("Semgrep invocation failed") from error
+    if completed.returncode not in {0, 1}:
+        raise ValueError("Semgrep invocation failed")
+    try:
+        results = json.loads(completed.stdout)["results"]
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError("Semgrep response is invalid") from error
+    if type(results) is not list:
+        raise ValueError("Semgrep response is invalid")
+    return bool(results)
+
+
 def _cell(
     case: Case,
     lane: Configuration,
@@ -178,7 +224,14 @@ def _cell(
 
 
 def run(
-    cases: Iterable[Case], database: Path, lane: Configuration, repetitions: int, remote: bool
+    cases: Iterable[Case],
+    database: Path,
+    lane: Configuration,
+    repetitions: int,
+    remote: bool,
+    *,
+    semgrep_command: str = "semgrep",
+    semgrep_config: Path | None = None,
 ) -> tuple[BenchmarkCell, ...]:
     if lane in MODEL_LANES and not remote:
         raise ValueError("remote lanes require --allow-public-remote")
@@ -196,21 +249,37 @@ def run(
             for repetition in range(1, repetitions + 1):
                 started = time.monotonic_ns()
                 tokens = 0
-                if lane is Configuration.DETERMINISTIC:
-                    predicted = scanner
-                elif lane is Configuration.SCANNER:
-                    predicted, tokens = (
-                        _remote_prediction(case, source, one_shot=False) if scanner else (False, 0)
-                    )
-                elif lane is Configuration.MODEL:
-                    predicted, tokens = _remote_prediction(case, source, one_shot=False)
-                elif lane is Configuration.ONE_SHOT:
-                    predicted, tokens = _remote_prediction(case, source, one_shot=True)
-                elif lane is Configuration.HYBRID:
-                    model, tokens = _remote_prediction(case, source, one_shot=False)
-                    predicted = scanner or model
-                else:
-                    raise ValueError("Semgrep lane is run by its pinned adapter, not this command")
+                try:
+                    if lane is Configuration.DETERMINISTIC:
+                        predicted = scanner
+                    elif lane is Configuration.SCANNER:
+                        predicted, tokens = (
+                            _remote_prediction(case, source, one_shot=False)
+                            if scanner
+                            else (False, 0)
+                        )
+                    elif lane is Configuration.MODEL:
+                        predicted, tokens = _remote_prediction(case, source, one_shot=False)
+                    elif lane is Configuration.ONE_SHOT:
+                        predicted, tokens = _remote_prediction(case, source, one_shot=True)
+                    elif lane is Configuration.HYBRID:
+                        model, tokens = _remote_prediction(case, source, one_shot=False)
+                        predicted = scanner or model
+                    elif lane is Configuration.SEMGREP:
+                        if semgrep_config is None:
+                            raise ValueError("Semgrep configuration is unavailable")
+                        predicted = _semgrep_prediction(
+                            case,
+                            source,
+                            command=semgrep_command,
+                            config=semgrep_config,
+                        )
+                    else:
+                        raise ValueError("unsupported benchmark configuration")
+                except ValueError:
+                    status = "semgrep-failed" if lane is Configuration.SEMGREP else "model-failed"
+                    cells.append(_cell(case, lane, repetition, False, 0, 0, status))
+                    continue
                 cells.append(
                     _cell(
                         case,
@@ -237,6 +306,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--allow-public-remote", action="store_true")
+    parser.add_argument("--semgrep-command", default="semgrep")
+    parser.add_argument("--semgrep-config", type=Path)
     arguments = parser.parse_args(argv)
     try:
         if (
@@ -250,6 +321,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             lane,
             arguments.repetitions,
             arguments.allow_public_remote,
+            semgrep_command=arguments.semgrep_command,
+            semgrep_config=(
+                arguments.semgrep_config.resolve(strict=True)
+                if arguments.semgrep_config is not None
+                else None
+            ),
         )
         result: dict[str, Any] = {
             "cells": [asdict(cell) for cell in cells],
