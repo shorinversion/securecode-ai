@@ -100,6 +100,76 @@ def test_model_failure_is_retained_as_a_cell(
     assert cells[0].tp == 0
 
 
+@pytest.mark.parametrize(
+    "lane", (Configuration.MODEL, Configuration.ONE_SHOT, Configuration.SEMGREP)
+)
+def test_independent_lanes_do_not_require_scanner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lane: Configuration
+) -> None:
+    database = tmp_path / "corpus.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE file_change (file_change_id INTEGER, code_before TEXT, code_after TEXT)"
+        )
+        connection.execute("INSERT INTO file_change VALUES (1, 'print(1)', 'print(2)')")
+    case = MODULE.Case(
+        "cvefixes:repo:1:before",
+        MODULE._sha256("print(1)"),
+        "CWE-89",
+        "vulnerable",
+        "python",
+        "lineage",
+    )
+    config = tmp_path / "rules.yml"
+    config.write_text("rules: []\n", encoding="utf-8")
+    monkeypatch.setattr(
+        MODULE,
+        "_deterministic",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("scanner invoked")),
+    )
+    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3))
+    monkeypatch.setattr(MODULE, "_semgrep_prediction", lambda *_args, **_kwargs: True)
+
+    cells = MODULE.run(
+        (case,), database, lane, 1, lane is not Configuration.SEMGREP, semgrep_config=config
+    )
+
+    assert len(cells) == 1
+    assert cells[0].status == "completed"
+    assert cells[0].tp == 1
+
+
+def test_hybrid_still_executes_model_when_scanner_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "corpus.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE file_change (file_change_id INTEGER, code_before TEXT, code_after TEXT)"
+        )
+        connection.execute("INSERT INTO file_change VALUES (1, 'print(1)', 'print(2)')")
+    case = MODULE.Case(
+        "cvefixes:repo:1:before",
+        MODULE._sha256("print(1)"),
+        "CWE-89",
+        "vulnerable",
+        "python",
+        "lineage",
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_deterministic",
+        lambda *_args: (_ for _ in ()).throw(ValueError("scanner unavailable")),
+    )
+    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3))
+
+    cells = MODULE.run((case,), database, Configuration.HYBRID, 1, True)
+
+    assert len(cells) == 1
+    assert cells[0].status == "scanner-failed"
+    assert cells[0].tp == 1
+
+
 def test_semgrep_failure_is_retained_as_a_cell(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -240,18 +240,25 @@ def run(
     with sqlite3.connect(uri, uri=True) as connection:
         for case in cases:
             source = _source(connection, case)
-            try:
-                scanner = _deterministic(case, source)
-            except (TypeError, ValueError, RuntimeError):
-                for repetition in range(1, repetitions + 1):
-                    cells.append(_cell(case, lane, repetition, False, 0, 0, "scanner-failed"))
-                continue
+            scanner: bool | None = None
+            scanner_failed = False
+            if lane in {Configuration.DETERMINISTIC, Configuration.SCANNER, Configuration.HYBRID}:
+                try:
+                    scanner = _deterministic(case, source)
+                except (TypeError, ValueError, RuntimeError):
+                    scanner_failed = True
+                    if lane is not Configuration.HYBRID:
+                        for repetition in range(1, repetitions + 1):
+                            cells.append(
+                                _cell(case, lane, repetition, False, 0, 0, "scanner-failed")
+                            )
+                        continue
             for repetition in range(1, repetitions + 1):
                 started = time.monotonic_ns()
                 tokens = 0
                 try:
                     if lane is Configuration.DETERMINISTIC:
-                        predicted = scanner
+                        predicted = bool(scanner)
                     elif lane is Configuration.SCANNER:
                         predicted, tokens = (
                             _remote_prediction(case, source, one_shot=False)
@@ -264,7 +271,7 @@ def run(
                         predicted, tokens = _remote_prediction(case, source, one_shot=True)
                     elif lane is Configuration.HYBRID:
                         model, tokens = _remote_prediction(case, source, one_shot=False)
-                        predicted = scanner or model
+                        predicted = bool(scanner) or model
                     elif lane is Configuration.SEMGREP:
                         if semgrep_config is None:
                             raise ValueError("Semgrep configuration is unavailable")
@@ -288,6 +295,7 @@ def run(
                         predicted,
                         (time.monotonic_ns() - started) // 1_000_000,
                         tokens,
+                        "scanner-failed" if scanner_failed else "completed",
                     )
                 )
     return tuple(cells)
