@@ -24,7 +24,7 @@ The submission combines three evidence layers: a pinned synthetic CWE-89 detect,
 - Repair study: 0 attempted patches and 0 independently validated patches; root-cause repair rate is unavailable.
 - Real local demo: outcome=COMPLETED, lane agreement=AGREED, patch=PROPOSED, ephemeral validation=PASSED, source unchanged=true.
 - Observed runtime: Ollama 0.16.2, model qwen2.5-coder:7b-instruct-q4_K_M, quantization Q4_K_M, digest sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364.
-- Repository quality: `PASS`, 1613 passed, 10 skipped, 81.61% Core branch coverage.
+- Repository quality: `PASS`, 2620 passed, 32 skipped, 80.1% Core branch coverage.
 
 ## Conclusions
 
@@ -32,7 +32,7 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 
 ## Bound snapshot
 
-- Base implementation commit: d04f588fc323b6696cd0fbad2a76dcdbb0414c61
+- Base implementation commit: e33feb44e052a47e12e13424974dadd1014da2ed
 - Meaning: The base commit anchors prior integrated work; subject_sha256 binds the complete current repository candidate except generated report/m-a2026 delivery bytes.
 - Included implementation evidence: Python CWE-89 repair, JavaScript, TypeScript, and Go CWE-89 adapters, bounded local-model instructor runner, and development-corpus recomputation.
 
@@ -48,7 +48,7 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 
 | Path | SHA-256 |
 | --- | --- |
-| `README.md` | `a689f8164434b17609e5e81d0cdf92433e0260840e1f3a61141dca4c2117bf44` |
+| `README.md` | `1c6107e484b35f7edcea175a8f0aab51cab9c1515306d0f02f00ca1e6cbba11a` |
 | `artifacts/gates/G2/promotion-manifest.json` | `d63e16e891971b7f75d02a475716b323b0f92437fab0b006c5ffcd6b724f07e2` |
 | `artifacts/gates/G2/test-results/deterministic-core-validation.md` | `dd64d5feff2b62ddf9b3244cdb0e87da22d7b5e1c569a27032d71e80eb2264ce` |
 | `artifacts/gates/G3/promotion-manifest.json` | `012d85d83108e308cbf16801005a65b022859c5199a3d6f21355edf3b27ffd2d` |
@@ -63,24 +63,24 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 | `evaluation/development/results/recomputed.json` | `deae563fe08580a2ed3dc447ba19d020f31e63797eb8b83c8b6737ad3a674407` |
 | `evaluation/development/results/run-records.jsonl` | `396667fc4e2a08046a4d487ed6306f670c76a356800e2ead5b56e6bf047790be` |
 | `evaluation/development/run-plan.yaml` | `fa294da989a423167f5a6bb04e693b4926b414d4c557bc1250b27b420d3b7728` |
-| `packages/adapters/src/securecode_ai/adapters/cwe89_multilanguage.py` | `f7b3a3d607a1d666a877e509852eacda617792b134af19b39ea32f2723d98751` |
-| `packages/adapters/src/securecode_ai/adapters/cwe_portfolio.py` | `dc20687e0fed7632e532f3f41ec91f0c3c439630e6da4227a203ce6dd30d9f38` |
+| `packages/adapters/src/securecode_ai/adapters/cwe89_multilanguage.py` | `57aca1d1ab5a5b91bb4792026467ad6f12306c70da49f0ac748cf779c3f6b0b9` |
+| `packages/adapters/src/securecode_ai/adapters/cwe_portfolio.py` | `49cfbda8da069575a20212c37ab66fad48542ee040d206cbde42e06d137754ad` |
 | `packages/adapters/src/securecode_ai/adapters/program_graph.py` | `a0b325ea18385156a6bab2ba1ef7977c94656ae05defaa57a3a1a5ccf4507e80` |
-| `pyproject.toml` | `c63f8b628e3cc3f5a3b25befaa17d517a4e886553f836dac065b5c6f057b70c7` |
+| `pyproject.toml` | `0988a050872ff202c3575146313273426736112b5e80080832f2537d5cf52cc8` |
 | `report/development-benchmark/README.md` | `df7b813d7e330c04bb05bfb62dbee9ead8addabb5de84649543505ed2dac5d15` |
 | `report/development-benchmark/limitations.md` | `2ec663f5f21ec7461b29a93bab8bea509c5aedb463797699b5ebc8d82f73756e` |
 | `report/m-a2026/evidence/p917-real-local/integrator-receipt.json` | `7fa7d9f106abdc8c991df34c25b43bf5fcd94687eebc5fe313667d061c540603` |
 | `report/m-a2026/evidence/p917-real-local/p917-ephemeral-validation.json` | `130c1595e7e5aee1847a5c7e79422efef2e685456f00f9c67034b310e2a89bd8` |
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.html` | `400ff949e73e65f6b6987551e75f8c105b47b95f83b69d648bcbcabed220c6be` |
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.json` | `d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b` |
-| `scripts/build_m_a2026_submission.py` | `59979d7c08db15d79f0c7b29ee8ba0dee6dcf3c3bf245480cefa88c2d6cf6d6d` |
+| `scripts/build_m_a2026_submission.py` | `34b8d918fb52f4134a449b9ee8547030c55a5029d9046597b5d424d1110bfd20` |
 | `tests/integration/test_cwe_portfolio_pipeline.py` | `e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7` |
-| `tests/integration/test_m_a2026_submission.py` | `9ebac5b3da0850b79430096ec30917d3dfefd54e6f4f47a43ac0e6e5d77cec7b` |
+| `tests/integration/test_m_a2026_submission.py` | `6feb3efd6caf302bf4a0245b6084c062f1c02517a12ff562b1164db0abc05f66` |
 | `tests/integration/test_multilanguage_pipeline.py` | `00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc` |
 | `tests/integration/test_mvp_demo.py` | `2faa6dc45ebd7cb5719f27c90a778f8068cc8cf27f62ec97e7d61e10f3d84dfa` |
 | `tests/integration/test_p917_real_local_demo.py` | `91729ef1916df05e502d25bbb6e3b7b54955f804bd0eebc6a044fd8a7312b21a` |
 | `tests/unit/test_cwe_portfolio.py` | `738e0fd7b7752c59faac5d937272233c8248f90a9e2ab7539b3370bbbe85faf6` |
-| `uv.lock` | `ae181729916f2187aed41ccc6f241af5aee0546e0f4cfd22e00a9ac27260ebf7` |
+| `uv.lock` | `019129e771dddddb3aa83d1feead60a6f2b19945baa187e0a171ff32b5aa8139` |
 
 ## Replay
 
