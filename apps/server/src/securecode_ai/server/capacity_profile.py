@@ -24,11 +24,13 @@ MAX_CONCURRENCY: Final = 64
 MAX_ITERATIONS: Final = 5_000
 LOGIN_PATH: Final = "/api/v1/auth/login"
 
-# scenarios this executor can genuinely drive in process
+# Scenarios this executor can genuinely drive in process. Cancellation is absent
+# on purpose: requests complete well below a millisecond here, so a cancellation
+# lands after the worker already finished and would report zero events that
+# actually occurred. It needs a workload that runs long enough to be interrupted.
 EXECUTABLE_SCENARIOS: Final = (
     ChaosScenario.LEASE_EXPIRY,
     ChaosScenario.DUPLICATE,
-    ChaosScenario.CANCEL,
 )
 
 AppCallable = Callable[
@@ -124,21 +126,35 @@ class InProcessCapacityExecutor:
             method, path, body = self._requests[index % len(self._requests)]
             return await self._call(method, path, body, queue_ms=queue_ms)
 
-        async def worker() -> list[_Sample]:
+        async def worker() -> tuple[list[_Sample], int]:
+            """Collect samples; a scenario cancellation is counted, not swallowed."""
+
             collected: list[_Sample] = []
-            while not pending.empty():
-                collected.append(await one_request())
-            return collected
+            cancelled = 0
+            try:
+                while not pending.empty():
+                    collected.append(await one_request())
+            except asyncio.CancelledError:
+                # this worker was cancelled on purpose by the scenario: its
+                # observations are reported and the cancellation is counted
+                cancelled += 1
+            return collected, cancelled
 
         tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
-        if scenario is ChaosScenario.CANCEL:
-            for task in tasks[len(tasks) // 2 :]:
+        if scenario is ChaosScenario.CANCEL and len(tasks) > 1:
+            # always leave one worker running: cancelling every worker would measure
+            # nothing, and a cell without observations must not look like a pass
+            cancelled_workers = max(1, len(tasks) // 2)
+            for task in tasks[len(tasks) - cancelled_workers :]:
                 task.cancel()
         results = await asyncio.gather(*tasks, return_exceptions=True)
         elapsed = time.monotonic() - started
+        cancelled_workers = 0
         for entry in results:
-            if isinstance(entry, list):
-                samples.extend(entry)
+            if isinstance(entry, tuple) and len(entry) == 2:
+                collected, cancelled = entry
+                samples.extend(collected)
+                cancelled_workers += cancelled
         run_latencies = [item.run_ms for item in samples]
         queue_waits = [item.queue_ms for item in samples]
         errors = sum(1 for item in samples if item.status >= 500)
@@ -153,7 +169,7 @@ class InProcessCapacityExecutor:
             run_p50=_percentile(run_latencies, 0.5),
             run_p95=_percentile(run_latencies, 0.95),
             errors=errors,
-            cancellations=len(samples) - len(answered),
+            cancellations=cancelled_workers,
             live_leases=0,
         )
 
