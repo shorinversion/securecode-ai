@@ -303,6 +303,10 @@ class ServerApp:
         if identity is None:
             await self._send_error(send, 401, "UNAUTHENTICATED", correlation_id)
             return
+        # Scope note: the quota charges routed API work, after the tenant is
+        # known. Early unauthenticated routes (login, health, capabilities)
+        # are not charged here; a login brute-force ceiling belongs with the
+        # login flow itself, not with tenant accounting.
         if self._quota is not None:
             decision = self._quota.check(
                 tenant_id=identity.tenant_id,
