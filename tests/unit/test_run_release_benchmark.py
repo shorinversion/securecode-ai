@@ -162,6 +162,74 @@ def test_model_failure_is_retained_as_a_cell(
     assert cells[0].tp == 0
 
 
+def test_budget_rejection_prevents_remote_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "corpus.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE file_change (file_change_id INTEGER, code_before TEXT, code_after TEXT)"
+        )
+        connection.execute("INSERT INTO file_change VALUES (1, 'print(1)', 'print(2)')")
+    case = MODULE.Case(
+        "cvefixes:repo:1:before",
+        MODULE._sha256("print(1)"),
+        "CWE-89",
+        "vulnerable",
+        "python",
+        "lineage",
+    )
+    budget = MODULE.RemoteBudget(
+        tmp_path / "budget.sqlite",
+        "development",
+        "a" * 40,
+        "b" * 64,
+        11,
+        1,
+        1_000_000_000_000,
+        1,
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_remote_prediction",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("remote invoked")),
+    )
+
+    cells = MODULE.run((case,), database, Configuration.MODEL, 1, True, remote_budget=budget)
+
+    assert len(cells) == 1
+    assert cells[0].status == "budget-rejected"
+
+
+def test_remote_cli_requires_explicit_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    database = tmp_path / "corpus.sqlite"
+    output = tmp_path / "result.json"
+    manifest.write_text("{}", encoding="utf-8")
+    database.touch()
+    monkeypatch.setattr(MODULE, "_load_cases", lambda *_args: (_case(),))
+
+    assert (
+        MODULE.main(
+            (
+                "--manifest",
+                str(manifest),
+                "--database",
+                str(database),
+                "--configuration",
+                "model_native",
+                "--output",
+                str(output),
+                "--allow-public-remote",
+            )
+        )
+        == 1
+    )
+    assert not output.exists()
+
+
 @pytest.mark.parametrize(
     "lane", (Configuration.MODEL, Configuration.ONE_SHOT, Configuration.SEMGREP)
 )
