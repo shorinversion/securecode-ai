@@ -22,6 +22,9 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- Worker scans now render canonical SARIF beside the JSON report and publish it
+  through the existing content-addressed, retry-safe artifact upload path.
+
 - CR-094 makes canonical quality type-check every source file against both Linux and Windows APIs before unit tests.
 
 - P9.21 replaces dynamic Windows-only CLI imports with ordinary guarded imports so package boundaries, Linux typing and Windows typing validate the same atomic-output implementation.

@@ -399,7 +399,7 @@ MVP `v0.1`.
 | `P5.6` | Idempotent summary comment | P5.5 | repeated delivery updates one comment | `TODO` |
 | `P5.7` | High-signal inline comments | P5.5 | only changed, precise, confirmed findings are posted | `TODO` |
 | `P5.8` | SHA-bound advisory check/job | P5.2–P5.5 | exact HEAD outcome mapping; production blocking disabled before P7.9 | `TODO` |
-| `P5.9` | SARIF and artifact publishing | P5.5 | upload success/failure is observable and retry-safe | `TODO` |
+| `P5.9` | SARIF and artifact publishing | P5.5 | canonical SARIF is content-addressed and uploaded through the existing observable, retry-safe artifact path; `test_worker_sarif_artifact.py`, `test_scm_artifacts.py` | `DONE` |
 | `P5.10` | Fork/untrusted contributor security | P5.5 | secrets unavailable to attacker-controlled code | `TODO` |
 
 ### G5 — CI/SCM Ready

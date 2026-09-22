@@ -578,9 +578,11 @@ def _run_local_product_scan(
             raise LocalProductSupersededError()
         raise LocalProductUnavailableError()
     rendered = render_report(result.report, report_format)
+    sarif_rendered = render_report(result.report, ReportFormat.SARIF)
     outcome = LocalProductScanResult(
         result,
         rendered,
+        sarif_rendered,
         2
         if result.run.audit_outcome is AuditRunOutcome.FAIL
         else 0
