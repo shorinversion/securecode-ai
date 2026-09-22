@@ -50,6 +50,7 @@ from .connected import (
     create_approval,
     decide_approval,
     decide_finding,
+    fetch_events,
     fetch_finding,
     fetch_policies,
     fetch_results,
@@ -57,6 +58,7 @@ from .connected import (
     grant_secret,
     parse_approval_arguments,
     parse_connected_arguments,
+    parse_event_arguments,
     parse_health_arguments,
     parse_results_arguments,
     parse_run_arguments,
@@ -157,6 +159,7 @@ def main(
             "health",
             "decisions",
             "secrets",
+            "events",
         }
     ):
         output.write(_command_help(stripped[0]))
@@ -170,6 +173,13 @@ def main(
         )
     if stripped and stripped[0] == "decisions":
         return run_connected_decision(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
+    if stripped and stripped[0] == "events":
+        return run_connected_events(
             stripped,
             stdout=output,
             stderr=errors,
@@ -401,6 +411,29 @@ def run_connected_decision(
     return int(CliExitCode.COMPLETED)
 
 
+def run_connected_events(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Print one page of a run's event feed."""
+
+    try:
+        run_id, cursor, limit = parse_event_arguments(tokens[1:])
+        settings = settings_from_environment(environment)
+        collection = fetch_events(settings, run_id, cursor=cursor, limit=limit)
+    except ConnectedCliError as error:
+        stderr.write("connected read was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected read failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
 def run_connected_readout(
     tokens: tuple[str, ...],
     *,
@@ -588,6 +621,7 @@ __all__ = [
     "run_connect_command",
     "run_connected_approval",
     "run_connected_decision",
+    "run_connected_events",
     "run_connected_inspection",
     "run_connected_readout",
     "run_connected_results",

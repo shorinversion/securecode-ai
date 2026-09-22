@@ -137,6 +137,11 @@ def _parser() -> argparse.ArgumentParser:
         help="read the control plane's effective policy documents",
     )
     subparsers.add_parser(
+        "events",
+        add_help=False,
+        help="read one page of a run's event feed from the control plane",
+    )
+    subparsers.add_parser(
         "secrets",
         add_help=False,
         help=_GRANT_HELP,
@@ -172,6 +177,7 @@ def _command_help(command: str) -> str:
         "health": "check readiness or liveness of the configured control plane",
         "decisions": "record an operator decision on one finding",
         "secrets": _GRANT_HELP,
+        "events": "read one page of a run's event feed from the control plane",
     }
     description = descriptions.get(command)
     if description is None:
@@ -222,6 +228,10 @@ def _command_help(command: str) -> str:
         parser.add_argument("finding_id", help="control plane finding identifier")
     elif command == "policies":
         pass
+    elif command == "events":
+        parser.add_argument("run_id", help="control plane run identifier")
+        parser.add_argument("--cursor", help="server-issued page cursor")
+        parser.add_argument("--limit", type=int, help="page size (1-500)")
     elif command == "secrets":
         parser.add_argument("action", choices=("grant", "show"), help="secret operation")
         parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")

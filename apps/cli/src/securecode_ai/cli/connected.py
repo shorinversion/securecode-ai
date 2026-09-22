@@ -17,7 +17,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, TextIO
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_RESPONSE_BYTES = 1_048_576
@@ -102,6 +102,29 @@ def _identifier(value: str) -> bool:
     )
 
 
+def _safe_query(query: Mapping[str, str] | None) -> str:
+    """Render a bounded, encoded query string from validated scalar parameters."""
+
+    if query is None:
+        return ""
+    if not isinstance(query, Mapping) or len(query) > 8:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    pairs: list[str] = []
+    for name, value in query.items():
+        if (
+            type(name) is not str
+            or not name
+            or len(name) > 64
+            or not all(character.isalnum() or character in "_-" for character in name)
+            or type(value) is not str
+            or not value
+            or len(value) > 256
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        pairs.append(f"{name}={quote(value, safe='')}")
+    return "?" + "&".join(sorted(pairs))
+
+
 def _api_path(value: object) -> bool:
     return (
         type(value) is str
@@ -165,7 +188,9 @@ class ConnectedApi(Protocol):
         self, run_id: str, *, token: str, if_match: str, idempotency_key: str
     ) -> dict[str, object]: ...
 
-    def read(self, path: str, *, token: str) -> dict[str, object]: ...
+    def read(
+        self, path: str, *, token: str, query: Mapping[str, str] | None = None
+    ) -> dict[str, object]: ...
 
     def mutate(
         self,
@@ -213,12 +238,14 @@ class HttpConnectedApi:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         return self._call("GET", f"/api/v1/runs/{run_id}", document=None, token=token)
 
-    def read(self, path: str, *, token: str) -> dict[str, object]:
+    def read(
+        self, path: str, *, token: str, query: Mapping[str, str] | None = None
+    ) -> dict[str, object]:
         """Read one bounded document; the path must be an allowlisted API route."""
 
         if not isinstance(path, str) or not _api_path(path):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
-        return self._call("GET", path, document=None, token=token)
+        return self._call("GET", path, document=None, token=token, query=_safe_query(query))
 
     def mutate(
         self,
@@ -271,6 +298,7 @@ class HttpConnectedApi:
         token: str,
         idempotency_key: str | None = None,
         if_match: str | None = None,
+        query: str = "",
     ) -> dict[str, object]:
         if type(token) is not str or not 1 <= len(token) <= 8192:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
@@ -293,7 +321,7 @@ class HttpConnectedApi:
         if if_match is not None:
             headers["If-Match"] = if_match
         request = Request(
-            self._base_url + path,
+            self._base_url + path + query,
             data=payload,
             headers=headers,
             method=method,
@@ -821,6 +849,76 @@ def parse_single_argument(tokens: tuple[str, ...]) -> str:
     return tokens[0]
 
 
+def fetch_events(
+    settings: ConnectedRunSettings,
+    run_id: str,
+    *,
+    cursor: str | None = None,
+    limit: int | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read one page of a run's event feed, newest cursor supplied by the server."""
+
+    if not _identifier(run_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    query: dict[str, str] = {}
+    if cursor is not None:
+        if not _cursor(cursor):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        query["cursor"] = cursor
+    if limit is not None:
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        query["limit"] = str(limit)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(
+        f"/api/v1/runs/{run_id}/events",
+        token=settings.token,
+        query=query or None,
+    )
+    return ConnectedCollection(run_id=run_id, kind=ResultKind.EVENTS, document=document)
+
+
+def _cursor(value: object) -> bool:
+    """A server-issued page cursor: bounded, URL-safe, opaque to the CLI."""
+
+    if not isinstance(value, str) or not 1 <= len(value) <= 128:
+        return False
+    return all(character.isalnum() or character in "-_" for character in value)
+
+
+def parse_event_arguments(tokens: tuple[str, ...]) -> tuple[str, str | None, int | None]:
+    """Parse `securecode events <run_id> [--cursor TOKEN] [--limit N]`."""
+
+    run_id: str | None = None
+    cursor: str | None = None
+    limit: int | None = None
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"--cursor", "--limit"}:
+            if index + 1 >= len(tokens):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            value = tokens[index + 1]
+            if token == "--cursor":
+                if not _cursor(value):
+                    raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+                cursor = value
+            else:
+                if not value.isdigit() or not 1 <= int(value) <= 500:
+                    raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+                limit = int(value)
+            index += 2
+            continue
+        if token.startswith("-") or run_id is not None:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        run_id = token
+        index += 1
+    if run_id is None or not _identifier(run_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    return run_id, cursor, limit
+
+
 def parse_health_arguments(tokens: tuple[str, ...]) -> bool:
     """Parse `securecode health [--live]` and return whether liveness was asked."""
 
@@ -965,6 +1063,7 @@ __all__ = [
     "create_approval",
     "decide_approval",
     "decide_finding",
+    "fetch_events",
     "fetch_finding",
     "fetch_policies",
     "fetch_results",
@@ -973,6 +1072,7 @@ __all__ = [
     "new_idempotency_key",
     "parse_approval_arguments",
     "parse_connected_arguments",
+    "parse_event_arguments",
     "parse_health_arguments",
     "parse_results_arguments",
     "parse_run_arguments",
