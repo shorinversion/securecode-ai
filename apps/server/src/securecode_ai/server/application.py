@@ -13,6 +13,7 @@ from urllib.parse import parse_qs
 
 from .idempotency import ClaimState, InMemoryRequestReplayStore, RequestReplayStore
 from .json_boundary import JsonBoundaryError, load_json_object
+from .oidc_login import OidcLoginError, OidcLoginService
 from .openapi import API_VERSION, CAPABILITIES, SUPPORTED_MAJOR, build_openapi_document
 from .ports import (
     AuthorizationPort,
@@ -211,6 +212,7 @@ class ServerApp:
         webhook_identity: VerifiedIdentity | None = None,
         artifact_upload_identity: VerifiedIdentity | None = None,
         telemetry: TelemetryRecorder | None = None,
+        oidc_login: OidcLoginService | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -223,6 +225,7 @@ class ServerApp:
         ):
             raise ValueError("server application settings are invalid")
         self._telemetry = telemetry if telemetry is not None else TelemetryRecorder()
+        self._oidc_login = oidc_login
         self._identities = identities or DenyIdentityVerifier()
         self._authorization = authorization or DenyAuthorization()
         self._service = service or UnavailableControlPlaneService()
@@ -268,8 +271,18 @@ class ServerApp:
                 {"api_version": API_VERSION, "capabilities": self._capabilities},
             )
             return
+        if path == "/api/v1/auth/login" and method == "POST":
+            await self._send_login_start(send, correlation_id)
+            return
         if path == "/api/v1/openapi.json" and method == "GET":
             await self._send_json(send, 200, build_openapi_document())
+            return
+        if path == "/api/v1/auth/callback" and method == "POST":
+            callback_body = await _read_body(receive, self._max_body_bytes)
+            if callback_body is None:
+                await self._send_error(send, 413, "BODY_TOO_LARGE", correlation_id)
+                return
+            await self._send_login_callback(send, callback_body, correlation_id)
             return
         route, params = _match_route(method, path)
         if route is None:
@@ -422,6 +435,47 @@ class ServerApp:
                 self._replay_store.release(tenant_id=identity.tenant_id, key=key)
             except Exception:
                 return
+
+    async def _send_login_start(
+        self, send: Callable[[Mapping[str, object]], Awaitable[None]], correlation_id: str
+    ) -> None:
+        """Hand out one login attempt handle; unconfigured servers fail closed."""
+
+        if self._oidc_login is None:
+            await self._send_error(send, 503, "AUTH_NOT_CONFIGURED", correlation_id)
+            return
+        await self._send_json(send, 200, self._oidc_login.start().document())
+
+    async def _send_login_callback(
+        self,
+        send: Callable[[Mapping[str, object]], Awaitable[None]],
+        body: bytes,
+        correlation_id: str,
+    ) -> None:
+        """Exchange a callback token for a verified principal, or fail closed."""
+
+        if self._oidc_login is None:
+            await self._send_error(send, 503, "AUTH_NOT_CONFIGURED", correlation_id)
+            return
+        try:
+            document = load_json_object(body)
+        except JsonBoundaryError:
+            await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
+            return
+        token = document.get("token")
+        nonce = document.get("nonce")
+        if type(token) is not str or type(nonce) is not str:
+            await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
+            return
+        try:
+            receipt = self._oidc_login.callback(token=token, nonce=nonce)
+        except OidcLoginError as error:
+            await self._send_error(send, 401, error.code.value, correlation_id)
+            return
+        except Exception:
+            await self._send_error(send, 401, "TOKEN_REJECTED", correlation_id)
+            return
+        await self._send_json(send, 200, receipt.document())
 
     async def _send_error(
         self,
