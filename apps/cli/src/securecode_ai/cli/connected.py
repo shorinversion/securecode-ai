@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -21,6 +21,8 @@ from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 MAX_RESPONSE_BYTES = 1_048_576
+INITIAL_POLL_SECONDS = 1.0
+MAXIMUM_POLL_SECONDS = 15.0
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 ALLOWED_SCHEMES = frozenset({"https", "http"})
 
@@ -453,6 +455,7 @@ def run_connected(
     api: ConnectedApi | None = None,
     poll_status: bool = True,
     attempts: int = 1,
+    sleeper: Callable[[float], None] | None = None,
 ) -> ConnectedRunReceipt:
     """Submit one revision and (optionally) report its terminal state."""
 
@@ -472,11 +475,15 @@ def run_connected(
     if not poll_status:
         return receipt
     latest = receipt
-    for _ in range(attempts):
+    delay = INITIAL_POLL_SECONDS
+    for attempt in range(attempts):
         document = client.status(receipt.run_id, token=settings.token)
         latest = _receipt(document)
         if latest.outcome is not None:
             return latest
+        if attempt + 1 < attempts and sleeper is not None:
+            sleeper(delay)
+            delay = min(delay * 2, MAXIMUM_POLL_SECONDS)
     if latest.outcome is None:
         raise ConnectedCliError(ConnectedCliErrorCode.RUN_NOT_TERMINAL)
     return latest

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import TextIO
 
@@ -901,7 +902,7 @@ def run_connect_command(
     try:
         _target, wait, fresh = parse_connected_arguments(tokens[1:])
         settings = settings_from_environment(environment, fresh=fresh)
-        receipt = run_connected(settings, poll_status=wait)
+        receipt = run_connected(settings, poll_status=wait, sleeper=time.sleep)
     except ConnectedCliError as error:
         stderr.write("connected run was rejected (" + error.code.value + ")" + chr(10))
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
