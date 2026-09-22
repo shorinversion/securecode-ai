@@ -275,6 +275,17 @@ def test_program_graph_contract_stays_internal_and_adapter_owned() -> None:
     assert adapters.build_program_graph.__module__ == "securecode_ai.adapters.program_graph"
 
 
+def test_scm_policy_and_baseline_are_available_through_core_api() -> None:
+    core = importlib.import_module("securecode_ai.core")
+
+    assert core.BaselineFingerprintSnapshot.__module__ == "securecode_ai.core.baseline_fingerprints"
+    assert core.ScmPolicyDocument.__module__ == "securecode_ai.core.scm_policy"
+    assert (
+        core.compare_baseline_fingerprints.__module__ == "securecode_ai.core.baseline_fingerprints"
+    )
+    assert core.evaluate_scm_policy.__module__ == "securecode_ai.core.scm_policy"
+
+
 @pytest.mark.parametrize(
     ("source", "expected_fragment"),
     [

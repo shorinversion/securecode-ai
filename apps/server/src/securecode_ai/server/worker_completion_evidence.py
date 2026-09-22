@@ -92,8 +92,31 @@ def verify_terminal_evidence(
 ) -> None:
     """Require canonical report and graph bytes before accepting PASS or FAIL."""
 
+    load_verified_terminal_audit_run(
+        connection=connection,
+        artifact_root=artifact_root,
+        tenant_id=tenant_id,
+        run_id=run_id,
+        execution_identity_hash=execution_identity_hash,
+        outcome=outcome,
+        findings=findings,
+    )
+
+
+def load_verified_terminal_audit_run(
+    *,
+    connection: sqlite3.Connection,
+    artifact_root: Path,
+    tenant_id: str,
+    run_id: str,
+    execution_identity_hash: str,
+    outcome: str,
+    findings: tuple[WorkerFindingRecord, ...],
+) -> AuditRun | None:
+    """Load an AuditRun only after validating its stored terminal evidence."""
+
     if outcome not in {"PASS", "FAIL"}:
-        return
+        return None
     if not isinstance(connection, sqlite3.Connection) or not isinstance(artifact_root, Path):
         raise WorkerQueueConflict()
     row = connection.execute(
@@ -150,6 +173,7 @@ def verify_terminal_evidence(
         graph_digest=graph_digest,
         audit_run=audit_run,
     )
+    return audit_run
 
 
 def _validate_report(
@@ -481,4 +505,4 @@ def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-__all__ = ["verify_terminal_evidence"]
+__all__ = ["load_verified_terminal_audit_run", "verify_terminal_evidence"]

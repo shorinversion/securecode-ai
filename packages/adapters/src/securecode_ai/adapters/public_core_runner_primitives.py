@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import socket
 from dataclasses import dataclass, field, replace
 from typing import Final, NoReturn
 from urllib.parse import urlsplit
@@ -34,6 +35,7 @@ from securecode_ai.contracts import (
     ModelPreflightResult,
     ModelRequest,
     ModelRole,
+    ProviderKind,
     ProviderProfile,
 )
 
@@ -311,12 +313,24 @@ class PublicCoreHostInputs:
             ):
                 _fail()
             endpoint = urlsplit(profile.endpoint.base_url)
+            local = (
+                profile.provider_kind is ProviderKind.OPENAI_COMPATIBLE_LOCAL
+                and profile.execution_boundary is ExecutionBoundary.LOCAL_RUNNER
+                and profile.credential_ref is None
+                and endpoint.hostname == "127.0.0.1"
+                and (endpoint.port or 80) == self.gateway_port
+                and profile.endpoint.authority == "127.0.0.1"
+            )
+            remote = (
+                profile.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE
+                and profile.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
+                and profile.credential_ref is not None
+                and endpoint.scheme == "https"
+                and (endpoint.port or 443) == self.gateway_port
+                and self.diagnostic_sampling is None
+            )
             if (
-                profile.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
-                or profile.credential_ref is not None
-                or endpoint.hostname != "127.0.0.1"
-                or (endpoint.port or 80) != self.gateway_port
-                or profile.endpoint.authority != "127.0.0.1"
+                not (local or remote)
                 or artifacts.policy != policy_pin
                 or artifacts.configuration
                 != _pin("public-core-configuration", self._configuration_bytes)
@@ -415,6 +429,35 @@ class PinnedLiteralLoopbackResolver:
         if authority != self._authority or port != self._port:
             _fail()
         return (self._authority,)
+
+
+class SystemPublicResolver:
+    """Resolve a public provider authority only when the endpoint issuer asks."""
+
+    def resolve(self, authority: str, port: int) -> tuple[str, ...]:
+        if (
+            type(authority) is not str
+            or not authority
+            or type(port) is not int
+            or isinstance(port, bool)
+            or not 1 <= port <= 65535
+        ):
+            _fail()
+        try:
+            addresses = tuple(
+                sorted(
+                    {
+                        item[4][0]
+                        for item in socket.getaddrinfo(authority, port, type=socket.SOCK_STREAM)
+                        if isinstance(item[4][0], str)
+                    }
+                )
+            )
+        except OSError:
+            _fail()
+        if not addresses:
+            _fail()
+        return addresses
 
 
 @dataclass(frozen=True, slots=True)

@@ -297,6 +297,9 @@ def test_actual_publication_requires_exact_fresh_protected_approval(
         )
     original_outcome = result.composition.run.audit_outcome
     assert result.exit_code == (2 if verdict == "CONFIRMED" else 0)
+    sarif = json.loads(result.sarif_rendered)
+    assert sarif["version"] == "2.1.0"
+    assert sarif["runs"][0]["automationDetails"]["id"] == result.composition.run.run_id
     if approval_change == "unchanged":
         calls = []
 

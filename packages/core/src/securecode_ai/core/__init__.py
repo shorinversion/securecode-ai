@@ -44,6 +44,15 @@ from securecode_ai.contracts import (
     has_unvalidated_runtime_state,
 )
 
+from .baseline_fingerprints import (
+    BASELINE_FINGERPRINT_SCHEMA_VERSION,
+    BaselineFindingRelation,
+    BaselineFingerprintComparison,
+    BaselineFingerprintError,
+    BaselineFingerprintErrorCode,
+    BaselineFingerprintSnapshot,
+    compare_baseline_fingerprints,
+)
 from .classification import (
     DEFAULT_CLASSIFICATION_PROVENANCE,
     ClassificationError,
@@ -184,6 +193,18 @@ from .scanning import (
     raw_signal_digest,
     raw_signal_payload_bytes,
 )
+from .scm_policy import (
+    SCM_POLICY_SCHEMA_VERSION,
+    ScmPolicyDecision,
+    ScmPolicyDocument,
+    ScmPolicyEnforcement,
+    ScmPolicyErrorCode,
+    ScmPolicyInputHashes,
+    ScmPolicyMode,
+    ScmPolicyRequest,
+    canonical_scm_policy_decision_json,
+    evaluate_scm_policy,
+)
 from .symbols import (
     ParseDiagnostic,
     ParseDiagnosticCode,
@@ -222,6 +243,7 @@ from .telemetry import (
 )
 
 __all__ = [
+    "BASELINE_FINGERPRINT_SCHEMA_VERSION",
     "CONTRACT_SCHEMA_VERSION",
     "DEFAULT_CLASSIFICATION_PROVENANCE",
     "DEFAULT_NORMALIZATION_LIMITS",
@@ -236,11 +258,17 @@ __all__ = [
     "SARIF_SCHEMA_SHA256",
     "SARIF_SCHEMA_URI",
     "SARIF_VERSION",
+    "SCM_POLICY_SCHEMA_VERSION",
     "ApiDialect",
     "AppendDisposition",
     "AppendReceipt",
     "AuditRunOutcome",
     "AuthorizationError",
+    "BaselineFindingRelation",
+    "BaselineFingerprintComparison",
+    "BaselineFingerprintError",
+    "BaselineFingerprintErrorCode",
+    "BaselineFingerprintSnapshot",
     "ChangedFileEntry",
     "ChangedFileStatus",
     "ChangedFilesMap",
@@ -342,6 +370,13 @@ __all__ = [
     "ScannerRequest",
     "ScannerRunStatus",
     "ScannerWorkerTarget",
+    "ScmPolicyDecision",
+    "ScmPolicyDocument",
+    "ScmPolicyEnforcement",
+    "ScmPolicyErrorCode",
+    "ScmPolicyInputHashes",
+    "ScmPolicyMode",
+    "ScmPolicyRequest",
     "SourceLocation",
     "SourcePoint",
     "SourcePosition",
@@ -392,11 +427,14 @@ __all__ = [
     "build_deterministic_report",
     "canonical_model_request_hash",
     "canonical_raw_signal",
+    "canonical_scm_policy_decision_json",
     "canonical_telemetry_bytes",
     "canonical_workflow_request_hash",
     "classify_cwe",
+    "compare_baseline_fingerprints",
     "control_workflow",
     "discover_repository",
+    "evaluate_scm_policy",
     "has_unvalidated_runtime_state",
     "normalize_raw_signal",
     "normalize_signals",
