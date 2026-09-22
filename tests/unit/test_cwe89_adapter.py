@@ -87,6 +87,57 @@ def test_direct_source_fstring_and_string_concatenation_are_detected() -> None:
     )
 
 
+def test_flask_form_and_header_sources_survive_bounded_known_transforms() -> None:
+    source = b'''import base64
+
+def form_case(request, db):
+    value = request.form.get("password")
+    config = object()
+    config.set("section", "password", value)
+    selected = config.get("section", "password")
+    db.execute(f"SELECT * FROM users WHERE password = '{selected}'")
+
+def header_case(request, db):
+    value = request.headers.get("password")
+    encoded = base64.b64encode(value.encode("utf-8"))
+    selected = base64.b64decode(encoded).decode("utf-8")
+    db.execute(f"SELECT * FROM users WHERE password = '{selected}'")
+'''
+    result = _scan(source)
+    assert len(result.signals) == 2
+    snippets = [source[item.source.start_byte : item.source.end_byte] for item in result.signals]
+    assert any(b"request.form.get" in item for item in snippets)
+    assert any(b"request.headers.get" in item for item in snippets)
+
+
+def test_extended_flask_source_remains_safe_with_parameter_binding() -> None:
+    source = b'''def get_user(request, db):
+    value = request.form.get("password")
+    return db.execute("SELECT * FROM users WHERE password = ?", (value,))
+'''
+    assert _scan(source).signals == ()
+
+
+def test_constant_key_dictionary_transfer_preserves_only_the_matching_value() -> None:
+    source = b'''def vulnerable(request, db):
+    values = {}
+    values["safe"] = "fixed"
+    values["selected"] = request.headers.get("password")
+    db.execute(f"SELECT * FROM users WHERE password = '{values['selected']}'")
+
+def safe(request, db):
+    values = {}
+    values["selected"] = request.headers.get("password")
+    values["selected"] = "fixed"
+    db.execute(f"SELECT * FROM users WHERE password = '{values['selected']}'")
+'''
+    result = _scan(source)
+    assert len(result.signals) == 1
+    assert source[result.signals[0].sink.start_byte : result.signals[0].sink.end_byte].startswith(
+        b"db.execute"
+    )
+
+
 def test_simple_first_party_function_summary_preserves_source_interpolation_sink_chain() -> None:
     source = b"""def load_id(request):
     return request.args.get("user_id")

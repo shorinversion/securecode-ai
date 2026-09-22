@@ -239,7 +239,7 @@ def scan_python_cwe89(
     line_starts = _line_starts(source)
     functions = _top_level_functions(tree)
     raw: list[tuple[SourceRange, SourceRange, SourceRange]] = []
-    _scan_scope(tree.body, {}, functions, source, line_starts, limits, raw)
+    _scan_scope(tree.body, {}, {}, functions, source, line_starts, limits, raw)
     unique = sorted(
         set(raw),
         key=lambda item: (
@@ -285,6 +285,7 @@ def scan_python_cwe89(
 def _scan_scope(
     statements: list[ast.stmt],
     environment: dict[str, tuple[_Flow, ...]],
+    object_fields: dict[tuple[str, str, str], tuple[_Flow, ...]],
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
     source: bytes,
     line_starts: tuple[int, ...],
@@ -293,12 +294,15 @@ def _scan_scope(
 ) -> None:
     for statement in statements:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _scan_scope(statement.body, {}, functions, source, line_starts, limits, output)
+            _scan_scope(statement.body, {}, {}, functions, source, line_starts, limits, output)
             continue
+        _record_object_field_write(statement, environment, object_fields, functions, source, line_starts, limits)
         if isinstance(statement, (ast.Assign, ast.AnnAssign)):
             value = statement.value
             if value is not None:
-                flows = _resolve(value, environment, functions, source, line_starts, limits, 0)
+                flows = _resolve(
+                    value, environment, object_fields, functions, source, line_starts, limits, 0
+                )
                 for target in _assignment_names(statement):
                     environment[target] = flows
         for node in _statement_nodes(statement):
@@ -307,7 +311,7 @@ def _scan_scope(
                     continue
                 sink = _node_range(node, source, line_starts)
                 for flow in _resolve(
-                    node.args[0], environment, functions, source, line_starts, limits, 0
+                    node.args[0], environment, object_fields, functions, source, line_starts, limits, 0
                 ):
                     if flow.interpolation is not None:
                         output.append((flow.source, flow.interpolation, sink))
@@ -315,23 +319,45 @@ def _scan_scope(
                             raise Cwe89ScanError(Cwe89ScanErrorCode.SIGNAL_LIMIT)
         if isinstance(statement, ast.If):
             _scan_scope(
-                statement.body, dict(environment), functions, source, line_starts, limits, output
+                statement.body,
+                dict(environment),
+                dict(object_fields),
+                functions,
+                source,
+                line_starts,
+                limits,
+                output,
             )
             _scan_scope(
-                statement.orelse, dict(environment), functions, source, line_starts, limits, output
+                statement.orelse,
+                dict(environment),
+                dict(object_fields),
+                functions,
+                source,
+                line_starts,
+                limits,
+                output,
             )
         elif isinstance(
             statement, (ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try)
         ):
             for child in _nested_statement_lists(statement):
                 _scan_scope(
-                    child, dict(environment), functions, source, line_starts, limits, output
+                    child,
+                    dict(environment),
+                    dict(object_fields),
+                    functions,
+                    source,
+                    line_starts,
+                    limits,
+                    output,
                 )
 
 
 def _resolve(
     expression: ast.expr,
     environment: dict[str, tuple[_Flow, ...]],
+    object_fields: dict[tuple[str, str, str], tuple[_Flow, ...]],
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
     source: bytes,
     line_starts: tuple[int, ...],
@@ -344,6 +370,9 @@ def _resolve(
         return environment.get(expression.id, ())
     if _is_http_get(expression):
         return (_Flow(_node_range(expression, source, line_starts), None),)
+    field_key = _object_field_read_key(expression)
+    if field_key is not None:
+        return object_fields.get(field_key, ())
     if isinstance(expression, ast.JoinedStr):
         location = _node_range(expression, source, line_starts)
         return _with_interpolation(
@@ -352,7 +381,7 @@ def _resolve(
                 for value in expression.values
                 if isinstance(value, ast.FormattedValue)
                 for flow in _resolve(
-                    value.value, environment, functions, source, line_starts, limits, depth
+                    value.value, environment, object_fields, functions, source, line_starts, limits, depth
                 )
             ),
             location,
@@ -360,9 +389,16 @@ def _resolve(
     if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Add):
         location = _node_range(expression, source, line_starts)
         return _with_interpolation(
-            _resolve(expression.left, environment, functions, source, line_starts, limits, depth)
+            _resolve(expression.left, environment, object_fields, functions, source, line_starts, limits, depth)
             + _resolve(
-                expression.right, environment, functions, source, line_starts, limits, depth
+                expression.right,
+                environment,
+                object_fields,
+                functions,
+                source,
+                line_starts,
+                limits,
+                depth,
             ),
             location,
         )
@@ -373,12 +409,20 @@ def _resolve(
                 function,
                 expression.args,
                 environment,
+                object_fields,
                 functions,
                 source,
                 line_starts,
                 limits,
                 depth + 1,
             )
+    if _is_known_passthrough_call(expression):
+        assert isinstance(expression, ast.Call)
+        assert isinstance(expression.func, ast.Attribute)
+        operand = expression.func.value if expression.func.attr in {"encode", "decode"} else expression.args[0]
+        return _resolve(
+            operand, environment, object_fields, functions, source, line_starts, limits, depth
+        )
     return ()
 
 
@@ -386,6 +430,7 @@ def _resolve_function_call(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     arguments: list[ast.expr],
     environment: dict[str, tuple[_Flow, ...]],
+    object_fields: dict[tuple[str, str, str], tuple[_Flow, ...]],
     functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
     source: bytes,
     line_starts: tuple[int, ...],
@@ -400,14 +445,16 @@ def _resolve_function_call(
     ):
         return ()
     bound = {
-        parameter: _resolve(argument, environment, functions, source, line_starts, limits, depth)
+        parameter: _resolve(
+            argument, environment, object_fields, functions, source, line_starts, limits, depth
+        )
         for parameter, argument in zip(parameters, arguments, strict=True)
     }
     returned: tuple[_Flow, ...] = ()
     for statement in function.body:
         if isinstance(statement, ast.Return) and statement.value is not None:
             returned += _resolve(
-                statement.value, bound, functions, source, line_starts, limits, depth
+                statement.value, bound, {}, functions, source, line_starts, limits, depth
             )
     return returned
 
@@ -416,13 +463,110 @@ def _with_interpolation(flows: tuple[_Flow, ...], location: SourceRange) -> tupl
     return tuple(_Flow(flow.source, location) for flow in flows)
 
 
+def _record_object_field_write(
+    statement: ast.stmt,
+    environment: dict[str, tuple[_Flow, ...]],
+    object_fields: dict[tuple[str, str, str], tuple[_Flow, ...]],
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    source: bytes,
+    line_starts: tuple[int, ...],
+    limits: Cwe89ScanLimits,
+) -> None:
+    """Track only a constant-key ``object.set(section, key, value)`` transfer.
+
+    This captures a common configuration round-trip without treating arbitrary
+    method calls as sources or attempting inter-module execution.
+    """
+
+    for node in _statement_nodes(statement):
+        if not isinstance(node, ast.Call) or not _is_object_field_set(node):
+            continue
+        key = _object_field_write_key(node)
+        if key is None:
+            continue
+        object_fields[key] = _resolve(
+            node.args[2], environment, object_fields, functions, source, line_starts, limits, 0
+        )
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        key = _subscript_field_key(statement.targets[0])
+        if key is not None:
+            object_fields[key] = _resolve(
+                statement.value,
+                environment,
+                object_fields,
+                functions,
+                source,
+                line_starts,
+                limits,
+                0,
+            )
+
+
+def _literal_string(expression: ast.expr) -> str | None:
+    return expression.value if isinstance(expression, ast.Constant) and type(expression.value) is str else None
+
+
+def _object_field_write_key(expression: ast.Call) -> tuple[str, str, str] | None:
+    if (
+        not isinstance(expression.func, ast.Attribute)
+        or not isinstance(expression.func.value, ast.Name)
+        or expression.func.attr != "set"
+        or len(expression.args) != 3
+        or expression.keywords
+    ):
+        return None
+    section, key = (_literal_string(item) for item in expression.args[:2])
+    if section is None or key is None:
+        return None
+    return expression.func.value.id, section, key
+
+
+def _object_field_read_key(expression: ast.expr) -> tuple[str, str, str] | None:
+    subscript_key = _subscript_field_key(expression)
+    if subscript_key is not None:
+        return subscript_key
+    if (
+        not isinstance(expression, ast.Call)
+        or not isinstance(expression.func, ast.Attribute)
+        or not isinstance(expression.func.value, ast.Name)
+        or expression.func.attr != "get"
+        or len(expression.args) < 2
+    ):
+        return None
+    section, key = (_literal_string(item) for item in expression.args[:2])
+    if section is None or key is None:
+        return None
+    return expression.func.value.id, section, key
+
+
+def _subscript_field_key(expression: ast.expr) -> tuple[str, str, str] | None:
+    if not isinstance(expression, ast.Subscript) or not isinstance(expression.value, ast.Name):
+        return None
+    key = _literal_string(expression.slice)
+    if key is None:
+        return None
+    return expression.value.id, "__dict__", key
+
+
+def _is_object_field_set(expression: ast.Call) -> bool:
+    return _object_field_write_key(expression) is not None
+
+
+def _is_known_passthrough_call(expression: ast.expr) -> bool:
+    """Allow only pure byte/string encoding boundaries used by the rule."""
+
+    if not isinstance(expression, ast.Call) or not isinstance(expression.func, ast.Attribute):
+        return False
+    return expression.func.attr in {"encode", "decode", "b64encode", "b64decode"}
+
+
 def _is_http_get(expression: ast.expr) -> bool:
     return (
         isinstance(expression, ast.Call)
         and isinstance(expression.func, ast.Attribute)
-        and expression.func.attr == "get"
+        and expression.func.attr in {"get", "getlist"}
         and isinstance(expression.func.value, ast.Attribute)
-        and expression.func.value.attr == "args"
+        and expression.func.value.attr in {"args", "form", "headers", "cookies", "values"}
         and isinstance(expression.func.value.value, ast.Name)
         and expression.func.value.value.id == "request"
     )
