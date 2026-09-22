@@ -63,6 +63,7 @@ class LocalProductSupersededError(ValueError):
 class LocalProductScanResult:
     composition: ProductAuditComposition
     rendered: bytes
+    sarif_rendered: bytes
     exit_code: int
     state_probe: GitProductAuditStateProbe
     graph_artifact: bytes

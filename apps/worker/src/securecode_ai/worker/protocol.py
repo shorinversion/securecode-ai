@@ -151,7 +151,7 @@ class WorkerArtifact:
     def __post_init__(self) -> None:
         if (
             type(self.reference) is not ArtifactRef
-            or self.purpose not in {"audit-report", "evidence-graph"}
+            or self.purpose not in {"audit-report", "audit-run", "evidence-graph", "sarif-report"}
             or type(self.content) is not bytes
             or not self.content
             or len(self.content) != self.reference.size_bytes
