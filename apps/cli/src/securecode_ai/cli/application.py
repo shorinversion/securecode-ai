@@ -46,6 +46,7 @@ from .connected import (
     ConnectedCliError,
     ConnectedCliErrorCode,
     DeletionDraft,
+    FeedbackDraft,
     SecretGrantDraft,
     approve_deletion,
     cancel_run,
@@ -73,9 +74,11 @@ from .connected import (
     read_approval,
     read_backup,
     read_deletion,
+    read_feedback_metrics,
     read_secret_grant,
     run_connected,
     settings_from_environment,
+    submit_feedback,
     transition_backup,
 )
 from .connected import (
@@ -172,6 +175,7 @@ def main(
             "events",
             "backups",
             "deletions",
+            "feedback",
         }
     ):
         output.write(_command_help(stripped[0]))
@@ -185,6 +189,13 @@ def main(
         )
     if stripped and stripped[0] == "decisions":
         return run_connected_decision(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
+    if stripped and stripped[0] == "feedback":
+        return run_connected_feedback(
             stripped,
             stdout=output,
             stderr=errors,
@@ -432,6 +443,69 @@ def run_connected_decision(
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
     except Exception:
         stderr.write("connected decision failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
+def run_connected_feedback(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Submit one pilot review, or read the aggregated feedback metrics."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        action = tokens[1]
+        settings = settings_from_environment(environment)
+        if action == "submit":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {
+                "repository",
+                "run",
+                "finding",
+                "head",
+                "identity-hash",
+                "decision",
+                "reason",
+                "rationale",
+                "if-match",
+            }
+            if not required.issubset(fields):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = submit_feedback(
+                settings,
+                FeedbackDraft(
+                    repository_id=fields["repository"],
+                    run_id=fields["run"],
+                    finding_id=fields["finding"],
+                    head_sha=fields["head"],
+                    identity_hash=fields["identity-hash"],
+                    decision=fields["decision"],
+                    reason=fields["reason"],
+                    rationale=fields["rationale"],
+                    incident_id=fields.get("incident-id"),
+                ),
+                if_match=fields["if-match"],
+            )
+        elif action == "metrics":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) - {"repository"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = read_feedback_metrics(settings, repository_id=fields.get("repository"))
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    except ConnectedCliError as error:
+        stderr.write(
+            "connected feedback operation was rejected (" + error.code.value + ")" + chr(10)
+        )
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected feedback operation failed" + chr(10))
         return int(CliExitCode.OPERATIONAL_ERROR)
     stdout.write(collection.render() + chr(10))
     return int(CliExitCode.COMPLETED)
@@ -785,6 +859,7 @@ __all__ = [
     "run_connected_decision",
     "run_connected_deletions",
     "run_connected_events",
+    "run_connected_feedback",
     "run_connected_inspection",
     "run_connected_readout",
     "run_connected_results",

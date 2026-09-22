@@ -1074,6 +1074,14 @@ class BackupDraft:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
 
 
+def _text(value: object, *, maximum: int) -> bool:
+    """Free text: printable characters and spaces, bounded and control-free."""
+
+    if not isinstance(value, str) or not 1 <= len(value) <= maximum:
+        return False
+    return all(32 <= ord(character) <= 126 for character in value)
+
+
 def _printable(value: object, *, maximum: int) -> bool:
     if not isinstance(value, str) or not 1 <= len(value) <= maximum:
         return False
@@ -1297,6 +1305,100 @@ def execute_deletion(
     return ConnectedCollection(run_id=deletion_id, kind=ResultKind.FINDINGS, document=document)
 
 
+@dataclass(frozen=True, slots=True)
+class FeedbackDraft:
+    """Operator-supplied review of one finding during a pilot."""
+
+    repository_id: str
+    run_id: str
+    finding_id: str
+    head_sha: str
+    identity_hash: str
+    decision: str
+    reason: str
+    rationale: str
+    incident_id: str | None = None
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.repository_id,
+            self.run_id,
+            self.finding_id,
+            self.decision,
+            self.reason,
+        ):
+            if not _identifier(value) or len(value) > 256:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not _commit(self.head_sha) or not _sha256(self.identity_hash):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not _text(self.rationale, maximum=1024):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if self.incident_id is not None and (
+            not _identifier(self.incident_id) or len(self.incident_id) > 256
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+
+
+def submit_feedback(
+    settings: ConnectedRunSettings,
+    draft: FeedbackDraft,
+    *,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Record one reviewer decision and its reason for a finding."""
+
+    if not _precondition(if_match):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    document: dict[str, object] = {
+        "repository_id": draft.repository_id,
+        "run_id": draft.run_id,
+        "finding_id": draft.finding_id,
+        "head_sha": draft.head_sha,
+        "identity_hash": draft.identity_hash,
+        "decision": draft.decision,
+        "reason": draft.reason,
+        "rationale": draft.rationale,
+    }
+    if draft.incident_id is not None:
+        document["incident_id"] = draft.incident_id
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    response = client.mutate(
+        "/api/v1/feedback",
+        document=document,
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=draft.run_id, kind=ResultKind.FINDINGS, document=response)
+
+
+def read_feedback_metrics(
+    settings: ConnectedRunSettings,
+    *,
+    repository_id: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read the pilot feedback metrics the control plane aggregates."""
+
+    query: dict[str, str] = {}
+    if repository_id is not None:
+        if not _identifier(repository_id):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        query["repository_id"] = repository_id
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(
+        "/api/v1/feedback/metrics",
+        token=settings.token,
+        query=query or None,
+    )
+    return ConnectedCollection(run_id="feedback", kind=ResultKind.FINDINGS, document=document)
+
+
 __all__ = [
     "ApprovalDraft",
     "BackupDraft",
@@ -1308,6 +1410,7 @@ __all__ = [
     "ConnectedRunRequest",
     "ConnectedRunSettings",
     "DeletionDraft",
+    "FeedbackDraft",
     "HttpConnectedApi",
     "ResultKind",
     "SecretGrantDraft",
@@ -1338,11 +1441,13 @@ __all__ = [
     "read_approval",
     "read_backup",
     "read_deletion",
+    "read_feedback_metrics",
     "read_secret_grant",
     "render_receipt",
     "resumable_idempotency_key",
     "run_connected",
     "settings_from_environment",
+    "submit_feedback",
     "timestamp",
     "transition_backup",
 ]
