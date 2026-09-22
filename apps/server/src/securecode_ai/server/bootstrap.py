@@ -20,6 +20,7 @@ from .assurance_verifiers import load_assurance_verifier_registry
 from .audit_log import AuditLog
 from .auth_configuration import build_oidc_verifier
 from .auth_runtime import CompositeIdentityVerifier
+from .baseline_store import DurableBaselineStore
 from .bootstrap_identity import (
     BootstrapIdentity,
     HashedTokenIdentityVerifier,
@@ -323,6 +324,7 @@ def build_local_app(
             queue=worker_queue,
             artifact_authorizations=artifact_authorizations,
             uploaded_artifacts=LocalArtifactUploadVerifier(data_dir / "artifacts"),
+            baseline_store=DurableBaselineStore(connection),
         ),
     )
     if scm.run_state is not None:
