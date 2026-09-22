@@ -151,6 +151,77 @@ def _artifact_document(inputs: PublicCoreHostInputs, configuration: bytes) -> by
     return json.dumps(document).encode()
 
 
+def test_public_runner_accepts_a_pinned_remote_public_profile() -> None:
+    profile = json.loads(
+        (
+            _ROOT / "specs/contracts/provider-fixtures/valid.local-openai-compatible.json"
+        ).read_bytes()
+    )
+    profile.update(
+        {
+            "profile_id": "public-remote-model",
+            "provider_kind": "openai_compatible_remote",
+            "execution_boundary": "public_external",
+            "credential_ref": "env://PUBLIC_REMOTE_KEY",
+            "egress_profiles": ["metadata_external"],
+        }
+    )
+    profile["endpoint"] = {
+        "base_url": "https://api.example.test/v1",
+        "authority": "api.example.test",
+        "allowed_ports": [443],
+        "follow_redirects": False,
+        "local_plaintext_exception": False,
+    }
+    profile["data_terms"].update(
+        {
+            "evidence_status": "verified",
+            "residency": ["policy-selected"],
+            "training_use": "none_verified",
+            "maximum_input_data_class": DataClass.PUBLIC.value,
+            "evidence_ref": "evidence://provider-terms/public-remote",
+        }
+    )
+    profile_bytes = json.dumps(profile, sort_keys=True).encode()
+    policy = json.loads(
+        (_ROOT / "specs/contracts/policy/fixtures/egress.valid.metadata-external.json").read_bytes()
+    )
+    policy.update({"tenant_scope": "synthetic-public-development"})
+    policy["rules"][0].update(
+        {
+            "data_classes": [DataClass.PUBLIC.value],
+            "destinations": ["profile://public-remote-model"],
+            "purposes": ["model_native_discovery", "candidate_investigation"],
+            "requires_transforms": ["bounded_repository_view"],
+        }
+    )
+    policy_bytes = EgressPolicyDocument.model_validate_json(json.dumps(policy)).canonical_bytes()
+    artifacts = {
+        name: base64.b64encode(
+            policy_bytes
+            if name == "policy"
+            else b"public remote configuration"
+            if name == "configuration"
+            else (
+                _ROOT / "packages/adapters/src/securecode_ai/adapters/product_runtime.py"
+            ).read_bytes()
+            if name == "producer"
+            else f"actual host artifact:{name}".encode()
+        ).decode("ascii")
+        for name in _NAMES
+    }
+
+    inputs = load_public_core_inputs(
+        profile_bytes=profile_bytes,
+        policy_bytes=policy_bytes,
+        artifacts_bytes=json.dumps(artifacts).encode(),
+        gateway_port=443,
+    )
+
+    assert inputs.profile.execution_boundary.value == "public_external"
+    assert inputs.snapshot().profile.selector == "public-remote-model@1.0.0"
+
+
 def test_actual_preflight_preserves_profile_capabilities_and_binds_full_identity() -> None:
     inputs = _inputs()
     prepared = prepare_public_core_case(case=CoreCase.PYTHON_INTERFILE, inputs=inputs)
