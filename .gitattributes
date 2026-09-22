@@ -4,4 +4,5 @@ tests/fixtures/demo-repositories.golden.json text eol=lf
 work/task-packets/P1.11-evaluator-seed.yaml text eol=lf
 work/task-packets/P1.11.yaml text eol=lf
 *.ipynb text eol=lf
+evaluation/release-corpus/cvefixes-manifest.json text eol=lf
 *.pdf -text diff
