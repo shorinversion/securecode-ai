@@ -25,6 +25,7 @@ from securecode_ai.contracts import (
     ModelUsage,
     NativeOutcomeMetadata,
     PreflightEligibility,
+    ProviderKind,
     ProviderProfile,
     SourceLocation,
 )
@@ -40,6 +41,7 @@ from .config import ProviderProfileRegistry
 from .endpoint import Resolver
 from .model import (
     AuthorizedProviderHarness,
+    CredentialSupplier,
     HmacContentIdentifier,
     ModelBoundaryExecution,
     NativeTurnBoundaryExecution,
@@ -64,10 +66,11 @@ from .product_runtime_contracts import (
 
 
 class AuthorizedLocalModelExecutor:
-    """The only runtime path to the existing authorized provider harness."""
+    """The product runtime path to the authorized provider harness."""
 
     __slots__ = (
         "_connector",
+        "_credential_supplier",
         "_harness",
         "_now",
         "_policy",
@@ -87,6 +90,7 @@ class AuthorizedLocalModelExecutor:
         resolver: Resolver,
         connector: ProviderConnector | OpenAICompatibleLocalHttpConnector,
         preflight: Callable[[ModelRequest], ModelPreflightRequest],
+        credential_supplier: CredentialSupplier | None = None,
         usage_observer: Callable[[ModelUsage], None] | None = None,
         now: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -96,9 +100,24 @@ class AuthorizedLocalModelExecutor:
         ):
             raise ValueError("authorized model executor is invalid")
         approved = registry.require_registered(profile)
+        local_profile = (
+            approved.provider_kind is ProviderKind.OPENAI_COMPATIBLE_LOCAL
+            and approved.execution_boundary is ExecutionBoundary.LOCAL_RUNNER
+            and approved.credential_ref is None
+            and credential_supplier is None
+        )
+        remote_profile = (
+            approved.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE
+            and approved.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
+            and approved.credential_ref is not None
+            and callable(credential_supplier)
+        )
         if (
-            approved.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
-            or approved.credential_ref is not None
+            (
+                approved.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
+                and not remote_profile
+            )
+            or not (local_profile or remote_profile)
             or not callable(getattr(connector, "connect", None))
             or not callable(getattr(connector, "send", None))
             or not callable(preflight)
@@ -111,6 +130,9 @@ class AuthorizedLocalModelExecutor:
         self._policy = policy
         self._resolver = resolver
         self._connector = connector
+        self._credential_supplier = (
+            credential_supplier if credential_supplier is not None else lambda _: None
+        )
         self._preflight = preflight
         self._usage_observer = usage_observer
         self._now = now
@@ -260,7 +282,7 @@ class AuthorizedLocalModelExecutor:
                 context_builder=bounded_context,
                 resolver=self._resolver,
                 connector=typed_connector,
-                credential_supplier=lambda _: None,
+                credential_supplier=self._credential_supplier,
                 validator=validator,
                 now=self.clock(),
             )

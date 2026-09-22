@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 
+from securecode_ai.adapters.endpoint import Resolver
+from securecode_ai.adapters.model import CredentialSupplier
 from securecode_ai.adapters.product_conformance import ProductAuditorEvidenceRecorder
 from securecode_ai.adapters.product_runtime import (
     PRODUCT_AUDITOR_PROMPT_PIN,
@@ -32,6 +34,7 @@ from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ComponentPin,
     EvidenceInputRef,
+    ExecutionBoundary,
     ModelPurpose,
     ModelRequest,
     ModelRole,
@@ -53,12 +56,18 @@ from .public_core_runner_primitives import (
     _RULE_IDS,
     PublicCoreHostInputs,
     PublicCoreRunResult,
+    SystemPublicResolver,
     _fail,
 )
 
 
 def run_public_core_case(
-    *, case: CoreCase, inputs: PublicCoreHostInputs, simulated_transport: object | None = None
+    *,
+    case: CoreCase,
+    inputs: PublicCoreHostInputs,
+    simulated_transport: object | None = None,
+    resolver: Resolver | None = None,
+    credential_supplier: CredentialSupplier | None = None,
 ) -> PublicCoreRunResult:
     """Compose the real Core ports.  An injected transport remains explicitly simulated."""
     if type(inputs) is not PublicCoreHostInputs:
@@ -69,8 +78,26 @@ def run_public_core_case(
     if prepared.preflight.eligibility is not PreflightEligibility.ELIGIBLE:
         return PublicCoreRunResult(case, origin, prepared.preflight, None)
     try:
-        discovery_executor = _executor(inputs=inputs, connector=simulated_transport, native=True)
-        auditor_executor = _executor(inputs=inputs, connector=simulated_transport, native=False)
+        selected_resolver = resolver
+        if (
+            selected_resolver is None
+            and inputs.profile.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
+        ):
+            selected_resolver = SystemPublicResolver()
+        discovery_executor = _executor(
+            inputs=inputs,
+            connector=simulated_transport,
+            native=True,
+            resolver=selected_resolver,
+            credential_supplier=credential_supplier,
+        )
+        auditor_executor = _executor(
+            inputs=inputs,
+            connector=simulated_transport,
+            native=False,
+            resolver=selected_resolver,
+            credential_supplier=credential_supplier,
+        )
         catalogue = prepared.fixture.catalogue
         plan = ModelNativeDiscoveryPlan(
             receipt_id=f"public-receipt-{prepared.fixture.head_sha[:16]}",
