@@ -45,19 +45,24 @@ from .connected import (
     BackupDraft,
     ConnectedCliError,
     ConnectedCliErrorCode,
+    DeletionDraft,
     SecretGrantDraft,
+    approve_deletion,
     cancel_run,
     check_health,
     create_approval,
     create_backup,
+    create_deletion,
     decide_approval,
     decide_finding,
+    execute_deletion,
     fetch_events,
     fetch_finding,
     fetch_policies,
     fetch_results,
     fetch_run,
     grant_secret,
+    hold_deletion,
     parse_approval_arguments,
     parse_connected_arguments,
     parse_event_arguments,
@@ -67,6 +72,7 @@ from .connected import (
     parse_single_argument,
     read_approval,
     read_backup,
+    read_deletion,
     read_secret_grant,
     run_connected,
     settings_from_environment,
@@ -165,6 +171,7 @@ def main(
             "secrets",
             "events",
             "backups",
+            "deletions",
         }
     ):
         output.write(_command_help(stripped[0]))
@@ -178,6 +185,13 @@ def main(
         )
     if stripped and stripped[0] == "decisions":
         return run_connected_decision(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
+    if stripped and stripped[0] == "deletions":
+        return run_connected_deletions(
             stripped,
             stdout=output,
             stderr=errors,
@@ -418,6 +432,83 @@ def run_connected_decision(
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
     except Exception:
         stderr.write("connected decision failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
+def run_connected_deletions(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Open, approve, hold, execute or read one erasure request."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        action = tokens[1]
+        settings = settings_from_environment(environment)
+        if action == "create":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {"deletion-id", "repository", "content-hash", "identity-hash"}
+            if not required.issubset(fields):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = create_deletion(
+                settings,
+                DeletionDraft(
+                    deletion_id=fields["deletion-id"],
+                    repository_id=fields["repository"],
+                    content_sha256=fields["content-hash"],
+                    identity_hash=fields["identity-hash"],
+                ),
+            )
+        elif action == "show":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"deletion-id"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = read_deletion(settings, fields["deletion-id"])
+        elif action == "approve":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"deletion-id", "if-match"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = approve_deletion(
+                settings, fields["deletion-id"], if_match=fields["if-match"]
+            )
+        elif action == "hold":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {"deletion-id", "if-match", "enabled", "identity-hash", "reason"}
+            if set(fields) != required or fields["enabled"] not in {"true", "false"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = hold_deletion(
+                settings,
+                fields["deletion-id"],
+                enabled=fields["enabled"] == "true",
+                identity_hash=fields["identity-hash"],
+                reason=fields["reason"],
+                if_match=fields["if-match"],
+            )
+        elif action == "execute":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"deletion-id", "if-match", "identity-hash"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = execute_deletion(
+                settings,
+                fields["deletion-id"],
+                identity_hash=fields["identity-hash"],
+                if_match=fields["if-match"],
+            )
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    except ConnectedCliError as error:
+        stderr.write(
+            "connected deletion operation was rejected (" + error.code.value + ")" + chr(10)
+        )
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected deletion operation failed" + chr(10))
         return int(CliExitCode.OPERATIONAL_ERROR)
     stdout.write(collection.render() + chr(10))
     return int(CliExitCode.COMPLETED)
@@ -692,6 +783,7 @@ __all__ = [
     "run_connected_approval",
     "run_connected_backups",
     "run_connected_decision",
+    "run_connected_deletions",
     "run_connected_events",
     "run_connected_inspection",
     "run_connected_readout",

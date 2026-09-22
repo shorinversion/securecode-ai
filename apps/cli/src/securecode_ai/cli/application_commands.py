@@ -137,6 +137,11 @@ def _parser() -> argparse.ArgumentParser:
         help="read the control plane's effective policy documents",
     )
     subparsers.add_parser(
+        "deletions",
+        add_help=False,
+        help="open, approve, hold, execute or read an erasure request",
+    )
+    subparsers.add_parser(
         "backups",
         add_help=False,
         help="create, read, execute or restore a backup through the control plane",
@@ -184,6 +189,7 @@ def _command_help(command: str) -> str:
         "secrets": _GRANT_HELP,
         "events": "read one page of a run's event feed from the control plane",
         "backups": "create, read, execute or restore a backup through the control plane",
+        "deletions": "open, approve, hold, execute or read an erasure request",
     }
     description = descriptions.get(command)
     if description is None:
@@ -234,6 +240,13 @@ def _command_help(command: str) -> str:
         parser.add_argument("finding_id", help="control plane finding identifier")
     elif command == "policies":
         pass
+    elif command == "deletions":
+        parser.add_argument(
+            "action",
+            choices=("create", "show", "approve", "hold", "execute"),
+            help="erasure operation to perform",
+        )
+        parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "backups":
         parser.add_argument(
             "action",

@@ -1148,6 +1148,155 @@ def transition_backup(
     return ConnectedCollection(run_id=backup_id, kind=ResultKind.FINDINGS, document=document)
 
 
+@dataclass(frozen=True, slots=True)
+class DeletionDraft:
+    """Operator-supplied metadata for one erasure request."""
+
+    deletion_id: str
+    repository_id: str
+    content_sha256: str
+    identity_hash: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _identifier(self.deletion_id)
+            or not _identifier(self.repository_id)
+            or not _sha256(self.content_sha256)
+            or not _sha256(self.identity_hash)
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+
+
+def create_deletion(
+    settings: ConnectedRunSettings,
+    draft: DeletionDraft,
+    *,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Open one erasure request for an exact stored artifact."""
+
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/lifecycle/deletions",
+        document={
+            "deletion_id": draft.deletion_id,
+            "repository_id": draft.repository_id,
+            "content_sha256": draft.content_sha256,
+            "data_class": "artifact",
+            "identity_hash": draft.identity_hash,
+        },
+        token=settings.token,
+        idempotency_key=key,
+    )
+    return ConnectedCollection(
+        run_id=draft.deletion_id, kind=ResultKind.FINDINGS, document=document
+    )
+
+
+def read_deletion(
+    settings: ConnectedRunSettings, deletion_id: str, *, api: ConnectedApi | None = None
+) -> ConnectedCollection:
+    """Read one erasure request's durable state."""
+
+    if not _identifier(deletion_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read("/api/v1/lifecycle/deletions/" + deletion_id, token=settings.token)
+    return ConnectedCollection(run_id=deletion_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def approve_deletion(
+    settings: ConnectedRunSettings,
+    deletion_id: str,
+    *,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Approve one erasure request against the exact observed state."""
+
+    if not _identifier(deletion_id) or not _precondition(if_match):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/lifecycle/deletions/" + deletion_id + ":approve",
+        document={},
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=deletion_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def hold_deletion(
+    settings: ConnectedRunSettings,
+    deletion_id: str,
+    *,
+    enabled: bool,
+    identity_hash: str,
+    reason: str,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Place or lift a legal hold on one erasure request."""
+
+    if (
+        not _identifier(deletion_id)
+        or not _precondition(if_match)
+        or type(enabled) is not bool
+        or not _sha256(identity_hash)
+        or not _printable(reason, maximum=1024)
+    ):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/lifecycle/deletions/" + deletion_id + ":legal-hold",
+        document={"enabled": enabled, "identity_hash": identity_hash, "reason": reason},
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=deletion_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def execute_deletion(
+    settings: ConnectedRunSettings,
+    deletion_id: str,
+    *,
+    identity_hash: str,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Execute one approved erasure request; the server fails closed without its executor."""
+
+    if not _identifier(deletion_id) or not _precondition(if_match) or not _sha256(identity_hash):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/lifecycle/deletions/" + deletion_id + ":execute",
+        document={"identity_hash": identity_hash},
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=deletion_id, kind=ResultKind.FINDINGS, document=document)
+
+
 __all__ = [
     "ApprovalDraft",
     "BackupDraft",
@@ -1158,21 +1307,26 @@ __all__ = [
     "ConnectedRunReceipt",
     "ConnectedRunRequest",
     "ConnectedRunSettings",
+    "DeletionDraft",
     "HttpConnectedApi",
     "ResultKind",
     "SecretGrantDraft",
+    "approve_deletion",
     "cancel_run",
     "check_health",
     "create_approval",
     "create_backup",
+    "create_deletion",
     "decide_approval",
     "decide_finding",
+    "execute_deletion",
     "fetch_events",
     "fetch_finding",
     "fetch_policies",
     "fetch_results",
     "fetch_run",
     "grant_secret",
+    "hold_deletion",
     "new_idempotency_key",
     "parse_approval_arguments",
     "parse_connected_arguments",
@@ -1183,6 +1337,7 @@ __all__ = [
     "parse_single_argument",
     "read_approval",
     "read_backup",
+    "read_deletion",
     "read_secret_grant",
     "render_receipt",
     "resumable_idempotency_key",
