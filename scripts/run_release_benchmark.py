@@ -28,6 +28,8 @@ from securecode_ai.core.release_benchmark import BenchmarkCell, Configuration, a
 from securecode_ai.core.repository import RepositoryFile
 from securecode_ai.core.scanning import ScannerRequest
 
+from scripts.benchmark_spend_guard import AttemptQuote, BenchmarkSpendGuard, SpendGuardError
+
 LANGUAGE_EXTENSIONS = {"python": ".py", "javascript-typescript": ".ts", "go": ".go"}
 MODEL_LANES = frozenset(
     {Configuration.SCANNER, Configuration.MODEL, Configuration.ONE_SHOT, Configuration.HYBRID}
@@ -42,6 +44,41 @@ class Case:
     expected_label: str
     language: str
     lineage: str
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteBudget:
+    """A conservative, durable reservation policy for public model calls."""
+
+    ledger: Path
+    phase: str
+    candidate_sha: str
+    profile_sha256: str
+    max_input_tokens: int
+    max_output_tokens: int
+    input_micro_usd_per_million: int
+    output_micro_usd_per_million: int
+
+    def reserve(self, case: Case, lane: Configuration, repetition: int) -> bool:
+        identity = hashlib.sha256(f"{case.case_id}:{lane.value}:{repetition}".encode()).hexdigest()
+        quote = AttemptQuote(
+            attempt_id=f"release-{identity}",
+            phase=self.phase,
+            candidate_sha=self.candidate_sha,
+            profile_sha256=self.profile_sha256,
+            max_input_tokens=self.max_input_tokens,
+            max_output_tokens=self.max_output_tokens,
+            input_micro_usd_per_million=self.input_micro_usd_per_million,
+            output_micro_usd_per_million=self.output_micro_usd_per_million,
+        )
+        try:
+            return BenchmarkSpendGuard(self.ledger).reserve(quote)
+        except SpendGuardError as error:
+            raise RemoteBudgetError() from error
+
+
+class RemoteBudgetError(ValueError):
+    """A fixed non-echo result when an API attempt cannot be reserved."""
 
 
 def _sha256(source: str) -> str:
@@ -320,6 +357,7 @@ def run(
     *,
     semgrep_command: str = "semgrep",
     semgrep_config: Path | None = None,
+    remote_budget: RemoteBudget | None = None,
 ) -> tuple[BenchmarkCell, ...]:
     if lane in MODEL_LANES and not remote:
         raise ValueError("remote lanes require --allow-public-remote")
@@ -364,6 +402,13 @@ def run(
                 started = time.monotonic_ns()
                 tokens = 0
                 try:
+                    if (
+                        lane in MODEL_LANES
+                        and (lane is not Configuration.SCANNER or bool(scanner))
+                        and remote_budget is not None
+                        and not remote_budget.reserve(case, lane, repetition)
+                    ):
+                        raise RemoteBudgetError()
                     if lane is Configuration.DETERMINISTIC:
                         predicted = bool(scanner)
                     elif lane is Configuration.SCANNER:
@@ -381,7 +426,10 @@ def run(
                         predicted = bool(scanner) or model
                     else:
                         raise ValueError("unsupported benchmark configuration")
-                except ValueError:
+                except RemoteBudgetError:
+                    cells.append(_cell(case, lane, repetition, False, 0, 0, "budget-rejected"))
+                    continue
+                except (SpendGuardError, ValueError):
                     cells.append(_cell(case, lane, repetition, False, 0, 0, "model-failed"))
                     continue
                 cells.append(
@@ -413,6 +461,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--allow-public-remote", action="store_true")
     parser.add_argument("--semgrep-command", default="semgrep")
     parser.add_argument("--semgrep-config", type=Path)
+    parser.add_argument("--spend-ledger", type=Path)
+    parser.add_argument("--budget-phase", choices=("development", "final"))
+    parser.add_argument("--candidate-sha")
+    parser.add_argument("--profile-sha256")
+    parser.add_argument("--max-input-tokens", type=int)
+    parser.add_argument("--max-output-tokens", type=int)
+    parser.add_argument("--input-microusd-per-million", type=int)
+    parser.add_argument("--output-microusd-per-million", type=int)
     arguments = parser.parse_args(argv)
     try:
         if (
@@ -420,6 +476,38 @@ def main(argv: Sequence[str] | None = None) -> int:
         ) or not 1 <= arguments.repetitions <= 3:
             raise ValueError("limit and repetitions are invalid")
         lane = Configuration(arguments.configuration)
+        remote_budget: RemoteBudget | None = None
+        if lane in MODEL_LANES:
+            values = (
+                arguments.spend_ledger,
+                arguments.budget_phase,
+                arguments.candidate_sha,
+                arguments.profile_sha256,
+                arguments.max_input_tokens,
+                arguments.max_output_tokens,
+                arguments.input_microusd_per_million,
+                arguments.output_microusd_per_million,
+            )
+            if any(value is None for value in values):
+                raise ValueError("remote lanes require an explicit spend budget")
+            assert arguments.spend_ledger is not None
+            assert arguments.budget_phase is not None
+            assert arguments.candidate_sha is not None
+            assert arguments.profile_sha256 is not None
+            assert arguments.max_input_tokens is not None
+            assert arguments.max_output_tokens is not None
+            assert arguments.input_microusd_per_million is not None
+            assert arguments.output_microusd_per_million is not None
+            remote_budget = RemoteBudget(
+                arguments.spend_ledger,
+                arguments.budget_phase,
+                arguments.candidate_sha,
+                arguments.profile_sha256,
+                arguments.max_input_tokens,
+                arguments.max_output_tokens,
+                arguments.input_microusd_per_million,
+                arguments.output_microusd_per_million,
+            )
         cells = run(
             _load_cases(arguments.manifest.resolve(strict=True), arguments.limit),
             arguments.database,
@@ -432,6 +520,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if arguments.semgrep_config is not None
                 else None
             ),
+            remote_budget=remote_budget,
         )
         result: dict[str, Any] = {
             "cells": [asdict(cell) for cell in cells],
