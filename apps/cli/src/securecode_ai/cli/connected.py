@@ -101,6 +101,17 @@ def _identifier(value: str) -> bool:
     )
 
 
+def _api_path(value: object) -> bool:
+    return (
+        type(value) is str
+        and value.startswith("/api/v1/")
+        and ".." not in value
+        and "?" not in value
+        and "#" not in value
+        and len(value) <= 256
+    )
+
+
 def _idempotency_key(value: object) -> bool:
     return (
         type(value) is str
@@ -155,6 +166,16 @@ class ConnectedApi(Protocol):
 
     def read(self, path: str, *, token: str) -> dict[str, object]: ...
 
+    def mutate(
+        self,
+        path: str,
+        *,
+        document: dict[str, object],
+        token: str,
+        idempotency_key: str,
+        if_match: str | None = None,
+    ) -> dict[str, object]: ...
+
 
 class HttpConnectedApi:
     """Minimal control-plane client: no redirects, bounded body, bearer auth."""
@@ -192,11 +213,35 @@ class HttpConnectedApi:
         return self._call("GET", f"/api/v1/runs/{run_id}", document=None, token=token)
 
     def read(self, path: str, *, token: str) -> dict[str, object]:
-        """Read one bounded collection document; the path is fixed by the caller."""
+        """Read one bounded document; the path must be an allowlisted API route."""
 
-        if not isinstance(path, str) or not path.startswith("/api/v1/runs/"):
+        if not isinstance(path, str) or not _api_path(path):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         return self._call("GET", path, document=None, token=token)
+
+    def mutate(
+        self,
+        path: str,
+        *,
+        document: dict[str, object],
+        token: str,
+        idempotency_key: str,
+        if_match: str | None = None,
+    ) -> dict[str, object]:
+        """Perform one mutating call with the headers the server requires."""
+
+        if not _api_path(path) or not _idempotency_key(idempotency_key):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if if_match is not None and not _precondition(if_match):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        return self._call(
+            "POST",
+            path,
+            document=document,
+            token=token,
+            idempotency_key=idempotency_key,
+            if_match=if_match,
+        )
 
     def cancel(
         self, run_id: str, *, token: str, if_match: str, idempotency_key: str
@@ -535,7 +580,139 @@ def parse_results_arguments(tokens: tuple[str, ...]) -> tuple[str, ResultKind]:
     return run_id, kind if kind is not None else ResultKind.FINDINGS
 
 
+@dataclass(frozen=True, slots=True)
+class ApprovalDraft:
+    """Operator-supplied fields for one approval request."""
+
+    approval_id: str
+    repository_id: str
+    run_id: str
+    finding_id: str
+    execution_identity_hash: str
+    expires_at: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _identifier(self.approval_id)
+            or not _identifier(self.repository_id)
+            or not _identifier(self.run_id)
+            or not _identifier(self.finding_id)
+            or not _sha256(self.execution_identity_hash)
+            or not _timestamp(self.expires_at)
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+
+
+def _sha256(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _timestamp(value: object) -> bool:
+    if type(value) is not str or not 20 <= len(value) <= 40:
+        return False
+    return value[4] == "-" and value[7] == "-" and "T" in value
+
+
+def create_approval(
+    settings: ConnectedRunSettings,
+    draft: ApprovalDraft,
+    *,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Open one pending approval bound to an exact run and identity."""
+
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/approvals",
+        document={
+            "approval_id": draft.approval_id,
+            "repository_id": draft.repository_id,
+            "run_id": draft.run_id,
+            "finding_id": draft.finding_id,
+            "execution_identity_hash": draft.execution_identity_hash,
+            "expires_at": draft.expires_at,
+        },
+        token=settings.token,
+        idempotency_key=key,
+    )
+    return ConnectedCollection(run_id=draft.run_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def read_approval(
+    settings: ConnectedRunSettings,
+    approval_id: str,
+    *,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read one approval's durable state."""
+
+    if not _identifier(approval_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(f"/api/v1/approvals/{approval_id}", token=settings.token)
+    return ConnectedCollection(run_id=approval_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def decide_approval(
+    settings: ConnectedRunSettings,
+    approval_id: str,
+    *,
+    approve: bool,
+    reason_code: str,
+    rationale: str,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Record an approval decision against the observed state precondition."""
+
+    if not _identifier(approval_id) or not _precondition(if_match):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    if type(approve) is not bool or not _identifier(reason_code) or not rationale:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    if len(reason_code) > 64 or len(rationale) > 1024:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        f"/api/v1/approvals/{approval_id}:decide",
+        document={"approve": approve, "reason_code": reason_code, "rationale": rationale},
+        token=settings.token,
+        idempotency_key=key,
+        if_match=if_match,
+    )
+    return ConnectedCollection(run_id=approval_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def parse_approval_arguments(tokens: tuple[str, ...]) -> dict[str, str]:
+    """Parse the shared `--flag value` shape used by approval commands."""
+
+    parsed: dict[str, str] = {}
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if not token.startswith("--") or index + 1 >= len(tokens):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        name = token[2:]
+        if not name or name in parsed:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        parsed[name] = tokens[index + 1]
+        index += 2
+    return parsed
+
+
 __all__ = [
+    "ApprovalDraft",
     "ConnectedApi",
     "ConnectedCliError",
     "ConnectedCliErrorCode",
@@ -546,12 +723,16 @@ __all__ = [
     "HttpConnectedApi",
     "ResultKind",
     "cancel_run",
+    "create_approval",
+    "decide_approval",
     "fetch_results",
     "fetch_run",
     "new_idempotency_key",
+    "parse_approval_arguments",
     "parse_connected_arguments",
     "parse_results_arguments",
     "parse_run_arguments",
+    "read_approval",
     "render_receipt",
     "run_connected",
     "settings_from_environment",

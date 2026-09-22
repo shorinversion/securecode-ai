@@ -118,6 +118,11 @@ def _parser() -> argparse.ArgumentParser:
         add_help=False,
         help="read one run's findings, artifacts or events from the control plane",
     )
+    subparsers.add_parser(
+        "approvals",
+        add_help=False,
+        help="open, read or decide a control-plane approval request",
+    )
     return parser
 
 
@@ -133,6 +138,7 @@ def _command_help(command: str) -> str:
         "status": "read one run's current durable state from the control plane",
         "cancel": "request cancellation of one run with an exact state precondition",
         "results": "read one run's findings, artifacts or events from the control plane",
+        "approvals": "open, read or decide a control-plane approval request",
     }
     description = descriptions.get(command)
     if description is None:
@@ -174,6 +180,13 @@ def _command_help(command: str) -> str:
             action="store_true",
             help="poll until the control plane reports a terminal outcome",
         )
+    elif command == "approvals":
+        parser.add_argument(
+            "action",
+            choices=("create", "show", "decide"),
+            help="approval operation to perform",
+        )
+        parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "results":
         parser.add_argument("run_id", help="control plane run identifier")
         parser.add_argument(
