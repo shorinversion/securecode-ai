@@ -14,8 +14,22 @@ from threading import Lock
 from typing import Final
 
 from .observability import Exporter, Observation, RedactedExporter
+from .operations_telemetry import OperationsTelemetry
 
 DEFAULT_CAPACITY: Final = 512
+# the counter store keeps low-cardinality buckets, so route actions collapse
+# onto its declared operation vocabulary and status classes onto outcomes
+_COUNTER_OPERATION: Final = {
+    "worker_sessions.create": "worker",
+    "worker_sessions.heartbeat": "worker",
+    "worker_sessions.events.append": "worker",
+    "worker_sessions.artifacts.commit": "artifact",
+    "worker_sessions.complete": "worker",
+    "artifacts.authorize": "artifact",
+    "artifacts.upload": "artifact",
+    "audit.export": "export",
+}
+_COUNTER_OUTCOME: Final = {2: "success", 4: "error", 5: "error"}
 MAX_ACTION_LENGTH: Final = 64
 MIN_DURATION_MS: Final = 0
 MAX_DURATION_MS: Final = 3_600_000
@@ -37,18 +51,22 @@ class TelemetryFlush:
 class TelemetryRecorder:
     """Buffer bounded observations and export them through a redacting seam."""
 
-    __slots__ = ("_buffer", "_capacity", "_exporter", "_lock")
+    __slots__ = ("_buffer", "_capacity", "_counters", "_exporter", "_lock")
 
     def __init__(
         self,
         *,
         exporter: Exporter | None = None,
+        counters: OperationsTelemetry | None = None,
         capacity: int = DEFAULT_CAPACITY,
     ) -> None:
         if type(capacity) is not int or not 1 <= capacity <= 65_536:
             raise TelemetryError("telemetry capacity is invalid")
+        if counters is not None and type(counters) is not OperationsTelemetry:
+            raise TelemetryError("telemetry counters are invalid")
         self._capacity = capacity
         self._buffer: deque[Observation] = deque(maxlen=capacity)
+        self._counters = counters
         self._exporter = RedactedExporter(exporter) if exporter is not None else None
         self._lock = Lock()
 
@@ -76,6 +94,13 @@ class TelemetryRecorder:
         )
         with self._lock:
             self._buffer.append(observation)
+            counters = self._counters
+        if counters is not None:
+            counters.record(
+                operation=_COUNTER_OPERATION.get(action, "run"),
+                outcome=_COUNTER_OUTCOME.get(status // 100, "error"),
+                elapsed_ms=duration_ms,
+            )
 
     def pending(self) -> int:
         with self._lock:
