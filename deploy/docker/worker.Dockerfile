@@ -14,6 +14,7 @@ COPY packages/adapters /app/packages/adapters
 COPY packages/contracts /app/packages/contracts
 COPY packages/core /app/packages/core
 COPY deploy/docker/entrypoint.py /app/entrypoint.py
+COPY deploy/docker/worker_healthcheck.py /app/worker_healthcheck.py
 ENV PYTHONPATH=/app/apps/worker/src:/app/packages/adapters/src:/app/packages/contracts/src:/app/packages/core/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONNOUSERSITE=1 \
@@ -25,5 +26,6 @@ RUN mkdir -p /var/lib/securecode /tmp/securecode \
     && chmod 0700 /var/lib/securecode /tmp/securecode \
     && chmod -R a-w /app
 USER 65532:65532
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 CMD ["python", "/app/worker_healthcheck.py"]
 ENTRYPOINT ["python","/app/entrypoint.py"]
 CMD ["python","-m","securecode_ai.worker.service"]
