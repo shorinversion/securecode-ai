@@ -98,6 +98,11 @@ def _parser() -> argparse.ArgumentParser:
         add_help=False,
         help="dry-run or explicitly authorize immutable local release publication",
     )
+    subparsers.add_parser(
+        "connect",
+        add_help=False,
+        help="submit one checkout to a control plane and follow the run",
+    )
     return parser
 
 
@@ -109,6 +114,7 @@ def _command_help(command: str) -> str:
         "validate": "validate one retained repair artifact in isolation",
         "approve": "record explicit approval for one exact validated repair artifact",
         "release": "dry-run or explicitly authorize immutable local release publication",
+        "connect": "submit one checkout to a control plane and follow the run",
     }
     description = descriptions.get(command)
     if description is None:
@@ -143,6 +149,13 @@ def _command_help(command: str) -> str:
         parser.add_argument("--config", required=True)
         parser.add_argument("--publish", action="store_true")
         parser.add_argument("--authorization")
+    elif command == "connect":
+        parser.add_argument("target", nargs="?", help="optional local checkout path")
+        parser.add_argument(
+            "--wait",
+            action="store_true",
+            help="poll until the control plane reports a terminal outcome",
+        )
     return parser.format_help()
 
 

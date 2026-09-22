@@ -40,6 +40,15 @@ from .application_profiles import (
     build_foundation_profile,
 )
 from .approval import run_patch_approval_command
+from .connected import (
+    ConnectedCliError,
+    parse_connected_arguments,
+    run_connected,
+    settings_from_environment,
+)
+from .connected import (
+    render_receipt as render_connected_receipt,
+)
 from .diagnostic import (
     DeterministicDiagnostic,
 )
@@ -110,10 +119,17 @@ def main(
     if (
         len(stripped) == 2
         and stripped[1] in {"-h", "--help"}
-        and stripped[0] in {"doctor", "scan", "fix", "validate", "approve", "release"}
+        and stripped[0] in {"doctor", "scan", "fix", "validate", "approve", "release", "connect"}
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] == "connect":
+        return run_connect_command(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
     if stripped and stripped[0] == "release":
         return run_release_command(stripped, stdout=output, stderr=errors)
     if stripped and stripped[0] == "approve":
@@ -222,6 +238,29 @@ def main(
     return int(result.exit_code)
 
 
+def run_connect_command(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Submit one exact revision to the control plane and print its reference."""
+
+    try:
+        _target, wait = parse_connected_arguments(tokens[1:])
+        settings = settings_from_environment(environment)
+        receipt = run_connected(settings, poll_status=wait)
+    except ConnectedCliError as error:
+        stderr.write("connected run was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected run failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    render_connected_receipt(receipt, stdout)
+    return int(CliExitCode.COMPLETED)
+
+
 __all__ = [
     "CLI_VERSION",
     "FOUNDATION_DEFAULTS",
@@ -233,4 +272,5 @@ __all__ = [
     "FoundationDoctor",
     "build_foundation_profile",
     "main",
+    "run_connect_command",
 ]
