@@ -183,7 +183,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not output.is_absolute() or output.suffix != ".json":
             raise ValueError("output must be an absolute JSON path")
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        with output.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     except (OSError, sqlite3.Error, ValueError) as error:
         print(f"CVEFIXES_MANIFEST=FAIL: {error}")
         return 1
