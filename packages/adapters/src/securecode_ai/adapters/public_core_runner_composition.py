@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import cast
 
 from securecode_ai.adapters.config import ProviderProfileRegistry
-from securecode_ai.adapters.endpoint import EndpointAuthorizationIssuer
-from securecode_ai.adapters.model import AuthorizedProviderHarness
+from securecode_ai.adapters.endpoint import EndpointAuthorizationIssuer, Resolver
+from securecode_ai.adapters.model import AuthorizedProviderHarness, CredentialSupplier
 from securecode_ai.adapters.openai_compatible_local import OpenAICompatibleLocalHttpConnector
+from securecode_ai.adapters.openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
 from securecode_ai.adapters.product_model import MODEL_NATIVE_DISCOVERY_WIRE_PIN
 from securecode_ai.adapters.product_runtime import (
     PRODUCT_DISCOVERY_PROMPT_PIN,
@@ -169,17 +170,22 @@ def _executor(
     inputs: PublicCoreHostInputs,
     connector: object,
     native: bool,
+    resolver: Resolver | None = None,
+    credential_supplier: CredentialSupplier | None = None,
     connector_factory: Callable[..., object] = OpenAICompatibleLocalHttpConnector,
 ) -> AuthorizedLocalModelExecutor:
     registry = ProviderProfileRegistry((inputs.profile,))
     if connector is None:
-        sampling = inputs.diagnostic_sampling if native else None
-        connector = connector_factory(
-            profile=inputs.profile,
-            temperature=None if sampling is None else sampling.temperature,
-            seed=None if sampling is None else sampling.seed,
-            native_frames=native,
-        )
+        if inputs.profile.execution_boundary is ExecutionBoundary.LOCAL_RUNNER:
+            sampling = inputs.diagnostic_sampling if native else None
+            connector = connector_factory(
+                profile=inputs.profile,
+                temperature=None if sampling is None else sampling.temperature,
+                seed=None if sampling is None else sampling.seed,
+                native_frames=native,
+            )
+        else:
+            connector = OpenAICompatibleRemoteHttpsConnector(profile=inputs.profile)
     if not callable(getattr(connector, "connect", None)) or not callable(
         getattr(connector, "send", None)
     ):
@@ -192,9 +198,14 @@ def _executor(
         registry=registry,
         profile=inputs.profile,
         policy=inputs.policy,
-        resolver=PinnedLiteralLoopbackResolver(authority="127.0.0.1", port=inputs.gateway_port),
+        resolver=(
+            PinnedLiteralLoopbackResolver(authority="127.0.0.1", port=inputs.gateway_port)
+            if resolver is None
+            else resolver
+        ),
         connector=cast(ProviderConnector, connector),
         preflight=_preflight,
+        credential_supplier=credential_supplier,
     )
 
 
