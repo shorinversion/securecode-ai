@@ -8,9 +8,10 @@ from securecode_ai.adapters.openai_compatible_remote import (
     OpenAICompatibleRemoteHttpsConnector,
     _canonicalize_remote_envelope,
 )
+from securecode_ai.contracts import ProviderProfile
 
 
-def _profile() -> object:
+def _profile() -> ProviderProfile:
     return parse_provider_profile(
         json.dumps(
             {
