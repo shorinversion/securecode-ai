@@ -123,6 +123,21 @@ def _parser() -> argparse.ArgumentParser:
         add_help=False,
         help="open, read or decide a control-plane approval request",
     )
+    subparsers.add_parser(
+        "finding",
+        add_help=False,
+        help="read one finding from the control plane",
+    )
+    subparsers.add_parser(
+        "policies",
+        add_help=False,
+        help="read the control plane's effective policy documents",
+    )
+    subparsers.add_parser(
+        "health",
+        add_help=False,
+        help="check readiness or liveness of the configured control plane",
+    )
     return parser
 
 
@@ -139,6 +154,9 @@ def _command_help(command: str) -> str:
         "cancel": "request cancellation of one run with an exact state precondition",
         "results": "read one run's findings, artifacts or events from the control plane",
         "approvals": "open, read or decide a control-plane approval request",
+        "finding": "read one finding from the control plane",
+        "policies": "read the control plane's effective policy documents",
+        "health": "check readiness or liveness of the configured control plane",
     }
     description = descriptions.get(command)
     if description is None:
@@ -184,6 +202,16 @@ def _command_help(command: str) -> str:
             "--new-run",
             action="store_true",
             help="open a new run instead of resuming the recorded one for this revision",
+        )
+    elif command == "finding":
+        parser.add_argument("finding_id", help="control plane finding identifier")
+    elif command == "policies":
+        pass
+    elif command == "health":
+        parser.add_argument(
+            "--live",
+            action="store_true",
+            help="check liveness instead of readiness",
         )
     elif command == "approvals":
         parser.add_argument(

@@ -770,6 +770,69 @@ def parse_approval_arguments(tokens: tuple[str, ...]) -> dict[str, str]:
     return parsed
 
 
+def fetch_finding(
+    settings: ConnectedRunSettings,
+    finding_id: str,
+    *,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read one finding document by its identifier."""
+
+    if not _identifier(finding_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(f"/api/v1/findings/{finding_id}", token=settings.token)
+    return ConnectedCollection(run_id=finding_id, kind=ResultKind.FINDINGS, document=document)
+
+
+def fetch_policies(
+    settings: ConnectedRunSettings,
+    *,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read the control plane's effective policy documents."""
+
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read("/api/v1/policies", token=settings.token)
+    return ConnectedCollection(run_id="policies", kind=ResultKind.FINDINGS, document=document)
+
+
+def check_health(
+    settings: ConnectedRunSettings,
+    *,
+    live: bool = False,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Check readiness (default) or liveness of the configured control plane."""
+
+    if type(live) is not bool:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    route = "/api/v1/health/live" if live else "/api/v1/health/ready"
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(route, token=settings.token)
+    return ConnectedCollection(run_id="health", kind=ResultKind.FINDINGS, document=document)
+
+
+def parse_single_argument(tokens: tuple[str, ...]) -> str:
+    """Parse exactly one required positional identifier."""
+
+    if len(tokens) != 1 or tokens[0].startswith("-") or not _identifier(tokens[0]):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    return tokens[0]
+
+
+def parse_health_arguments(tokens: tuple[str, ...]) -> bool:
+    """Parse `securecode health [--live]` and return whether liveness was asked."""
+
+    live = False
+    for token in tokens:
+        if token == "--live":
+            live = True
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    return live
+
+
 __all__ = [
     "ApprovalDraft",
     "ConnectedApi",
@@ -782,15 +845,20 @@ __all__ = [
     "HttpConnectedApi",
     "ResultKind",
     "cancel_run",
+    "check_health",
     "create_approval",
     "decide_approval",
+    "fetch_finding",
+    "fetch_policies",
     "fetch_results",
     "fetch_run",
     "new_idempotency_key",
     "parse_approval_arguments",
     "parse_connected_arguments",
+    "parse_health_arguments",
     "parse_results_arguments",
     "parse_run_arguments",
+    "parse_single_argument",
     "read_approval",
     "render_receipt",
     "resumable_idempotency_key",

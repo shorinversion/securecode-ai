@@ -45,14 +45,19 @@ from .connected import (
     ConnectedCliError,
     ConnectedCliErrorCode,
     cancel_run,
+    check_health,
     create_approval,
     decide_approval,
+    fetch_finding,
+    fetch_policies,
     fetch_results,
     fetch_run,
     parse_approval_arguments,
     parse_connected_arguments,
+    parse_health_arguments,
     parse_results_arguments,
     parse_run_arguments,
+    parse_single_argument,
     read_approval,
     run_connected,
     settings_from_environment,
@@ -143,10 +148,20 @@ def main(
             "cancel",
             "results",
             "approvals",
+            "finding",
+            "policies",
+            "health",
         }
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] in {"finding", "policies", "health"}:
+        return run_connected_readout(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
     if stripped and stripped[0] == "approvals":
         return run_connected_approval(
             stripped,
@@ -281,6 +296,36 @@ def main(
     else:
         errors.write(_HUMAN_SUCCESS + "\n")
     return int(result.exit_code)
+
+
+def run_connected_readout(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Read one finding, the policy documents, or the control-plane health."""
+
+    try:
+        command = tokens[0]
+        settings = settings_from_environment(environment)
+        if command == "finding":
+            collection = fetch_finding(settings, parse_single_argument(tokens[1:]))
+        elif command == "policies":
+            if len(tokens) != 1:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = fetch_policies(settings)
+        else:
+            collection = check_health(settings, live=parse_health_arguments(tokens[1:]))
+    except ConnectedCliError as error:
+        stderr.write("connected read was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected read failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
 
 
 def run_connected_approval(
@@ -440,5 +485,6 @@ __all__ = [
     "run_connect_command",
     "run_connected_approval",
     "run_connected_inspection",
+    "run_connected_readout",
     "run_connected_results",
 ]
