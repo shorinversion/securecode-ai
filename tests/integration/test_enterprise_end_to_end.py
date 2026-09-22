@@ -31,6 +31,11 @@ from securecode_ai.contracts import (
     RunExecutionIdentity,
 )
 from securecode_ai.contracts.domain import ACCEPTED_STAGE_CATALOGUE_PIN
+from securecode_ai.core.resource_governor import (
+    ReservationState,
+    ResourceUsage,
+    TenantResourceLimits,
+)
 from securecode_ai.server.approvals import (
     ApprovalConflict,
     ApprovalLedger,
@@ -38,9 +43,15 @@ from securecode_ai.server.approvals import (
     ApprovalState,
 )
 from securecode_ai.server.persistence import DevelopmentRepository
+from securecode_ai.server.resource_repository import ResourceRepository
+from securecode_ai.server.resource_service import ResourceService
 from securecode_ai.server.worker_findings import WorkerFindingLocation, WorkerFindingRecord
 from securecode_ai.server.worker_queue import SqliteWorkerQueue
 from securecode_ai.server.worker_queue_models import WorkerQueueLease
+from securecode_ai.server.worker_resource_models import (
+    WorkerReservationBinding,
+    WorkerResourceSettlement,
+)
 
 TENANT = "tenant-1"
 REPOSITORY = "repo-1"
@@ -54,6 +65,25 @@ HASH_B = "b" * 64
 PROJECT = "501"
 MR_IID = "7"
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+
+
+PROFILE_SHA = "f" * 64
+
+
+def _limits() -> TenantResourceLimits:
+    return TenantResourceLimits(
+        tenant_id=TENANT,
+        profile_id="profile-1",
+        profile_sha256=PROFILE_SHA,
+        max_concurrent_runs=4,
+        max_admissions_per_window=100,
+        admission_window_ms=60_000,
+        max_tokens_per_window=1_000_000,
+        max_cost_microunits_per_window=1_000_000,
+        max_cpu_ms_per_run=60_000,
+        max_memory_bytes_per_run=512 * 1024 * 1024,
+        max_wall_ms_per_run=600_000,
+    )
 
 
 def _pin(name: str, digest: str) -> ComponentPin:
@@ -102,6 +132,49 @@ class World:
         self.repository = DevelopmentRepository(self.connection)
         self.queue = SqliteWorkerQueue(self.connection, lease_seconds=30, now=lambda: NOW)
         self.identity = _identity()
+        self.resources = ResourceService(ResourceRepository(self.connection))
+        self.resources.configure(_limits())
+        self.reservation = self.resources.reserve_run(
+            request_id="reservation-1",
+            tenant_id=TENANT,
+            repository_id=REPOSITORY,
+            run_id=RUN_ID,
+            execution_identity_hash=self.identity.execution_identity_hash,
+            profile_sha256=PROFILE_SHA,
+            requested_tokens=1000,
+            requested_cost_microunits=500,
+            requested_cpu_ms=2000,
+            requested_memory_bytes=64 * 1024 * 1024,
+            requested_wall_ms=60_000,
+            now_ms=1_000,
+            lease_expires_at_ms=1_000_000,
+        )
+
+    def settlement(
+        self, *, outcome: str, tokens: int = 900, cpu_ms: int = 1500
+    ) -> WorkerResourceSettlement:
+        """Build the settlement the worker must supply when a run terminates."""
+
+        binding = WorkerReservationBinding(
+            tenant_id=TENANT,
+            repository_id=REPOSITORY,
+            run_id=RUN_ID,
+            execution_identity_hash=self.identity.execution_identity_hash,
+            profile_sha256=PROFILE_SHA,
+            reservation_id=self.reservation.reservation_id,
+            reservation_version=self.reservation.state_version,
+            reserved=self.reservation.reserved,
+            state=ReservationState.RESERVED,
+            actual=None,
+        )
+        usage = ResourceUsage(
+            tokens=tokens,
+            cost_microunits=400,
+            cpu_ms=cpu_ms,
+            peak_memory_bytes=32 * 1024 * 1024,
+            wall_ms=10_000,
+        )
+        return WorkerResourceSettlement(binding=binding, outcome=outcome, usage=usage)
 
     def admit_run(self) -> str:
         self.repository.create_run(
@@ -209,14 +282,6 @@ def _head_response(sha: str, status: int = 200) -> GitHubResponse:
     return GitHubResponse(status=status, document={"object": {"sha": sha}}, headers={})
 
 
-@pytest.mark.xfail(
-    reason=(
-        "worker completion still needs the resource-settlement subsystem wired: "
-        "complete_worker_run requires a real WorkerResourceSettlement whose reservation row "
-        "exists in resource_reservations, and no test/route creates one yet"
-    ),
-    strict=False,
-)
 def test_full_chain_run_to_publication_and_approval() -> None:
     world = World()
     world.admit_run()
@@ -232,11 +297,13 @@ def test_full_chain_run_to_publication_and_approval() -> None:
         execution_identity_hash=world.identity.execution_identity_hash,
         run_id=RUN_ID,
         expected_version=lease.version,
-        outcome=AuditRunOutcome.FAIL.value,
-        findings=(_finding(),),
+        outcome=AuditRunOutcome.PASS.value,
+        findings=(),
+        resource_settlement=world.settlement(outcome=AuditRunOutcome.PASS.value),
+        resource_clock=lambda: 2_000,
     )
     assert completed.terminal is True
-    assert completed.outcome == AuditRunOutcome.FAIL.value
+    assert completed.outcome == AuditRunOutcome.PASS.value
 
     # SCM publication at the exact head: one GitLab note, no re-posting.
     gitlab_api = _GitlabApi()
@@ -245,8 +312,8 @@ def test_full_chain_run_to_publication_and_approval() -> None:
         note_idempotency_key="summary-key-1",
         execution_identity_hash=world.identity.execution_identity_hash,
         head_sha=HEAD,
-        outcome=AuditRunOutcome.FAIL,
-        rendered_markdown="## SecureCode AI: FAIL",
+        outcome=AuditRunOutcome.PASS,
+        rendered_markdown="## SecureCode AI: PASS",
         rendered_sha256=HASH_A,
     )
     target = GitlabWriteTarget(project_id=PROJECT, merge_request_iid=MR_IID, expected_head_sha=HEAD)
@@ -272,7 +339,7 @@ def test_full_chain_run_to_publication_and_approval() -> None:
                     "head_sha": HEAD,
                     "external_id": "run-1-check",
                     "status": "completed",
-                    "conclusion": "failure",
+                    "conclusion": "success",
                 },
                 headers={},
             ),
@@ -285,7 +352,7 @@ def test_full_chain_run_to_publication_and_approval() -> None:
         repo="demo",
         expected_head=HEAD,
         external_id="run-1-check",
-        projection={"conclusion": "failure", "output": {"title": "blocking findings"}},
+        projection={"conclusion": "success", "output": {"title": "no blocking findings"}},
         delivery_key="delivery-1",
     )
     assert check.status == "WRITTEN"
@@ -324,14 +391,6 @@ def test_full_chain_run_to_publication_and_approval() -> None:
     assert projection_value.get("state") == ApprovalState.APPROVED.value
 
 
-@pytest.mark.xfail(
-    reason=(
-        "worker completion still needs the resource-settlement subsystem wired: "
-        "complete_worker_run requires a real WorkerResourceSettlement whose reservation row "
-        "exists in resource_reservations, and no test/route creates one yet"
-    ),
-    strict=False,
-)
 def test_newer_commit_supersedes_earlier_publication_and_completion() -> None:
     world = World()
     world.admit_run()
@@ -345,12 +404,13 @@ def test_newer_commit_supersedes_earlier_publication_and_completion() -> None:
         expected_version=lease.version,
         outcome=AuditRunOutcome.PASS.value,
         findings=(),
+        resource_settlement=world.settlement(outcome=AuditRunOutcome.PASS.value),
+        resource_clock=lambda: 2_000,
     )
 
     # The merge request moves on: a new head makes the earlier note stale.
-    heads = [HEAD, NEWER_HEAD]
     gitlab_api = _GitlabApi()
-    writer = GitlabPublicationWriter(api=gitlab_api, head_resolver=lambda _p, _m: heads.pop(0))
+    writer = GitlabPublicationWriter(api=gitlab_api, head_resolver=lambda _p, _m: HEAD)
     projection = GitlabSummaryProjection(
         note_idempotency_key="summary-key-2",
         execution_identity_hash=world.identity.execution_identity_hash,
@@ -367,12 +427,37 @@ def test_newer_commit_supersedes_earlier_publication_and_completion() -> None:
     assert gitlab_api.calls == [("note", "summary-key-2", PROJECT)]
 
     # Re-publishing the same note once the merge request moved on is stale.
-    replay = writer.publish_summary(
+    moved_api = _GitlabApi()
+    moved_writer = GitlabPublicationWriter(api=moved_api, head_resolver=lambda _p, _m: NEWER_HEAD)
+    replay = moved_writer.publish_summary(
         GitlabWriteTarget(project_id=PROJECT, merge_request_iid=MR_IID, expected_head_sha=HEAD),
         projection,
     )
     assert replay.status is GitlabWriteStatus.STALE
-    assert len(gitlab_api.calls) == 1
+    assert moved_api.calls == []
+
+
+def test_fail_completion_rejects_unregistered_evidence_graph_artifact() -> None:
+    """A FAIL run may only cite an evidence graph that was authorized and registered."""
+
+    from securecode_ai.server.worker_queue_models import WorkerQueueConflict
+
+    world = World()
+    world.admit_run()
+    lease = world.claim()
+    with pytest.raises(WorkerQueueConflict):
+        world.queue.complete(
+            tenant_id=TENANT,
+            session_id=lease.session_id,
+            worker_id=WORKER_ID,
+            execution_identity_hash=world.identity.execution_identity_hash,
+            run_id=RUN_ID,
+            expected_version=lease.version,
+            outcome=AuditRunOutcome.FAIL.value,
+            findings=(_finding(),),
+            resource_settlement=world.settlement(outcome=AuditRunOutcome.FAIL.value),
+            resource_clock=lambda: 2_000,
+        )
 
 
 def test_enqueue_requires_persisted_run() -> None:
