@@ -81,14 +81,20 @@ class OpenAICompatibleRemoteHttpsConnector:
         ):
             raise ValueError("REMOTE_CONNECTOR_OUTPUT_LIMIT_REJECTED")
         self._endpoint_path = (parsed.path.rstrip("/") + "/chat/completions") or "/chat/completions"
-        self._max_output_tokens = profile.capabilities.max_output_tokens if max_output_tokens is None else max_output_tokens
+        self._max_output_tokens = (
+            profile.capabilities.max_output_tokens
+            if max_output_tokens is None
+            else max_output_tokens
+        )
         self._port = port
         self._profile = profile
 
     def __repr__(self) -> str:
         return "OpenAICompatibleRemoteHttpsConnector(<redacted>)"
 
-    def _valid_connect_arguments(self, *, ip_address: str, port: int, server_name: str, timeout_ms: int) -> bool:
+    def _valid_connect_arguments(
+        self, *, ip_address: str, port: int, server_name: str, timeout_ms: int
+    ) -> bool:
         if (
             not isinstance(ip_address, str)
             or type(port) is not int
@@ -104,7 +110,9 @@ class OpenAICompatibleRemoteHttpsConnector:
         except ValueError:
             return False
 
-    def connect(self, *, ip_address: str, port: int, server_name: str, timeout_ms: int) -> ConnectedChannel:
+    def connect(
+        self, *, ip_address: str, port: int, server_name: str, timeout_ms: int
+    ) -> ConnectedChannel:
         if not self._valid_connect_arguments(
             ip_address=ip_address, port=port, server_name=server_name, timeout_ms=timeout_ms
         ):
@@ -170,7 +178,9 @@ class OpenAICompatibleRemoteHttpsConnector:
             or not 1 <= timeout_ms <= self._profile.budgets.timeout_seconds * 1000
             or not isinstance(binding, ProviderAttemptBinding)
         ):
-            return self._attempt(started=started, binding=binding, transport_failure=TransportFailure.PROVIDER_ERROR)
+            return self._attempt(
+                started=started, binding=binding, transport_failure=TransportFailure.PROVIDER_ERROR
+            )
         try:
             prompt = payload.decode("utf-8", "strict")
             body = json.dumps(
@@ -222,16 +232,22 @@ class OpenAICompatibleRemoteHttpsConnector:
                 response_bytes=_canonicalize_remote_envelope(raw, expected_model_id=model_id),
             )
         except TimeoutError:
-            return self._attempt(started=started, binding=binding, transport_failure=TransportFailure.TIMEOUT)
+            return self._attempt(
+                started=started, binding=binding, transport_failure=TransportFailure.TIMEOUT
+            )
         except Exception:
-            return self._attempt(started=started, binding=binding, transport_failure=TransportFailure.PROVIDER_ERROR)
+            return self._attempt(
+                started=started, binding=binding, transport_failure=TransportFailure.PROVIDER_ERROR
+            )
         finally:
             channel.close()
 
 
 def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) -> bytes:
     """Accept the public OpenAI-compatible subset and strip provider metadata."""
-    document = json.loads(response, object_pairs_hook=_closed_json_object, parse_constant=_reject_json_constant)
+    document = json.loads(
+        response, object_pairs_hook=_closed_json_object, parse_constant=_reject_json_constant
+    )
     if not isinstance(document, dict) or document.get("model") != expected_model_id:
         raise ValueError("remote response metadata is invalid")
     choices = document.get("choices")
@@ -253,8 +269,20 @@ def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) ->
     return json.dumps(
         {
             "id": document["id"],
-            "choices": [{"finish_reason": choices[0]["finish_reason"], "message": {"role": "assistant", "content": choices[0]["message"]["content"], "refusal": None}}],
-            "usage": {"prompt_tokens": usage["prompt_tokens"], "completion_tokens": usage["completion_tokens"]},
+            "choices": [
+                {
+                    "finish_reason": choices[0]["finish_reason"],
+                    "message": {
+                        "role": "assistant",
+                        "content": choices[0]["message"]["content"],
+                        "refusal": None,
+                    },
+                }
+            ],
+            "usage": {
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+            },
         },
         ensure_ascii=True,
         allow_nan=False,

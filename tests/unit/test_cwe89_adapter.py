@@ -88,7 +88,7 @@ def test_direct_source_fstring_and_string_concatenation_are_detected() -> None:
 
 
 def test_flask_form_and_header_sources_survive_bounded_known_transforms() -> None:
-    source = b'''import base64
+    source = b"""import base64
 
 def form_case(request, db):
     value = request.form.get("password")
@@ -102,7 +102,7 @@ def header_case(request, db):
     encoded = base64.b64encode(value.encode("utf-8"))
     selected = base64.b64decode(encoded).decode("utf-8")
     db.execute(f"SELECT * FROM users WHERE password = '{selected}'")
-'''
+"""
     result = _scan(source)
     assert len(result.signals) == 2
     snippets = [source[item.source.start_byte : item.source.end_byte] for item in result.signals]
@@ -111,15 +111,15 @@ def header_case(request, db):
 
 
 def test_extended_flask_source_remains_safe_with_parameter_binding() -> None:
-    source = b'''def get_user(request, db):
+    source = b"""def get_user(request, db):
     value = request.form.get("password")
     return db.execute("SELECT * FROM users WHERE password = ?", (value,))
-'''
+"""
     assert _scan(source).signals == ()
 
 
 def test_constant_key_dictionary_transfer_preserves_only_the_matching_value() -> None:
-    source = b'''def vulnerable(request, db):
+    source = b"""def vulnerable(request, db):
     values = {}
     values["safe"] = "fixed"
     values["selected"] = request.headers.get("password")
@@ -130,7 +130,7 @@ def safe(request, db):
     values["selected"] = request.headers.get("password")
     values["selected"] = "fixed"
     db.execute(f"SELECT * FROM users WHERE password = '{values['selected']}'")
-'''
+"""
     result = _scan(source)
     assert len(result.signals) == 1
     assert source[result.signals[0].sink.start_byte : result.signals[0].sink.end_byte].startswith(
@@ -139,28 +139,28 @@ def safe(request, db):
 
 
 def test_known_request_wrapper_vocabulary_has_no_generic_method_source_rule() -> None:
-    source = b'''def vulnerable(wrapped, db):
+    source = b"""def vulnerable(wrapped, db):
     value = wrapped.get_form_parameter("password")
     db.execute(f"SELECT * FROM users WHERE password = '{value}'")
 
 def safe(wrapped, db):
     value = wrapped.get_safe_value("password")
     db.execute(f"SELECT * FROM users WHERE password = '{value}'")
-'''
+"""
     result = _scan(source)
     assert len(result.signals) == 1
-    assert source[result.signals[0].source.start_byte : result.signals[0].source.end_byte].startswith(
-        b"wrapped.get_form_parameter"
-    )
+    assert source[
+        result.signals[0].source.start_byte : result.signals[0].source.end_byte
+    ].startswith(b"wrapped.get_form_parameter")
 
 
 def test_assignment_from_a_branch_is_joined_without_executing_the_condition() -> None:
-    source = b'''def get_user(request, db):
+    source = b"""def get_user(request, db):
     value = "safe"
     if request.args.get("enabled"):
         value = request.headers.get("password")
     db.execute(f"SELECT * FROM users WHERE password = '{value}'")
-'''
+"""
     assert len(_scan(source).signals) == 1
 
 

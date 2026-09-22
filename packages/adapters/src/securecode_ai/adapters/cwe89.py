@@ -296,7 +296,9 @@ def _scan_scope(
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             _scan_scope(statement.body, {}, {}, functions, source, line_starts, limits, output)
             continue
-        _record_object_field_write(statement, environment, object_fields, functions, source, line_starts, limits)
+        _record_object_field_write(
+            statement, environment, object_fields, functions, source, line_starts, limits
+        )
         if isinstance(statement, (ast.Assign, ast.AnnAssign)):
             value = statement.value
             if value is not None:
@@ -311,7 +313,14 @@ def _scan_scope(
                     continue
                 sink = _node_range(node, source, line_starts)
                 for flow in _resolve(
-                    node.args[0], environment, object_fields, functions, source, line_starts, limits, 0
+                    node.args[0],
+                    environment,
+                    object_fields,
+                    functions,
+                    source,
+                    line_starts,
+                    limits,
+                    0,
                 ):
                     if flow.interpolation is not None:
                         output.append((flow.source, flow.interpolation, sink))
@@ -387,7 +396,14 @@ def _resolve(
                 for value in expression.values
                 if isinstance(value, ast.FormattedValue)
                 for flow in _resolve(
-                    value.value, environment, object_fields, functions, source, line_starts, limits, depth
+                    value.value,
+                    environment,
+                    object_fields,
+                    functions,
+                    source,
+                    line_starts,
+                    limits,
+                    depth,
                 )
             ),
             location,
@@ -395,7 +411,16 @@ def _resolve(
     if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Add):
         location = _node_range(expression, source, line_starts)
         return _with_interpolation(
-            _resolve(expression.left, environment, object_fields, functions, source, line_starts, limits, depth)
+            _resolve(
+                expression.left,
+                environment,
+                object_fields,
+                functions,
+                source,
+                line_starts,
+                limits,
+                depth,
+            )
             + _resolve(
                 expression.right,
                 environment,
@@ -425,7 +450,11 @@ def _resolve(
     if _is_known_passthrough_call(expression):
         assert isinstance(expression, ast.Call)
         assert isinstance(expression.func, ast.Attribute)
-        operand = expression.func.value if expression.func.attr in {"encode", "decode"} else expression.args[0]
+        operand = (
+            expression.func.value
+            if expression.func.attr in {"encode", "decode"}
+            else expression.args[0]
+        )
         return _resolve(
             operand, environment, object_fields, functions, source, line_starts, limits, depth
         )
@@ -530,7 +559,11 @@ def _record_object_field_write(
 
 
 def _literal_string(expression: ast.expr) -> str | None:
-    return expression.value if isinstance(expression, ast.Constant) and type(expression.value) is str else None
+    return (
+        expression.value
+        if isinstance(expression, ast.Constant) and type(expression.value) is str
+        else None
+    )
 
 
 def _object_field_write_key(expression: ast.Call) -> tuple[str, str, str] | None:

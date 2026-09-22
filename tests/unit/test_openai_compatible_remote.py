@@ -77,7 +77,7 @@ def test_remote_envelope_is_reduced_to_the_contract_subset() -> None:
             "object": "chat.completion",
             "choices": [
                 {
-                    "message": {"role": "assistant", "content": "{\"candidates\":[]}"},
+                    "message": {"role": "assistant", "content": '{"candidates":[]}'},
                     "finish_reason": "stop",
                     "index": 0,
                 }
@@ -85,7 +85,9 @@ def test_remote_envelope_is_reduced_to_the_contract_subset() -> None:
             "usage": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17},
         }
     ).encode()
-    normalized = json.loads(_canonicalize_remote_envelope(payload, expected_model_id="deepseek-flash"))
+    normalized = json.loads(
+        _canonicalize_remote_envelope(payload, expected_model_id="deepseek-flash")
+    )
     assert normalized["choices"][0]["message"]["refusal"] is None
     assert normalized["usage"] == {"completion_tokens": 5, "prompt_tokens": 12}
 
