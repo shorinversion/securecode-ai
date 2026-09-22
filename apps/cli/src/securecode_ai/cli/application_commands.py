@@ -59,6 +59,9 @@ class _ProductScanExecutor(Protocol):
     ) -> LocalProductScanResult: ...
 
 
+_GRANT_HELP = "grant or read a bounded credential reference through the control plane"
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="securecode",
@@ -134,6 +137,11 @@ def _parser() -> argparse.ArgumentParser:
         help="read the control plane's effective policy documents",
     )
     subparsers.add_parser(
+        "secrets",
+        add_help=False,
+        help=_GRANT_HELP,
+    )
+    subparsers.add_parser(
         "decisions",
         add_help=False,
         help="record an operator decision on one finding",
@@ -163,6 +171,7 @@ def _command_help(command: str) -> str:
         "policies": "read the control plane's effective policy documents",
         "health": "check readiness or liveness of the configured control plane",
         "decisions": "record an operator decision on one finding",
+        "secrets": _GRANT_HELP,
     }
     description = descriptions.get(command)
     if description is None:
@@ -213,6 +222,9 @@ def _command_help(command: str) -> str:
         parser.add_argument("finding_id", help="control plane finding identifier")
     elif command == "policies":
         pass
+    elif command == "secrets":
+        parser.add_argument("action", choices=("grant", "show"), help="secret operation")
+        parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "decisions":
         parser.add_argument("finding_id", help="control plane finding identifier")
         parser.add_argument("--if-match", required=True, help="observed finding state")

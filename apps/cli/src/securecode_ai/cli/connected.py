@@ -872,6 +872,82 @@ def decide_finding(
     return ConnectedCollection(run_id=run_id, kind=ResultKind.FINDINGS, document=document)
 
 
+@dataclass(frozen=True, slots=True)
+class SecretGrantDraft:
+    """Operator-supplied reference for one bounded secret grant.
+
+    Only a reference is carried: the CLI never receives, prints or forwards
+    secret material, and the control plane resolves the reference itself.
+    """
+
+    repository_id: str
+    workload_id: str
+    reference: str
+    purpose: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _identifier(self.repository_id)
+            or not _identifier(self.workload_id)
+            or not _identifier(self.purpose)
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not _secret_reference(self.reference):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+
+
+def _secret_reference(value: object) -> bool:
+    """A bounded, printable reference — never a secret value."""
+
+    if not isinstance(value, str) or not 1 <= len(value) <= 2048:
+        return False
+    return all(33 <= ord(character) <= 126 for character in value)
+
+
+def grant_secret(
+    settings: ConnectedRunSettings,
+    draft: SecretGrantDraft,
+    *,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Request one bounded secret grant for a workload."""
+
+    key = idempotency_key or new_idempotency_key()
+    if not _idempotency_key(key):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.mutate(
+        "/api/v1/secret-grants",
+        document={
+            "repository_id": draft.repository_id,
+            "workload_id": draft.workload_id,
+            "reference": draft.reference,
+            "purpose": draft.purpose,
+        },
+        token=settings.token,
+        idempotency_key=key,
+    )
+    return ConnectedCollection(
+        run_id=draft.workload_id, kind=ResultKind.FINDINGS, document=document
+    )
+
+
+def read_secret_grant(
+    settings: ConnectedRunSettings,
+    grant_id: str,
+    *,
+    api: ConnectedApi | None = None,
+) -> ConnectedCollection:
+    """Read the durable state of one secret grant."""
+
+    if not _identifier(grant_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.read(f"/api/v1/secret-grants/{grant_id}", token=settings.token)
+    return ConnectedCollection(run_id=grant_id, kind=ResultKind.FINDINGS, document=document)
+
+
 __all__ = [
     "ApprovalDraft",
     "ConnectedApi",
@@ -883,6 +959,7 @@ __all__ = [
     "ConnectedRunSettings",
     "HttpConnectedApi",
     "ResultKind",
+    "SecretGrantDraft",
     "cancel_run",
     "check_health",
     "create_approval",
@@ -892,6 +969,7 @@ __all__ = [
     "fetch_policies",
     "fetch_results",
     "fetch_run",
+    "grant_secret",
     "new_idempotency_key",
     "parse_approval_arguments",
     "parse_connected_arguments",
@@ -900,6 +978,7 @@ __all__ = [
     "parse_run_arguments",
     "parse_single_argument",
     "read_approval",
+    "read_secret_grant",
     "render_receipt",
     "resumable_idempotency_key",
     "run_connected",

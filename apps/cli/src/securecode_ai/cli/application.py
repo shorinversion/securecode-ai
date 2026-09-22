@@ -44,6 +44,7 @@ from .connected import (
     ApprovalDraft,
     ConnectedCliError,
     ConnectedCliErrorCode,
+    SecretGrantDraft,
     cancel_run,
     check_health,
     create_approval,
@@ -53,6 +54,7 @@ from .connected import (
     fetch_policies,
     fetch_results,
     fetch_run,
+    grant_secret,
     parse_approval_arguments,
     parse_connected_arguments,
     parse_health_arguments,
@@ -60,6 +62,7 @@ from .connected import (
     parse_run_arguments,
     parse_single_argument,
     read_approval,
+    read_secret_grant,
     run_connected,
     settings_from_environment,
 )
@@ -153,10 +156,18 @@ def main(
             "policies",
             "health",
             "decisions",
+            "secrets",
         }
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] == "secrets":
+        return run_connected_secrets(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
     if stripped and stripped[0] == "decisions":
         return run_connected_decision(
             stripped,
@@ -305,6 +316,52 @@ def main(
     else:
         errors.write(_HUMAN_SUCCESS + "\n")
     return int(result.exit_code)
+
+
+def run_connected_secrets(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Grant or read one bounded secret reference; never handles secret values."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        action = tokens[1]
+        if action == "grant":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {"repository", "workload", "reference", "purpose"}
+            if not required.issubset(fields):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            settings = settings_from_environment(environment)
+            collection = grant_secret(
+                settings,
+                SecretGrantDraft(
+                    repository_id=fields["repository"],
+                    workload_id=fields["workload"],
+                    reference=fields["reference"],
+                    purpose=fields["purpose"],
+                ),
+            )
+        elif action == "show":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"grant-id"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            settings = settings_from_environment(environment)
+            collection = read_secret_grant(settings, fields["grant-id"])
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    except ConnectedCliError as error:
+        stderr.write("connected secret operation was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected secret operation failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
 
 
 def run_connected_decision(
@@ -534,4 +591,5 @@ __all__ = [
     "run_connected_inspection",
     "run_connected_readout",
     "run_connected_results",
+    "run_connected_secrets",
 ]
