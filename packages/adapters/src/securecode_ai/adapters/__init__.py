@@ -101,6 +101,7 @@ from .model import (
     parse_model_call_result,
     parse_model_request,
 )
+from .openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
 from .program_graph import (
     DEFAULT_PROGRAM_GRAPH_ADAPTER_LIMITS,
     ProgramCallFact,
@@ -208,6 +209,7 @@ __all__ = [
     "MultilanguageCwe89ScanResult",
     "MultilanguageCwe89Signal",
     "NormalizedModelAttempt",
+    "OpenAICompatibleRemoteHttpsConnector",
     "OsvAdvisoryRecord",
     "OsvBatchRequest",
     "OsvBatchResponse",
