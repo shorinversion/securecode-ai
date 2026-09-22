@@ -42,7 +42,10 @@ from .application_profiles import (
 from .approval import run_patch_approval_command
 from .connected import (
     ConnectedCliError,
+    cancel_run,
+    fetch_run,
     parse_connected_arguments,
+    parse_run_arguments,
     run_connected,
     settings_from_environment,
 )
@@ -119,10 +122,28 @@ def main(
     if (
         len(stripped) == 2
         and stripped[1] in {"-h", "--help"}
-        and stripped[0] in {"doctor", "scan", "fix", "validate", "approve", "release", "connect"}
+        and stripped[0]
+        in {
+            "doctor",
+            "scan",
+            "fix",
+            "validate",
+            "approve",
+            "release",
+            "connect",
+            "status",
+            "cancel",
+        }
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] in {"status", "cancel"}:
+        return run_connected_inspection(
+            stripped,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+        )
     if stripped and stripped[0] == "connect":
         return run_connect_command(
             stripped,
@@ -238,6 +259,33 @@ def main(
     return int(result.exit_code)
 
 
+def run_connected_inspection(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Read one run's state, or cancel it against an exact precondition."""
+
+    command = tokens[0]
+    try:
+        run_id, if_match = parse_run_arguments(tokens[1:])
+        settings = settings_from_environment(environment)
+        if command == "status":
+            receipt = fetch_run(settings, run_id)
+        else:
+            receipt = cancel_run(settings, run_id, if_match=if_match or "")
+    except ConnectedCliError as error:
+        stderr.write("connected run was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected run failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    render_connected_receipt(receipt, stdout)
+    return int(CliExitCode.COMPLETED)
+
+
 def run_connect_command(
     tokens: tuple[str, ...],
     *,
@@ -273,4 +321,5 @@ __all__ = [
     "build_foundation_profile",
     "main",
     "run_connect_command",
+    "run_connected_inspection",
 ]

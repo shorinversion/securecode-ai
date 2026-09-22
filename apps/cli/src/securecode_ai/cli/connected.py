@@ -54,12 +54,14 @@ class ConnectedRunRequest:
     tenant_id: str
     repository_id: str
     head_sha: str
+    idempotency_key: str
     base_sha: str | None = None
     change_id: str | None = None
 
     def __post_init__(self) -> None:
         if (
-            not _identifier(self.tenant_id)
+            not _idempotency_key(self.idempotency_key)
+            or not _identifier(self.tenant_id)
             or not _identifier(self.repository_id)
             or not _commit(self.head_sha)
             or (self.base_sha is not None and not _commit(self.base_sha))
@@ -99,6 +101,21 @@ def _identifier(value: str) -> bool:
     )
 
 
+def _idempotency_key(value: object) -> bool:
+    return (
+        type(value) is str
+        and 8 <= len(value) <= 128
+        and value[0].isalnum()
+        and all(character.isalnum() or character in "._:-" for character in value)
+    )
+
+
+def _precondition(value: object) -> bool:
+    if not isinstance(value, str) or not 1 <= len(value) <= 256:
+        return False
+    return not any(character in value for character in ("\r", "\n"))
+
+
 def _commit(value: str) -> bool:
     return (
         type(value) is str
@@ -132,6 +149,10 @@ class ConnectedApi(Protocol):
 
     def status(self, run_id: str, *, token: str) -> dict[str, object]: ...
 
+    def cancel(
+        self, run_id: str, *, token: str, if_match: str, idempotency_key: str
+    ) -> dict[str, object]: ...
+
 
 class HttpConnectedApi:
     """Minimal control-plane client: no redirects, bounded body, bearer auth."""
@@ -144,6 +165,8 @@ class HttpConnectedApi:
         self._opener = build_opener(_NoRedirect)
 
     def submit(self, request: ConnectedRunRequest, *, token: str) -> dict[str, object]:
+        if not _idempotency_key(request.idempotency_key):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         document: dict[str, object] = {
             "tenant_id": request.tenant_id,
             "repository_id": request.repository_id,
@@ -153,12 +176,36 @@ class HttpConnectedApi:
             document["base_sha"] = request.base_sha
         if request.change_id is not None:
             document["change_id"] = request.change_id
-        return self._call("POST", "/api/v1/runs", document=document, token=token)
+        return self._call(
+            "POST",
+            "/api/v1/runs",
+            document=document,
+            token=token,
+            idempotency_key=request.idempotency_key,
+        )
 
     def status(self, run_id: str, *, token: str) -> dict[str, object]:
         if not _identifier(run_id):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         return self._call("GET", f"/api/v1/runs/{run_id}", document=None, token=token)
+
+    def cancel(
+        self, run_id: str, *, token: str, if_match: str, idempotency_key: str
+    ) -> dict[str, object]:
+        """Cancel one run; the server requires a precondition and an idempotency key."""
+
+        if not _identifier(run_id) or not _precondition(if_match):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if not _idempotency_key(idempotency_key):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        return self._call(
+            "POST",
+            f"/api/v1/runs/{run_id}:cancel",
+            document={"reason": "operator-requested"},
+            token=token,
+            idempotency_key=idempotency_key,
+            if_match=if_match,
+        )
 
     def _call(
         self,
@@ -167,6 +214,8 @@ class HttpConnectedApi:
         *,
         document: dict[str, object] | None,
         token: str,
+        idempotency_key: str | None = None,
+        if_match: str | None = None,
     ) -> dict[str, object]:
         if type(token) is not str or not 1 <= len(token) <= 8192:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
@@ -184,6 +233,10 @@ class HttpConnectedApi:
         }
         if payload is not None:
             headers["Content-Type"] = "application/json"
+        if idempotency_key is not None:
+            headers["Idempotency-Key"] = idempotency_key
+        if if_match is not None:
+            headers["If-Match"] = if_match
         request = Request(
             self._base_url + path,
             data=payload,
@@ -251,6 +304,7 @@ class ConnectedRunSettings:
     tenant_id: str
     repository_id: str
     head_sha: str
+    idempotency_key: str
     base_sha: str | None = None
     change_id: str | None = None
 
@@ -272,6 +326,7 @@ def settings_from_environment(
         tenant_id=required("SECURECODE_TENANT_ID"),
         repository_id=required("SECURECODE_REPOSITORY_ID"),
         head_sha=required("SECURECODE_HEAD_SHA"),
+        idempotency_key=environment.get("SECURECODE_IDEMPOTENCY_KEY") or new_idempotency_key(),
         base_sha=environment.get("SECURECODE_BASE_SHA") or None,
         change_id=environment.get("SECURECODE_CHANGE_ID") or None,
     )
@@ -292,6 +347,7 @@ def run_connected(
         tenant_id=settings.tenant_id,
         repository_id=settings.repository_id,
         head_sha=settings.head_sha,
+        idempotency_key=settings.idempotency_key,
         base_sha=settings.base_sha,
         change_id=settings.change_id,
     )
@@ -311,6 +367,35 @@ def run_connected(
     return latest
 
 
+def fetch_run(
+    settings: ConnectedRunSettings, run_id: str, *, api: ConnectedApi | None = None
+) -> ConnectedRunReceipt:
+    """Read one run's current durable state without mutating anything."""
+
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    return _receipt(client.status(run_id, token=settings.token))
+
+
+def cancel_run(
+    settings: ConnectedRunSettings,
+    run_id: str,
+    *,
+    if_match: str,
+    idempotency_key: str | None = None,
+    api: ConnectedApi | None = None,
+) -> ConnectedRunReceipt:
+    """Request cancellation; the caller supplies the observed state precondition."""
+
+    client = api if api is not None else HttpConnectedApi(settings.base_url)
+    document = client.cancel(
+        run_id,
+        token=settings.token,
+        if_match=if_match,
+        idempotency_key=idempotency_key or new_idempotency_key(),
+    )
+    return _receipt(document)
+
+
 def render_receipt(receipt: ConnectedRunReceipt, output: TextIO) -> None:
     """Write the canonical source-free reference for shell consumption."""
 
@@ -321,6 +406,31 @@ def new_idempotency_key() -> str:
     """Reuse one key across retries of the same connected submission."""
 
     return "cli-" + uuid.uuid4().hex
+
+
+def parse_run_arguments(tokens: tuple[str, ...]) -> tuple[str, str | None]:
+    """Parse `securecode status|cancel <run_id> [--if-match <value>]`."""
+
+    run_id: str | None = None
+    if_match: str | None = None
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--if-match":
+            if index + 1 >= len(tokens):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            if_match = tokens[index + 1]
+            index += 2
+            continue
+        if token.startswith("-") or run_id is not None:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        run_id = token
+        index += 1
+    if run_id is None or not _identifier(run_id):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    if if_match is not None and not _precondition(if_match):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    return run_id, if_match
 
 
 def parse_connected_arguments(tokens: tuple[str, ...]) -> tuple[Path | None, bool]:
@@ -354,8 +464,11 @@ __all__ = [
     "ConnectedRunRequest",
     "ConnectedRunSettings",
     "HttpConnectedApi",
+    "cancel_run",
+    "fetch_run",
     "new_idempotency_key",
     "parse_connected_arguments",
+    "parse_run_arguments",
     "render_receipt",
     "run_connected",
     "settings_from_environment",

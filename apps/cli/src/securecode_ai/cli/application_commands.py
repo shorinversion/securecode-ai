@@ -103,6 +103,16 @@ def _parser() -> argparse.ArgumentParser:
         add_help=False,
         help="submit one checkout to a control plane and follow the run",
     )
+    subparsers.add_parser(
+        "status",
+        add_help=False,
+        help="read one run's current durable state from the control plane",
+    )
+    subparsers.add_parser(
+        "cancel",
+        add_help=False,
+        help="request cancellation of one run with an exact state precondition",
+    )
     return parser
 
 
@@ -115,6 +125,8 @@ def _command_help(command: str) -> str:
         "approve": "record explicit approval for one exact validated repair artifact",
         "release": "dry-run or explicitly authorize immutable local release publication",
         "connect": "submit one checkout to a control plane and follow the run",
+        "status": "read one run's current durable state from the control plane",
+        "cancel": "request cancellation of one run with an exact state precondition",
     }
     description = descriptions.get(command)
     if description is None:
@@ -156,6 +168,14 @@ def _command_help(command: str) -> str:
             action="store_true",
             help="poll until the control plane reports a terminal outcome",
         )
+    elif command in {"status", "cancel"}:
+        parser.add_argument("run_id", help="control plane run identifier")
+        if command == "cancel":
+            parser.add_argument(
+                "--if-match",
+                required=True,
+                help="observed state version or etag the cancellation must match",
+            )
     return parser.format_help()
 
 
