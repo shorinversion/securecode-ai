@@ -15,6 +15,7 @@ from securecode_ai.server.oidc_login import (
     OidcLoginError,
     OidcLoginErrorCode,
     OidcLoginService,
+    OidcLoginStart,
 )
 from securecode_ai.server.oidc_sessions import NonceReplayLedger
 
@@ -65,6 +66,20 @@ def _service(
     )
 
 
+def _started_service(
+    *,
+    claims: object = None,
+    issuer: object = None,
+    attempt_limit: int = 60,
+) -> tuple[OidcLoginService, OidcLoginStart]:
+    values = dict(CLAIMS) if claims is None else claims
+    service = _service(claims=values, issuer=issuer, attempt_limit=attempt_limit)
+    start = service.start()
+    if isinstance(values, dict):
+        values["nonce"] = start.nonce
+    return service, start
+
+
 class _Issuer:
     def __init__(self, mode: str = "ok") -> None:
         self._mode = mode
@@ -102,8 +117,8 @@ def test_start_returns_unguessable_attempt_handles() -> None:
 
 
 def test_callback_returns_the_verified_principal() -> None:
-    service = _service()
-    receipt = service.callback(token=TOKEN, nonce=NONCE)
+    service, start = _started_service()
+    receipt = service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert receipt.principal.subject_id == "user"
     assert receipt.principal.tenant_id == "tenant"
     assert receipt.principal.roles == frozenset({Role.AUDITOR})
@@ -114,63 +129,82 @@ def test_callback_returns_the_verified_principal() -> None:
 
 @pytest.mark.parametrize("token", ["", "forged"])
 def test_forged_or_empty_tokens_are_refused(token: str) -> None:
+    service, start = _started_service()
     with pytest.raises(OidcLoginError) as error:
-        _service().callback(token=token, nonce=NONCE)
+        service.callback(token=token, nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
 
 
 def test_empty_nonce_is_refused() -> None:
+    service, start = _started_service()
     with pytest.raises(OidcLoginError) as error:
-        _service().callback(token=TOKEN, nonce="")
+        service.callback(token=TOKEN, nonce="", state=start.state)
     assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
 
 
 def test_replayed_nonce_is_refused() -> None:
-    service = _service()
-    service.callback(token=TOKEN, nonce=NONCE)
+    service, start = _started_service()
+    service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     with pytest.raises(OidcLoginError) as error:
-        service.callback(token=TOKEN, nonce=NONCE)
-    assert error.value.code is OidcLoginErrorCode.REPLAY_REJECTED
+        service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
+    assert error.value.code is OidcLoginErrorCode.STATE_REJECTED
 
 
 def test_attempts_are_bounded() -> None:
     service = _service(attempt_limit=2)
     for _ in range(2):
+        start = service.start()
         with pytest.raises(OidcLoginError) as error:
-            service.callback(token="forged", nonce="any-nonce")
+            service.callback(token="forged", nonce=start.nonce, state=start.state)
         assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
+    start = service.start()
     with pytest.raises(OidcLoginError) as error:
-        service.callback(token="forged", nonce="any-nonce")
+        service.callback(token="forged", nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.RATE_LIMITED
 
 
 def test_issuer_supplies_the_session_receipt() -> None:
-    receipt = _service(issuer=_Issuer("ok")).callback(token=TOKEN, nonce=NONCE)
+    service, start = _started_service(issuer=_Issuer("ok"))
+    receipt = service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert receipt.session_receipt.expires_at == 9999999999 - 1
     assert receipt.session_receipt is not receipt.receipt
     assert receipt.document()["session_expires_at"] == 9999999999 - 1
 
 
 def test_failing_issuer_is_refused() -> None:
+    service, start = _started_service(issuer=_Issuer("raise"))
     with pytest.raises(OidcLoginError) as error:
-        _service(issuer=_Issuer("raise")).callback(token=TOKEN, nonce=NONCE)
+        service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
 
 
 @pytest.mark.parametrize("mode", ["wrong", "long"])
 def test_implausible_issuer_output_is_refused(mode: str) -> None:
+    service, start = _started_service(issuer=_Issuer(mode))
     with pytest.raises(OidcLoginError) as error:
-        _service(issuer=_Issuer(mode)).callback(token=TOKEN, nonce=NONCE)
+        service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.INVALID_CONFIGURATION
 
 
 def test_admission_denial_never_reaches_the_ledger() -> None:
     """A refused token must not consume the nonce, so a retry stays possible."""
 
-    service = _service(claims={"alg": "none"})
+    service, start = _started_service(claims={"alg": "none"})
     with pytest.raises(OidcLoginError) as error:
-        service.callback(token=TOKEN, nonce=NONCE)
+        service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
 
-    good = _service()
-    assert good.callback(token=TOKEN, nonce=NONCE).principal.subject_id == "user"
+    good, start = _started_service()
+    assert (
+        good.callback(token=TOKEN, nonce=start.nonce, state=start.state).principal.subject_id
+        == "user"
+    )
+
+
+def test_callback_rejects_a_tampered_or_unknown_state() -> None:
+    service, start = _started_service()
+
+    with pytest.raises(OidcLoginError) as error:
+        service.callback(token=TOKEN, nonce=start.nonce, state="tampered")
+
+    assert error.value.code is OidcLoginErrorCode.STATE_REJECTED

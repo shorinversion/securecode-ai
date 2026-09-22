@@ -484,11 +484,12 @@ class ServerApp:
             return
         token = document.get("token")
         nonce = document.get("nonce")
-        if type(token) is not str or type(nonce) is not str:
+        state = document.get("state")
+        if type(token) is not str or type(nonce) is not str or type(state) is not str:
             await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
             return
         try:
-            receipt = self._oidc_login.callback(token=token, nonce=nonce)
+            receipt = self._oidc_login.callback(token=token, nonce=nonce, state=state)
         except OidcLoginError as error:
             if error.code is OidcLoginErrorCode.RATE_LIMITED:
                 await self._send_json(
