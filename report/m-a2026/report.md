@@ -75,7 +75,7 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.json` | `d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b` |
 | `scripts/build_m_a2026_submission.py` | `c7c9b208b124607968cd8c0fece750015037c5502116ab3aa9a8bca41c5e1792` |
 | `tests/integration/test_cwe_portfolio_pipeline.py` | `e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7` |
-| `tests/integration/test_m_a2026_submission.py` | `b94500edc623f20c502d2aad3ed34594b05386b0b4482e908302d66a17207e6a` |
+| `tests/integration/test_m_a2026_submission.py` | `5f46ea984efd26a855d73a19d2b7b1eab585de8b4abd2fd588e4b2fca5494598` |
 | `tests/integration/test_multilanguage_pipeline.py` | `00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc` |
 | `tests/integration/test_mvp_demo.py` | `2faa6dc45ebd7cb5719f27c90a778f8068cc8cf27f62ec97e7d61e10f3d84dfa` |
 | `tests/integration/test_p917_real_local_demo.py` | `91729ef1916df05e502d25bbb6e3b7b54955f804bd0eebc6a044fd8a7312b21a` |
