@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 
 import pytest
@@ -45,3 +46,23 @@ def test_residency_denies_unallowlisted_transfer() -> None:
             source_region="eu",
             destination_region="us",
         )
+
+
+def test_held_deletion_receipt_records_the_hold_actor() -> None:
+    ledger = LifecycleLedger.in_memory()
+    request = DeletionRequest("delete-1", "tenant", "a" * 64, "artifact", "b" * 64, "owner", 1)
+    ledger.request(request, repository_id="repo", idempotency_key="request-key")
+    ledger.set_legal_hold(
+        deletion_id=request.deletion_id,
+        tenant_id=request.tenant_id,
+        identity_hash=request.identity_hash,
+        actor_id="legal-admin",
+        enabled=True,
+        reason="active investigation",
+        expected_version=1,
+    )
+
+    receipt = ledger.receipt(tenant_id=request.tenant_id, deletion_id=request.deletion_id)
+
+    assert receipt.state == "HELD"
+    assert receipt.actor_id_hash == hashlib.sha256(b"legal-admin").hexdigest()

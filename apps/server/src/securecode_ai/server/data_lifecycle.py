@@ -52,7 +52,14 @@ class LifecycleLedger:
 
     @classmethod
     def in_memory(cls, *, storage: StorageExecutor | None = None) -> LifecycleLedger:
-        return cls(sqlite3.connect(":memory:"), storage=storage)
+        connection = sqlite3.connect(":memory:")
+        # Lifecycle requests bind a deletion to its repository scope, which is
+        # shared with the server schema rather than this module's local tables.
+        # The in-memory factory must therefore create the same complete schema.
+        from .migrations import apply_schema
+
+        apply_schema(connection)
+        return cls(connection, storage=storage)
 
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Cursor]:
@@ -369,7 +376,11 @@ class LifecycleLedger:
             )
         )
         occurred_at = row["executed_at"] or row["approved_at"] or row["created_at"]
-        actor = row["approved_by"] or row["requested_by"]
+        actor = (
+            row["hold_actor"] if state == "HELD" else (row["approved_by"] or row["requested_by"])
+        )
+        if type(actor) is not str:
+            raise LifecycleConflict("deletion receipt is inconsistent")
         return DeletionReceipt(
             deletion_id=row["deletion_id"],
             tenant_id=row["tenant_id"],
