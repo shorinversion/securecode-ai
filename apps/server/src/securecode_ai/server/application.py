@@ -29,6 +29,7 @@ from .ports import (
     UnavailableControlPlaneService,
     VerifiedIdentity,
 )
+from .request_quota import QuotaLedger
 from .request_scope import repository_id as _repository_id
 from .telemetry import TelemetryRecorder
 
@@ -213,6 +214,7 @@ class ServerApp:
         artifact_upload_identity: VerifiedIdentity | None = None,
         telemetry: TelemetryRecorder | None = None,
         oidc_login: OidcLoginService | None = None,
+        quota: QuotaLedger | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -226,6 +228,7 @@ class ServerApp:
             raise ValueError("server application settings are invalid")
         self._telemetry = telemetry if telemetry is not None else TelemetryRecorder()
         self._oidc_login = oidc_login
+        self._quota = quota
         self._identities = identities or DenyIdentityVerifier()
         self._authorization = authorization or DenyAuthorization()
         self._service = service or UnavailableControlPlaneService()
@@ -300,6 +303,19 @@ class ServerApp:
         if identity is None:
             await self._send_error(send, 401, "UNAUTHENTICATED", correlation_id)
             return
+        if self._quota is not None:
+            decision = self._quota.check(
+                tenant_id=identity.tenant_id,
+                now_ms=int(time.monotonic() * 1000),
+            )
+            if not decision.allowed:
+                await self._send_json(
+                    send,
+                    429,
+                    {"error": {"code": "QUOTA_EXCEEDED", "correlation_id": correlation_id}},
+                    {"Retry-After": str(decision.retry_after_seconds)},
+                )
+                return
         if route.workload_only and not identity.workload:
             await self._send_error(send, 403, "FORBIDDEN", correlation_id)
             return
