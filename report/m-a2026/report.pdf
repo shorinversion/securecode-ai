@@ -16,7 +16,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>
 endobj
 6 0 obj
-<< /Length 1971 >>
+<< /Length 1972 >>
 stream
 q
 0.05 0.16 0.31 rg
@@ -37,9 +37,9 @@ BT /F1 8.0 Tf 1 0 0 1 54.0 553.0 Tm (Evidence combines a pinned public Python de
 BT /F1 8.0 Tf 1 0 0 1 54.0 540.0 Tm (development matrix, one real local-model instructor run, and the canonical offline) Tj ET
 BT /F1 8.0 Tf 1 0 0 1 54.0 527.0 Tm (repository quality gate.) Tj ET
 BT /F2 13.0 Tf 1 0 0 1 54.0 500.0 Tm (Quality record) Tj ET
-BT /F1 8.0 Tf 1 0 0 1 54.0 482.0 Tm (Canonical quality: PASS; 2620 passed; 32 skipped; 80.1% Core branch coverage.) Tj ET
+BT /F1 8.0 Tf 1 0 0 1 54.0 482.0 Tm (Canonical quality: PASS; 2703 passed; 32 skipped; 80.14% Core branch coverage.) Tj ET
 BT /F1 7.0 Tf 1 0 0 1 54.0 469.0 Tm (Base implementation commit: e33feb44e052a47e12e13424974dadd1014da2ed) Tj ET
-BT /F1 7.0 Tf 1 0 0 1 54.0 457.0 Tm (Bound subject: ee78f7f61b05ebefce05f1ed3a5323868fb7289384a8df893b70fcea96b7432f) Tj ET
+BT /F1 7.0 Tf 1 0 0 1 54.0 457.0 Tm (Bound subject: 172686d8d0f40403503b246d0b2453148b496866a5638a0f57ff0b4d2f904dd0) Tj ET
 0.4 g
 BT /F1 8.0 Tf 1 0 0 1 54.0 32.0 Tm (Academic experiment report | Page 1 of 3) Tj ET
 Q
@@ -132,7 +132,7 @@ BT /F1 5.5 Tf 1 0 0 1 54.0 455.5 Tm (report/m-a2026/evidence/p917-real-local/p91
 BT /F1 5.5 Tf 1 0 0 1 54.0 445.0 Tm (400ff949e73e65f6b6987551e75f8c105b47b95f83b69d648bcbcabed220c6be) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 434.5 Tm (report/m-a2026/evidence/p917-real-local/p917-local-demo.json) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 424.0 Tm (d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b) Tj ET
-BT /F1 5.5 Tf 1 0 0 1 54.0 413.5 Tm (scripts/build_m_a2026_submission.py 34b8d918fb52f4134a449b9ee8547030c55a5029d9046597b5d424d1110bfd20) Tj ET
+BT /F1 5.5 Tf 1 0 0 1 54.0 413.5 Tm (scripts/build_m_a2026_submission.py c7c9b208b124607968cd8c0fece750015037c5502116ab3aa9a8bca41c5e1792) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 403.0 Tm (tests/integration/test_cwe_portfolio_pipeline.py e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 392.5 Tm (tests/integration/test_m_a2026_submission.py b94500edc623f20c502d2aad3ed34594b05386b0b4482e908302d66a17207e6a) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 382.0 Tm (tests/integration/test_multilanguage_pipeline.py 00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc) Tj ET
@@ -154,12 +154,12 @@ xref
 0000000204 00000 n
 0000000279 00000 n
 0000000415 00000 n
-0000002438 00000 n
-0000002574 00000 n
-0000005685 00000 n
-0000005822 00000 n
+0000002439 00000 n
+0000002575 00000 n
+0000005686 00000 n
+0000005823 00000 n
 trailer
 << /Size 11 /Root 1 0 R >>
 startxref
-11541
+11542
 %%EOF
