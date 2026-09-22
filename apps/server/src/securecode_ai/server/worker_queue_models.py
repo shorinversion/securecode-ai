@@ -108,7 +108,7 @@ def replayed_lease(value: str, lease_seconds: int) -> WorkerQueueLease | None:
 def identity(value: RunExecutionIdentity) -> RunExecutionIdentity:
     if not isinstance(value, RunExecutionIdentity):
         raise WorkerQueueConflict()
-    return RunExecutionIdentity.model_validate(value.model_dump(mode="json"))
+    return RunExecutionIdentity.model_validate_json(value.model_dump_json())
 
 
 def identity_document(value: str) -> RunExecutionIdentity:
@@ -116,7 +116,7 @@ def identity_document(value: str) -> RunExecutionIdentity:
         document = json.loads(value)
         if not isinstance(document, dict):
             raise WorkerQueueConflict()
-        return RunExecutionIdentity.model_validate(document)
+        return RunExecutionIdentity.model_validate_json(value)
     except (json.JSONDecodeError, TypeError, ValueError):
         raise WorkerQueueConflict() from None
 
