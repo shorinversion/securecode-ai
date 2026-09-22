@@ -119,11 +119,11 @@ def _request(
         _fail()
 
 
-def _preflight(request: ModelRequest) -> ModelPreflightRequest:
+def _preflight(inputs: PublicCoreHostInputs, request: ModelRequest) -> ModelPreflightRequest:
     return ModelPreflightRequest(
         schema_version=CONTRACT_SCHEMA_VERSION,
         model_request=request,
-        required_execution_boundary=ExecutionBoundary.LOCAL_RUNNER,
+        required_execution_boundary=inputs.profile.execution_boundary,
         required_data_class=DataClass.PUBLIC,
         required_purpose=request.mode,
         planned_transforms=("bounded_repository_view",),
@@ -151,7 +151,7 @@ def prepare_public_core_case(
             _fail()
         request = _request(case, fixture, inputs)
         authorization = _issuer(inputs).authorize_pre_context(
-            _preflight(request), profile=inputs.profile, policy=inputs.policy
+            _preflight(inputs, request), profile=inputs.profile, policy=inputs.policy
         )
         return PreparedPublicCoreCase(case, request, fixture, authorization.result)
     except (TypeError, ValueError):
@@ -204,7 +204,7 @@ def _executor(
             else resolver
         ),
         connector=cast(ProviderConnector, connector),
-        preflight=_preflight,
+        preflight=lambda request: _preflight(inputs, request),
         credential_supplier=credential_supplier,
     )
 
