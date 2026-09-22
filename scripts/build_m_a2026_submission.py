@@ -42,9 +42,9 @@ SNAPSHOT_MEANING = (
 )
 QUALITY_RECORD = {
     "status": "PASS",
-    "tests_passed": 2620,
+    "tests_passed": 2703,
     "tests_skipped": 32,
-    "core_branch_coverage_percent": 80.1,
+    "core_branch_coverage_percent": 80.14,
     "basis": "canonical quality cycle on the final M-A2026 candidate subject",
 }
 BLOCKING_REASONS = [
