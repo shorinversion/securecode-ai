@@ -155,6 +155,10 @@ class InProcessCapacityExecutor:
                 collected, cancelled = entry
                 samples.extend(collected)
                 cancelled_workers += cancelled
+            elif isinstance(entry, BaseException):
+                # the scenario cancelled this worker before it could report: the
+                # abandoned work is counted instead of disappearing from the cell
+                cancelled_workers += 1
         run_latencies = [item.run_ms for item in samples]
         queue_waits = [item.queue_ms for item in samples]
         errors = sum(1 for item in samples if item.status >= 500)
