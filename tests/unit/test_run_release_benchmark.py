@@ -53,6 +53,68 @@ def test_semgrep_prediction_uses_argument_vector_and_detects_results(
     }
 
 
+def test_semgrep_rule_checkout_selects_language_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rules = tmp_path / "rules"
+    python_rules = rules / "python"
+    python_rules.mkdir(parents=True)
+    observed: dict[str, tuple[str, ...]] = {}
+
+    def fake_run(arguments: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+        observed["arguments"] = arguments
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"results": []}))
+
+    monkeypatch.setattr(MODULE.subprocess, "run", fake_run)
+
+    assert not MODULE._semgrep_prediction(_case(), "print('x')\n", command="semgrep", config=rules)
+    assert observed["arguments"][3] == str(python_rules)
+
+
+def test_semgrep_batch_maps_results_to_cases_once_per_language(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rules = tmp_path / "rules"
+    (rules / "python").mkdir(parents=True)
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run(arguments: tuple[str, ...], **_kwargs: object) -> SimpleNamespace:
+        calls.append(arguments)
+        root = Path(arguments[-1])
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"results": [{"path": str(root / "case-1.py")}]}),
+        )
+
+    first = MODULE.Case(
+        "cvefixes:repo:1:before",
+        "sha256:" + "0" * 64,
+        "CWE-89",
+        "vulnerable",
+        "python",
+        "first",
+    )
+    second = MODULE.Case(
+        "cvefixes:repo:2:before",
+        "sha256:" + "1" * 64,
+        "CWE-89",
+        "fixed-safe",
+        "python",
+        "second",
+    )
+    monkeypatch.setattr(MODULE.subprocess, "run", fake_run)
+
+    results = MODULE._semgrep_predictions(
+        ((first, "print(1)\n"), (second, "print(2)\n")), command="semgrep", config=rules
+    )
+
+    assert len(calls) == 1
+    assert {(case.lineage, predicted, status) for case, predicted, _latency, status in results} == {
+        ("first", False, "completed"),
+        ("second", True, "completed"),
+    }
+
+
 @pytest.mark.parametrize(
     "result",
     (SimpleNamespace(returncode=2, stdout="{}"), SimpleNamespace(returncode=0, stdout="{}")),
@@ -128,7 +190,11 @@ def test_independent_lanes_do_not_require_scanner(
         lambda *_args: (_ for _ in ()).throw(AssertionError("scanner invoked")),
     )
     monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3))
-    monkeypatch.setattr(MODULE, "_semgrep_prediction", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        MODULE,
+        "_semgrep_predictions",
+        lambda cases, **_kwargs: tuple((item, True, 3, "completed") for item, _source in cases),
+    )
 
     cells = MODULE.run(
         (case,), database, lane, 1, lane is not Configuration.SEMGREP, semgrep_config=config
@@ -192,7 +258,7 @@ def test_semgrep_failure_is_retained_as_a_cell(
     monkeypatch.setattr(MODULE, "_deterministic", lambda *_args: False)
     monkeypatch.setattr(
         MODULE,
-        "_semgrep_prediction",
+        "_semgrep_predictions",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad response")),
     )
 

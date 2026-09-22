@@ -160,8 +160,20 @@ def _semgrep_prediction(
     config: Path,
 ) -> bool:
     """Run one pinned local Semgrep configuration without retaining source bytes."""
-    if not command or not config.is_file():
+    if not command or not (config.is_file() or config.is_dir()):
         raise ValueError("Semgrep command or configuration is unavailable")
+    language_config = config
+    if config.is_dir():
+        language_config = (
+            config
+            / {
+                "python": "python",
+                "javascript-typescript": "javascript",
+                "go": "go",
+            }[case.language]
+        )
+    if not (language_config.is_file() or language_config.is_dir()):
+        raise ValueError("Semgrep language configuration is unavailable")
     suffix = LANGUAGE_EXTENSIONS[case.language]
     with tempfile.TemporaryDirectory(prefix="securecode-ai-benchmark-") as directory:
         source_path = Path(directory) / ("case" + suffix)
@@ -172,7 +184,7 @@ def _semgrep_prediction(
                     command,
                     "scan",
                     "--config",
-                    str(config),
+                    str(language_config),
                     "--json",
                     "--no-git-ignore",
                     "--quiet",
@@ -194,6 +206,82 @@ def _semgrep_prediction(
     if type(results) is not list:
         raise ValueError("Semgrep response is invalid")
     return bool(results)
+
+
+def _semgrep_predictions(
+    cases: tuple[tuple[Case, str], ...],
+    *,
+    command: str,
+    config: Path,
+) -> tuple[tuple[Case, bool, int, str], ...]:
+    """Batch local Semgrep by language so rules compile once per language."""
+    grouped: dict[str, list[tuple[Case, str]]] = {}
+    for case, source in cases:
+        grouped.setdefault(case.language, []).append((case, source))
+    predictions: list[tuple[Case, bool, int, str]] = []
+    for language, values in grouped.items():
+        language_config = config
+        if config.is_dir():
+            language_config = (
+                config
+                / {
+                    "python": "python",
+                    "javascript-typescript": "javascript",
+                    "go": "go",
+                }[language]
+            )
+        if not (language_config.is_file() or language_config.is_dir()):
+            raise ValueError("Semgrep language configuration is unavailable")
+        with tempfile.TemporaryDirectory(prefix="securecode-ai-benchmark-") as directory:
+            root = Path(directory)
+            names: dict[str, Case] = {}
+            for index, (case, source) in enumerate(values):
+                name = f"case-{index}{LANGUAGE_EXTENSIONS[language]}"
+                (root / name).write_text(source, encoding="utf-8", newline="\n")
+                names[name] = case
+            started = time.monotonic_ns()
+            try:
+                completed = subprocess.run(
+                    (
+                        command,
+                        "scan",
+                        "--config",
+                        str(language_config),
+                        "--json",
+                        "--no-git-ignore",
+                        "--quiet",
+                        str(root),
+                    ),
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ValueError("Semgrep invocation failed") from error
+            elapsed = (time.monotonic_ns() - started) // 1_000_000
+            if completed.returncode not in {0, 1}:
+                raise ValueError("Semgrep invocation failed")
+            try:
+                results = json.loads(completed.stdout)["results"]
+            except (KeyError, TypeError, json.JSONDecodeError) as error:
+                raise ValueError("Semgrep response is invalid") from error
+            if type(results) is not list:
+                raise ValueError("Semgrep response is invalid")
+            matched: set[str] = set()
+            for result in results:
+                if type(result) is not dict or type(result.get("path")) is not str:
+                    raise ValueError("Semgrep response is invalid")
+                name = Path(result["path"]).name
+                if name not in names:
+                    raise ValueError("Semgrep response is invalid")
+                matched.add(name)
+            per_case_latency = elapsed // len(values)
+            predictions.extend(
+                (case, name in matched, per_case_latency, "completed")
+                for name, case in names.items()
+            )
+    return tuple(predictions)
 
 
 def _cell(
@@ -238,6 +326,25 @@ def run(
     uri = database.resolve(strict=True).as_uri() + "?mode=ro&immutable=1"
     cells: list[BenchmarkCell] = []
     with sqlite3.connect(uri, uri=True) as connection:
+        if lane is Configuration.SEMGREP:
+            if semgrep_config is None:
+                raise ValueError("Semgrep configuration is unavailable")
+            sources = tuple((case, _source(connection, case)) for case in cases)
+            try:
+                predictions = _semgrep_predictions(
+                    sources, command=semgrep_command, config=semgrep_config
+                )
+            except ValueError:
+                return tuple(
+                    _cell(case, lane, repetition, False, 0, 0, "semgrep-failed")
+                    for case, _source in sources
+                    for repetition in range(1, repetitions + 1)
+                )
+            return tuple(
+                _cell(case, lane, repetition, predicted, latency, 0, status)
+                for case, predicted, latency, status in predictions
+                for repetition in range(1, repetitions + 1)
+            )
         for case in cases:
             source = _source(connection, case)
             scanner: bool | None = None
@@ -272,20 +379,10 @@ def run(
                     elif lane is Configuration.HYBRID:
                         model, tokens = _remote_prediction(case, source, one_shot=False)
                         predicted = bool(scanner) or model
-                    elif lane is Configuration.SEMGREP:
-                        if semgrep_config is None:
-                            raise ValueError("Semgrep configuration is unavailable")
-                        predicted = _semgrep_prediction(
-                            case,
-                            source,
-                            command=semgrep_command,
-                            config=semgrep_config,
-                        )
                     else:
                         raise ValueError("unsupported benchmark configuration")
                 except ValueError:
-                    status = "semgrep-failed" if lane is Configuration.SEMGREP else "model-failed"
-                    cells.append(_cell(case, lane, repetition, False, 0, 0, status))
+                    cells.append(_cell(case, lane, repetition, False, 0, 0, "model-failed"))
                     continue
                 cells.append(
                     _cell(
