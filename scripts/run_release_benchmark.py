@@ -151,7 +151,13 @@ def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool
 
 
 def _cell(
-    case: Case, lane: Configuration, repetition: int, predicted: bool, latency_ms: int, tokens: int
+    case: Case,
+    lane: Configuration,
+    repetition: int,
+    predicted: bool,
+    latency_ms: int,
+    tokens: int,
+    status: str = "completed",
 ) -> BenchmarkCell:
     vulnerable = case.expected_label == "vulnerable"
     return BenchmarkCell(
@@ -160,7 +166,7 @@ def _cell(
         cwe=case.cwe_id,
         lineage=hashlib.sha256(case.lineage.encode()).hexdigest(),
         repetition=repetition,
-        status="completed",
+        status=status,
         tp=int(predicted and vulnerable),
         fp=int(predicted and not vulnerable),
         tn=int(not predicted and not vulnerable),
@@ -181,7 +187,12 @@ def run(
     with sqlite3.connect(uri, uri=True) as connection:
         for case in cases:
             source = _source(connection, case)
-            scanner = _deterministic(case, source)
+            try:
+                scanner = _deterministic(case, source)
+            except (TypeError, ValueError, RuntimeError):
+                for repetition in range(1, repetitions + 1):
+                    cells.append(_cell(case, lane, repetition, False, 0, 0, "scanner-failed"))
+                continue
             for repetition in range(1, repetitions + 1):
                 started = time.monotonic_ns()
                 tokens = 0
