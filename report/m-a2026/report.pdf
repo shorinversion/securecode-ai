@@ -39,7 +39,7 @@ BT /F1 8.0 Tf 1 0 0 1 54.0 527.0 Tm (repository quality gate.) Tj ET
 BT /F2 13.0 Tf 1 0 0 1 54.0 500.0 Tm (Quality record) Tj ET
 BT /F1 8.0 Tf 1 0 0 1 54.0 482.0 Tm (Canonical quality: PASS; 2620 passed; 32 skipped; 80.1% Core branch coverage.) Tj ET
 BT /F1 7.0 Tf 1 0 0 1 54.0 469.0 Tm (Base implementation commit: e33feb44e052a47e12e13424974dadd1014da2ed) Tj ET
-BT /F1 7.0 Tf 1 0 0 1 54.0 457.0 Tm (Bound subject: 2a7ef0cedc7c7ef702c57d03f69b57c5fa1058922d8ce7e731a5a28a48ece702) Tj ET
+BT /F1 7.0 Tf 1 0 0 1 54.0 457.0 Tm (Bound subject: 720f9a129f88b30111df73a1c1240e4453f113148c1b8661d44b59d80cf15b63) Tj ET
 0.4 g
 BT /F1 8.0 Tf 1 0 0 1 54.0 32.0 Tm (Academic experiment report | Page 1 of 3) Tj ET
 Q
@@ -134,7 +134,7 @@ BT /F1 5.5 Tf 1 0 0 1 54.0 434.5 Tm (report/m-a2026/evidence/p917-real-local/p91
 BT /F1 5.5 Tf 1 0 0 1 54.0 424.0 Tm (d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 413.5 Tm (scripts/build_m_a2026_submission.py 34b8d918fb52f4134a449b9ee8547030c55a5029d9046597b5d424d1110bfd20) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 403.0 Tm (tests/integration/test_cwe_portfolio_pipeline.py e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7) Tj ET
-BT /F1 5.5 Tf 1 0 0 1 54.0 392.5 Tm (tests/integration/test_m_a2026_submission.py 6feb3efd6caf302bf4a0245b6084c062f1c02517a12ff562b1164db0abc05f66) Tj ET
+BT /F1 5.5 Tf 1 0 0 1 54.0 392.5 Tm (tests/integration/test_m_a2026_submission.py be22fb1e0e93208b9316bcba3d342d56c3f78b062f57ced0ea58cb6a1d902be1) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 382.0 Tm (tests/integration/test_multilanguage_pipeline.py 00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 371.5 Tm (tests/integration/test_mvp_demo.py 2faa6dc45ebd7cb5719f27c90a778f8068cc8cf27f62ec97e7d61e10f3d84dfa) Tj ET
 BT /F1 5.5 Tf 1 0 0 1 54.0 361.0 Tm (tests/integration/test_p917_real_local_demo.py 91729ef1916df05e502d25bbb6e3b7b54955f804bd0eebc6a044fd8a7312b21a) Tj ET
