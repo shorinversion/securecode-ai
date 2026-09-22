@@ -66,3 +66,29 @@ def test_held_deletion_receipt_records_the_hold_actor() -> None:
 
     assert receipt.state == "HELD"
     assert receipt.actor_id_hash == hashlib.sha256(b"legal-admin").hexdigest()
+
+
+@pytest.mark.parametrize("operation", ("hold", "execute", "receipt"))
+def test_lifecycle_operations_reject_invalid_deletion_ids(operation: str) -> None:
+    ledger = LifecycleLedger.in_memory()
+
+    with pytest.raises(LifecycleConflict, match="deletion_id is invalid"):
+        if operation == "hold":
+            ledger.set_legal_hold(
+                deletion_id="",
+                tenant_id="tenant",
+                identity_hash="a" * 64,
+                actor_id="admin",
+                enabled=True,
+                reason="incident",
+                expected_version=1,
+            )
+        elif operation == "execute":
+            ledger.execute(
+                deletion_id="",
+                tenant_id="tenant",
+                identity_hash="a" * 64,
+                expected_version=1,
+            )
+        else:
+            ledger.receipt(tenant_id="tenant", deletion_id="")
