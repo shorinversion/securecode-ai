@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Final
@@ -28,6 +29,7 @@ from .ports import (
     VerifiedIdentity,
 )
 from .request_scope import repository_id as _repository_id
+from .telemetry import TelemetryRecorder
 
 _MAX_BODY_BYTES: Final = 16_777_216
 _IDEMPOTENCY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
@@ -206,6 +208,7 @@ class ServerApp:
         replay_store: RequestReplayStore | None = None,
         webhook_identity: VerifiedIdentity | None = None,
         artifact_upload_identity: VerifiedIdentity | None = None,
+        telemetry: TelemetryRecorder | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -217,6 +220,7 @@ class ServerApp:
             or any(type(value) is not str or not value for value in capabilities)
         ):
             raise ValueError("server application settings are invalid")
+        self._telemetry = telemetry if telemetry is not None else TelemetryRecorder()
         self._identities = identities or DenyIdentityVerifier()
         self._authorization = authorization or DenyAuthorization()
         self._service = service or UnavailableControlPlaneService()
@@ -341,6 +345,7 @@ class ServerApp:
                     claim.response.headers,
                 )
                 return
+        started_at = time.monotonic()
         try:
             response = await self._service.dispatch(
                 ServiceRequest(
@@ -357,6 +362,7 @@ class ServerApp:
                     headers=headers,
                 )
             )
+            self._record_observation(route.action, response.status, started_at)
         except ServiceUnavailableError:
             self._release_idempotency(identity, key)
             await self._send_error(send, 503, "SERVICE_UNAVAILABLE", correlation_id)
@@ -398,6 +404,15 @@ class ServerApp:
             key=key,
             response=response,
         )
+
+    def _record_observation(self, action: str, status: int, started_at: float) -> None:
+        """Record one redacted observation; telemetry never breaks a request."""
+
+        elapsed_ms = int(max(0.0, (time.monotonic() - started_at) * 1000.0))
+        try:
+            self._telemetry.record(action=action, status=status, duration_ms=elapsed_ms)
+        except Exception:
+            return
 
     def _release_idempotency(self, identity: VerifiedIdentity, key: str | None) -> None:
         if key is not None:

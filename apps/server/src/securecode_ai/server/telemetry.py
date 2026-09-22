@@ -1,0 +1,122 @@
+"""P8.8 bounded request telemetry, wired into the control-plane request path.
+
+Observations are redacted before they leave the process: only the route action,
+the response status and the measured duration are recorded — never bodies,
+identifiers or credentials. The buffer is bounded, so an absent or failing
+exporter degrades to a drop rather than unbounded memory growth.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+from threading import Lock
+from typing import Final
+
+from .observability import Exporter, Observation, RedactedExporter
+
+DEFAULT_CAPACITY: Final = 512
+MAX_ACTION_LENGTH: Final = 64
+MIN_DURATION_MS: Final = 0
+MAX_DURATION_MS: Final = 3_600_000
+
+
+class TelemetryError(ValueError):
+    """Bounded telemetry configuration or record failure."""
+
+
+@dataclass(frozen=True, slots=True)
+class TelemetryFlush:
+    """Outcome of one flush attempt."""
+
+    accepted: bool
+    exported: int
+    pending: int
+
+
+class TelemetryRecorder:
+    """Buffer bounded observations and export them through a redacting seam."""
+
+    __slots__ = ("_buffer", "_capacity", "_exporter", "_lock")
+
+    def __init__(
+        self,
+        *,
+        exporter: Exporter | None = None,
+        capacity: int = DEFAULT_CAPACITY,
+    ) -> None:
+        if type(capacity) is not int or not 1 <= capacity <= 65_536:
+            raise TelemetryError("telemetry capacity is invalid")
+        self._capacity = capacity
+        self._buffer: deque[Observation] = deque(maxlen=capacity)
+        self._exporter = RedactedExporter(exporter) if exporter is not None else None
+        self._lock = Lock()
+
+    @property
+    def capacity(self) -> int:
+        return self._capacity
+
+    def record(self, *, action: str, status: int, duration_ms: int) -> None:
+        """Record one bounded request observation; invalid input is rejected."""
+
+        if (
+            type(action) is not str
+            or not 1 <= len(action) <= MAX_ACTION_LENGTH
+            or any(not (character.isalnum() or character in "._:-") for character in action)
+            or type(status) is not int
+            or not 100 <= status <= 599
+            or type(duration_ms) is not int
+            or not MIN_DURATION_MS <= duration_ms <= MAX_DURATION_MS
+        ):
+            raise TelemetryError("telemetry observation is invalid")
+        observation = Observation(
+            name="control-plane.request",
+            attributes={"operation": action, "outcome": str(status // 100) + "xx"},
+            duration_ms=duration_ms,
+        )
+        with self._lock:
+            self._buffer.append(observation)
+
+    def pending(self) -> int:
+        with self._lock:
+            return len(self._buffer)
+
+    def drain(self) -> tuple[Observation, ...]:
+        """Take every buffered observation, leaving the buffer empty."""
+
+        with self._lock:
+            batch = tuple(self._buffer)
+            self._buffer.clear()
+        return batch
+
+    def flush(self) -> TelemetryFlush:
+        """Export the buffered batch; a missing or failing exporter keeps the data safe."""
+
+        batch = self.drain()
+        if not batch:
+            return TelemetryFlush(accepted=True, exported=0, pending=0)
+        if self._exporter is None:
+            with self._lock:
+                for observation in batch:
+                    self._buffer.append(observation)
+                pending = len(self._buffer)
+            return TelemetryFlush(accepted=False, exported=0, pending=pending)
+        try:
+            result = self._exporter.export(batch)
+        except Exception:
+            result = None
+        if result is None or not result.accepted:
+            with self._lock:
+                for observation in batch:
+                    self._buffer.append(observation)
+                pending = len(self._buffer)
+            return TelemetryFlush(accepted=False, exported=0, pending=pending)
+        return TelemetryFlush(accepted=True, exported=result.count, pending=0)
+
+
+__all__ = [
+    "DEFAULT_CAPACITY",
+    "TelemetryError",
+    "TelemetryFlush",
+    "TelemetryRecorder",
+]
