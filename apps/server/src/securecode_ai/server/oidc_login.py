@@ -14,8 +14,10 @@ decides whether it is fresh.
 from __future__ import annotations
 
 import secrets
+from collections import deque
 from dataclasses import dataclass
 from enum import StrEnum
+from threading import Lock
 from typing import Final
 
 from .identity import Principal
@@ -24,12 +26,15 @@ from .oidc_sessions import NonceReplayLedger, SessionIssuer
 
 NONCE_BYTES: Final = 32
 MAX_SESSION_SECONDS: Final = 86_400
+DEFAULT_ATTEMPT_LIMIT: Final = 60
+ATTEMPT_WINDOW_SECONDS: Final = 60
 
 
 class OidcLoginErrorCode(StrEnum):
     INVALID_CONFIGURATION = "INVALID_CONFIGURATION"
     TOKEN_REJECTED = "TOKEN_REJECTED"
     REPLAY_REJECTED = "REPLAY_REJECTED"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 class OidcLoginError(RuntimeError):
@@ -74,7 +79,7 @@ class OidcLoginReceipt:
 class OidcLoginService:
     """Compose admission, replay protection and session issuance for one login."""
 
-    __slots__ = ("_admission", "_issuer", "_ledger")
+    __slots__ = ("_admission", "_attempt_limit", "_attempts", "_issuer", "_ledger", "_lock")
 
     def __init__(
         self,
@@ -82,7 +87,10 @@ class OidcLoginService:
         admission: OidcAdmission,
         ledger: NonceReplayLedger,
         issuer: SessionIssuer | None = None,
+        attempt_limit: int = DEFAULT_ATTEMPT_LIMIT,
     ) -> None:
+        if type(attempt_limit) is not int or not 1 <= attempt_limit <= 100_000:
+            raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
         if (
             type(admission) is not OidcAdmission
             or type(ledger) is not NonceReplayLedger
@@ -92,6 +100,9 @@ class OidcLoginService:
         self._admission = admission
         self._ledger = ledger
         self._issuer = issuer
+        self._attempt_limit = attempt_limit
+        self._attempts: deque[float] = deque(maxlen=attempt_limit)
+        self._lock = Lock()
 
     def start(self) -> OidcLoginStart:
         """Begin one login attempt with a fresh, unguessable nonce and state."""
@@ -106,6 +117,7 @@ class OidcLoginService:
 
         if type(token) is not str or not token or type(nonce) is not str or not nonce:
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED)
+        self._charge_attempt()
         try:
             principal, receipt = self._admission.admit(token, nonce=nonce)
         except OidcDenied:
@@ -120,6 +132,19 @@ class OidcLoginService:
             raise OidcLoginError(OidcLoginErrorCode.REPLAY_REJECTED) from None
         session = receipt if self._issuer is None else self._issued(principal, receipt)
         return OidcLoginReceipt(principal=principal, receipt=receipt, session_receipt=session)
+
+    def _charge_attempt(self) -> None:
+        """Refuse login work once the bounded attempt window is exhausted."""
+
+        import time
+
+        now = time.monotonic()
+        with self._lock:
+            while self._attempts and now - self._attempts[0] >= ATTEMPT_WINDOW_SECONDS:
+                self._attempts.popleft()
+            if len(self._attempts) >= self._attempt_limit:
+                raise OidcLoginError(OidcLoginErrorCode.RATE_LIMITED)
+            self._attempts.append(now)
 
     def _issued(self, principal: Principal, receipt: OidcReceipt) -> OidcReceipt:
         issuer = self._issuer

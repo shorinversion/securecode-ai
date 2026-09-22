@@ -13,7 +13,7 @@ from urllib.parse import parse_qs
 
 from .idempotency import ClaimState, InMemoryRequestReplayStore, RequestReplayStore
 from .json_boundary import JsonBoundaryError, load_json_object
-from .oidc_login import OidcLoginError, OidcLoginService
+from .oidc_login import OidcLoginError, OidcLoginErrorCode, OidcLoginService
 from .openapi import API_VERSION, CAPABILITIES, SUPPORTED_MAJOR, build_openapi_document
 from .ports import (
     AuthorizationPort,
@@ -490,6 +490,14 @@ class ServerApp:
         try:
             receipt = self._oidc_login.callback(token=token, nonce=nonce)
         except OidcLoginError as error:
+            if error.code is OidcLoginErrorCode.RATE_LIMITED:
+                await self._send_json(
+                    send,
+                    429,
+                    {"error": {"code": error.code.value, "correlation_id": correlation_id}},
+                    {"Retry-After": "60"},
+                )
+                return
             await self._send_error(send, 401, error.code.value, correlation_id)
             return
         except Exception:
