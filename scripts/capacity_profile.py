@@ -81,3 +81,7 @@ def profile_with(
         scenarios=EXECUTABLE_SCENARIOS,
     )
     return run(plan, InProcessCapacityExecutor(app, requests=requests))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
