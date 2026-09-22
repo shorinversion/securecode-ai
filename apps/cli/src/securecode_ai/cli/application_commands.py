@@ -180,6 +180,11 @@ def _command_help(command: str) -> str:
             action="store_true",
             help="poll until the control plane reports a terminal outcome",
         )
+        parser.add_argument(
+            "--new-run",
+            action="store_true",
+            help="open a new run instead of resuming the recorded one for this revision",
+        )
     elif command == "approvals":
         parser.add_argument(
             "action",

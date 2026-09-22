@@ -413,8 +413,8 @@ def run_connect_command(
     """Submit one exact revision to the control plane and print its reference."""
 
     try:
-        _target, wait = parse_connected_arguments(tokens[1:])
-        settings = settings_from_environment(environment)
+        _target, wait, fresh = parse_connected_arguments(tokens[1:])
+        settings = settings_from_environment(environment, fresh=fresh)
         receipt = run_connected(settings, poll_status=wait)
     except ConnectedCliError as error:
         stderr.write("connected run was rejected (" + error.code.value + ")" + chr(10))

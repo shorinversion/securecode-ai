@@ -7,6 +7,7 @@ terminal outcome, and renders a source-free reference for the operator.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from collections.abc import Mapping
@@ -365,8 +366,15 @@ class ConnectedRunSettings:
 
 def settings_from_environment(
     environment: Mapping[str, str],
+    *,
+    fresh: bool = False,
 ) -> ConnectedRunSettings:
-    """Read connected-mode settings without ever logging their values."""
+    """Read connected-mode settings without ever logging their values.
+
+    Unless ``fresh`` is requested, the submission key is derived from the exact
+    revision so a retried command resumes the recorded run instead of duplicating
+    it; ``SECURECODE_IDEMPOTENCY_KEY`` still overrides both.
+    """
 
     def required(name: str) -> str:
         value = environment.get(name)
@@ -380,10 +388,35 @@ def settings_from_environment(
         tenant_id=required("SECURECODE_TENANT_ID"),
         repository_id=required("SECURECODE_REPOSITORY_ID"),
         head_sha=required("SECURECODE_HEAD_SHA"),
-        idempotency_key=environment.get("SECURECODE_IDEMPOTENCY_KEY") or new_idempotency_key(),
+        idempotency_key=(
+            environment.get("SECURECODE_IDEMPOTENCY_KEY")
+            or (new_idempotency_key() if fresh else _pending_key(environment))
+        ),
         base_sha=environment.get("SECURECODE_BASE_SHA") or None,
         change_id=environment.get("SECURECODE_CHANGE_ID") or None,
     )
+
+
+def _pending_key(environment: Mapping[str, str]) -> str:
+    """Compose the resumable key from the settings the operator supplied."""
+
+    def value(name: str) -> str:
+        raw = environment.get(name)
+        return raw if isinstance(raw, str) else ""
+
+    material = json.dumps(
+        {
+            "base_sha": value("SECURECODE_BASE_SHA") or None,
+            "change_id": value("SECURECODE_CHANGE_ID") or None,
+            "head_sha": value("SECURECODE_HEAD_SHA"),
+            "repository_id": value("SECURECODE_REPOSITORY_ID"),
+            "tenant_id": value("SECURECODE_TENANT_ID"),
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return "cli-" + hashlib.sha256(material).hexdigest()[:48]
 
 
 def run_connected(
@@ -457,9 +490,32 @@ def render_receipt(receipt: ConnectedRunReceipt, output: TextIO) -> None:
 
 
 def new_idempotency_key() -> str:
-    """Reuse one key across retries of the same connected submission."""
+    """A fresh key, for callers that explicitly want a new run."""
 
     return "cli-" + uuid.uuid4().hex
+
+
+def resumable_idempotency_key(settings: ConnectedRunSettings) -> str:
+    """Derive a stable key from the exact submission so retries resume one run.
+
+    Re-running the same command for the same revision therefore replays the
+    recorded admission instead of opening a second run, which is what a CI
+    job retry needs. Callers that want a genuinely new run generate a fresh key.
+    """
+
+    material = json.dumps(
+        {
+            "base_sha": settings.base_sha,
+            "change_id": settings.change_id,
+            "head_sha": settings.head_sha,
+            "repository_id": settings.repository_id,
+            "tenant_id": settings.tenant_id,
+        },
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return "cli-" + hashlib.sha256(material).hexdigest()[:48]
 
 
 def parse_run_arguments(tokens: tuple[str, ...]) -> tuple[str, str | None]:
@@ -487,21 +543,24 @@ def parse_run_arguments(tokens: tuple[str, ...]) -> tuple[str, str | None]:
     return run_id, if_match
 
 
-def parse_connected_arguments(tokens: tuple[str, ...]) -> tuple[Path | None, bool]:
-    """Parse `securecode connect [target] [--wait] [--dry-run]`."""
+def parse_connected_arguments(tokens: tuple[str, ...]) -> tuple[Path | None, bool, bool]:
+    """Parse `securecode connect [target] [--wait] [--new-run]`."""
 
     target: Path | None = None
     wait = False
+    fresh = False
     for token in tokens:
         if token == "--wait":
             wait = True
+        elif token == "--new-run":
+            fresh = True
         elif token.startswith("-"):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         elif target is None:
             target = Path(token)
         else:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
-    return target, wait
+    return target, wait, fresh
 
 
 def timestamp() -> str:
@@ -734,6 +793,7 @@ __all__ = [
     "parse_run_arguments",
     "read_approval",
     "render_receipt",
+    "resumable_idempotency_key",
     "run_connected",
     "settings_from_environment",
     "timestamp",
