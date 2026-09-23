@@ -99,6 +99,16 @@ def test_cancelled_workers_are_reported_not_hidden() -> None:
     assert cell.errors == 0
 
 
+def test_cancellation_profile_does_not_pass_without_an_interrupted_request() -> None:
+    cell = InProcessCapacityExecutor(_App()).execute(
+        ChaosScenario.CANCEL, concurrency=4, iterations=16
+    )
+
+    assert cell.completed
+    assert cell.cancellations == 0
+    assert not cell.passed
+
+
 def test_profile_covers_only_the_measurable_scenarios() -> None:
     receipt = profile(_App(), concurrency=2, iterations=8)
     assert isinstance(receipt, CapacityReceipt)
@@ -136,7 +146,7 @@ async def _cooperative_application(
     await send({"type": "http.response.body", "body": b"{}"})
 
 
-def test_cancellation_counts_workers_cancelled_before_they_start() -> None:
+def test_cancellation_interrupts_in_flight_requests_and_counts_them() -> None:
     cell = InProcessCapacityExecutor(_cooperative_application).execute(
         ChaosScenario.CANCEL, concurrency=4, iterations=8
     )

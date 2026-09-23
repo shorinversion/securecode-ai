@@ -140,15 +140,20 @@ class InProcessCapacityExecutor:
             return collected, cancelled
 
         tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+        cancelled_workers = 0
         if scenario is ChaosScenario.CANCEL and len(tasks) > 1:
-            # always leave one worker running: cancelling every worker would measure
-            # nothing, and a cell without observations must not look like a pass
-            cancelled_workers = max(1, len(tasks) // 2)
-            for task in tasks[len(tasks) - cancelled_workers :]:
+            # Let every worker enter the ASGI request before interrupting some of
+            # them. Cancelling before the first scheduling point only measures
+            # task startup and misses cancellation propagation through a request.
+            await asyncio.sleep(0)
+            # Always leave one worker running so the interrupted workload still
+            # produces observations and an incomplete cell cannot pass.
+            active = [task for task in tasks if not task.done()]
+            requested_cancellations = max(1, len(tasks) // 2)
+            for task in active[-requested_cancellations:]:
                 task.cancel()
         results = await asyncio.gather(*tasks, return_exceptions=True)
         elapsed = time.monotonic() - started
-        cancelled_workers = 0
         for entry in results:
             # A task cancelled before its coroutine receives its first time slice
             # never reaches ``worker``'s CancelledError handler. Gather returns
@@ -181,7 +186,7 @@ class InProcessCapacityExecutor:
             run_p50=_percentile(run_latencies, 0.5),
             run_p95=_percentile(run_latencies, 0.95),
             errors=errors,
-            cancellations=cancelled_workers,
+            cancellations=cancelled_workers + sum(item.cancelled for item in samples),
             live_leases=0,
         )
 

@@ -58,7 +58,7 @@ class CapacityCell:
 
     @property
     def passed(self) -> bool:
-        return (
+        capacity_pass = (
             self.completed
             and self.throughput > 0
             and self.queue_p50 is not None
@@ -68,6 +68,9 @@ class CapacityCell:
             and self.errors == 0
             and self.live_leases == 0
         )
+        if self.scenario == "cancellation":
+            return capacity_pass and self.cancellations > 0 and not self.completed
+        return capacity_pass
 
 
 @dataclass(frozen=True, slots=True)
