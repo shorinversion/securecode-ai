@@ -243,16 +243,24 @@ def _validate_execution_result(result: BackupExecutionResult) -> None:
     for duration in (result.rpo_seconds, result.rto_seconds):
         if type(duration) is not int or duration < 0 or duration > 315360000:
             raise BackupConflict("executor returned an invalid duration")
-    if len(result.manifest_sha256) != 64 or any(
-        char not in "0123456789abcdef" for char in result.manifest_sha256
+    if (
+        type(result.manifest_sha256) is not str
+        or len(result.manifest_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in result.manifest_sha256)
     ):
         raise BackupConflict("executor returned an invalid manifest digest")
-    if not result.component_hashes or len(set(result.component_hashes)) != len(
-        result.component_hashes
+    if (
+        type(result.component_hashes) is not tuple
+        or not result.component_hashes
+        or len(set(result.component_hashes)) != len(result.component_hashes)
     ):
         raise BackupConflict("executor returned invalid component hashes")
     for digest in result.component_hashes:
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        if (
+            type(digest) is not str
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+        ):
             raise BackupConflict("executor returned an invalid component digest")
 
 

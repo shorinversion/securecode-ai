@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from dataclasses import replace
+from typing import cast
 
 import pytest
 from securecode_ai.server.backup_repository import BackupConflict, BackupRecord, BackupRepository
@@ -148,6 +149,30 @@ def test_executor_failure_is_explicit_and_never_marks_completion() -> None:
 
     with pytest.raises(BackupExecutorUnavailable):
         service.complete_backup("tenant-1", "backup-1", planned.version)
+
+
+def test_malformed_executor_result_fails_closed_without_raw_type_error() -> None:
+    class _MalformedExecutor:
+        def backup(self, record: BackupRecord) -> BackupExecutionResult:
+            del record
+            return BackupExecutionResult(
+                rpo_seconds=15,
+                rto_seconds=30,
+                manifest_sha256=cast(str, None),
+                component_hashes=("a" * 64,),
+            )
+
+        def restore(self, record: BackupRecord) -> BackupExecutionResult:
+            del record
+            raise AssertionError("restore must not run")
+
+    service = BackupService(BackupRepository.in_memory(), _MalformedExecutor())
+    planned = service.plan(_record())
+
+    with pytest.raises(BackupConflict, match="invalid manifest digest"):
+        service.complete_backup("tenant-1", "backup-1", planned.version)
+
+    assert service.receipt(tenant_id="tenant-1", backup_id="backup-1").state == "PLANNED"
 
 
 def test_failed_create_does_not_reserve_backup_scope() -> None:
