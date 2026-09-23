@@ -26,6 +26,8 @@ SOURCES = [
     ("a.py", b"import requests\ndef check(request):\n requests.get(request.args.get('url'))\n"),
     ("a.js", b"function check(req) { fetch(req.query.url); }\n"),
     ("a.ts", b"function check(req: Request) { fetch(req.query.url); }\n"),
+    ("a.mts", b"function check(req: Request) { fetch(req.query.url); }\n"),
+    ("a.cts", b"function check(req: Request) { fetch(req.query.url); }\n"),
     ("a.go", b'package api\nfunc check(r *Request) { http.Get(r.URL.Query().Get("url")) }\n'),
 ]
 

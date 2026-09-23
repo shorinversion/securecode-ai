@@ -28,6 +28,14 @@ SQL_SOURCES = [
         b"const id: string = request.query.id;\nconst sql = `SELECT * FROM users WHERE id = ${id}`;\ndb.execute(sql);\n",
     ),
     (
+        "a.mts",
+        b"const id: string = request.query.id;\nconst sql = `SELECT * FROM users WHERE id = ${id}`;\ndb.execute(sql);\n",
+    ),
+    (
+        "a.cts",
+        b"const id: string = request.query.id;\nconst sql = `SELECT * FROM users WHERE id = ${id}`;\ndb.execute(sql);\n",
+    ),
+    (
         "a.go",
         b'package api\nimport "fmt"\nfunc lookup(r *Request, db DB) {\n id := r.URL.Query().Get("id")\n sql := fmt.Sprintf("SELECT * FROM users WHERE id = %s", id)\n db.Query(sql)\n}\n',
     ),
