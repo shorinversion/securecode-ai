@@ -233,6 +233,11 @@ def _tree_facts(language: str, source: bytes) -> tuple[tuple[str, SourceRange, S
     for call in (node for node in _preorder(root) if node.type == "call_expression"):
         compact = _compact(source, call)
         cwe = _tree_cwe(compact, language)
+        if cwe is None and language == "go":
+            source_node = _go_path_traversal_source(source, call)
+            if source_node is not None:
+                facts.append(("CWE-22", _range(source_node), _range(call)))
+            continue
         if cwe is None:
             continue
         security_argument = _tree_security_argument(call, cwe, compact, language)
@@ -260,13 +265,99 @@ def _tree_cwe(compact: str, language: str) -> str | None:
     else:
         if compact.startswith("exec.Command(") and ('"sh"' in compact or '"bash"' in compact):
             return "CWE-78"
-        if compact.startswith("os.ReadFile(") and "filepath.Join(" in compact:
+        if (
+            compact.startswith(("os.ReadFile(", "ioutil.ReadFile(", "ReadFile("))
+            and "filepath.Join(" in compact
+        ):
             return "CWE-22"
         if compact.startswith("http.Get("):
             return "CWE-918"
         if re.match(r"(?:repo|repository)\.(?:Get|Find|Lookup)\(", compact):
             return "CWE-862"
     return None
+
+
+def _go_path_traversal_source(source: bytes, sink: Node) -> Node | None:
+    """Resolve one direct Go query-to-join-to-read flow through locals."""
+
+    compact = _compact(source, sink)
+    if not compact.startswith(("os.ReadFile(", "ioutil.ReadFile(", "ReadFile(")):
+        return None
+    arguments = sink.child_by_field_name("arguments")
+    if arguments is None or not arguments.named_children:
+        return None
+    function = _go_enclosing_function(sink)
+    if function is None:
+        return None
+    return _go_resolve_path(source, function, arguments.named_children[0], set())
+
+
+def _go_resolve_path(
+    source: bytes, function: Node, expression: Node, visited: set[str]
+) -> Node | None:
+    direct = _go_request_source(source, expression)
+    if direct is not None:
+        return direct
+    if expression.type == "identifier":
+        name = _compact(source, expression)
+        if name in visited:
+            return None
+        bound = _go_bound_expression(source, function, name, expression.start_byte)
+        if bound is None:
+            return None
+        return _go_resolve_path(source, function, bound, visited | {name})
+    if expression.type != "call_expression":
+        return None
+    compact = _compact(source, expression)
+    if not compact.startswith("filepath.Join("):
+        return None
+    arguments = expression.child_by_field_name("arguments")
+    if arguments is None:
+        return None
+    for argument in arguments.named_children:
+        found = _go_resolve_path(source, function, argument, visited)
+        if found is not None:
+            return found
+    return None
+
+
+def _go_request_source(source: bytes, expression: Node) -> Node | None:
+    for node in _preorder(expression):
+        if node.type == "call_expression" and re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*\.URL\.Query\(\)\.Get\(.*\)",
+            _compact(source, node),
+        ):
+            return node
+    return None
+
+
+def _go_enclosing_function(node: Node) -> Node | None:
+    current = node.parent
+    while current is not None:
+        if current.type in {"function_declaration", "method_declaration", "func_literal"}:
+            return current
+        current = current.parent
+    return None
+
+
+def _go_bound_expression(source: bytes, function: Node, name: str, before: int) -> Node | None:
+    bound: Node | None = None
+    for node in _preorder(function):
+        if node.start_byte >= before or node.type not in {
+            "short_var_declaration",
+            "assignment_statement",
+        }:
+            continue
+        left = node.child_by_field_name("left")
+        right = node.child_by_field_name("right")
+        if left is None or right is None:
+            continue
+        left_values = left.named_children
+        right_values = right.named_children
+        for index, left_value in enumerate(left_values):
+            if _compact(source, left_value) == name and index < len(right_values):
+                bound = right_values[index]
+    return bound
 
 
 def _tree_security_argument(call: Node, cwe: str, compact: str, language: str) -> Node | None:

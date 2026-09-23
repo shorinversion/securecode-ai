@@ -265,6 +265,34 @@ def test_fs_promises_read_file_with_constant_path_emits_no_path_traversal_fact(
     assert scan_cwe_portfolio(_index(builder, path, source)).signals == ()
 
 
+def test_go_local_path_flow_from_query_to_read_file_emits_path_traversal_fact() -> None:
+    source = (
+        b'package api\nimport ("net/http"; "os"; "path/filepath")\n'
+        b"func read(w http.ResponseWriter, r *http.Request) {\n"
+        b' name := r.URL.Query().Get("file")\n'
+        b" path := filepath.Join(root, name)\n"
+        b" _, _ = os.ReadFile(path)\n"
+        b"}\n"
+    )
+
+    result = scan_cwe_portfolio(_index(build_go_symbol_index, "api/read.go", source))
+
+    assert tuple(signal.cwe for signal in result.signals) == ("CWE-22",)
+
+
+def test_go_local_constant_path_flow_emits_no_path_traversal_fact() -> None:
+    source = (
+        b'package api\nimport ("net/http"; "os"; "path/filepath")\n'
+        b"func read(w http.ResponseWriter, r *http.Request) {\n"
+        b' name := "readme.txt"\n'
+        b" path := filepath.Join(root, name)\n"
+        b" _, _ = os.ReadFile(path)\n"
+        b"}\n"
+    )
+
+    assert scan_cwe_portfolio(_index(build_go_symbol_index, "api/read.go", source)).signals == ()
+
+
 def test_os_system_with_request_args_emits_command_injection_fact() -> None:
     source = b"import os\ndef run(request):\n os.system(request.args.get('cmd'))\n"
 
