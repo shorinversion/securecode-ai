@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import cast
 
+from scripts.release_repair_study_report import atomic_write, study_document
 from scripts.run_release_benchmark import Case
-from scripts.run_release_repair_study import _atomic_write, _study_document
 
 SHA = "sha256:" + "a" * 64
 
@@ -47,7 +47,7 @@ def test_study_aggregate_keeps_unrecorded_cases_and_repair_denominators() -> Non
         "reason": None,
     }
 
-    report = _study_document(
+    report = study_document(
         [record],
         planned,
         "git-sha1:" + "b" * 40,
@@ -75,9 +75,9 @@ def test_study_aggregate_keeps_unrecorded_cases_and_repair_denominators() -> Non
 def test_atomic_report_is_deterministic_and_canonical(tmp_path: Path) -> None:
     target = tmp_path / "report.json"
     document: dict[str, object] = {"records": [], "state": "RUNNING"}
-    _atomic_write(target, document)
+    atomic_write(target, document)
     first = target.read_bytes()
-    _atomic_write(target, document)
+    atomic_write(target, document)
 
     assert target.read_bytes() == first
     assert first.endswith(b"\n")
