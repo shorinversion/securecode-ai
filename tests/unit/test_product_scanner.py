@@ -1,6 +1,7 @@
 """Host scanner binding and exact source evidence without spawning a worker."""
 
 import hashlib
+from pathlib import Path
 
 import pytest
 from securecode_ai.adapters import product_scanner
@@ -94,6 +95,20 @@ def test_safe_control_emits_completed_zero_without_evidence(
     assert result.graph.candidates == ()
     assert result.graph.evidence == ()
     assert result.source_aliases == ()
+
+
+def test_scanner_producer_pin_covers_transitive_rule_sources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(product_scanner, "__file__", str(tmp_path / "product_scanner.py"))
+    for name in product_scanner._FIRST_PARTY_SCANNER_SOURCES:
+        (tmp_path / name).write_bytes(name.encode("ascii"))
+
+    before = product_scanner.first_party_scanner_producer()
+    (tmp_path / "cwe89_multilanguage_scanner.py").write_bytes(b"changed scanner semantics")
+    after = product_scanner.first_party_scanner_producer()
+
+    assert before.producer_sha256 != after.producer_sha256
 
 
 def test_worker_fault_is_incomplete_not_completed_zero(

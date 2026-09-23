@@ -54,20 +54,34 @@ from .native_sources import NativeSourceCatalogue
 from .repository_view import SealedRepositoryView
 from .scanner_plugin import ScannerPluginBinding, register_scanner_worker, run_scanner_plugin
 
+_FIRST_PARTY_SCANNER_SOURCES = (
+    "product_scanner.py",
+    "cst.py",
+    "cst_ecmascript.py",
+    "cst_go.py",
+    "cst_models.py",
+    "cst_python.py",
+    "cwe89.py",
+    "cwe89_contracts.py",
+    "cwe89_multilanguage.py",
+    "cwe89_multilanguage_models.py",
+    "cwe89_multilanguage_scanner.py",
+    "cwe89_multilanguage_utilities.py",
+    "cwe_portfolio.py",
+    "cwe_portfolio_helpers.py",
+    "cwe_portfolio_models.py",
+    "python_ast.py",
+    "scanner_plugin.py",
+)
+
 
 def first_party_scanner_producer() -> ProducerRef:
-    """Pin host-installed detector implementation, not repository-controlled files."""
+    """Pin every host-installed parser and detector implementation source."""
     root = Path(__file__).resolve().parent
-    names = (
-        "product_scanner.py",
-        "cst.py",
-        "cwe89.py",
-        "cwe89_multilanguage.py",
-        "cwe_portfolio.py",
-        "python_ast.py",
-        "scanner_plugin.py",
-    )
-    manifest = [(name, hashlib.sha256((root / name).read_bytes()).hexdigest()) for name in names]
+    manifest = [
+        (name, hashlib.sha256((root / name).read_bytes()).hexdigest())
+        for name in _FIRST_PARTY_SCANNER_SOURCES
+    ]
     digest = hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
     return ProducerRef(
         schema_version="0.2.0",
