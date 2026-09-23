@@ -48,6 +48,11 @@ class _AllowAuthorization:
         )
 
 
+class _ArtifactAuthorization:
+    def allows(self, identity: VerifiedIdentity, *, action: str, repository_id: str | None) -> bool:
+        return action == "artifacts.authorize" and repository_id == "repo-1"
+
+
 @dataclass
 class _Service:
     requests: list[ServiceRequest] = field(default_factory=list)
@@ -304,6 +309,53 @@ def test_workload_route_requires_a_workload_identity_and_precondition() -> None:
 
     assert status == 412
     assert _mapping(payload["error"])["code"] == "PRECONDITION_REQUIRED"
+
+
+def test_artifact_authorization_requires_a_workload_identity() -> None:
+    service = _Service()
+    headers = {"authorization": "Bearer token", "idempotency-key": "key-0003"}
+    document = {"repository_id": "repo-1"}
+    interactive = create_app(
+        identities=_IdentityVerifier(
+            VerifiedIdentity("auditor-1", "tenant-a", frozenset({"auditor"}))
+        ),
+        authorization=_ArtifactAuthorization(),
+        service=service,
+    )
+
+    denied, payload = asyncio.run(
+        _request(
+            interactive,
+            "POST",
+            "/api/v1/artifacts:authorize",
+            headers=headers,
+            document=document,
+        )
+    )
+
+    assert denied == 403
+    assert _mapping(payload["error"])["code"] == "FORBIDDEN"
+    assert not service.requests
+
+    worker = create_app(
+        identities=_IdentityVerifier(
+            VerifiedIdentity("worker-1", "tenant-a", frozenset({"worker"}), workload=True)
+        ),
+        authorization=_ArtifactAuthorization(),
+        service=service,
+    )
+    allowed, _ = asyncio.run(
+        _request(
+            worker,
+            "POST",
+            "/api/v1/artifacts:authorize",
+            headers=headers,
+            document=document,
+        )
+    )
+
+    assert allowed == 201
+    assert [request.action for request in service.requests] == ["artifacts.authorize"]
 
 
 def test_unsupported_major_version_is_rejected_before_service_dispatch() -> None:

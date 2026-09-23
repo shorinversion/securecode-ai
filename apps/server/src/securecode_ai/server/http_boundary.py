@@ -48,7 +48,12 @@ _ROUTES: Final = (
         "findings.decide",
         needs_precondition=True,
     ),
-    _Route("POST", "/api/v1/artifacts:authorize", "artifacts.authorize"),
+    _Route(
+        "POST",
+        "/api/v1/artifacts:authorize",
+        "artifacts.authorize",
+        workload_only=True,
+    ),
     _Route(
         "PUT",
         "/api/v1/artifact-uploads/{tenant_id}/{content_sha256}/{authorization_id}",
