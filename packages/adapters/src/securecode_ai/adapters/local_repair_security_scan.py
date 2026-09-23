@@ -34,7 +34,9 @@ def scan_cwe89_repository(root: Path, manifest: dict[str, Any], revision: str) -
         ".go": cst.build_go_symbol_index,
     }
     for file in sorted(
-        item for item in root.rglob("*") if item.is_file() and ".git" not in item.parts
+        item
+        for item in root.rglob("*")
+        if not item.is_symlink() and item.is_file() and ".git" not in item.parts
     ):
         builder = builders.get(file.suffix.lower())
         if builder is None:
