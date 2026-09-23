@@ -6,7 +6,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
-from securecode_ai.contracts import AuditRun, DiscoveryCandidate
+from securecode_ai.contracts import AnalysisHealth, AuditRun, AuditRunOutcome, DiscoveryCandidate
 from securecode_ai.core.baseline_fingerprints import (
     BASELINE_FINGERPRINT_SCHEMA_VERSION,
     BaselineFingerprintComparison,
@@ -60,6 +60,13 @@ class DurableBaselineStore:
         if type(audit_run) is not AuditRun:
             raise BaselineStoreError("baseline audit run is invalid")
         revision = audit_run.execution_identity.repository_revision
+        if (
+            audit_run.current_head_sha != revision.head_sha
+            or audit_run.audit_outcome not in {AuditRunOutcome.PASS, AuditRunOutcome.FAIL}
+            or audit_run.analysis_health is not AnalysisHealth.HEALTHY
+            or not audit_run.coverage_manifest.coverage_complete
+        ):
+            raise BaselineStoreError("baseline audit run is incomplete")
         snapshot = BaselineFingerprintSnapshot(
             schema_version=BASELINE_FINGERPRINT_SCHEMA_VERSION,
             tenant_id=revision.tenant_id,
