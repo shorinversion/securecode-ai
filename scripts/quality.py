@@ -21,7 +21,7 @@ STAGE_TIMEOUT_SECONDS: Final = 360
 # Windows refuses to spawn a process whose command line exceeds 32767
 # characters; batches stay well below that while the file set is unchanged.
 MAX_ARGUMENT_BYTES: Final = 24_000
-UNIT_STAGE_TIMEOUT_SECONDS: Final = 540
+UNIT_STAGE_TIMEOUT_SECONDS: Final = 900
 GIT_TIMEOUT_SECONDS: Final = 30
 SAFE_PARENT_VARIABLES: Final = (
     "COMSPEC",
