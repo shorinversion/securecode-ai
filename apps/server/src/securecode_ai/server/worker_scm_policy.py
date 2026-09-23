@@ -8,12 +8,14 @@ import re
 import sqlite3
 from typing import Final
 
-from securecode_ai.contracts import AuditRun
+from securecode_ai.contracts import AuditRun, AuditRunOutcome
 from securecode_ai.core.baseline_fingerprints import BaselineFingerprintComparison
 from securecode_ai.core.scm_policy import (
     ScmPolicyDecision,
     ScmPolicyDocument,
     ScmPolicyEnforcement,
+    ScmPolicyErrorCode,
+    ScmPolicyInputHashes,
     ScmPolicyMode,
     ScmPolicyRequest,
     evaluate_scm_policy,
@@ -99,6 +101,7 @@ def record_scm_policy_decision(
         or type(run_id) is not str
         or _IDENTIFIER.fullmatch(run_id) is None
         or type(decision) is not ScmPolicyDecision
+        or decision.input_hashes is None
         or not _decision_digest_is_valid(decision)
     ):
         raise ScmPolicyReceiptConflict("SCM policy receipt is invalid")
@@ -141,6 +144,99 @@ def record_scm_policy_decision(
     return sequence
 
 
+def load_run_scm_policy_decision(
+    connection: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    run_id: str,
+    execution_identity_hash: str,
+) -> ScmPolicyDecision | None:
+    """Read and revalidate the single policy receipt pinned to one run identity."""
+
+    if (
+        not isinstance(connection, sqlite3.Connection)
+        or type(tenant_id) is not str
+        or _IDENTIFIER.fullmatch(tenant_id) is None
+        or type(run_id) is not str
+        or _IDENTIFIER.fullmatch(run_id) is None
+        or type(execution_identity_hash) is not str
+        or not _sha256(execution_identity_hash)
+    ):
+        raise ScmPolicyReceiptConflict("SCM policy lookup is invalid")
+    rows = connection.execute(
+        """SELECT metadata_json FROM run_events
+           WHERE tenant_id=? AND run_id=? AND event_id LIKE 'securecode-policy-%'
+           ORDER BY sequence""",
+        (tenant_id, run_id),
+    ).fetchall()
+    if not rows:
+        return None
+    if len(rows) != 1 or type(rows[0][0]) is not str:
+        raise ScmPolicyReceiptConflict("SCM policy receipt is ambiguous")
+    try:
+        envelope = json.loads(rows[0][0])
+        if (
+            type(envelope) is not dict
+            or set(envelope) != {"kind", "policy_decision"}
+            or envelope["kind"] != "SCM_POLICY_DECISION"
+        ):
+            raise ValueError
+        raw = envelope["policy_decision"]
+        if type(raw) is not dict or set(raw) != {
+            "blocks_merge",
+            "decision_sha256",
+            "enforcement",
+            "error_code",
+            "input_hashes",
+            "is_passing",
+            "matched_rule_ids",
+            "mode",
+            "observed_audit_outcome",
+            "policy_id",
+            "policy_version",
+            "publication_permitted",
+            "schema_version",
+        }:
+            raise ValueError
+        hashes_raw = raw["input_hashes"]
+        if type(hashes_raw) is not dict or set(hashes_raw) != {
+            "audit_run_sha256",
+            "baseline_comparison_sha256",
+            "execution_identity_sha256",
+            "policy_document_sha256",
+        }:
+            raise ValueError
+        hashes = ScmPolicyInputHashes(**hashes_raw)
+        if hashes.execution_identity_sha256 != execution_identity_hash:
+            raise ValueError
+        decision = ScmPolicyDecision(
+            schema_version=raw["schema_version"],
+            policy_id=raw["policy_id"],
+            policy_version=raw["policy_version"],
+            mode=None if raw["mode"] is None else ScmPolicyMode(raw["mode"]),
+            observed_audit_outcome=(
+                None
+                if raw["observed_audit_outcome"] is None
+                else AuditRunOutcome(raw["observed_audit_outcome"])
+            ),
+            enforcement=ScmPolicyEnforcement(raw["enforcement"]),
+            is_passing=raw["is_passing"],
+            blocks_merge=raw["blocks_merge"],
+            publication_permitted=raw["publication_permitted"],
+            input_hashes=hashes,
+            matched_rule_ids=tuple(raw["matched_rule_ids"]),
+            error_code=(
+                None if raw["error_code"] is None else ScmPolicyErrorCode(raw["error_code"])
+            ),
+            decision_sha256=raw["decision_sha256"],
+        )
+        if not _decision_digest_is_valid(decision):
+            raise ValueError
+        return decision
+    except (KeyError, TypeError, ValueError):
+        raise ScmPolicyReceiptConflict("SCM policy receipt is invalid") from None
+
+
 def _decision_digest_is_valid(decision: ScmPolicyDecision) -> bool:
     material = decision.metadata()
     declared = material.pop("decision_sha256", None)
@@ -150,8 +246,13 @@ def _decision_digest_is_valid(decision: ScmPolicyDecision) -> bool:
     return type(declared) is str and hashlib.sha256(encoded.encode("ascii")).hexdigest() == declared
 
 
+def _sha256(value: str) -> bool:
+    return len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
 __all__ = [
     "ScmPolicyReceiptConflict",
+    "load_run_scm_policy_decision",
     "record_advisory_policy_decision",
     "record_run_advisory_policy",
     "record_scm_policy_decision",

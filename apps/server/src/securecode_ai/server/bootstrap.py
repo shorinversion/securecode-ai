@@ -102,6 +102,7 @@ from .worker_resource_accounting import (
     WorkerResourceAccountingService,
 )
 from .worker_resource_store import SqliteWorkerReservationBindingStore
+from .worker_scm_policy import load_run_scm_policy_decision
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 
@@ -351,6 +352,14 @@ def build_local_app(
                 github_writer=scm.github_writer,
                 gitlab_head=scm.gitlab_head,
                 gitlab_writer=scm.gitlab_writer,
+                policy_decisions=lambda tenant_id, run_id, identity_hash: (
+                    load_run_scm_policy_decision(
+                        connection,
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        execution_identity_hash=identity_hash,
+                    )
+                ),
             ),
             fallback=worker_handler,
         )

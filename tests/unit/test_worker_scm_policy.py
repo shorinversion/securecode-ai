@@ -17,8 +17,13 @@ from securecode_ai.core.scm_policy import (
     ScmPolicyInputHashes,
     ScmPolicyMode,
 )
+from securecode_ai.server.scm_completion_models import (
+    SCMCompletionError,
+    scm_publication_outcome,
+)
 from securecode_ai.server.worker_scm_policy import (
     ScmPolicyReceiptConflict,
+    load_run_scm_policy_decision,
     record_advisory_policy_decision,
     record_scm_policy_decision,
 )
@@ -122,6 +127,31 @@ def _strict_non_pass_decision() -> ScmPolicyDecision:
     )
 
 
+def _rehash(
+    decision: ScmPolicyDecision,
+    *,
+    mode: ScmPolicyMode,
+    enforcement: ScmPolicyEnforcement,
+    blocks_merge: bool,
+    matched_rule_ids: tuple[str, ...],
+) -> ScmPolicyDecision:
+    updated = replace(
+        decision,
+        mode=mode,
+        enforcement=enforcement,
+        blocks_merge=blocks_merge,
+        matched_rule_ids=matched_rule_ids,
+    )
+    material = updated.metadata()
+    material.pop("decision_sha256")
+    digest = hashlib.sha256(
+        json.dumps(
+            material, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
+        ).encode("ascii")
+    ).hexdigest()
+    return replace(updated, decision_sha256=digest)
+
+
 def _connection() -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     connection.execute(
@@ -203,6 +233,77 @@ def test_non_pass_rollout_decision_can_be_persisted_idempotently() -> None:
     row = connection.execute("SELECT metadata_json FROM run_events").fetchone()
     assert first == replay == 1
     assert json.loads(row[0])["policy_decision"]["error_code"] == "PRECALIBRATION_BLOCKING"
+
+
+def test_policy_decision_loader_binds_receipt_to_exact_identity() -> None:
+    connection = _connection()
+    decision = _decision()
+    with connection:
+        record_scm_policy_decision(
+            connection.cursor(), tenant_id="tenant-1", run_id="run-1", decision=decision
+        )
+
+    loaded = load_run_scm_policy_decision(
+        connection,
+        tenant_id="tenant-1",
+        run_id="run-1",
+        execution_identity_hash="c" * 64,
+    )
+    assert loaded == decision
+    with pytest.raises(ScmPolicyReceiptConflict):
+        load_run_scm_policy_decision(
+            connection,
+            tenant_id="tenant-1",
+            run_id="run-1",
+            execution_identity_hash="d" * 64,
+        )
+
+
+def test_scm_policy_modes_control_only_the_published_outcome() -> None:
+    advisory = _decision()
+    strict_block = _rehash(
+        advisory,
+        mode=ScmPolicyMode.STRICT,
+        enforcement=ScmPolicyEnforcement.BLOCK,
+        blocks_merge=True,
+        matched_rule_ids=("confirmed_finding",),
+    )
+    new_code_legacy = _rehash(
+        advisory,
+        mode=ScmPolicyMode.NEW_CODE,
+        enforcement=ScmPolicyEnforcement.ALLOW,
+        blocks_merge=False,
+        matched_rule_ids=("legacy_debt_non_blocking",),
+    )
+
+    assert (
+        scm_publication_outcome(AuditRunOutcome.FAIL, advisory, execution_identity_hash="c" * 64)
+        is AuditRunOutcome.FAIL
+    )
+    assert (
+        scm_publication_outcome(
+            AuditRunOutcome.FAIL, strict_block, execution_identity_hash="c" * 64
+        )
+        is AuditRunOutcome.FAIL
+    )
+    assert (
+        scm_publication_outcome(
+            AuditRunOutcome.FAIL, new_code_legacy, execution_identity_hash="c" * 64
+        )
+        is AuditRunOutcome.PASS
+    )
+    assert (
+        scm_publication_outcome(
+            AuditRunOutcome.PASS,
+            _strict_non_pass_decision(),
+            execution_identity_hash="c" * 64,
+        )
+        is AuditRunOutcome.INDETERMINATE
+    )
+    with pytest.raises(SCMCompletionError):
+        scm_publication_outcome(
+            AuditRunOutcome.FAIL, strict_block, execution_identity_hash="d" * 64
+        )
 
 
 def test_run_cannot_record_a_second_policy_decision() -> None:

@@ -25,6 +25,7 @@ from .scm_completion_models import (
     GithubHeadResolver,
     GitlabHeadResolver,
     GitlabStatusWriterPort,
+    PolicyDecisionResolver,
     SCMCompletionDisposition,
     SCMCompletionError,
     SCMCompletionReceipt,
@@ -35,19 +36,21 @@ from .scm_completion_models import (
     gitlab_projection,
     gitlab_target,
     receipt_id,
+    scm_publication_outcome,
     validate_head,
 )
 from .scm_publication_store import SCMPublicationTarget
 
 
 class SCMCompletionPublicationService:
-    """Publish one advisory provider status for an exact durable run binding."""
+    """Publish one policy-evaluated provider status for an exact durable run binding."""
 
     __slots__ = (
         "_github_head",
         "_github_writer",
         "_gitlab_head",
         "_gitlab_writer",
+        "_policy_decisions",
         "_publications",
         "_run_state",
     )
@@ -61,6 +64,7 @@ class SCMCompletionPublicationService:
         github_writer: GitHubCheckWriterPort | None = None,
         gitlab_head: GitlabHeadResolver | None = None,
         gitlab_writer: GitlabStatusWriterPort | None = None,
+        policy_decisions: PolicyDecisionResolver | None = None,
     ) -> None:
         if (
             publications is None
@@ -69,10 +73,12 @@ class SCMCompletionPublicationService:
             or (gitlab_head is None) is not (gitlab_writer is None)
             or (github_head is not None and not callable(github_head))
             or (gitlab_head is not None and not callable(gitlab_head))
+            or (policy_decisions is not None and not callable(policy_decisions))
         ):
             raise TypeError("SCM completion dependency is missing")
         self._publications = publications
         self._run_state = run_state
+        self._policy_decisions = policy_decisions
         self._github_head = github_head
         self._github_writer = github_writer
         self._gitlab_head = gitlab_head
@@ -88,6 +94,13 @@ class SCMCompletionPublicationService:
     ) -> SCMCompletionReceipt:
         """Finish SCM state and publish, or replay the durable result."""
 
+        audit = audit_outcome(worker_outcome)
+        outcome = self._publication_outcome(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            execution_identity_hash=execution_identity_hash,
+            audit=audit,
+        )
         try:
             target = self._publications.load(tenant_id=tenant_id, run_id=run_id)
         except Exception:
@@ -97,7 +110,7 @@ class SCMCompletionPublicationService:
                 tenant_id=tenant_id,
                 run_id=run_id,
                 execution_identity_hash=execution_identity_hash,
-                worker_outcome=worker_outcome,
+                outcome=outcome,
             )
             if recovered is None:
                 return SCMCompletionReceipt(
@@ -107,10 +120,8 @@ class SCMCompletionPublicationService:
                     None,
                 )
             target, publication = recovered
-            outcome = audit_outcome(worker_outcome)
         else:
             publication = None
-            outcome = audit_outcome(worker_outcome)
         self._require_binding(target, execution_identity_hash)
         replay = self._replay(target, outcome)
         if replay is not None:
@@ -149,7 +160,7 @@ class SCMCompletionPublicationService:
         tenant_id: str,
         run_id: str,
         execution_identity_hash: str,
-        worker_outcome: object,
+        outcome: AuditRunOutcome,
     ) -> tuple[SCMPublicationTarget, SCMRunPublicationReceipt] | None:
         try:
             provider_target = self._run_state.provider_target(run_id)
@@ -175,7 +186,6 @@ class SCMCompletionPublicationService:
         installation_id = cast(str, installation_id)
         repository_id = cast(str, repository_id)
         change_id = cast(str, change_id)
-        outcome = audit_outcome(worker_outcome)
         provisional = SCMPublicationTarget(
             tenant_id=tenant_id,
             run_id=run_id,
@@ -203,6 +213,28 @@ class SCMCompletionPublicationService:
         except Exception:
             raise SCMCompletionError("SCM publication target was not stored") from None
         return target, publication
+
+    def _publication_outcome(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        audit: AuditRunOutcome,
+    ) -> AuditRunOutcome:
+        if self._policy_decisions is None:
+            return audit
+        if audit in {AuditRunOutcome.CANCELLED, AuditRunOutcome.SUPERSEDED}:
+            return audit
+        try:
+            decision = self._policy_decisions(tenant_id, run_id, execution_identity_hash)
+        except Exception:
+            raise SCMCompletionError("SCM policy decision is unavailable") from None
+        return scm_publication_outcome(
+            audit,
+            decision,
+            execution_identity_hash=execution_identity_hash,
+        )
 
     def _current_head(self, target: SCMPublicationTarget) -> str:
         try:
