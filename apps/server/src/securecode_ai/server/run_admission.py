@@ -109,7 +109,10 @@ class RunAdmissionService:
                 run_id=run_id,
                 execution_identity=identity,
                 resource_request=resource_request,
-                metadata=_safe_metadata(request.document),
+                metadata={
+                    **_safe_metadata(request.document),
+                    **_safe_server_context(request.server_context),
+                },
                 now_ms=now_ms,
             )
         _require_exact_record(record, identity, run_id)
@@ -359,6 +362,18 @@ def _safe_metadata(document: Mapping[str, object] | None) -> dict[str, object]:
         for key in ("request_id", "policy_id", "workflow_id")
         if type(value := document.get(key)) is str and _identifier(value)
     }
+
+
+def _safe_server_context(context: Mapping[str, object]) -> dict[str, object]:
+    trust = context.get("contribution_trust")
+    if type(trust) is str and trust in {
+        "TRUSTED_SAME_REPOSITORY",
+        "UNTRUSTED_FORK",
+        "UNTRUSTED_SAME_REPOSITORY",
+        "UNKNOWN",
+    }:
+        return {"contribution_trust": trust}
+    return {}
 
 
 def _resource_error(

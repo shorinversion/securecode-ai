@@ -43,6 +43,7 @@ class WorkerQueueLease:
     execution_identity: RunExecutionIdentity
     terminal: bool = False
     outcome: str | None = None
+    contribution_trust: str = "NOT_SCM"
 
     def job_document(self) -> dict[str, object]:
         return {
@@ -54,6 +55,7 @@ class WorkerQueueLease:
             "command": self.command,
             "execution_identity": self.execution_identity.model_dump(mode="json"),
             "execution_identity_hash": self.execution_identity.execution_identity_hash,
+            "contribution_trust": contribution_trust(self.contribution_trust),
         }
 
 
@@ -93,6 +95,7 @@ def replayed_lease(value: str, lease_seconds: int) -> WorkerQueueLease | None:
             execution_identity=identity,
             terminal=bool(document["terminal"]),
             outcome=(document.get("outcome") if isinstance(document.get("outcome"), str) else None),
+            contribution_trust=contribution_trust(document.get("contribution_trust", "NOT_SCM")),
         )
         identifier(lease.tenant_id)
         identifier(lease.run_id)
@@ -163,6 +166,19 @@ def identifier(value: str) -> None:
         raise WorkerQueueConflict()
 
 
+def contribution_trust(value: object) -> str:
+    allowed = {
+        "NOT_SCM",
+        "TRUSTED_SAME_REPOSITORY",
+        "UNTRUSTED_FORK",
+        "UNTRUSTED_SAME_REPOSITORY",
+        "UNKNOWN",
+    }
+    if type(value) is not str or value not in allowed:
+        raise WorkerQueueConflict()
+    return str(value)
+
+
 def idempotency_key(value: str) -> None:
     if type(value) is not str or not 8 <= len(value) <= 128 or IDENTIFIER.fullmatch(value) is None:
         raise WorkerQueueConflict()
@@ -205,6 +221,7 @@ __all__ = [
     "canonical",
     "canonical_sha256",
     "command",
+    "contribution_trust",
     "idempotency_key",
     "identifier",
     "identity",

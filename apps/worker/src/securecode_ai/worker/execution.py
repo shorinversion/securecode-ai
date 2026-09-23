@@ -30,12 +30,13 @@ from securecode_ai.adapters.local_product_runner_config import (
     LocalProductSupersededError,
     LocalProductUnavailableError,
 )
-from securecode_ai.contracts import ArtifactRef, AuditRunOutcome, DataClass
+from securecode_ai.contracts import ArtifactRef, AuditRunOutcome, DataClass, ProviderKind
 from securecode_ai.core.reports import ReportFormat
 
 from .protocol import (
     WorkerArtifact,
     WorkerCommand,
+    WorkerContributionTrust,
     WorkerFinding,
     WorkerFindingLocation,
     WorkerJob,
@@ -130,10 +131,12 @@ class ProductExecutor:
                 expected.repository_revision.head_sha,
             )
             execution_control.checkpoint()
+            environment = _contribution_environment(job, self._environment)
             configuration = resolve_local_product_configuration(
                 host,
-                environment=self._environment,
+                environment=environment,
             )
+            _require_contribution_provider(job, configuration.provider_profile.provider_kind)
             execution_control.checkpoint()
             scan = run_local_product_scan(
                 host=host,
@@ -245,6 +248,37 @@ def _subprocess_creation_flags() -> int:
     if os.name != "nt":
         return 0
     return cast(int, vars(subprocess).get("CREATE_NO_WINDOW", 0))
+
+
+def _is_credential_name(name: str) -> bool:
+    normalized = name.upper()
+    return any(
+        marker in normalized for marker in ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+    )
+
+
+def _contribution_environment(job: WorkerJob, environment: Mapping[str, str]) -> dict[str, str]:
+    restricted = job.contribution_trust in {
+        WorkerContributionTrust.UNTRUSTED_FORK,
+        WorkerContributionTrust.UNTRUSTED_SAME_REPOSITORY,
+        WorkerContributionTrust.UNKNOWN,
+    }
+    if not restricted:
+        return dict(environment)
+    return {key: value for key, value in environment.items() if not _is_credential_name(key)}
+
+
+def _require_contribution_provider(job: WorkerJob, provider_kind: ProviderKind) -> None:
+    restricted = job.contribution_trust in {
+        WorkerContributionTrust.UNTRUSTED_FORK,
+        WorkerContributionTrust.UNTRUSTED_SAME_REPOSITORY,
+        WorkerContributionTrust.UNKNOWN,
+    }
+    if restricted and provider_kind not in {
+        ProviderKind.FAKE,
+        ProviderKind.OPENAI_COMPATIBLE_LOCAL,
+    }:
+        raise ProductExecutionError("untrusted contribution requires a local provider")
 
 
 def _artifacts(scan: LocalProductScanResult) -> tuple[WorkerArtifact, ...]:

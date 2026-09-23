@@ -64,6 +64,7 @@ class ServiceRequest:
     document: Mapping[str, object] | None
     raw_body: bytes
     headers: Mapping[str, str] = field(default_factory=dict)
+    server_context: Mapping[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

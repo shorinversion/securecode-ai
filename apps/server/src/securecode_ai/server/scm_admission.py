@@ -318,6 +318,7 @@ def _run_request(
         "execution_identity": identity.model_dump(mode="json"),
         "execution_identity_hash": identity.execution_identity_hash,
         "run_id": receipt.admission.run_id,
+        "contribution_trust": receipt.contribution_trust.value,
     }
     raw_body = json.dumps(
         document,
@@ -340,6 +341,7 @@ def _run_request(
         document=document,
         raw_body=raw_body,
         headers={},
+        server_context={"contribution_trust": receipt.contribution_trust.value},
     )
 
 

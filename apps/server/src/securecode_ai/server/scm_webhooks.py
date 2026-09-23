@@ -31,6 +31,7 @@ from securecode_ai.adapters.gitlab_ci import (
     GitlabCIError,
     GitlabContributionTrust,
 )
+from securecode_ai.adapters.untrusted_contribution import ContributionTrust
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ComponentPin,
@@ -162,6 +163,7 @@ class WebhookAdmissionReceipt:
     head_sha: str
     base_sha: str | None
     admission: SCMRunAdmissionReceipt
+    contribution_trust: ContributionTrust = ContributionTrust.UNKNOWN
 
     def as_document(self) -> dict[str, object]:
         document: dict[str, object] = {
@@ -283,6 +285,7 @@ class GithubWebhookAdapter:
             head_sha=receipt.head_sha,
             base_sha=metadata.base_sha,
             admission=receipt.admission,
+            contribution_trust=metadata.contribution_trust,
         )
 
 
@@ -357,10 +360,16 @@ class GitlabWebhookAdapter:
             repository_id=metadata.target_project_id,
             head_sha=metadata.head_sha,
         )
+        same_project = metadata.source_project_id == metadata.target_project_id
         trust = (
             GitlabContributionTrust.TRUSTED
-            if metadata.source_project_id == metadata.target_project_id
+            if same_project
             else GitlabContributionTrust.UNTRUSTED_FORK
+        )
+        contribution_trust = (
+            ContributionTrust.TRUSTED_SAME_REPOSITORY
+            if same_project
+            else ContributionTrust.UNTRUSTED_FORK
         )
         pipeline_id = "event-" + hashlib.sha256(delivery_id.encode("ascii")).hexdigest()[:32]
         try:
@@ -388,6 +397,7 @@ class GitlabWebhookAdapter:
             head_sha=receipt.head_sha,
             base_sha=None,
             admission=receipt.admission,
+            contribution_trust=contribution_trust,
         )
 
 
@@ -397,6 +407,7 @@ class _GithubMetadata:
     change_id: str | None
     head_sha: str
     base_sha: str | None
+    contribution_trust: ContributionTrust
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,13 +423,34 @@ def _github_metadata(payload: Mapping[str, object]) -> _GithubMetadata:
         raise SCMWebhookError(SCMWebhookErrorCode.PAYLOAD_INVALID)
     repository_id = _positive_identifier(_object(payload, "repository").get("id"))
     pull_request = _object(payload, "pull_request")
-    head_sha = _commit_sha(_object(pull_request, "head").get("sha"))
-    base_value = _object(pull_request, "base").get("sha") if "base" in pull_request else None
+    head = _object(pull_request, "head")
+    head_sha = _commit_sha(head.get("sha"))
+    base = _object(pull_request, "base") if "base" in pull_request else {}
+    base_value = base.get("sha")
     base_sha = None if base_value is None else _commit_sha(base_value)
+    head_repository = head.get("repo")
+    base_repository = base.get("repo")
+    if type(head_repository) is dict and type(base_repository) is dict:
+        head_repository_id = _positive_identifier(head_repository.get("id"))
+        base_repository_id = _positive_identifier(base_repository.get("id"))
+        if base_repository_id != repository_id:
+            raise SCMWebhookError(SCMWebhookErrorCode.IDENTITY_MISMATCH)
+        if head_repository_id != base_repository_id:
+            trust = ContributionTrust.UNTRUSTED_FORK
+        elif pull_request.get("author_association") in {
+            "OWNER",
+            "MEMBER",
+            "COLLABORATOR",
+        }:
+            trust = ContributionTrust.TRUSTED_SAME_REPOSITORY
+        else:
+            trust = ContributionTrust.UNTRUSTED_SAME_REPOSITORY
+    else:
+        trust = ContributionTrust.UNKNOWN
     change_value = payload.get("number", pull_request.get("number"))
     change_id = None if change_value is None else _positive_identifier(change_value)
     _positive_identifier(_object(payload, "installation").get("id"))
-    return _GithubMetadata(repository_id, change_id, head_sha, base_sha)
+    return _GithubMetadata(repository_id, change_id, head_sha, base_sha, trust)
 
 
 def _gitlab_metadata(payload: Mapping[str, object]) -> _GitlabMetadata:

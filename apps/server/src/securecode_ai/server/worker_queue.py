@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -27,6 +28,7 @@ from .worker_queue_models import (
 from .worker_queue_models import (
     command as _command,
 )
+from .worker_queue_models import contribution_trust as _contribution_trust
 from .worker_queue_models import (
     idempotency_key as _idempotency_key,
 )
@@ -178,7 +180,7 @@ class SqliteWorkerQueue:
                 parameters.append(requested_run_id)
             query = (
                 """SELECT q.*, r.state, r.created_at,
-                          r.execution_identity_hash
+                          r.execution_identity_hash, r.metadata_json
                    FROM worker_run_queue AS q
                    JOIN audit_runs AS r
                      ON r.tenant_id=q.tenant_id AND r.run_id=q.run_id
@@ -246,6 +248,7 @@ class SqliteWorkerQueue:
                 lease_expires_at=expires,
                 command=_command(row["state"]),
                 execution_identity=identity,
+                contribution_trust=_run_contribution_trust(row["metadata_json"]),
             )
             cursor.execute(
                 """INSERT INTO worker_queue_idempotency
@@ -508,7 +511,7 @@ class WorkerQueueClaimHandler:
 
 def _current(cursor: sqlite3.Cursor, tenant_id: str, session_id: str) -> sqlite3.Row:
     row: sqlite3.Row | None = cursor.execute(
-        """SELECT q.*, r.state, r.execution_identity_hash
+        """SELECT q.*, r.state, r.execution_identity_hash, r.metadata_json
            FROM worker_run_queue AS q
            JOIN audit_runs AS r
              ON r.tenant_id=q.tenant_id AND r.run_id=q.run_id
@@ -557,7 +560,18 @@ def _row_lease(row: sqlite3.Row, lease_seconds: int) -> WorkerQueueLease:
         execution_identity=_identity_document(row["execution_identity_json"]),
         terminal=bool(row["terminal"]),
         outcome=row["outcome"],
+        contribution_trust=_run_contribution_trust(row["metadata_json"]),
     )
+
+
+def _run_contribution_trust(value: str) -> str:
+    try:
+        metadata = json.loads(value)
+    except (TypeError, ValueError):
+        raise WorkerQueueConflict() from None
+    if not isinstance(metadata, Mapping):
+        raise WorkerQueueConflict()
+    return _contribution_trust(metadata.get("contribution_trust", "NOT_SCM"))
 
 
 def _conflict_response() -> ServiceResponse:

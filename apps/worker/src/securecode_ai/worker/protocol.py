@@ -30,6 +30,14 @@ class WorkerCommand(StrEnum):
     SUPERSEDE = "SUPERSEDE"
 
 
+class WorkerContributionTrust(StrEnum):
+    NOT_SCM = "NOT_SCM"
+    TRUSTED_SAME_REPOSITORY = "TRUSTED_SAME_REPOSITORY"
+    UNTRUSTED_FORK = "UNTRUSTED_FORK"
+    UNTRUSTED_SAME_REPOSITORY = "UNTRUSTED_SAME_REPOSITORY"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerJob:
     session_id: str
@@ -38,6 +46,7 @@ class WorkerJob:
     lease_seconds: int
     command: WorkerCommand
     execution_identity: RunExecutionIdentity
+    contribution_trust: WorkerContributionTrust = WorkerContributionTrust.NOT_SCM
 
     @classmethod
     def from_document(cls, document: Mapping[str, object]) -> WorkerJob:
@@ -50,6 +59,7 @@ class WorkerJob:
             "command",
             "execution_identity",
             "execution_identity_hash",
+            "contribution_trust",
         }
         if set(document) - allowed:
             raise ProtocolError("worker job is invalid")
@@ -65,10 +75,16 @@ class WorkerJob:
             identity_document = document["execution_identity"]
             if not isinstance(identity_document, Mapping):
                 raise ProtocolError("worker job is invalid")
-            identity = RunExecutionIdentity.model_validate(dict(identity_document))
+            identity = RunExecutionIdentity.model_validate_json(
+                json.dumps(dict(identity_document), separators=(",", ":"), sort_keys=True)
+            )
             identity_hash = document.get(
                 "execution_identity_hash", identity.execution_identity_hash
             )
+            trust_value = document.get("contribution_trust", WorkerContributionTrust.NOT_SCM.value)
+            if type(trust_value) is not str:
+                raise ProtocolError("worker job is invalid")
+            contribution_trust = WorkerContributionTrust(trust_value)
         except (KeyError, TypeError, ValueError):
             raise ProtocolError("worker job is invalid") from None
         if (
@@ -85,7 +101,15 @@ class WorkerJob:
             or identity_hash != identity.execution_identity_hash
         ):
             raise ProtocolError("worker job is invalid")
-        return cls(session_id, run_id, version, lease_seconds, command, identity)
+        return cls(
+            session_id,
+            run_id,
+            version,
+            lease_seconds,
+            command,
+            identity,
+            contribution_trust,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +299,7 @@ __all__ = [
     "ProtocolError",
     "WorkerArtifact",
     "WorkerCommand",
+    "WorkerContributionTrust",
     "WorkerEvent",
     "WorkerFinding",
     "WorkerFindingLocation",
