@@ -255,7 +255,6 @@ def _command_help(command: str) -> str:
             help="open a new run instead of resuming the recorded one for this revision",
         )
     elif command == "ci":
-        parser.add_argument("target", nargs="?", help="optional local checkout path")
         parser.add_argument(
             "--new-run",
             action="store_true",

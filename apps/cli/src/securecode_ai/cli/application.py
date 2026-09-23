@@ -935,7 +935,9 @@ def run_ci_command(
     """Run one connected scan and map its terminal outcome to the CI contract."""
 
     try:
-        _target, _wait, fresh = parse_connected_arguments(tokens[1:])
+        target, wait, fresh = parse_connected_arguments(tokens[1:])
+        if target is not None or wait:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         settings = settings_from_environment(environment, fresh=fresh)
         receipt = run_connected(
             settings,

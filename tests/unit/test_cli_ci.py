@@ -158,3 +158,13 @@ def test_ci_requires_configuration_and_help_is_available() -> None:
     assert help_code == CliExitCode.COMPLETED
     assert help_text.startswith("usage: securecode ci ")
     assert help_error == ""
+
+
+def test_ci_rejects_unimplemented_checkout_and_wait_options() -> None:
+    for arguments in (("checkout",), ("--wait",)):
+        code, stdout, stderr = _invoke(["ci", *arguments, "--json"])
+        result = CliErrorResult.model_validate_json(stdout)
+        assert code == CliExitCode.INVALID_USAGE_OR_CONFIG
+        assert result.command is CliCommand.CI
+        assert result.error.error_code is CliErrorCode.INVALID_CONFIG
+        assert stderr == ""
