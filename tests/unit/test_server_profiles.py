@@ -115,3 +115,25 @@ def test_policy_store_rejects_content_tampering_on_read() -> None:
 
     with pytest.raises(ProfileConflict, match="stored policy content integrity failed"):
         store.resolve_profile(tenant_id="t", repository_id="r")
+
+
+def test_policy_store_rejects_malformed_content_on_read() -> None:
+    connection = sqlite3.connect(":memory:")
+    store = PolicyStore(connection)
+    profile = ScanProfile.build(
+        tenant_id="t",
+        profile_id="p",
+        version=1,
+        rollout=RolloutMode.ADVISORY,
+        calibrated=False,
+        content={"rules": ["approved"]},
+    )
+    store.create(profile, idempotency_key="create-profile")
+    store.set_tenant_default(tenant_id="t", profile_id="p", version=1)
+    connection.execute(
+        "UPDATE scan_policy_versions SET content_json = ? WHERE tenant_id = ? AND profile_id = ?",
+        ("{malformed", "t", "p"),
+    )
+
+    with pytest.raises(ProfileConflict, match="stored policy content is invalid"):
+        store.resolve_profile(tenant_id="t", repository_id="r")

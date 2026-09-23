@@ -412,10 +412,10 @@ class PolicyStore:
         ).fetchone()
         if row is None:
             return None
-        content = json.loads(str(row[6]))
-        if not isinstance(content, dict):
-            raise ProfileConflict("stored policy content is invalid")
         try:
+            content = json.loads(str(row[6]))
+            if not isinstance(content, dict):
+                raise ProfileConflict("stored policy content is invalid")
             canonical_content = _canonical_profile_content(content)
             if hashlib.sha256(canonical_content.encode("ascii")).hexdigest() != str(row[3]):
                 raise ProfileConflict("stored policy content integrity failed")
@@ -430,6 +430,8 @@ class PolicyStore:
             )
         except ProfileConflict:
             raise
+        except json.JSONDecodeError:
+            raise ProfileConflict("stored policy content is invalid") from None
         except (TypeError, ValueError):
             raise ProfileConflict("stored policy profile is invalid") from None
 
