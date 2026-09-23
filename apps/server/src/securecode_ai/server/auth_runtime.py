@@ -11,6 +11,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Final, Protocol, TypeGuard, cast
 
 from .auth_crypto import RsaPublicKey, RsaSha256SignatureVerifier
@@ -142,6 +143,17 @@ class IdentityClaimMapping:
             or not 0 <= self.max_repository_ids <= 1024
         ):
             raise ValueError("identity claim mapping is invalid")
+        object.__setattr__(self, "role_map", MappingProxyType(dict(self.role_map)))
+        if self.tenant_map is not None:
+            object.__setattr__(self, "tenant_map", MappingProxyType(dict(self.tenant_map)))
+        if self.subject_map is not None:
+            object.__setattr__(self, "subject_map", MappingProxyType(dict(self.subject_map)))
+        if self.repository_id_map is not None:
+            object.__setattr__(
+                self,
+                "repository_id_map",
+                MappingProxyType(dict(self.repository_id_map)),
+            )
 
 
 class PinnedKeyResolver:
