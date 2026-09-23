@@ -243,13 +243,18 @@ def _idempotency_key(request: ServiceRequest) -> str:
 
 
 def _precondition(request: ServiceRequest) -> int:
-    if request.precondition is None:
+    raw = request.precondition
+    if type(raw) is not str or not raw:
         raise PreconditionError()
-    value = request.precondition.strip('"')
-    if not value.isdigit():
+    value = raw
+    if value.startswith('"') or value.endswith('"'):
+        if len(value) < 3 or not (value.startswith('"') and value.endswith('"')):
+            raise PreconditionError()
+        value = value[1:-1]
+    if not value.isascii() or not value.isdecimal() or len(value) > 10:
         raise PreconditionError()
     version = int(value)
-    if version <= 0:
+    if not 1 <= version <= 2_147_483_647:
         raise PreconditionError()
     return version
 
