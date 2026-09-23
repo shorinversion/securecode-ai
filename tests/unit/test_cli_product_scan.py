@@ -3,22 +3,38 @@
 import io
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from securecode_ai.adapters.local_product_runner import (
     LocalProductCancelledError,
+    LocalProductScanResult,
     LocalProductSupersededError,
     LocalProductUnavailableError,
 )
 from securecode_ai.cli import application, scan
+from securecode_ai.core.classification import FindingSeverity
 
 
 def test_product_scan_accepted_config_and_format_grammar() -> None:
     parsed = scan.parse_product_scan(
-        ("scan", ".", "--config", "selectors.json", "--format", "sarif", "--output", "report.sarif")
+        (
+            "scan",
+            ".",
+            "--config",
+            "selectors.json",
+            "--format",
+            "sarif",
+            "--output",
+            "report.sarif",
+            "--fail-on",
+            "high",
+        )
     )
     assert parsed.config == Path("selectors.json")
     assert parsed.report_format.value == "sarif"
+    assert parsed.fail_on is FindingSeverity.HIGH
 
 
 @pytest.mark.parametrize(
@@ -28,6 +44,8 @@ def test_product_scan_accepted_config_and_format_grammar() -> None:
         ("scan", ".", "--format", "diff"),
         ("scan", ".", "--format", "json", "--format", "html"),
         ("scan", ".", "--config", "a", "--config", "b"),
+        ("scan", ".", "--fail-on", "urgent"),
+        ("scan", ".", "--fail-on", "high", "--fail-on", "critical"),
     ],
 )
 def test_product_scan_invalid_grammar(tokens: tuple[str, ...]) -> None:
@@ -65,3 +83,48 @@ def test_selection_duplicate_keys_rejected(tmp_path: Path) -> None:
     selection.write_bytes(b'{"provider_profile":"one@1.0.0","provider_profile":"two@1.0.0"}')
     with pytest.raises(scan.ProductScanConfigurationError):
         scan._selection_file(selection)
+
+
+@pytest.mark.parametrize(
+    ("threshold", "finding_severity", "original_code", "expected_code"),
+    [
+        ("high", FindingSeverity.HIGH, 0, 2),
+        ("critical", FindingSeverity.HIGH, 0, 0),
+        ("low", FindingSeverity.CRITICAL, 3, 3),
+    ],
+)
+def test_fail_on_threshold_only_promotes_completed_scans(
+    threshold: str,
+    finding_severity: FindingSeverity,
+    original_code: int,
+    expected_code: int,
+) -> None:
+    from securecode_ai.cli import application_commands
+
+    result = cast(
+        LocalProductScanResult,
+        SimpleNamespace(
+            require_publication=lambda: None,
+            rendered=b"{}",
+            exit_code=original_code,
+            composition=SimpleNamespace(
+                report=SimpleNamespace(
+                    findings=(
+                        SimpleNamespace(classification=SimpleNamespace(severity=finding_severity)),
+                    )
+                )
+            ),
+        ),
+    )
+    stdout, stderr = io.StringIO(), io.StringIO()
+    code = application_commands._run_installed_product_scan(
+        ("scan", ".", "--fail-on", threshold),
+        machine=False,
+        stdout=stdout,
+        stderr=stderr,
+        correlation_id_factory=lambda: "test-correlation",
+        environment={},
+        executor=lambda _arguments, *, environment: result,
+    )
+    assert code == expected_code
+    assert stdout.getvalue() == "{}\n"

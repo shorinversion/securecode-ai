@@ -25,6 +25,7 @@ from securecode_ai.contracts import (
     ContractExtension,
     cli_error_result,
 )
+from securecode_ai.core.classification import FindingSeverity
 
 from .application_profiles import (
     _HUMAN_DIAGNOSTIC_SUCCESS,
@@ -230,6 +231,11 @@ def _command_help(command: str) -> str:
         if command == "scan":
             parser.add_argument("--config", help="host approval configuration for product scan")
             parser.add_argument("--diagnostic", action="store_true")
+            parser.add_argument(
+                "--fail-on",
+                choices=tuple(item.value.lower() for item in FindingSeverity),
+                help="return a failing exit code when a finding meets this severity",
+            )
         if command == "validate":
             parser.add_argument("--patch", help="retained patch selector")
         elif command == "approve":
@@ -641,6 +647,13 @@ def _run_installed_product_scan(
         exit_code = result.exit_code
         if type(rendered) is not bytes or type(exit_code) is not int:
             raise TypeError("product scan result is invalid")
+        if arguments.fail_on is not None and exit_code == int(CliExitCode.COMPLETED):
+            threshold = _severity_rank(arguments.fail_on)
+            if any(
+                _severity_rank(item.classification.severity) >= threshold
+                for item in result.composition.report.findings
+            ):
+                exit_code = int(CliExitCode.POLICY_FAIL)
         if arguments.output is not None:
             _publish_product_output(arguments.output, rendered, result)
         if machine or arguments.output is None:
@@ -677,3 +690,14 @@ def _run_installed_product_scan(
         stdout=stdout,
         stderr=stderr,
     )
+
+
+def _severity_rank(severity: FindingSeverity) -> int:
+    if type(severity) is not FindingSeverity:
+        raise TypeError("product scan severity is invalid")
+    return {
+        FindingSeverity.LOW: 1,
+        FindingSeverity.MEDIUM: 2,
+        FindingSeverity.HIGH: 3,
+        FindingSeverity.CRITICAL: 4,
+    }[severity]

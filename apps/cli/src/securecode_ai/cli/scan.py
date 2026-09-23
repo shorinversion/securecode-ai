@@ -19,6 +19,7 @@ from securecode_ai.adapters.local_product_runner import (
     resolve_local_product_configuration,
     run_local_product_scan,
 )
+from securecode_ai.core.classification import FindingSeverity
 from securecode_ai.core.reports import ReportFormat
 
 from .repair import RepairFormat
@@ -38,6 +39,7 @@ class ProductScanArguments:
     report_format: RepairFormat
     output: Path | None
     config: Path | None = None
+    fail_on: FindingSeverity | None = None
 
 
 def parse_product_scan(tokens: tuple[str, ...]) -> ProductScanArguments:
@@ -47,6 +49,7 @@ def parse_product_scan(tokens: tuple[str, ...]) -> ProductScanArguments:
     report_format = RepairFormat.JSON
     output: Path | None = None
     config: Path | None = None
+    fail_on: FindingSeverity | None = None
     format_selected = False
     index = 1
     while index < len(tokens):
@@ -72,6 +75,14 @@ def parse_product_scan(tokens: tuple[str, ...]) -> ProductScanArguments:
             if index >= len(tokens) or output is not None or not tokens[index]:
                 raise ProductScanConfigurationError()
             output = Path(tokens[index])
+        elif token == "--fail-on":
+            index += 1
+            if index >= len(tokens) or fail_on is not None:
+                raise ProductScanConfigurationError()
+            try:
+                fail_on = FindingSeverity(tokens[index].upper())
+            except ValueError:
+                raise ProductScanConfigurationError() from None
         elif token.startswith("-") or target is not None or not token:
             raise ProductScanConfigurationError()
         else:
@@ -79,7 +90,7 @@ def parse_product_scan(tokens: tuple[str, ...]) -> ProductScanArguments:
         index += 1
     if target is None:
         raise ProductScanConfigurationError()
-    return ProductScanArguments(target, report_format, output, config)
+    return ProductScanArguments(target, report_format, output, config, fail_on)
 
 
 def _selection_file(path: Path, *, optional: bool = False) -> dict[str, object]:
