@@ -90,7 +90,9 @@ def _python_facts(source: bytes) -> tuple[tuple[str, SourceRange, SourceRange], 
 
 
 def _python_cwe(compact: str) -> str | None:
-    if re.match(r"(?:subprocess\.)?(?:run|call|Popen)\(", compact) and "shell=True" in compact:
+    if compact.startswith("os.system(") or (
+        re.match(r"(?:subprocess\.)?(?:run|call|Popen)\(", compact) and "shell=True" in compact
+    ):
         return "CWE-78"
     path_builder = "os.path.join(" in compact or "Path(" in compact or ".joinpath(" in compact
     if compact.startswith("open(") or (
