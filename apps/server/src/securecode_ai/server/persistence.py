@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import json
 import sqlite3
@@ -474,17 +475,49 @@ def _encode_cursor(value: str) -> str:
 
 
 def _cursor_value(value: str | None) -> int:
+    if value is None:
+        return 0
     decoded = _cursor_text(value)
-    return int(decoded) if decoded.isdigit() else 0
+    if not decoded.isascii() or not decoded.isdigit() or decoded.startswith("0"):
+        raise ConflictError()
+    try:
+        result = int(decoded)
+    except ValueError:
+        raise ConflictError() from None
+    if result > 9_223_372_036_854_775_807:
+        raise ConflictError()
+    return result
 
 
 def _cursor_text(value: str | None) -> str:
     if value is None:
         return ""
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > 256
+        or any(not _base64url_character(character) for character in value)
+    ):
+        raise ConflictError()
     try:
-        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("ascii")
-    except (UnicodeDecodeError, ValueError):
+        encoded = value + "=" * (-len(value) % 4)
+        decoded = base64.b64decode(encoded, altchars=b"-_", validate=True)
+        text = decoded.decode("ascii")
+        canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+        if canonical != value:
+            raise ValueError
+        return text
+    except (UnicodeDecodeError, ValueError, binascii.Error):
         raise ConflictError() from None
+
+
+def _base64url_character(value: str) -> bool:
+    return (
+        "A" <= value <= "Z"
+        or "a" <= value <= "z"
+        or "0" <= value <= "9"
+        or value in {"_", "-"}
+    )
 
 
 def _canonical(value: object) -> str:

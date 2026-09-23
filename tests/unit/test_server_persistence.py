@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 from typing import cast
 
@@ -96,6 +97,25 @@ def test_empty_lists_are_source_free_and_have_opaque_cursor_shape() -> None:
 
     assert events == {"items": [], "next_cursor": None}
     assert findings == {"items": [], "next_cursor": None}
+
+
+@pytest.mark.parametrize("cursor_text", ("invalid", "0", "-1", "9223372036854775808"))
+def test_event_cursor_rejects_decodable_non_sequence_values(cursor_text: str) -> None:
+    repository = DevelopmentRepository.in_memory()
+    _create(repository)
+    cursor = base64.urlsafe_b64encode(cursor_text.encode("ascii")).decode("ascii").rstrip("=")
+
+    with pytest.raises(ConflictError):
+        repository.list_events(TENANT, RUN, cursor, 50)
+
+
+@pytest.mark.parametrize("cursor", ("!", "a=", "A", "a" * 257))
+def test_finding_cursor_rejects_malformed_or_noncanonical_tokens(cursor: str) -> None:
+    repository = DevelopmentRepository.in_memory()
+    _create(repository)
+
+    with pytest.raises(ConflictError):
+        repository.list_findings(TENANT, RUN, cursor, 50)
 
 
 def test_run_listing_is_tenant_and_repository_scoped_with_keyset_cursor() -> None:
