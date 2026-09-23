@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import Lock
-from typing import Final
+from typing import Final, Protocol
 
 MAX_TENANTS: Final = 10_000
 MAX_WINDOW_SECONDS: Final = 86_400
@@ -21,6 +21,7 @@ MAX_SPEND_MICROUNITS: Final = 1_000_000_000_000
 
 class QuotaErrorCode(StrEnum):
     INVALID_CONFIGURATION = "INVALID_CONFIGURATION"
+    STORE_UNAVAILABLE = "STORE_UNAVAILABLE"
 
 
 class QuotaError(ValueError):
@@ -74,6 +75,16 @@ class QuotaDecision:
             "remaining_spend_microunits": self.remaining_spend_microunits,
             "retry_after_seconds": self.retry_after_seconds,
         }
+
+
+class RequestQuota(Protocol):
+    def check(
+        self,
+        *,
+        tenant_id: object,
+        now_ms: object,
+        cost_microunits: int = 0,
+    ) -> QuotaDecision: ...
 
 
 @dataclass(slots=True)
@@ -165,4 +176,5 @@ __all__ = [
     "QuotaErrorCode",
     "QuotaLedger",
     "QuotaPolicy",
+    "RequestQuota",
 ]

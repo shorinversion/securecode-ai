@@ -29,7 +29,7 @@ from .ports import (
     UnavailableControlPlaneService,
     VerifiedIdentity,
 )
-from .request_quota import QuotaLedger
+from .request_quota import QuotaError, RequestQuota
 from .request_scope import repository_id as _repository_id
 from .telemetry import TelemetryRecorder
 
@@ -214,7 +214,7 @@ class ServerApp:
         artifact_upload_identity: VerifiedIdentity | None = None,
         telemetry: TelemetryRecorder | None = None,
         oidc_login: OidcLoginService | None = None,
-        quota: QuotaLedger | None = None,
+        quota: RequestQuota | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -308,10 +308,14 @@ class ServerApp:
         # are not charged here; a login brute-force ceiling belongs with the
         # login flow itself, not with tenant accounting.
         if self._quota is not None:
-            decision = self._quota.check(
-                tenant_id=identity.tenant_id,
-                now_ms=int(time.monotonic() * 1000),
-            )
+            try:
+                decision = self._quota.check(
+                    tenant_id=identity.tenant_id,
+                    now_ms=time.time_ns() // 1_000_000,
+                )
+            except QuotaError:
+                await self._send_error(send, 503, "QUOTA_UNAVAILABLE", correlation_id)
+                return
             if not decision.allowed:
                 await self._send_json(
                     send,

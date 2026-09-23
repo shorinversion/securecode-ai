@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
+from securecode_ai.server.migrations import apply_schema, require_schema_version
 from securecode_ai.server.request_quota import (
     MAX_REQUESTS_PER_WINDOW,
     MAX_SPEND_MICROUNITS,
@@ -11,6 +14,10 @@ from securecode_ai.server.request_quota import (
     QuotaErrorCode,
     QuotaLedger,
     QuotaPolicy,
+)
+from securecode_ai.server.sqlite_request_quota import (
+    SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS,
+    SqliteQuotaLedger,
 )
 
 TENANT = "tenant-1"
@@ -140,3 +147,80 @@ def test_decision_document_is_metadata_only() -> None:
         "retry_after_seconds",
     }
     assert all(type(value) in {bool, int} for value in document.values())
+
+
+def _sqlite_quota(max_tenants: int = 10) -> tuple[sqlite3.Connection, SqliteQuotaLedger]:
+    connection = sqlite3.connect(":memory:")
+    for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
+        connection.execute(statement)
+    return connection, SqliteQuotaLedger(
+        connection,
+        window_seconds=60,
+        max_requests=2,
+        max_spend_microunits=500,
+        max_tenants=max_tenants,
+    )
+
+
+def test_sqlite_quota_persists_across_ledger_recreation_and_tenants() -> None:
+    connection, ledger = _sqlite_quota()
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_001).allowed
+    refused = ledger.check(tenant_id="tenant-a", now_ms=1_002)
+    assert not refused.allowed and refused.retry_after_seconds == 60
+
+    restarted = SqliteQuotaLedger(
+        connection,
+        window_seconds=60,
+        max_requests=2,
+        max_spend_microunits=500,
+    )
+    assert not restarted.check(tenant_id="tenant-a", now_ms=1_003).allowed
+    assert restarted.check(tenant_id="tenant-b", now_ms=1_003).allowed
+    assert restarted.check(tenant_id="tenant-a", now_ms=61_000).allowed
+
+
+def test_sqlite_quota_bounds_tenants_and_fails_closed_without_storage() -> None:
+    connection, ledger = _sqlite_quota(max_tenants=1)
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
+    capacity = ledger.check(tenant_id="tenant-b", now_ms=1_001)
+    assert not capacity.allowed
+
+    missing_schema = SqliteQuotaLedger(
+        sqlite3.connect(":memory:"),
+        window_seconds=60,
+        max_requests=2,
+    )
+    with pytest.raises(QuotaError) as unavailable:
+        missing_schema.check(tenant_id="tenant-a", now_ms=1_000)
+    assert unavailable.value.code is QuotaErrorCode.STORE_UNAVAILABLE
+
+    connection.close()
+
+
+def test_sqlite_quota_reclaims_expired_tenant_capacity() -> None:
+    connection, ledger = _sqlite_quota(max_tenants=1)
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
+    assert ledger.check(tenant_id="tenant-b", now_ms=61_000).allowed
+    rows = connection.execute("SELECT tenant_id FROM request_quota_windows").fetchall()
+    assert rows == [("tenant-b",)]
+    connection.close()
+
+
+def test_sqlite_schema_upgrade_adds_persistent_quota_window() -> None:
+    connection = sqlite3.connect(":memory:")
+    apply_schema(connection)
+    connection.execute("DROP TABLE request_quota_windows")
+    connection.execute("UPDATE schema_metadata SET schema_version='1.3.0'")
+    connection.commit()
+
+    apply_schema(connection)
+    require_schema_version(connection)
+
+    columns = connection.execute("PRAGMA table_info(request_quota_windows)").fetchall()
+    assert tuple(row[1] for row in columns) == (
+        "tenant_id",
+        "started_ms",
+        "requests",
+        "spend_microunits",
+    )

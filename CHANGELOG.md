@@ -22,6 +22,8 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- P8.7 now enforces bounded per-tenant API request ceilings from the durable SQLite control-plane store, surviving server restarts; quota storage failures return an explicit unavailable response.
+
 - Worker scans now render canonical SARIF beside the JSON report and publish it
   through the existing content-addressed, retry-safe artifact upload path.
 - P6.10 wires source-free run-action audit events to verified, repository-scoped audit exports and exposes bounded low-cardinality operational telemetry.

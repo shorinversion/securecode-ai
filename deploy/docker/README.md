@@ -101,6 +101,8 @@ read-only mounts. Values are not copied into telemetry.
 | `SECURECODE_RESOURCE_PROFILE_ID` | server | Resource-policy profile identifier. |
 | `SECURECODE_MAX_CONCURRENT_RUNS`, `SECURECODE_MAX_ADMISSIONS_PER_WINDOW`, `SECURECODE_ADMISSION_WINDOW_MS` | server | Admission concurrency and rate-window limits. |
 | `SECURECODE_MAX_TOKENS_PER_WINDOW`, `SECURECODE_MAX_COST_MICROUNITS_PER_WINDOW` | server | Tenant token and cost budgets for the admission window. |
+| `SECURECODE_API_QUOTA_WINDOW_SECONDS` | server | Persistent per-tenant API request quota window in seconds, default `60`. |
+| `SECURECODE_API_MAX_REQUESTS_PER_WINDOW` | server | Maximum authenticated API requests per tenant per window, default `5000`. |
 | `SECURECODE_MAX_CPU_MS_PER_RUN`, `SECURECODE_MAX_MEMORY_BYTES_PER_RUN`, `SECURECODE_MAX_WALL_MS_PER_RUN` | server | Per-run CPU, memory and wall-clock ceilings. |
 | `SECURECODE_RUN_TOKENS`, `SECURECODE_RUN_COST_MICROUNITS`, `SECURECODE_RUN_CPU_MS`, `SECURECODE_RUN_MEMORY_BYTES`, `SECURECODE_RUN_WALL_MS` | server | Default requested per-run resource budget. |
 | `SECURECODE_RUN_LEASE_MS` | server | Worker run-lease duration. |

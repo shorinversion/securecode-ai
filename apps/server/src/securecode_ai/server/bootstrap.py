@@ -86,6 +86,7 @@ from .sqlite_database import (
     open_private_sqlite,
     prepare_private_data_directory,
 )
+from .sqlite_request_quota import SqliteQuotaLedger
 from .storage_executor import LocalArtifactStorageExecutor
 from .worker_artifact_authorization import (
     HmacSha256ArtifactReceiptSigner,
@@ -410,6 +411,23 @@ def build_local_app(
         ),
         replay_store=SqliteRequestReplayStore(connection),
         webhook_identity=webhook_identity,
+        quota=SqliteQuotaLedger(
+            connection,
+            window_seconds=_quota_integer(
+                values,
+                "SECURECODE_API_QUOTA_WINDOW_SECONDS",
+                default=60,
+                minimum=1,
+                maximum=86_400,
+            ),
+            max_requests=_quota_integer(
+                values,
+                "SECURECODE_API_MAX_REQUESTS_PER_WINDOW",
+                default=5_000,
+                minimum=1,
+                maximum=1_000_000,
+            ),
+        ),
         artifact_upload_identity=VerifiedIdentity(
             subject_id="artifact-upload",
             tenant_id="artifact-transport",
@@ -420,6 +438,25 @@ def build_local_app(
             capability for capability in CAPABILITIES if capability not in disabled_capabilities
         ),
     )
+
+
+def _quota_integer(
+    values: object,
+    name: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if not hasattr(values, "get"):
+        raise ValueError("request quota configuration is invalid")
+    value = values.get(name, str(default))
+    if type(value) is not str or not value.isascii() or not value.isdecimal():
+        raise ValueError("request quota configuration is invalid")
+    parsed = int(value)
+    if not minimum <= parsed <= maximum:
+        raise ValueError("request quota configuration is invalid")
+    return parsed
 
 
 def _artifact_receipt_secret(values: object, data_dir: Path) -> bytes:

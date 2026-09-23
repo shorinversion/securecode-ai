@@ -23,6 +23,7 @@ from .run_admission_store import RUN_ADMISSION_SCHEMA_STATEMENTS
 from .scm_publication_store import SCM_PUBLICATION_SCHEMA_STATEMENTS
 from .scm_state_schema import SCM_STATE_SCHEMA_STATEMENTS
 from .secret_service import SECRET_SCHEMA_STATEMENTS
+from .sqlite_request_quota import SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS
 from .storage_executor import STORAGE_TOMBSTONE_SCHEMA_STATEMENTS
 from .tenant_key_migration import (
     TenantKeyMigrationError,
@@ -32,7 +33,8 @@ from .tenant_key_migration import (
 )
 from .waivers import WAIVER_SCHEMA_STATEMENTS
 
-SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.4.0"
+_PREVIOUS_SCHEMA_VERSION = "1.3.0"
 _OCCURRENCE_SCHEMA_VERSION = "1.2.0"
 _TENANT_KEY_SCHEMA_VERSION = "1.1.0"
 _LEGACY_SCHEMA_VERSION = "1.0.0"
@@ -243,6 +245,7 @@ _STATEMENTS = (
     + POLICY_STORE_SCHEMA_STATEMENTS
     + AUDIT_LOG_SCHEMA_STATEMENTS
     + EGRESS_SCHEMA_STATEMENTS
+    + SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS
 )
 
 
@@ -342,9 +345,20 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 _create_finding_occurrence_revision_index(connection)
                 _migrate_finding_decisions(connection)
                 update_metadata = True
+            elif version == _PREVIOUS_SCHEMA_VERSION:
+                previous_expected = expected - {
+                    ("table", "request_quota_windows"),
+                }
+                if not previous_expected.issubset(existing):
+                    raise SchemaVersionError("database schema is incomplete")
+                for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
+                    connection.execute(statement)
+                update_metadata = True
             else:
                 raise SchemaVersionError("database schema version is incompatible")
         _migrate_sqlite_http_idempotency(connection)
+        for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
+            connection.execute(statement)
         _require_tenant_key_shapes(connection)
         _require_tenant_columns(connection)
         _require_sqlite_integrity(connection)

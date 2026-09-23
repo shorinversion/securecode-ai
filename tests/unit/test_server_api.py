@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -13,6 +14,10 @@ from securecode_ai.server import (
     ServiceResponse,
     VerifiedIdentity,
     create_app,
+)
+from securecode_ai.server.sqlite_request_quota import (
+    SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS,
+    SqliteQuotaLedger,
 )
 
 
@@ -176,3 +181,45 @@ def test_unsupported_major_version_is_rejected_before_service_dispatch() -> None
 
     assert status == 422
     assert _mapping(payload["error"])["code"] == "UNSUPPORTED_VERSION"
+
+
+def test_persistent_quota_returns_retry_after_and_fails_closed() -> None:
+    identity = VerifiedIdentity("user-1", "tenant-a", frozenset({"operator"}))
+    connection = sqlite3.connect(":memory:")
+    for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
+        connection.execute(statement)
+    ledger = SqliteQuotaLedger(
+        connection,
+        window_seconds=60,
+        max_requests=1,
+    )
+    app = create_app(
+        identities=_IdentityVerifier(identity),
+        authorization=_AllowAuthorization(),
+        service=_Service(),
+        quota=ledger,
+    )
+    headers = {
+        "authorization": "Bearer token",
+        "x-securecode-api-version": "1.0.0",
+    }
+    first = asyncio.run(_request(app, "GET", "/api/v1/runs/run-1", headers=headers))
+    second = asyncio.run(_request(app, "GET", "/api/v1/runs/run-1", headers=headers))
+
+    assert first[0] == 201
+    assert second[0] == 429
+    assert _mapping(second[1]["error"])["code"] == "QUOTA_EXCEEDED"
+
+    unavailable = create_app(
+        identities=_IdentityVerifier(identity),
+        authorization=_AllowAuthorization(),
+        service=_Service(),
+        quota=SqliteQuotaLedger(
+            sqlite3.connect(":memory:"),
+            window_seconds=60,
+            max_requests=1,
+        ),
+    )
+    failed = asyncio.run(_request(unavailable, "GET", "/api/v1/runs/run-1", headers=headers))
+    assert failed[0] == 503
+    assert _mapping(failed[1]["error"])["code"] == "QUOTA_UNAVAILABLE"
