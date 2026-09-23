@@ -168,6 +168,7 @@ def main(
             "approve",
             "release",
             "connect",
+            "ci",
             "status",
             "cancel",
             "results",
@@ -269,6 +270,15 @@ def main(
             stdout=output,
             stderr=errors,
             environment=selected_environment,
+        )
+    if stripped and stripped[0] == "ci":
+        return run_ci_command(
+            stripped,
+            machine=machine,
+            stdout=output,
+            stderr=errors,
+            environment=selected_environment,
+            correlation_id_factory=correlation_id_factory,
         )
     if stripped and stripped[0] == "release":
         return run_release_command(stripped, stdout=output, stderr=errors)
@@ -913,6 +923,66 @@ def run_connect_command(
     return int(CliExitCode.COMPLETED)
 
 
+def run_ci_command(
+    tokens: tuple[str, ...],
+    *,
+    machine: bool,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+    correlation_id_factory: Callable[[], str],
+) -> int:
+    """Run one connected scan and map its terminal outcome to the CI contract."""
+
+    try:
+        _target, _wait, fresh = parse_connected_arguments(tokens[1:])
+        settings = settings_from_environment(environment, fresh=fresh)
+        receipt = run_connected(
+            settings,
+            poll_status=True,
+            attempts=40,
+            sleeper=time.sleep,
+        )
+    except ConnectedCliError as error:
+        error_code = {
+            ConnectedCliErrorCode.INVALID_CONFIGURATION: CliErrorCode.INVALID_CONFIG,
+            ConnectedCliErrorCode.PROTOCOL_INVALID: CliErrorCode.ANALYSIS_INDETERMINATE,
+            ConnectedCliErrorCode.RUN_NOT_TERMINAL: CliErrorCode.ANALYSIS_INDETERMINATE,
+            ConnectedCliErrorCode.REJECTED: CliErrorCode.OPERATIONAL_ERROR,
+            ConnectedCliErrorCode.UNREACHABLE: CliErrorCode.OPERATIONAL_ERROR,
+        }[error.code]
+        return _write_error(
+            _error_result(error_code, CliCommand.CI, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except KeyboardInterrupt:
+        return _write_error(
+            _error_result(CliErrorCode.CANCELLED, CliCommand.CI, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except Exception:
+        return _write_error(
+            _error_result(CliErrorCode.OPERATIONAL_ERROR, CliCommand.CI, correlation_id_factory),
+            machine=machine,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    render_connected_receipt(receipt, stdout)
+    return {
+        "PASS": int(CliExitCode.COMPLETED),
+        "FAIL": int(CliExitCode.POLICY_FAIL),
+        "INDETERMINATE": int(CliExitCode.INDETERMINATE),
+        "ERROR": int(CliExitCode.OPERATIONAL_ERROR),
+        "CANCELLED": int(CliExitCode.CANCELLED_OR_SUPERSEDED),
+        "SUPERSEDED": int(CliExitCode.CANCELLED_OR_SUPERSEDED),
+    }.get(receipt.outcome or "", int(CliExitCode.INDETERMINATE))
+
+
 __all__ = [
     "CLI_VERSION",
     "FOUNDATION_DEFAULTS",
@@ -924,6 +994,7 @@ __all__ = [
     "FoundationDoctor",
     "build_foundation_profile",
     "main",
+    "run_ci_command",
     "run_connect_command",
     "run_connected_approval",
     "run_connected_assurance",

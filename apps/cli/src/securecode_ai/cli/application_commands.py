@@ -107,6 +107,11 @@ def _parser() -> argparse.ArgumentParser:
         help="submit one checkout to a control plane and follow the run",
     )
     subparsers.add_parser(
+        "ci",
+        add_help=False,
+        help="submit a run and return the terminal outcome as a CI exit code",
+    )
+    subparsers.add_parser(
         "status",
         add_help=False,
         help="read one run's current durable state from the control plane",
@@ -188,6 +193,7 @@ def _command_help(command: str) -> str:
         "approve": "record explicit approval for one exact validated repair artifact",
         "release": "dry-run or explicitly authorize immutable local release publication",
         "connect": "submit one checkout to a control plane and follow the run",
+        "ci": "submit one revision, wait for the terminal outcome, and return its CI exit code",
         "status": "read one run's current durable state from the control plane",
         "cancel": "request cancellation of one run with an exact state precondition",
         "results": "read one run's findings, artifacts or events from the control plane",
@@ -243,6 +249,13 @@ def _command_help(command: str) -> str:
             action="store_true",
             help="poll until the control plane reports a terminal outcome",
         )
+        parser.add_argument(
+            "--new-run",
+            action="store_true",
+            help="open a new run instead of resuming the recorded one for this revision",
+        )
+    elif command == "ci":
+        parser.add_argument("target", nargs="?", help="optional local checkout path")
         parser.add_argument(
             "--new-run",
             action="store_true",
