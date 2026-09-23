@@ -379,28 +379,29 @@ class LifecycleLedger:
         ).fetchone()
         if row is None:
             raise LifecycleConflict("deletion request is unknown")
+        value = _from_row(row)
         state = (
             "EXECUTED"
-            if row["executed"]
+            if value.executed
             else (
                 "HELD"
-                if row["legal_hold"]
-                else ("APPROVED" if row["approved_by"] is not None else "REQUESTED")
+                if value.legal_hold
+                else ("APPROVED" if value.approved_by is not None else "REQUESTED")
             )
         )
         occurred_at = row["executed_at"] or row["approved_at"] or row["created_at"]
-        actor = (
-            row["hold_actor"] if state == "HELD" else (row["approved_by"] or row["requested_by"])
-        )
+        if type(occurred_at) is not str or not occurred_at:
+            raise LifecycleConflict("deletion receipt is inconsistent")
+        actor = row["hold_actor"] if state == "HELD" else (value.approved_by or value.requested_by)
         if type(actor) is not str:
             raise LifecycleConflict("deletion receipt is inconsistent")
         return DeletionReceipt(
-            deletion_id=row["deletion_id"],
-            tenant_id=row["tenant_id"],
-            content_sha256=row["content_sha256"],
-            identity_hash=row["identity_hash"],
+            deletion_id=value.deletion_id,
+            tenant_id=value.tenant_id,
+            content_sha256=value.content_sha256,
+            identity_hash=value.identity_hash,
             state=state,
-            version=row["version"],
+            version=value.version,
             occurred_at=occurred_at,
             actor_id_hash=hashlib.sha256(actor.encode("utf-8")).hexdigest(),
         )
@@ -564,6 +565,11 @@ class LifecycleLedger:
 
 
 def _from_row(row: sqlite3.Row) -> DeletionRequest:
+    executed = _persisted_flag(row["executed"], "executed")
+    legal_hold = _persisted_flag(row["legal_hold"], "legal_hold")
+    approved_by = row["approved_by"]
+    if executed and (legal_hold or approved_by is None):
+        raise LifecycleConflict("lifecycle state is inconsistent")
     return DeletionRequest(
         deletion_id=row["deletion_id"],
         tenant_id=row["tenant_id"],
@@ -572,10 +578,16 @@ def _from_row(row: sqlite3.Row) -> DeletionRequest:
         identity_hash=row["identity_hash"],
         requested_by=row["requested_by"],
         version=row["version"],
-        approved_by=row["approved_by"],
-        executed=bool(row["executed"]),
-        legal_hold=bool(row["legal_hold"]),
+        approved_by=approved_by,
+        executed=executed,
+        legal_hold=legal_hold,
     )
+
+
+def _persisted_flag(value: object, field: str) -> bool:
+    if type(value) is not int or value not in (0, 1):
+        raise LifecycleConflict(f"{field} is invalid")
+    return value == 1
 
 
 def _request_hash(value: DeletionRequest) -> str:

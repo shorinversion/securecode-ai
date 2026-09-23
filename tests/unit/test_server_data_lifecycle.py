@@ -120,6 +120,23 @@ def test_releasing_a_hold_requires_a_fresh_deletion_approval() -> None:
     ).executed
 
 
+def test_inconsistent_persisted_hold_and_execution_state_fails_closed() -> None:
+    ledger = LifecycleLedger.in_memory()
+    request = DeletionRequest("corrupt-state", "tenant", "a" * 64, "artifact", "b" * 64, "owner", 1)
+    ledger.request(request, repository_id="repo", idempotency_key="request-key")
+    ledger._connection.execute(
+        """UPDATE lifecycle_deletions
+           SET approved_by='approver', approved_at='2026-01-01T00:00:00+00:00',
+               executed=1, legal_hold=1
+           WHERE tenant_id=? AND deletion_id=?""",
+        (request.tenant_id, request.deletion_id),
+    )
+    ledger._connection.commit()
+
+    with pytest.raises(LifecycleConflict, match="lifecycle state is inconsistent"):
+        ledger.receipt(tenant_id=request.tenant_id, deletion_id=request.deletion_id)
+
+
 @pytest.mark.parametrize("operation", ("hold", "execute", "receipt"))
 def test_lifecycle_operations_reject_invalid_deletion_ids(operation: str) -> None:
     ledger = LifecycleLedger.in_memory()
