@@ -101,6 +101,15 @@ class WorkerExecutionResult:
         self.scan.cancel()
 
 
+_SAFE_UNTRUSTED_CONFIGURATION_ENVIRONMENT = frozenset(
+    {
+        "SECURECODE_PROVIDER_PROFILE",
+        "SECURECODE_POLICY_PROFILE",
+        "SECURECODE_EGRESS_PROFILE",
+    }
+)
+
+
 class ProductExecutor:
     """Run the installed host-authorized product against one fixed checkout."""
 
@@ -250,25 +259,6 @@ def _subprocess_creation_flags() -> int:
     return cast(int, vars(subprocess).get("CREATE_NO_WINDOW", 0))
 
 
-def _is_credential_name(name: str) -> bool:
-    normalized = name.upper()
-    if any(
-        marker in normalized
-        for marker in (
-            "API_KEY",
-            "ACCESS_KEY",
-            "TOKEN",
-            "SECRET",
-            "PASSWORD",
-            "CREDENTIAL",
-            "PRIVATE_KEY",
-            "AUTH_SOCK",
-        )
-    ):
-        return True
-    return normalized in {"KUBECONFIG", "DOCKER_CONFIG", "SSH_AUTH_SOCK"}
-
-
 def _contribution_environment(job: WorkerJob, environment: Mapping[str, str]) -> dict[str, str]:
     restricted = job.contribution_trust in {
         WorkerContributionTrust.UNTRUSTED_FORK,
@@ -277,7 +267,11 @@ def _contribution_environment(job: WorkerJob, environment: Mapping[str, str]) ->
     }
     if not restricted:
         return dict(environment)
-    return {key: value for key, value in environment.items() if not _is_credential_name(key)}
+    return {
+        key: value
+        for key, value in environment.items()
+        if isinstance(key, str) and key.upper() in _SAFE_UNTRUSTED_CONFIGURATION_ENVIRONMENT
+    }
 
 
 def _require_contribution_provider(job: WorkerJob, provider_kind: ProviderKind) -> None:

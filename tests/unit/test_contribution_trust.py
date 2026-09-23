@@ -125,13 +125,16 @@ def test_untrusted_contribution_filters_auth_environment() -> None:
         first_name: "canary-value",
         second_name: "canary-value",
         "SECURECODE_PROVIDER_PROFILE": "local@1.0.0",
+        "SECURECODE_POLICY_PROFILE": "policy-default",
+        "SECURECODE_EGRESS_PROFILE": "loopback-only",
     }
 
     sanitized = _contribution_environment(_job(WorkerContributionTrust.UNTRUSTED_FORK), environment)
 
     assert sanitized == {
-        "PATH": "safe-path",
         "SECURECODE_PROVIDER_PROFILE": "local@1.0.0",
+        "SECURECODE_POLICY_PROFILE": "policy-default",
+        "SECURECODE_EGRESS_PROFILE": "loopback-only",
     }
 
 
@@ -152,7 +155,20 @@ def test_untrusted_contribution_filters_cloud_and_agent_credentials(name: str) -
         {"PATH": "safe-path", name: "credential-material"},
     )
 
-    assert sanitized == {"PATH": "safe-path"}
+    assert sanitized == {}
+
+
+def test_unknown_contribution_filters_every_environment_variable_except_selectors() -> None:
+    sanitized = _contribution_environment(
+        _job(WorkerContributionTrust.UNKNOWN),
+        {
+            "PATH": "host-path",
+            "APP_CONFIG": "config-path",
+            "SECURECODE_PROVIDER_PROFILE": "local@1.0.0",
+        },
+    )
+
+    assert sanitized == {"SECURECODE_PROVIDER_PROFILE": "local@1.0.0"}
 
 
 def test_untrusted_contribution_rejects_remote_provider() -> None:
