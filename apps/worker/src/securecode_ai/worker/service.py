@@ -13,6 +13,7 @@ from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import TextIO, TypeVar
+from uuid import uuid4
 
 from .control_plane import (
     ControlPlaneClient,
@@ -65,10 +66,12 @@ class WorkerService:
         self._stopping = stopping
 
     async def run(self) -> None:
-        claim_attempt = 0
+        # A claim keeps its idempotency identity across transport retries. A
+        # fresh process gets a fresh identity, so it cannot replay an old
+        # session after restarting with the same worker ID.
+        claim_attempt = uuid4().int
         backoff = _Backoff(self._settings.poll_seconds, self._settings.max_backoff_seconds)
         while not self._stopping.is_set():
-            claim_attempt += 1
             try:
                 job = await asyncio.to_thread(
                     self._client.open_session,
@@ -76,6 +79,7 @@ class WorkerService:
                     requested_run_id=self._settings.requested_run_id,
                 )
             except NoWork:
+                claim_attempt += 1
                 backoff.reset()
                 await self._wait(self._settings.poll_seconds)
                 continue
@@ -84,6 +88,7 @@ class WorkerService:
                 continue
             except ControlPlaneRejected:
                 raise
+            claim_attempt += 1
             backoff.reset()
             terminal_confirmed = await self._process(job)
             if self._settings.requested_run_id is not None:

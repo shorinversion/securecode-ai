@@ -2,10 +2,18 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import cast
 
 import pytest
 from securecode_ai.worker import service as worker_service
+from securecode_ai.worker.control_plane import (
+    ControlPlaneClient,
+    NoWork,
+    RetryableControlPlaneError,
+)
+from securecode_ai.worker.execution import ProductExecutor
 from securecode_ai.worker.liveness import heartbeat_path
+from securecode_ai.worker.protocol import WorkerJob
 from securecode_ai.worker.runtime_config import RuntimeSettings
 
 
@@ -60,3 +68,98 @@ def test_worker_liveness_starts_while_waiting_for_scm_run(
     )
 
     assert heartbeat_path(tmp_path).is_file()
+
+
+def test_claim_retry_reuses_idempotency_attempt_but_next_poll_is_fresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    stopping = asyncio.Event()
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.attempts: list[int] = []
+
+        def open_session(self, *, attempt: int, requested_run_id: str | None) -> WorkerJob:
+            self.attempts.append(attempt)
+            if len(self.attempts) == 1:
+                raise RetryableControlPlaneError("transient")
+            if len(self.attempts) == 3:
+                stopping.set()
+                raise NoWork("empty queue")
+            return cast(WorkerJob, object())
+
+    async def wait(self: worker_service.WorkerService, seconds: float) -> None:
+        del self, seconds
+
+    async def process(self: worker_service.WorkerService, job: WorkerJob) -> bool:
+        del self, job
+        return True
+
+    client = FakeClient()
+    monkeypatch.setattr(worker_service.WorkerService, "_wait", wait)
+    monkeypatch.setattr(worker_service.WorkerService, "_process", process)
+    service = worker_service.WorkerService(
+        client=cast(ControlPlaneClient, client),
+        executor=cast(ProductExecutor, object()),
+        settings=settings,
+        stopping=stopping,
+    )
+
+    asyncio.run(service.run())
+
+    assert len(client.attempts) == 3
+    assert client.attempts[0] == client.attempts[1]
+    assert client.attempts[2] != client.attempts[1]
+
+
+def test_empty_queue_starts_a_new_idempotent_claim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    stopping = asyncio.Event()
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.attempts: list[int] = []
+
+        def open_session(self, *, attempt: int, requested_run_id: str | None) -> WorkerJob:
+            del requested_run_id
+            self.attempts.append(attempt)
+            if len(self.attempts) == 2:
+                stopping.set()
+            raise NoWork("empty queue")
+
+    async def wait(self: worker_service.WorkerService, seconds: float) -> None:
+        del self, seconds
+
+    client = FakeClient()
+    monkeypatch.setattr(worker_service.WorkerService, "_wait", wait)
+    service = worker_service.WorkerService(
+        client=cast(ControlPlaneClient, client),
+        executor=cast(ProductExecutor, object()),
+        settings=settings,
+        stopping=stopping,
+    )
+
+    asyncio.run(service.run())
+
+    assert len(client.attempts) == 2
+    assert client.attempts[0] != client.attempts[1]
+
+
+def _settings(target: Path) -> RuntimeSettings:
+    return RuntimeSettings(
+        control_plane_url="http://127.0.0.1:8080",
+        token="x" * 48,
+        worker_id="worker-1",
+        target=target,
+        requested_run_id=None,
+        scm_resolution=None,
+        request_timeout_seconds=15,
+        poll_seconds=0.1,
+        max_backoff_seconds=1,
+        artifact_hosts=frozenset({"127.0.0.1"}),
+    )
