@@ -7,6 +7,7 @@ from collections.abc import Mapping
 
 from securecode_ai.contracts import RunExecutionIdentity
 
+from .finding_evidence import FindingEvidenceReader
 from .persistence import (
     ConflictError,
     DevelopmentRepository,
@@ -18,8 +19,14 @@ from .ports import ServiceRequest, ServiceResponse, ServiceUnavailableError
 
 
 class DurableControlPlaneService:
-    def __init__(self, repository: DevelopmentRepository) -> None:
+    def __init__(
+        self,
+        repository: DevelopmentRepository,
+        *,
+        finding_evidence: FindingEvidenceReader | None = None,
+    ) -> None:
         self._repository = repository
+        self._finding_evidence = finding_evidence
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         try:
@@ -107,6 +114,20 @@ class DurableControlPlaneService:
             if not self._run_allowed(request, str(finding["run_id"])):
                 return _forbidden()
             return ServiceResponse(200, finding)
+        if request.action == "findings.evidence.read":
+            finding_id = request.path_params["finding_id"]
+            finding = self._repository.get_finding(request.identity.tenant_id, finding_id)
+            if not self._run_allowed(request, str(finding["run_id"])):
+                return _forbidden()
+            if self._finding_evidence is None:
+                raise ServiceUnavailableError()
+            return ServiceResponse(
+                200,
+                self._finding_evidence.read(
+                    tenant_id=request.identity.tenant_id,
+                    finding_id=finding_id,
+                ),
+            )
         if request.action == "findings.decide":
             return self._decide_finding(request)
         if request.action == "policies.read":

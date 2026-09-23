@@ -176,6 +176,24 @@ def load_verified_terminal_audit_run(
     return audit_run
 
 
+def load_verified_evidence_graph(
+    *,
+    artifact_root: Path,
+    tenant_id: str,
+    metadata: Mapping[str, object],
+) -> EvidenceGraph:
+    """Load and verify one content-addressed source-free EvidenceGraph artifact."""
+
+    if metadata.get("purpose") != "evidence-graph":
+        raise WorkerQueueConflict()
+    payload = _payload(artifact_root, tenant_id, metadata)
+    document = _closed_json_bytes(payload)
+    digest = metadata.get("content_sha256")
+    if type(digest) is not str:
+        raise WorkerQueueConflict()
+    return _validated_graph(document, digest)
+
+
 def _validate_report(
     document: dict[str, Any],
     *,
@@ -505,4 +523,8 @@ def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-__all__ = ["load_verified_terminal_audit_run", "verify_terminal_evidence"]
+__all__ = [
+    "load_verified_evidence_graph",
+    "load_verified_terminal_audit_run",
+    "verify_terminal_evidence",
+]

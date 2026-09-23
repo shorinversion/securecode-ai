@@ -42,6 +42,11 @@ _ROUTES: Final = (
     ("/api/v1/runs/{run_id}/audit", "get", "export a verified audit chain"),
     ("/api/v1/operations/metrics", "get", "read source-free operational metrics"),
     ("/api/v1/findings/{finding_id}", "get", "read a finding"),
+    (
+        "/api/v1/findings/{finding_id}/evidence",
+        "get",
+        "read verified source-free evidence for a finding",
+    ),
     ("/api/v1/findings/{finding_id}/decisions", "post", "record a decision"),
     ("/api/v1/artifacts:authorize", "post", "authorize an artifact transfer"),
     (

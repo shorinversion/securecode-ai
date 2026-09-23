@@ -16,7 +16,14 @@ class Role(StrEnum):
 
 _ALLOW = {
     Role.VIEWER: frozenset(
-        {"runs.read", "runs.events.read", "runs.findings.read", "findings.read", "policies.read"}
+        {
+            "runs.read",
+            "runs.events.read",
+            "runs.findings.read",
+            "findings.read",
+            "findings.evidence.read",
+            "policies.read",
+        }
     ),
     Role.AUDITOR: frozenset(
         {"runs.create", "runs.cancel", "findings.decide", "artifacts.authorize"}

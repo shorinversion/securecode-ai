@@ -31,6 +31,7 @@ from .composite_service import CompositeService
 from .data_lifecycle import LifecycleLedger
 from .feedback_repository import FeedbackRepository
 from .feedback_service import FeedbackService
+from .finding_evidence import FindingEvidenceReader
 from .idempotency import SqliteRequestReplayStore
 from .openapi import CAPABILITIES
 from .operations_audit import AuditTelemetryControlPlane
@@ -378,7 +379,13 @@ def build_local_app(
     service: ControlPlaneService = CompositeService(
         core=RunAdmissionRoutingService(
             admission=admission,
-            fallback=DurableControlPlaneService(repository),
+            fallback=DurableControlPlaneService(
+                repository,
+                finding_evidence=FindingEvidenceReader(
+                    repository=repository,
+                    artifact_root=data_dir / "artifacts",
+                ),
+            ),
         ),
         worker=worker_handler,
         github=github_handler,

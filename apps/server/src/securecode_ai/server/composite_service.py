@@ -65,6 +65,7 @@ _CORE_ACTIONS = frozenset(
         "runs.findings.read",
         "runs.artifacts.read",
         "findings.read",
+        "findings.evidence.read",
         "findings.decide",
         "policies.read",
     }
