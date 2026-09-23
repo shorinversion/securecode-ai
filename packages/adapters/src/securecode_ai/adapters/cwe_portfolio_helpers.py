@@ -238,6 +238,11 @@ def _tree_facts(language: str, source: bytes) -> tuple[tuple[str, SourceRange, S
             if source_node is not None:
                 facts.append(("CWE-22", _range(source_node), _range(call)))
             continue
+        if cwe is None and language in {"javascript", "typescript"}:
+            source_node = _javascript_path_traversal_source(source, call, language)
+            if source_node is not None:
+                facts.append(("CWE-22", _range(source_node), _range(call)))
+            continue
         if cwe is None:
             continue
         security_argument = _tree_security_argument(call, cwe, compact, language)
@@ -290,6 +295,87 @@ def _go_path_traversal_source(source: bytes, sink: Node) -> Node | None:
     if function is None:
         return None
     return _go_resolve_path(source, function, arguments.named_children[0], set())
+
+
+def _javascript_path_traversal_source(source: bytes, sink: Node, language: str) -> Node | None:
+    """Resolve one local JavaScript path flow through a file-read sink."""
+
+    compact = _compact(source, sink)
+    if not re.match(r"fs\.(?:promises\.)?readFile(?:Sync)?\(", compact):
+        return None
+    arguments = sink.child_by_field_name("arguments")
+    if arguments is None or not arguments.named_children:
+        return None
+    function = _javascript_enclosing_function(sink)
+    if function is None:
+        return None
+    return _javascript_resolve_path(source, function, arguments.named_children[0], language, set())
+
+
+def _javascript_resolve_path(
+    source: bytes,
+    function: Node,
+    expression: Node,
+    language: str,
+    visited: set[str],
+) -> Node | None:
+    direct = _tree_source_node(source, expression, language)
+    if direct is not None:
+        return direct
+    if expression.type == "identifier":
+        name = _compact(source, expression)
+        if name in visited:
+            return None
+        bound = _javascript_bound_expression(source, function, name, expression.start_byte)
+        if bound is None:
+            return None
+        return _javascript_resolve_path(source, function, bound, language, visited | {name})
+    if expression.type != "call_expression":
+        return None
+    compact = _compact(source, expression)
+    if not compact.startswith("path.join("):
+        return None
+    arguments = expression.child_by_field_name("arguments")
+    if arguments is None:
+        return None
+    for argument in arguments.named_children:
+        found = _javascript_resolve_path(source, function, argument, language, visited)
+        if found is not None:
+            return found
+    return None
+
+
+def _javascript_enclosing_function(node: Node) -> Node | None:
+    current = node.parent
+    while current is not None:
+        if current.type in {
+            "function_declaration",
+            "method_definition",
+            "function",
+            "arrow_function",
+        }:
+            return current
+        current = current.parent
+    return None
+
+
+def _javascript_bound_expression(
+    source: bytes, function: Node, name: str, before: int
+) -> Node | None:
+    bound: Node | None = None
+    for node in _preorder(function):
+        if node.start_byte >= before or node.type not in {
+            "variable_declarator",
+            "assignment_expression",
+        }:
+            continue
+        left = node.child_by_field_name("name") or node.child_by_field_name("left")
+        right = node.child_by_field_name("value") or node.child_by_field_name("right")
+        if left is None or right is None or left.type != "identifier":
+            continue
+        if _compact(source, left) == name:
+            bound = right
+    return bound
 
 
 def _go_resolve_path(

@@ -265,6 +265,54 @@ def test_fs_promises_read_file_with_constant_path_emits_no_path_traversal_fact(
     assert scan_cwe_portfolio(_index(builder, path, source)).signals == ()
 
 
+@pytest.mark.parametrize(
+    ("builder", "path", "source"),
+    [
+        (
+            build_javascript_symbol_index,
+            "api/read.js",
+            b"function read(req) { const name = req.query.file; "
+            b"const fullPath = path.join(root, name); fs.readFile(fullPath, cb); }\n",
+        ),
+        (
+            build_typescript_symbol_index,
+            "api/read.ts",
+            b"function read(req: Request): void { const name = req.query.file; "
+            b"const fullPath = path.join(root, name); fs.promises.readFile(fullPath); }\n",
+        ),
+    ],
+)
+def test_js_local_path_flow_from_query_to_read_file_emits_path_traversal_fact(
+    builder: _IndexBuilder, path: str, source: bytes
+) -> None:
+    result = scan_cwe_portfolio(_index(builder, path, source))
+
+    assert tuple(signal.cwe for signal in result.signals) == ("CWE-22",)
+
+
+@pytest.mark.parametrize(
+    ("builder", "path", "source"),
+    [
+        (
+            build_javascript_symbol_index,
+            "api/read.js",
+            b"function read() { const name = 'readme.txt'; "
+            b"const fullPath = path.join(root, name); fs.readFile(fullPath, cb); }\n",
+        ),
+        (
+            build_typescript_symbol_index,
+            "api/read.ts",
+            b"function read(): void { const name = 'readme.txt'; "
+            b"const fullPath = path.join(root, name); fs.promises.readFile(fullPath); }\n",
+        ),
+    ],
+)
+def test_js_local_constant_path_flow_emits_no_path_traversal_fact(
+    builder: _IndexBuilder, path: str, source: bytes
+) -> None:
+    assert scan_cwe_portfolio(_index(builder, path, source)).signals == ()
+
+
 def test_go_local_path_flow_from_query_to_read_file_emits_path_traversal_fact() -> None:
     source = (
         b'package api\nimport ("net/http"; "os"; "path/filepath")\n'
