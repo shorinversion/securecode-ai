@@ -136,11 +136,13 @@ class SCMRunState:
         "_repository_heads",
         "_runs",
         "_semantic_runs",
+        "_stale_delivery_receipts",
     )
 
     def __init__(self) -> None:
         self._lock = RLock()
         self._deliveries: dict[str, tuple[str, str]] = {}
+        self._stale_delivery_receipts: dict[str, SCMRunAdmissionReceipt] = {}
         self._repository_heads: dict[tuple[str, str, str], str] = {}
         self._semantic_runs: dict[tuple[str, str, str, str], str] = {}
         self._runs: dict[str, _RunRecord] = {}
@@ -166,6 +168,9 @@ class SCMRunState:
                 delivery_hash, recorded_run_id = recorded_delivery
                 if delivery_hash != material_hash:
                     raise SCMRunStateError(SCMRunStateErrorCode.DELIVERY_CONFLICT)
+                stale_receipt = self._stale_delivery_receipts.get(request.delivery_id)
+                if stale_receipt is not None:
+                    return stale_receipt
                 return self._admission_receipt(
                     AdmissionDisposition.DUPLICATE,
                     recorded_run_id,
@@ -174,7 +179,7 @@ class SCMRunState:
             scope = _repository_scope(request)
             self._repository_heads[scope] = current_head_sha
             if current_head_sha != request.authorized_head_sha:
-                return SCMRunAdmissionReceipt(
+                receipt = SCMRunAdmissionReceipt(
                     disposition=AdmissionDisposition.SUPERSEDED,
                     run_id=_run_id(_semantic_key(request)),
                     execution_identity_hash=request.execution_identity.execution_identity_hash,
@@ -182,6 +187,9 @@ class SCMRunState:
                     lifecycle=SCMRunLifecycle.SUPERSEDED,
                     state_version=0,
                 )
+                self._deliveries[request.delivery_id] = (material_hash, receipt.run_id)
+                self._stale_delivery_receipts[request.delivery_id] = receipt
+                return receipt
             semantic_key = _semantic_key(request)
             existing_run_id = self._semantic_runs.get(semantic_key)
             if existing_run_id is not None:

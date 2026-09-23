@@ -114,6 +114,20 @@ def test_stale_admission_creates_no_run_and_returns_superseded_receipt() -> None
     assert error.value.code is SCMRunStateErrorCode.RUN_UNKNOWN
 
 
+def test_stale_delivery_replay_stays_superseded_after_head_returns() -> None:
+    state = SCMRunState()
+    request = _request("delivery-1")
+
+    stale = state.admit(request, current_head_sha=HEAD_B)
+    replay = state.admit(request, current_head_sha=HEAD_A)
+
+    assert stale.disposition is AdmissionDisposition.SUPERSEDED
+    assert replay == stale
+    with pytest.raises(SCMRunStateError) as error:
+        state.authorize_publication(replay.run_id, current_head_sha=HEAD_A)
+    assert error.value.code is SCMRunStateErrorCode.RUN_UNKNOWN
+
+
 def test_new_head_supersedes_old_run_and_late_result_cannot_publish() -> None:
     state = SCMRunState()
     old = state.admit(_request("delivery-a"), current_head_sha=HEAD_A)
