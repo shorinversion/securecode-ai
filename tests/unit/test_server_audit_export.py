@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from securecode_ai.server.audit_export import export_audit
+from securecode_ai.server.audit_export import MAX_AUDIT_EXPORT_EVENTS, export_audit
 from securecode_ai.server.audit_log import AuditConflict, AuditLog
 
 
@@ -75,3 +75,33 @@ def test_corrupted_chain_cannot_be_exported_as_valid_evidence() -> None:
 
     with pytest.raises(AuditConflict, match="hash chain"):
         export_audit(log, tenant_id="t", run_id="run")
+
+
+def test_audit_export_range_is_bounded_and_can_be_paged() -> None:
+    log = AuditLog()
+    for index in range(MAX_AUDIT_EXPORT_EVENTS + 1):
+        log.append(
+            tenant_id="t",
+            repository_id="r",
+            run_id="run",
+            actor_id="actor",
+            action="runs.create",
+            identity_hash="a" * 64,
+            expected_sequence=index,
+            attributes={"outcome": "PASS"},
+            idempotency_key=f"key-{index}",
+        )
+
+    with pytest.raises(ValueError, match="event limit"):
+        export_audit(log, tenant_id="t", run_id="run")
+
+    page = export_audit(
+        log,
+        tenant_id="t",
+        run_id="run",
+        start=MAX_AUDIT_EXPORT_EVENTS,
+        end=MAX_AUDIT_EXPORT_EVENTS + 1,
+    )
+    document = page["document"]
+    assert isinstance(document, dict)
+    assert len(document["events"]) == 2
