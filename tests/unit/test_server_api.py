@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import cast
 from urllib.parse import parse_qs, urlsplit
 
 from securecode_ai.server import (
@@ -22,6 +24,8 @@ from securecode_ai.server.oidc_login import (
     OidcLoginService,
 )
 from securecode_ai.server.oidc_sessions import NonceReplayLedger
+from securecode_ai.server.persistence import DevelopmentRepository
+from securecode_ai.server.service import DurableControlPlaneService
 from securecode_ai.server.sessions import SessionStore
 from securecode_ai.server.sqlite_request_quota import (
     SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS,
@@ -120,6 +124,7 @@ def test_openapi_advertises_the_accepted_worker_and_run_routes() -> None:
     assert status == 200
     paths = _mapping(payload["paths"])
     assert "/api/v1/runs" in paths
+    assert "/api/v1/repositories/{repository_id}/runs" in paths
     assert "/api/v1/worker-sessions/{session_id}:complete" in paths
     assert "/api/v1/findings/{finding_id}/evidence" in paths
 
@@ -147,6 +152,61 @@ def test_finding_evidence_route_passes_authenticated_identity_to_service() -> No
     assert len(service.requests) == 1
     assert service.requests[0].action == "findings.evidence.read"
     assert service.requests[0].path_params == {"finding_id": "finding-1"}
+
+
+def test_authenticated_viewer_can_list_only_granted_repository_runs() -> None:
+    tenant_id = "tenant-a"
+    repository_id = "repo-1"
+    identity = VerifiedIdentity(
+        "user-1",
+        tenant_id,
+        frozenset({"viewer"}),
+        repository_ids=frozenset({repository_id}),
+    )
+    repository = DevelopmentRepository.in_memory()
+    for run_id in ("run-a", "run-b"):
+        repository.create_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            repository_id=repository_id,
+            execution_identity_hash=hashlib.sha256(run_id.encode()).hexdigest(),
+            base_sha="a" * 40,
+            head_sha="b" * 40,
+            metadata={},
+            idempotency_key=f"key-{run_id}",
+            request_sha256=hashlib.sha256(("request-" + run_id).encode()).hexdigest(),
+        )
+    repository.create_run(
+        tenant_id="tenant-b",
+        run_id="run-private",
+        repository_id=repository_id,
+        execution_identity_hash=hashlib.sha256(b"private").hexdigest(),
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        metadata={},
+        idempotency_key="key-private",
+        request_sha256=hashlib.sha256(b"request-private").hexdigest(),
+    )
+    app = create_app(
+        identities=_IdentityVerifier(identity),
+        authorization=RoleAuthorization(),
+        service=DurableControlPlaneService(repository),
+    )
+
+    status, payload = asyncio.run(
+        _request(
+            app,
+            "GET",
+            f"/api/v1/repositories/{repository_id}/runs",
+            headers={"authorization": "Bearer token"},
+        )
+    )
+
+    assert status == 200
+    listed = cast(list[dict[str, object]], payload["items"])
+    assert [item["run_id"] for item in listed] == ["run-a", "run-b"]
+    assert all(item["tenant_id"] == tenant_id for item in listed)
+    assert payload["next_cursor"] is None
 
 
 def test_mutation_requires_verified_identity_and_idempotency_key() -> None:

@@ -31,6 +31,7 @@ class _Route:
 
 _ROUTES: Final = (
     _Route("POST", "/api/v1/runs", "runs.create"),
+    _Route("GET", "/api/v1/repositories/{repository_id}/runs", "runs.list"),
     _Route("POST", "/api/v1/scm/runs:resolve", "scm.runs.resolve", workload_only=True),
     _Route("GET", "/api/v1/runs/{run_id}", "runs.read"),
     _Route("POST", "/api/v1/runs/{run_id}:cancel", "runs.cancel", needs_precondition=True),

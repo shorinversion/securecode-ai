@@ -118,6 +118,7 @@ class RoleAuthorization:
         "viewer": frozenset(
             {
                 "runs.read",
+                "runs.list",
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",
@@ -135,6 +136,7 @@ class RoleAuthorization:
                 "runs.create",
                 "runs.cancel",
                 "runs.read",
+                "runs.list",
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",
@@ -156,6 +158,7 @@ class RoleAuthorization:
         "approver": frozenset(
             {
                 "runs.read",
+                "runs.list",
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",

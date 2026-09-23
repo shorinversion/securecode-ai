@@ -64,6 +64,19 @@ class DurableControlPlaneService:
     def _dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if request.action == "runs.create":
             return self._create_run(request)
+        if request.action == "runs.list":
+            repository_id = request.path_params["repository_id"]
+            if not _repository_allowed(request, repository_id):
+                return _forbidden()
+            return ServiceResponse(
+                200,
+                self._repository.list_runs(
+                    request.identity.tenant_id,
+                    repository_id,
+                    _one(request.query, "cursor"),
+                    _limit(request.query),
+                ),
+            )
         if request.action == "runs.read":
             run = self._repository.get_run(
                 request.identity.tenant_id,

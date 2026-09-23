@@ -59,6 +59,7 @@ class CompositeService:
 _CORE_ACTIONS = frozenset(
     {
         "runs.create",
+        "runs.list",
         "runs.read",
         "runs.cancel",
         "runs.events.read",

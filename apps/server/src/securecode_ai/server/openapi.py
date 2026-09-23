@@ -33,6 +33,7 @@ _ROUTES: Final = (
     ("/api/v1/auth/callback", "post", "exchange a signed OIDC response for a session"),
     ("/api/v1/auth/logout", "post", "revoke the current opaque session"),
     ("/api/v1/runs", "post", "request a run"),
+    ("/api/v1/repositories/{repository_id}/runs", "get", "list repository runs"),
     ("/api/v1/scm/runs:resolve", "post", "resolve an exact SCM run"),
     ("/api/v1/runs/{run_id}", "get", "read a run"),
     ("/api/v1/runs/{run_id}:cancel", "post", "request cancellation"),

@@ -148,6 +148,29 @@ class DevelopmentRepository:
             raise NotFoundError()
         return _run_projection(*row)
 
+    def list_runs(
+        self,
+        tenant_id: str,
+        repository_id: str,
+        cursor_token: str | None,
+        limit: int,
+    ) -> dict[str, object]:
+        """List source-free runs with tenant-bound keyset pagination."""
+
+        if not tenant_id or not repository_id or type(limit) is not int or not 1 <= limit <= 100:
+            raise ConflictError()
+        after = _cursor_text(cursor_token)
+        rows = self._connection.execute(
+            """SELECT tenant_id, run_id, repository_id, execution_identity_hash,
+                      base_sha, head_sha, state, version
+               FROM audit_runs
+               WHERE tenant_id=? AND repository_id=? AND run_id>?
+               ORDER BY run_id ASC LIMIT ?""",
+            (tenant_id, repository_id, after, limit + 1),
+        ).fetchall()
+        items = [_run_projection(*row) for row in rows[:limit]]
+        return _page(items, rows, limit, text=True, cursor_column="run_id")
+
     def cancel_run(
         self,
         *,
@@ -432,11 +455,16 @@ def _run_projection(
 
 
 def _page(
-    items: list[dict[str, object]], rows: list[sqlite3.Row], limit: int, *, text: bool = False
+    items: list[dict[str, object]],
+    rows: list[sqlite3.Row],
+    limit: int,
+    *,
+    text: bool = False,
+    cursor_column: str = "finding_id",
 ) -> dict[str, object]:
     next_cursor = None
     if len(rows) > limit:
-        value = str(rows[limit - 1]["finding_id" if text else "sequence"])
+        value = str(rows[limit - 1][cursor_column if text else "sequence"])
         next_cursor = _encode_cursor(value)
     return {"items": items, "next_cursor": next_cursor}
 

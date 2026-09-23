@@ -18,6 +18,7 @@ _ALLOW = {
     Role.VIEWER: frozenset(
         {
             "runs.read",
+            "runs.list",
             "runs.events.read",
             "runs.findings.read",
             "findings.read",

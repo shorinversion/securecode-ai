@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from typing import cast
 
 import pytest
 from securecode_ai.server.persistence import (
@@ -95,3 +96,42 @@ def test_empty_lists_are_source_free_and_have_opaque_cursor_shape() -> None:
 
     assert events == {"items": [], "next_cursor": None}
     assert findings == {"items": [], "next_cursor": None}
+
+
+def test_run_listing_is_tenant_and_repository_scoped_with_keyset_cursor() -> None:
+    repository = DevelopmentRepository.in_memory()
+    for run_id in ("run-a", "run-b", "run-c"):
+        repository.create_run(
+            tenant_id=TENANT,
+            run_id=run_id,
+            repository_id=REPOSITORY,
+            execution_identity_hash=hashlib.sha256(run_id.encode()).hexdigest(),
+            base_sha=BASE,
+            head_sha=HEAD,
+            metadata={"policy_id": "policy-a"},
+            idempotency_key=f"key-{run_id}",
+            request_sha256=hashlib.sha256(("request-" + run_id).encode()).hexdigest(),
+        )
+    repository.create_run(
+        tenant_id="tenant-b",
+        run_id="run-hidden",
+        repository_id=REPOSITORY,
+        execution_identity_hash=hashlib.sha256(b"hidden").hexdigest(),
+        base_sha=BASE,
+        head_sha=HEAD,
+        metadata={},
+        idempotency_key="key-hidden",
+        request_sha256=hashlib.sha256(b"request-hidden").hexdigest(),
+    )
+
+    first = repository.list_runs(TENANT, REPOSITORY, None, 2)
+    cursor = cast(str | None, first["next_cursor"])
+    second = repository.list_runs(TENANT, REPOSITORY, cursor, 2)
+
+    first_items = cast(list[dict[str, object]], first["items"])
+    second_items = cast(list[dict[str, object]], second["items"])
+    assert [item["run_id"] for item in first_items] == ["run-a", "run-b"]
+    assert first["next_cursor"] is not None
+    assert [item["run_id"] for item in second_items] == ["run-c"]
+    assert second["next_cursor"] is None
+    assert all(item["tenant_id"] == TENANT for item in first_items + second_items)

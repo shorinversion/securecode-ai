@@ -220,7 +220,7 @@ class ServerApp:
                 keep_blank_values=True,
             ).items()
         }
-        repository_id = _repository_id(document, query)
+        repository_id = params.get("repository_id") or _repository_id(document, query)
         if not self._authorization.allows(
             identity, action=route.action, repository_id=repository_id
         ):
