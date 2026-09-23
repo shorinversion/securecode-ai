@@ -66,7 +66,11 @@ class SubprocessSecretProvider:
                 "schema_version": 1,
             }
         )
-        if response != {"schema_version": 1, "status": "ok"}:
+        if (
+            set(response) != {"schema_version", "status"}
+            or not _schema_version_is_v1(response.get("schema_version"))
+            or response.get("status") != "ok"
+        ):
             raise SubprocessProtocolError("SECRET_PROVIDER_RESPONSE_INVALID")
 
 
@@ -102,7 +106,7 @@ class UnavailableSecretProvider:
 def _lease(response: dict[str, object]) -> OpaqueSecretLease:
     if set(response) != {"expires_at", "handle", "schema_version", "status"}:
         raise SubprocessProtocolError("SECRET_PROVIDER_RESPONSE_INVALID")
-    if response.get("schema_version") != 1 or response.get("status") != "ok":
+    if not _schema_version_is_v1(response.get("schema_version")) or response.get("status") != "ok":
         raise SubprocessProtocolError("SECRET_PROVIDER_RESPONSE_INVALID")
     handle = response.get("handle")
     expires_at = response.get("expires_at")
@@ -135,6 +139,12 @@ def _valid_handle(value: str) -> bool:
     return 32 <= len(encoded) <= 8192 and all(
         ord(character) >= 32 and ord(character) != 127 for character in value
     )
+
+
+def _schema_version_is_v1(value: object) -> bool:
+    """Require JSON's schema version to be an integer, not a bool or float."""
+
+    return type(value) is int and value == 1
 
 
 __all__ = [
