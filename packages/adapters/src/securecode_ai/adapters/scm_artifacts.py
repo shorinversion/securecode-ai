@@ -334,29 +334,24 @@ class SCMArtifactPublisher:
             stored = self._load(upload_idempotency_key)
             if stored is None:
                 raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
-            prior_attempt = self._connection.execute(
-                """SELECT succeeded FROM scm_artifact_upload_attempts
-                   WHERE upload_idempotency_key=? AND attempt_id=?""",
-                (upload_idempotency_key, attempt_id),
-            ).fetchone()
-            if prior_attempt is not None:
-                if bool(prior_attempt[0]) is not succeeded:
-                    raise SCMArtifactError(SCMArtifactErrorCode.IDENTITY_MISMATCH)
-                disposition = (
-                    SCMArtifactDisposition.IDEMPOTENT
-                    if stored.disposition is SCMArtifactDisposition.UPLOADED
-                    else stored.disposition
-                )
-                return _upload_receipt(stored, disposition, publication)
             if stored.disposition is SCMArtifactDisposition.UPLOADED:
                 return _upload_receipt(stored, SCMArtifactDisposition.IDEMPOTENT, publication)
             if stored.disposition is SCMArtifactDisposition.FAILED:
                 return _upload_receipt(stored, SCMArtifactDisposition.FAILED, publication)
-            self._connection.execute(
-                """INSERT INTO scm_artifact_upload_attempts
+            cursor = self._connection.execute(
+                """INSERT OR IGNORE INTO scm_artifact_upload_attempts
                    (upload_idempotency_key, attempt_id, succeeded) VALUES (?, ?, ?)""",
                 (upload_idempotency_key, attempt_id, int(succeeded)),
             )
+            if cursor.rowcount == 0:
+                prior_attempt = self._connection.execute(
+                    """SELECT succeeded FROM scm_artifact_upload_attempts
+                       WHERE upload_idempotency_key=? AND attempt_id=?""",
+                    (upload_idempotency_key, attempt_id),
+                ).fetchone()
+                if prior_attempt is None or bool(prior_attempt[0]) is not succeeded:
+                    raise SCMArtifactError(SCMArtifactErrorCode.IDENTITY_MISMATCH)
+                return _upload_receipt(stored, stored.disposition, publication)
             if succeeded:
                 self._connection.execute(
                     """UPDATE scm_artifact_uploads SET attempts=attempts+1, disposition=?
