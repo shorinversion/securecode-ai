@@ -252,9 +252,21 @@ def _subprocess_creation_flags() -> int:
 
 def _is_credential_name(name: str) -> bool:
     normalized = name.upper()
-    return any(
-        marker in normalized for marker in ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
-    )
+    if any(
+        marker in normalized
+        for marker in (
+            "API_KEY",
+            "ACCESS_KEY",
+            "TOKEN",
+            "SECRET",
+            "PASSWORD",
+            "CREDENTIAL",
+            "PRIVATE_KEY",
+            "AUTH_SOCK",
+        )
+    ):
+        return True
+    return normalized in {"KUBECONFIG", "DOCKER_CONFIG", "SSH_AUTH_SOCK"}
 
 
 def _contribution_environment(job: WorkerJob, environment: Mapping[str, str]) -> dict[str, str]:

@@ -135,6 +135,26 @@ def test_untrusted_contribution_filters_auth_environment() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "SSH_AUTH_SOCK",
+        "KUBECONFIG",
+        "DOCKER_CONFIG",
+    ],
+)
+def test_untrusted_contribution_filters_cloud_and_agent_credentials(name: str) -> None:
+    sanitized = _contribution_environment(
+        _job(WorkerContributionTrust.UNTRUSTED_FORK),
+        {"PATH": "safe-path", name: "credential-material"},
+    )
+
+    assert sanitized == {"PATH": "safe-path"}
+
+
 def test_untrusted_contribution_rejects_remote_provider() -> None:
     with pytest.raises(ProductExecutionError):
         _require_contribution_provider(
