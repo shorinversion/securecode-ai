@@ -248,25 +248,7 @@ class PolicyStore:
         repository_id: str,
         waivers: tuple[WaiverReference, ...] = (),
     ) -> dict[str, object]:
-        _require_identifier(tenant_id)
-        _require_identifier(repository_id)
-        row = self._db.execute(
-            """SELECT profile_id, profile_version
-               FROM scan_policy_repository_assignments
-               WHERE tenant_id = ? AND repository_id = ?""",
-            (tenant_id, repository_id),
-        ).fetchone()
-        if row is None:
-            row = self._db.execute(
-                """SELECT profile_id, profile_version
-                   FROM scan_policy_tenant_defaults WHERE tenant_id = ?""",
-                (tenant_id,),
-            ).fetchone()
-        if row is None:
-            raise ProfileConflict("no policy is assigned in tenant scope")
-        profile = self._load(tenant_id, str(row[0]), int(row[1]))
-        if profile is None:
-            raise ProfileConflict("assigned policy version does not exist")
+        profile = self.resolve_profile(tenant_id=tenant_id, repository_id=repository_id)
         now = self._now()
         if not isinstance(now, datetime) or now.tzinfo is None:
             raise ProfileConflict("clock returned an invalid timestamp")
@@ -294,6 +276,30 @@ class PolicyStore:
             "rollout": profile.rollout.value,
             "waiver_refs": tuple(waiver_documents),
         }
+
+    def resolve_profile(self, *, tenant_id: str, repository_id: str) -> ScanProfile:
+        """Return the exact assigned immutable profile for trusted runtime evaluation."""
+
+        _require_identifier(tenant_id)
+        _require_identifier(repository_id)
+        row = self._db.execute(
+            """SELECT profile_id, profile_version
+               FROM scan_policy_repository_assignments
+               WHERE tenant_id = ? AND repository_id = ?""",
+            (tenant_id, repository_id),
+        ).fetchone()
+        if row is None:
+            row = self._db.execute(
+                """SELECT profile_id, profile_version
+                   FROM scan_policy_tenant_defaults WHERE tenant_id = ?""",
+                (tenant_id,),
+            ).fetchone()
+        if row is None:
+            raise ProfileConflict("no policy is assigned in tenant scope")
+        profile = self._load(tenant_id, str(row[0]), int(row[1]))
+        if profile is None:
+            raise ProfileConflict("assigned policy version does not exist")
+        return profile
 
     def list(
         self,
