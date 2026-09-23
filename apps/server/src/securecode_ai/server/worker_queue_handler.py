@@ -344,12 +344,19 @@ def _required_text(document: Mapping[str, object], name: str) -> str:
 
 
 def _version(value: str | None) -> int:
-    if value is None:
+    if type(value) is not str or not value:
         raise WorkerQueueConflict()
-    unquoted = value.strip('"')
-    if not unquoted.isdigit() or int(unquoted) < 1:
+    unquoted = value
+    if unquoted.startswith('"') or unquoted.endswith('"'):
+        if len(unquoted) < 3 or not (unquoted.startswith('"') and unquoted.endswith('"')):
+            raise WorkerQueueConflict()
+        unquoted = unquoted[1:-1]
+    if not unquoted.isascii() or not unquoted.isdecimal() or len(unquoted) > 10:
         raise WorkerQueueConflict()
-    return int(unquoted)
+    version = int(unquoted)
+    if not 1 <= version <= 2_147_483_647:
+        raise WorkerQueueConflict()
+    return version
 
 
 def _queue_connection(queue: SqliteWorkerQueue) -> sqlite3.Connection:
