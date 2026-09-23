@@ -261,6 +261,13 @@ def test_policy_decision_loader_binds_receipt_to_exact_identity() -> None:
 
 def test_scm_policy_modes_control_only_the_published_outcome() -> None:
     advisory = _decision()
+    advisory_error = _rehash(
+        _strict_non_pass_decision(),
+        mode=ScmPolicyMode.ADVISORY,
+        enforcement=ScmPolicyEnforcement.NON_PASS,
+        blocks_merge=False,
+        matched_rule_ids=("precalibration_blocking_rejected",),
+    )
     strict_block = _rehash(
         advisory,
         mode=ScmPolicyMode.STRICT,
@@ -279,6 +286,14 @@ def test_scm_policy_modes_control_only_the_published_outcome() -> None:
     assert (
         scm_publication_outcome(AuditRunOutcome.FAIL, advisory, execution_identity_hash="c" * 64)
         is AuditRunOutcome.FAIL
+    )
+    assert (
+        scm_publication_outcome(
+            AuditRunOutcome.PASS,
+            advisory_error,
+            execution_identity_hash="c" * 64,
+        )
+        is AuditRunOutcome.INDETERMINATE
     )
     assert (
         scm_publication_outcome(

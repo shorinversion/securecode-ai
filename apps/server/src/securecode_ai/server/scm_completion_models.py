@@ -145,10 +145,10 @@ def scm_publication_outcome(
         or decision.observed_audit_outcome is not audit
     ):
         raise SCMCompletionError("SCM policy decision conflicts with the run")
-    if decision.mode is ScmPolicyMode.ADVISORY:
-        return audit
     if decision.error_code is not None or not decision.publication_permitted:
         return AuditRunOutcome.INDETERMINATE
+    if decision.mode is ScmPolicyMode.ADVISORY:
+        return audit
     if decision.enforcement is ScmPolicyEnforcement.BLOCK:
         return AuditRunOutcome.FAIL
     if decision.enforcement is ScmPolicyEnforcement.ALLOW:
