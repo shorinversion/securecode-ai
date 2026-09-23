@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol
 
 from .identity import Principal
@@ -12,6 +14,23 @@ from .views import FindingView, RunView
 
 class SafeNotFound(Exception):
     pass
+
+
+class QueryValidationErrorCode(StrEnum):
+    CURSOR_INVALID = "CURSOR_INVALID"
+    LIMIT_INVALID = "LIMIT_INVALID"
+
+
+class QueryValidationError(ValueError):
+    """Bounded pagination failure that never carries caller-controlled data."""
+
+    __slots__ = ("code",)
+
+    def __init__(self, code: QueryValidationErrorCode) -> None:
+        if type(code) is not QueryValidationErrorCode:
+            raise TypeError("query validation code is invalid")
+        self.code = code
+        super().__init__("query pagination is invalid")
 
 
 class ViewRepository(Protocol):
@@ -110,7 +129,7 @@ class QueryService:
 
 def _page(values: list[dict[str, object]], cursor: str | None, limit: int) -> dict[str, object]:
     start = _decode(cursor)
-    size = min(max(limit, 1), 100)
+    size = _page_size(limit)
     page = values[start : start + size]
     next_cursor = _encode(start + len(page)) if start + len(page) < len(values) else None
     return {"items": page, "next_cursor": next_cursor}
@@ -120,11 +139,37 @@ def _encode(value: int) -> str:
     return base64.urlsafe_b64encode(str(value).encode("ascii")).decode("ascii").rstrip("=")
 
 
-def _decode(value: str | None) -> int:
+def _page_size(value: object) -> int:
+    if type(value) is not int or not 1 <= value <= 100:
+        raise QueryValidationError(QueryValidationErrorCode.LIMIT_INVALID)
+    return value
+
+
+def _decode(value: object) -> int:
     if value is None:
         return 0
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > 256
+        or any(
+            not character.isascii() or (not character.isalnum() and character not in "-_")
+            for character in value
+        )
+    ):
+        raise QueryValidationError(QueryValidationErrorCode.CURSOR_INVALID)
     try:
         decoded = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("ascii")
-        return int(decoded) if decoded.isdigit() else 0
-    except (UnicodeDecodeError, ValueError):
-        return 0
+    except (binascii.Error, UnicodeDecodeError):
+        raise QueryValidationError(QueryValidationErrorCode.CURSOR_INVALID) from None
+    if not decoded or not decoded.isascii() or not decoded.isdecimal():
+        raise QueryValidationError(QueryValidationErrorCode.CURSOR_INVALID)
+    if len(decoded) > 1 and decoded.startswith("0"):
+        raise QueryValidationError(QueryValidationErrorCode.CURSOR_INVALID)
+    try:
+        offset = int(decoded)
+    except ValueError:
+        raise QueryValidationError(QueryValidationErrorCode.CURSOR_INVALID) from None
+    if offset > 9_223_372_036_854_775_807 or _encode(offset) != value:
+        raise QueryValidationError(QueryValidationErrorCode.CURSOR_INVALID)
+    return offset
