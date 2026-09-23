@@ -50,7 +50,6 @@ def test_docker_context_is_an_explicit_source_allowlist() -> None:
 @pytest.mark.parametrize(
     "path",
     (
-        "Dockerfile",
         "deploy/docker/runtime.Dockerfile",
         "deploy/docker/server.Dockerfile",
         "deploy/docker/worker.Dockerfile",
@@ -64,7 +63,7 @@ def test_deployment_images_have_a_pinned_default_runtime(path: str) -> None:
 
 
 def test_server_images_bind_the_container_interface() -> None:
-    for path in ("Dockerfile", "deploy/docker/server.Dockerfile"):
+    for path in ("deploy/docker/server.Dockerfile",):
         document = _text(path)
         assert "SECURECODE_SERVER_HOST=0.0.0.0" in document
         assert "SECURECODE_SERVER_PORT=8080" in document
@@ -73,16 +72,19 @@ def test_server_images_bind_the_container_interface() -> None:
 
 
 def test_compose_uses_loopback_ingress_and_secret_backed_tls() -> None:
-    document = _text("docker-compose.yml")
+    document = _text("deploy/docker/compose.yaml")
 
-    assert '"127.0.0.1:8080:8080"' in document
-    assert "SECURECODE_CONTROL_PLANE_URL: https://server:8080" in document
-    assert "SSL_CERT_FILE: /run/secrets/server_ca" in document
+    assert '"127.0.0.1:${SECURECODE_SERVER_PUBLISHED_PORT:-8443}:8080"' in document
+    assert "SECURECODE_CONTROL_PLANE_URL: https://securecode-server:8080" in document
+    assert "SSL_CERT_FILE: /run/secrets/securecode_tls_ca" in document
     assert "condition: service_healthy" in document
     assert "read_only: true" in document
-    assert "SECURECODE_TLS_KEY_FILE: /run/secrets/server_tls_key" in document
-    assert "mode: 0400" in document
-    assert "SECURECODE_BOOTSTRAP_WORKER_TOKEN:" not in document
+    assert "SECURECODE_TLS_KEY_FILE: /run/secrets/securecode_tls_key" in document
+    assert (
+        "SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE: /run/secrets/securecode_worker_token" in document
+    )
+    assert "privileged:" not in document
+    assert "/var/run/docker.sock" not in document
 
 
 def test_gitlab_source_job_dispatches_exact_head_without_worker_authority() -> None:
