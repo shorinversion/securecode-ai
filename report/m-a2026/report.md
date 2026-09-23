@@ -24,7 +24,7 @@ The submission combines three evidence layers: a pinned synthetic CWE-89 detect,
 - Repair study: 0 attempted patches and 0 independently validated patches; root-cause repair rate is unavailable.
 - Real local demo: outcome=COMPLETED, lane agreement=AGREED, patch=PROPOSED, ephemeral validation=PASSED, source unchanged=true.
 - Observed runtime: Ollama 0.16.2, model qwen2.5-coder:7b-instruct-q4_K_M, quantization Q4_K_M, digest sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364.
-- Repository quality: `PASS`, 2703 passed, 32 skipped, 80.14% Core branch coverage.
+- Repository quality: `PASS`, 2912 passed, 32 skipped, 80.14% Core branch coverage.
 
 ## Conclusions
 
@@ -73,7 +73,7 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 | `report/m-a2026/evidence/p917-real-local/p917-ephemeral-validation.json` | `130c1595e7e5aee1847a5c7e79422efef2e685456f00f9c67034b310e2a89bd8` |
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.html` | `400ff949e73e65f6b6987551e75f8c105b47b95f83b69d648bcbcabed220c6be` |
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.json` | `d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b` |
-| `scripts/build_m_a2026_submission.py` | `c7c9b208b124607968cd8c0fece750015037c5502116ab3aa9a8bca41c5e1792` |
+| `scripts/build_m_a2026_submission.py` | `0bc2dd2cec09dd2f47aa82be72135174cf1e5cd689c30e3cdfdafd233bad4edc` |
 | `tests/integration/test_cwe_portfolio_pipeline.py` | `e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7` |
 | `tests/integration/test_m_a2026_submission.py` | `5f46ea984efd26a855d73a19d2b7b1eab585de8b4abd2fd588e4b2fca5494598` |
 | `tests/integration/test_multilanguage_pipeline.py` | `00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc` |

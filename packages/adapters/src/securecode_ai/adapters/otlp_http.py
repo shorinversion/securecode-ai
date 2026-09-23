@@ -10,7 +10,7 @@ from contextlib import suppress
 from typing import Final, Protocol
 from urllib.parse import urlsplit
 
-from securecode_ai.server.observability import Observation
+from securecode_ai.core.operational_telemetry import OperationalObservation
 
 _MAX_BATCH: Final = 256
 _MAX_PAYLOAD_BYTES: Final = 65_536
@@ -84,12 +84,12 @@ class OtlpHttpExporter:
     def __repr__(self) -> str:
         return "OtlpHttpExporter(<configured>)"
 
-    def export(self, observations: tuple[Observation, ...]) -> bool:
+    def export(self, observations: tuple[OperationalObservation, ...]) -> bool:
         if (
             type(observations) is not tuple
             or not observations
             or len(observations) > _MAX_BATCH
-            or any(type(item) is not Observation for item in observations)
+            or any(type(item) is not OperationalObservation for item in observations)
         ):
             return False
         try:
@@ -130,7 +130,7 @@ def _valid_endpoint(value: object) -> bool:
     )
 
 
-def _payload(observations: tuple[Observation, ...], *, observed_at_ns: int) -> bytes:
+def _payload(observations: tuple[OperationalObservation, ...], *, observed_at_ns: int) -> bytes:
     records: list[dict[str, object]] = []
     for item in observations:
         attributes = [
