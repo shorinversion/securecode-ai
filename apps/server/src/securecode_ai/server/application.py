@@ -11,6 +11,7 @@ from urllib.parse import parse_qs
 from .http_boundary import (
     _IDEMPOTENCY,
     _MAX_BODY_BYTES,
+    _MAX_QUERY_FIELDS,
     _MUTATING,
     _headers,
     _idempotency_key,
@@ -223,6 +224,7 @@ class ServerApp:
                 keep_blank_values=True,
                 encoding="utf-8",
                 errors="strict",
+                max_num_fields=_MAX_QUERY_FIELDS,
             )
         except (UnicodeDecodeError, ValueError):
             await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)

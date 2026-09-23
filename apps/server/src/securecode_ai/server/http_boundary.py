@@ -12,6 +12,8 @@ from .json_boundary import JsonBoundaryError, load_json_object
 from .openapi import SUPPORTED_MAJOR
 
 _MAX_BODY_BYTES: Final = 16_777_216
+_MAX_QUERY_BYTES: Final = 8_192
+_MAX_QUERY_FIELDS: Final = 64
 _IDEMPOTENCY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
 _PATH_PARAMETER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _VERSION_HEADER: Final = "x-securecode-api-version"
@@ -313,7 +315,7 @@ def _valid_precondition(value: str | None) -> bool:
 
 
 def _query(value: object) -> str | None:
-    if type(value) is not bytes:
+    if type(value) is not bytes or len(value) > _MAX_QUERY_BYTES:
         return None
     try:
         return value.decode("ascii")

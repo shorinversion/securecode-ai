@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from securecode_ai.server import (
     ServerApp,
     ServiceRequest,
@@ -148,6 +149,36 @@ def test_percent_encoded_invalid_utf8_query_is_rejected_as_invalid_request() -> 
             "/api/v1/runs/run-1",
             headers={"authorization": "Bearer token"},
             query_string=b"cursor=%FF",
+        )
+    )
+
+    assert status == 400
+    error = document.get("error")
+    assert isinstance(error, dict)
+    assert error.get("code") == "INVALID_REQUEST"
+
+
+@pytest.mark.parametrize(
+    "query_string",
+    [b"x=" * 4097, b"&".join([b"x=1"] * 65)],
+    ids=("query-byte-limit", "query-field-limit"),
+)
+def test_oversized_or_excessive_query_is_rejected(
+    query_string: bytes,
+) -> None:
+    app = create_app(
+        identities=_IdentityVerifier(VerifiedIdentity("user-1", "tenant-a", frozenset({"viewer"}))),
+        authorization=RoleAuthorization(),
+        service=_Service(),
+    )
+
+    status, document = asyncio.run(
+        _request(
+            app,
+            "GET",
+            "/api/v1/runs/run-1",
+            headers={"authorization": "Bearer token"},
+            query_string=query_string,
         )
     )
 
