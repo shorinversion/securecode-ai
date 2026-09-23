@@ -105,3 +105,21 @@ def test_audit_export_range_is_bounded_and_can_be_paged() -> None:
     document = page["document"]
     assert isinstance(document, dict)
     assert len(document["events"]) == 2
+
+
+def test_audit_export_rejects_end_after_current_head() -> None:
+    log = AuditLog()
+    log.append(
+        tenant_id="t",
+        repository_id="r",
+        run_id="run",
+        actor_id="actor",
+        action="runs.create",
+        identity_hash="a" * 64,
+        expected_sequence=0,
+        attributes={"outcome": "PASS"},
+        idempotency_key="key",
+    )
+
+    with pytest.raises(AuditConflict, match="audit head"):
+        export_audit(log, tenant_id="t", run_id="run", end=2)
