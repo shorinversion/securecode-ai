@@ -157,7 +157,8 @@ def test_upload_failures_are_bounded_retry_receipts_and_never_pass() -> None:
     key = initial.uploads[0].upload_idempotency_key
 
     retries = [
-        publisher.record_upload_result(key, succeeded=False) for _ in range(MAX_UPLOAD_ATTEMPTS)
+        publisher.record_upload_result(key, succeeded=False, attempt_id=f"attempt-{index}")
+        for index in range(1, MAX_UPLOAD_ATTEMPTS + 1)
     ]
 
     assert all(receipt.audit_outcome_changed is False for receipt in retries)
@@ -165,7 +166,7 @@ def test_upload_failures_are_bounded_retry_receipts_and_never_pass() -> None:
     assert retries[-1].disposition is SCMArtifactDisposition.FAILED
     assert retries[-1].retry_allowed is False
     assert (
-        publisher.record_upload_result(key, succeeded=True).disposition
+        publisher.record_upload_result(key, succeeded=True, attempt_id="late-success").disposition
         is SCMArtifactDisposition.FAILED
     )
 
@@ -180,18 +181,47 @@ def test_upload_attempts_survive_database_and_publisher_recreation(tmp_path: Pat
     first = first_publisher.project(request)
     key = first.uploads[0].upload_idempotency_key
 
-    failed = first_publisher.record_upload_result(key, succeeded=False)
+    failed = first_publisher.record_upload_result(key, succeeded=False, attempt_id="transport-1")
     connection.close()
     reopened = sqlite3.connect(database, check_same_thread=False)
     resumed_publisher = SCMArtifactPublisher(adapter, connection=reopened)
     replayed = resumed_publisher.project(request)
-    failed_again = resumed_publisher.record_upload_result(key, succeeded=False)
+    duplicate_failure = resumed_publisher.record_upload_result(
+        key, succeeded=False, attempt_id="transport-1"
+    )
+    with pytest.raises(SCMArtifactError):
+        resumed_publisher.record_upload_result(key, succeeded=True, attempt_id="transport-1")
+    failed_again = resumed_publisher.record_upload_result(
+        key, succeeded=False, attempt_id="transport-2"
+    )
 
     assert failed.attempt_count == 1
     assert replayed.uploads[0].disposition is SCMArtifactDisposition.IDEMPOTENT
     assert replayed.uploads[0].attempt_count == 1
+    assert duplicate_failure.attempt_count == 1
     assert failed_again.attempt_count == 2
     assert failed_again.disposition is SCMArtifactDisposition.RETRY_READY
+
+
+def test_success_result_is_durable_and_duplicate_delivery_is_idempotent(tmp_path: Path) -> None:
+    identity = _fixture()._admitted_run().execution_identity
+    adapter, run_id, _ = _admit(identity)
+    database = tmp_path / "scm-artifact-success.sqlite3"
+    connection = sqlite3.connect(database, check_same_thread=False)
+    publisher = SCMArtifactPublisher(adapter, connection=connection)
+    initial = publisher.project(_request(run_id, identity, _input()))
+    key = initial.uploads[0].upload_idempotency_key
+
+    uploaded = publisher.record_upload_result(key, succeeded=True, attempt_id="upload-attempt-1")
+    connection.close()
+    reopened = sqlite3.connect(database, check_same_thread=False)
+    resumed = SCMArtifactPublisher(adapter, connection=reopened)
+    replayed = resumed.record_upload_result(key, succeeded=True, attempt_id="upload-attempt-1")
+
+    assert uploaded.disposition is SCMArtifactDisposition.UPLOADED
+    assert uploaded.attempt_count == 1
+    assert replayed.disposition is SCMArtifactDisposition.IDEMPOTENT
+    assert replayed.attempt_count == 1
 
 
 def test_stale_run_suppresses_projection_and_transport_result() -> None:
@@ -204,7 +234,9 @@ def test_stale_run_suppresses_projection_and_transport_result() -> None:
 
     stale = publisher.project(request)
     transport = publisher.record_upload_result(
-        initial.uploads[0].upload_idempotency_key, succeeded=True
+        initial.uploads[0].upload_idempotency_key,
+        succeeded=True,
+        attempt_id="stale-upload",
     )
 
     assert stale.uploads == ()

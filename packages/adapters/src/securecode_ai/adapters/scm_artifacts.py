@@ -239,6 +239,17 @@ class SCMArtifactPublisher:
                 CHECK (attempts >= 0)
             )"""
         )
+        self._connection.execute(
+            """CREATE TABLE IF NOT EXISTS scm_artifact_upload_attempts (
+                upload_idempotency_key TEXT NOT NULL,
+                attempt_id TEXT NOT NULL,
+                succeeded INTEGER NOT NULL,
+                PRIMARY KEY (upload_idempotency_key, attempt_id),
+                FOREIGN KEY (upload_idempotency_key)
+                    REFERENCES scm_artifact_uploads (upload_idempotency_key),
+                CHECK (succeeded IN (0, 1))
+            )"""
+        )
         self._connection.commit()
 
     def project(self, request: SCMArtifactRequest) -> SCMArtifactBatchReceipt:
@@ -289,6 +300,7 @@ class SCMArtifactPublisher:
         upload_idempotency_key: str,
         *,
         succeeded: bool,
+        attempt_id: str,
     ) -> SCMArtifactUploadReceipt:
         """Record a transport result after another fresh exact-HEAD authorization."""
 
@@ -296,6 +308,8 @@ class SCMArtifactPublisher:
             type(upload_idempotency_key) is not str
             or _ID.fullmatch(upload_idempotency_key) is None
             or type(succeeded) is not bool
+            or type(attempt_id) is not str
+            or _ID.fullmatch(attempt_id) is None
         ):
             raise SCMArtifactError(SCMArtifactErrorCode.INVALID_REQUEST)
         with self._lock:
@@ -320,19 +334,51 @@ class SCMArtifactPublisher:
             stored = self._load(upload_idempotency_key)
             if stored is None:
                 raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
+            prior_attempt = self._connection.execute(
+                """SELECT succeeded FROM scm_artifact_upload_attempts
+                   WHERE upload_idempotency_key=? AND attempt_id=?""",
+                (upload_idempotency_key, attempt_id),
+            ).fetchone()
+            if prior_attempt is not None:
+                if bool(prior_attempt[0]) is not succeeded:
+                    raise SCMArtifactError(SCMArtifactErrorCode.IDENTITY_MISMATCH)
+                disposition = (
+                    SCMArtifactDisposition.IDEMPOTENT
+                    if stored.disposition is SCMArtifactDisposition.UPLOADED
+                    else stored.disposition
+                )
+                return _upload_receipt(stored, disposition, publication)
             if stored.disposition is SCMArtifactDisposition.UPLOADED:
                 return _upload_receipt(stored, SCMArtifactDisposition.IDEMPOTENT, publication)
             if stored.disposition is SCMArtifactDisposition.FAILED:
                 return _upload_receipt(stored, SCMArtifactDisposition.FAILED, publication)
-            stored.attempts += 1
+            self._connection.execute(
+                """INSERT INTO scm_artifact_upload_attempts
+                   (upload_idempotency_key, attempt_id, succeeded) VALUES (?, ?, ?)""",
+                (upload_idempotency_key, attempt_id, int(succeeded)),
+            )
             if succeeded:
-                stored.disposition = SCMArtifactDisposition.UPLOADED
-                return _upload_receipt(stored, SCMArtifactDisposition.UPLOADED, publication)
-            if stored.attempts >= MAX_UPLOAD_ATTEMPTS:
-                stored.disposition = SCMArtifactDisposition.FAILED
+                self._connection.execute(
+                    """UPDATE scm_artifact_uploads SET attempts=attempts+1, disposition=?
+                       WHERE upload_idempotency_key=?""",
+                    (SCMArtifactDisposition.UPLOADED.value, upload_idempotency_key),
+                )
             else:
-                stored.disposition = SCMArtifactDisposition.RETRY_READY
-            self._save(stored)
+                self._connection.execute(
+                    """UPDATE scm_artifact_uploads
+                       SET attempts=attempts+1,
+                           disposition=CASE WHEN attempts+1>=? THEN ? ELSE ? END
+                       WHERE upload_idempotency_key=?""",
+                    (
+                        MAX_UPLOAD_ATTEMPTS,
+                        SCMArtifactDisposition.FAILED.value,
+                        SCMArtifactDisposition.RETRY_READY.value,
+                        upload_idempotency_key,
+                    ),
+                )
+            stored = self._load(upload_idempotency_key)
+            if stored is None:
+                raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
             return _upload_receipt(stored, stored.disposition, publication)
 
     def _store_projection(
@@ -395,19 +441,6 @@ class SCMArtifactPublisher:
             )
         except (TypeError, ValueError, json.JSONDecodeError):
             raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN) from None
-
-    def _save(self, stored: _StoredUpload) -> None:
-        cursor = self._connection.execute(
-            """UPDATE scm_artifact_uploads
-               SET attempts=?, disposition=? WHERE upload_idempotency_key=?""",
-            (
-                stored.attempts,
-                stored.disposition.value,
-                stored.projection.upload_idempotency_key,
-            ),
-        )
-        if cursor.rowcount != 1:
-            raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
 
     def _authorize(self, scm_run_id: str) -> SCMRunPublicationReceipt:
         try:
