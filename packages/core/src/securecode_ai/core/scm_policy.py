@@ -162,6 +162,13 @@ class ScmPolicyDecision:
             raise ValueError("blocking policy decision must block merge")
         if self.enforcement is ScmPolicyEnforcement.ADVISORY and self.blocks_merge:
             raise ValueError("advisory policy decision cannot block merge")
+        if (
+            self.error_code is None
+            and self.mode is ScmPolicyMode.STRICT
+            and self.enforcement is ScmPolicyEnforcement.ALLOW
+            and self.observed_audit_outcome is not AuditRunOutcome.PASS
+        ):
+            raise ValueError("strict policy cannot allow a non-passing audit")
 
     def metadata(self) -> dict[str, object]:
         return {
