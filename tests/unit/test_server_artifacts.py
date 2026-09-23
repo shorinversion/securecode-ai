@@ -42,3 +42,29 @@ def test_wrong_hash_and_cross_tenant_read_fail_closed(tmp_path: Path) -> None:
     store.put(metadata, [data], "key")
     with pytest.raises(ArtifactConflict):
         store.get(tenant_id="tenant-b", content_sha256=metadata.content_sha256)
+
+
+def test_symlinked_artifact_root_is_rejected_before_following_target(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    linked = tmp_path / "artifacts"
+    try:
+        linked.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlink creation is unavailable")
+
+    with pytest.raises(ValueError, match="artifact root is unsafe"):
+        LocalArtifactStore(linked)
+
+
+def test_symlinked_artifact_root_ancestor_is_rejected(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    parent_link = tmp_path / "parent-link"
+    try:
+        parent_link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlink creation is unavailable")
+
+    with pytest.raises(ValueError, match="artifact root is unsafe"):
+        LocalArtifactStore(parent_link / "artifacts")

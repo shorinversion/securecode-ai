@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Iterable, Iterator
 from dataclasses import asdict
@@ -16,11 +17,9 @@ from .artifacts import ArtifactConflict, ArtifactMetadata
 
 class LocalArtifactStore:
     def __init__(self, root: Path, *, max_bytes: int = 16_777_216) -> None:
-        self._root = root.resolve()
+        self._root = _lexical_root(root)
         self._max_bytes = max_bytes
         self._root.mkdir(parents=True, exist_ok=True)
-        if self._root.is_symlink():
-            raise ValueError("artifact root is unsafe")
 
     def put(
         self, metadata: ArtifactMetadata, chunks: Iterable[bytes], idempotency_key: str
@@ -149,6 +148,31 @@ def _digest(path: Path) -> str:
 
 def _safe(value: str) -> bool:
     return bool(value) and value.replace("_", "").replace("-", "").isalnum()
+
+
+def _lexical_root(root: Path) -> Path:
+    """Return an absolute root without following a symlink in its path."""
+
+    if not isinstance(root, Path):
+        raise ValueError("artifact root is unsafe")
+    absolute = root.absolute()
+    current = absolute
+    while True:
+        try:
+            details = current.lstat()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            raise ValueError("artifact root is unsafe") from None
+        else:
+            if stat.S_ISLNK(details.st_mode) or bool(
+                getattr(details, "st_file_attributes", 0) & 0x400
+            ):
+                raise ValueError("artifact root is unsafe")
+        if current == Path(current.anchor):
+            break
+        current = current.parent
+    return absolute
 
 
 def _sha(value: str) -> bool:
