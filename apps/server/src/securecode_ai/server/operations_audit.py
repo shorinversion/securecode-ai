@@ -232,9 +232,17 @@ def _query_integer(
         if default is None:
             return None
         return default
-    if len(values) != 1 or not values[0].isdigit():
+    if (
+        len(values) != 1
+        or not values[0].isascii()
+        or not values[0].isdecimal()
+        or len(values[0]) > 19
+    ):
         raise AuditConflict("audit range query is invalid")
-    return int(values[0])
+    parsed = int(values[0])
+    if parsed > 9_223_372_036_854_775_807:
+        raise AuditConflict("audit range query is invalid")
+    return parsed
 
 
 def _error(status: int, code: str) -> ServiceResponse:

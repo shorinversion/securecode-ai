@@ -160,6 +160,14 @@ def test_audit_export_is_repo_scoped_bounded_and_source_free() -> None:
     )
     assert invalid_range.status == 400
     assert invalid_range.document == {"error": {"code": "INVALID_AUDIT_RANGE"}}
+    unicode_range = asyncio.run(
+        service.dispatch(_request("runs.audit.read", authorized, query={"start": (chr(0x0661),)}))
+    )
+    assert unicode_range.status == 400
+    oversized_range = asyncio.run(
+        service.dispatch(_request("runs.audit.read", authorized, query={"start": ("9" * 5000,)}))
+    )
+    assert oversized_range.status == 400
 
 
 def test_approval_transition_is_bound_to_the_run_audit_chain() -> None:
