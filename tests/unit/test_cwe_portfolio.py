@@ -187,6 +187,30 @@ def test_sources_outside_security_relevant_sink_argument_emit_no_fact(
     assert scan_cwe_portfolio(_index(builder, path, source)).signals == ()
 
 
+def test_pathlib_joinpath_with_request_segment_emits_path_traversal_fact() -> None:
+    source = (
+        b"from pathlib import Path\n"
+        b"def read(request, root):\n"
+        b" return Path(root).joinpath(request.args.get('file')).read_text()\n"
+    )
+
+    result = scan_cwe_portfolio(_index(build_python_symbol_index, "api/read.py", source))
+
+    assert tuple(signal.cwe for signal in result.signals) == ("CWE-22",)
+
+
+def test_pathlib_joinpath_with_constant_segment_emits_no_path_traversal_fact() -> None:
+    source = (
+        b"from pathlib import Path\n"
+        b"def read(root):\n"
+        b" return Path(root).joinpath('readme.txt').read_text()\n"
+    )
+
+    assert (
+        scan_cwe_portfolio(_index(build_python_symbol_index, "api/read.py", source)).signals == ()
+    )
+
+
 @pytest.mark.parametrize(
     ("builder", "path", "post_guard", "unrelated_guard", "matching_guard"),
     [

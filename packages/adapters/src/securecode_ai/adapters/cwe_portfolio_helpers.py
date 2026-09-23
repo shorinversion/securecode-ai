@@ -92,8 +92,9 @@ def _python_facts(source: bytes) -> tuple[tuple[str, SourceRange, SourceRange], 
 def _python_cwe(compact: str) -> str | None:
     if re.match(r"(?:subprocess\.)?(?:run|call|Popen)\(", compact) and "shell=True" in compact:
         return "CWE-78"
-    if (compact.startswith("open(") or ".read_text(" in compact or ".read_bytes(" in compact) and (
-        "os.path.join(" in compact or "Path(" in compact
+    path_builder = "os.path.join(" in compact or "Path(" in compact or ".joinpath(" in compact
+    if compact.startswith("open(") or (
+        (".read_text(" in compact or ".read_bytes(" in compact) and path_builder
     ):
         return "CWE-22"
     if re.match(r"(?:requests\.)?(?:get|post|request)\(", compact):
@@ -106,6 +107,13 @@ def _python_cwe(compact: str) -> str | None:
 def _python_security_argument(call: ast.Call, cwe: str, compact: str) -> ast.expr:
     if cwe == "CWE-918" and compact.startswith("requests.request(") and len(call.args) > 1:
         return call.args[1]
+    if cwe == "CWE-22" and not call.args:
+        if isinstance(call.func, ast.Attribute) and call.func.attr in {
+            "read_bytes",
+            "read_text",
+        }:
+            return call.func.value
+        raise CwePortfolioScanError(CwePortfolioScanErrorCode.INTEGRITY_FAILURE)
     if not call.args:
         raise CwePortfolioScanError(CwePortfolioScanErrorCode.INTEGRITY_FAILURE)
     return call.args[0]
