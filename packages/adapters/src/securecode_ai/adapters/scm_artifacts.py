@@ -215,19 +215,19 @@ class SCMArtifactPublisher:
         self,
         adapter: GithubAppAdapter,
         *,
+        connection: sqlite3.Connection,
         allowed_https_hosts: frozenset[str] = DEFAULT_ALLOWED_HTTPS_ARTIFACT_HOSTS,
-        connection: sqlite3.Connection | None = None,
     ) -> None:
         if (
             type(adapter) is not GithubAppAdapter
             or not _valid_hosts(allowed_https_hosts)
-            or (connection is not None and not isinstance(connection, sqlite3.Connection))
+            or not isinstance(connection, sqlite3.Connection)
         ):
             raise SCMArtifactError(SCMArtifactErrorCode.INVALID_REQUEST)
         self._adapter = adapter
         self._allowed_https_hosts = allowed_https_hosts
         self._lock = RLock()
-        self._connection = connection or sqlite3.connect(":memory:", check_same_thread=False)
+        self._connection = connection
         self._connection.execute(
             """CREATE TABLE IF NOT EXISTS scm_artifact_uploads (
                 upload_idempotency_key TEXT PRIMARY KEY,

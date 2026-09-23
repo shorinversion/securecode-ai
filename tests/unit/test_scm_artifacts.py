@@ -112,10 +112,17 @@ def _request(
     )
 
 
+def _publisher(adapter: GithubAppAdapter) -> SCMArtifactPublisher:
+    return SCMArtifactPublisher(
+        adapter,
+        connection=sqlite3.connect(":memory:", check_same_thread=False),
+    )
+
+
 def test_exact_head_metadata_artifact_is_idempotent_and_never_merge_authority() -> None:
     identity = _fixture()._admitted_run().execution_identity
     adapter, run_id, _ = _admit(identity)
-    publisher = SCMArtifactPublisher(adapter)
+    publisher = _publisher(adapter)
     request = _request(run_id, identity, _input())
 
     first = publisher.project(request)
@@ -133,19 +140,19 @@ def test_optional_sarif_capability_absence_is_observable_without_upload() -> Non
     adapter, run_id, _ = _admit(identity)
     sarif = _input(name="reports/findings.sarif", media_type="application/sarif+json")
 
-    absent = SCMArtifactPublisher(adapter).project(_request(run_id, identity, sarif, sarif=False))
+    absent = _publisher(adapter).project(_request(run_id, identity, sarif, sarif=False))
 
     assert absent.uploads == ()
     assert absent.suppressions[0].reason is SCMArtifactSuppression.SARIF_CAPABILITY_ABSENT
 
-    enabled = SCMArtifactPublisher(adapter).project(_request(run_id, identity, sarif, sarif=True))
+    enabled = _publisher(adapter).project(_request(run_id, identity, sarif, sarif=True))
     assert enabled.uploads[0].disposition is SCMArtifactDisposition.CREATED
 
 
 def test_upload_failures_are_bounded_retry_receipts_and_never_pass() -> None:
     identity = _fixture()._admitted_run().execution_identity
     adapter, run_id, _ = _admit(identity)
-    publisher = SCMArtifactPublisher(adapter)
+    publisher = _publisher(adapter)
     initial = publisher.project(_request(run_id, identity, _input()))
     key = initial.uploads[0].upload_idempotency_key
 
@@ -163,17 +170,20 @@ def test_upload_failures_are_bounded_retry_receipts_and_never_pass() -> None:
     )
 
 
-def test_upload_attempts_survive_publisher_recreation() -> None:
+def test_upload_attempts_survive_database_and_publisher_recreation(tmp_path: Path) -> None:
     identity = _fixture()._admitted_run().execution_identity
     adapter, run_id, _ = _admit(identity)
-    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    database = tmp_path / "scm-artifacts.sqlite3"
+    connection = sqlite3.connect(database, check_same_thread=False)
     request = _request(run_id, identity, _input())
     first_publisher = SCMArtifactPublisher(adapter, connection=connection)
     first = first_publisher.project(request)
     key = first.uploads[0].upload_idempotency_key
 
     failed = first_publisher.record_upload_result(key, succeeded=False)
-    resumed_publisher = SCMArtifactPublisher(adapter, connection=connection)
+    connection.close()
+    reopened = sqlite3.connect(database, check_same_thread=False)
+    resumed_publisher = SCMArtifactPublisher(adapter, connection=reopened)
     replayed = resumed_publisher.project(request)
     failed_again = resumed_publisher.record_upload_result(key, succeeded=False)
 
@@ -187,7 +197,7 @@ def test_upload_attempts_survive_publisher_recreation() -> None:
 def test_stale_run_suppresses_projection_and_transport_result() -> None:
     identity = _fixture()._admitted_run().execution_identity
     adapter, run_id, source = _admit(identity)
-    publisher = SCMArtifactPublisher(adapter)
+    publisher = _publisher(adapter)
     request = _request(run_id, identity, _input())
     initial = publisher.project(request)
     source["head"] = NEW_HEAD
@@ -214,6 +224,4 @@ def test_source_class_and_unallowlisted_reference_are_refused() -> None:
     allowed_shape_but_unallowlisted = _input(reference="https://other.example/report.json")
 
     with pytest.raises(SCMArtifactError):
-        SCMArtifactPublisher(adapter).project(
-            _request(run_id, identity, allowed_shape_but_unallowlisted)
-        )
+        _publisher(adapter).project(_request(run_id, identity, allowed_shape_but_unallowlisted))
