@@ -3,6 +3,7 @@ from __future__ import annotations
 import runpy
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -69,6 +70,47 @@ def test_server_images_bind_the_container_interface() -> None:
         assert "SECURECODE_SERVER_PORT=8080" in document
         assert "EXPOSE 8080" in document
         assert 'CMD ["python","-m","securecode_ai.server.main"]' in document
+
+
+def test_healthcheck_uses_the_configured_server_port(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = runpy.run_path(str(ROOT / "deploy/docker/healthcheck.py"))
+    healthcheck = module["main"]
+    connections: list[tuple[str, int]] = []
+
+    class Response:
+        status = 200
+
+    class Connection:
+        def __init__(self, host: str, port: int, **_: Any) -> None:
+            connections.append((host, port))
+
+        def request(self, *_args: Any, **_kwargs: Any) -> None:
+            return None
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setenv("SECURECODE_SERVER_PORT", "9090")
+    monkeypatch.setitem(module["http"].client.__dict__, "HTTPSConnection", Connection)
+
+    assert healthcheck() == 0
+    assert connections == [("127.0.0.1", 9090)]
+
+
+@pytest.mark.parametrize("value", ("", "0", "65536", "\uff19\uff10\uff19\uff10", "not-a-port"))
+def test_healthcheck_rejects_invalid_server_port(
+    value: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = runpy.run_path(str(ROOT / "deploy/docker/healthcheck.py"))
+    monkeypatch.setenv("SECURECODE_SERVER_PORT", value)
+
+    assert module["main"]() == 1
 
 
 def test_compose_uses_loopback_ingress_and_secret_backed_tls() -> None:
