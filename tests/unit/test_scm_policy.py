@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 from securecode_ai.contracts import (
@@ -41,6 +42,8 @@ from securecode_ai.core.scm_policy import (
     canonical_scm_policy_decision_json,
     evaluate_scm_policy,
 )
+from securecode_ai.server.persistence import DevelopmentRepository
+from securecode_ai.server.worker_scm_policy import record_run_advisory_policy
 
 HEAD = "a" * 40
 BASE = "b" * 40
@@ -283,6 +286,37 @@ def test_advisory_never_blocks_but_preserves_the_observed_outcome() -> None:
     assert not decision.is_passing
     assert not decision.blocks_merge
     assert decision.publication_permitted
+
+
+def test_connected_completion_records_an_idempotent_advisory_event() -> None:
+    audit_run = _run(AuditRunOutcome.FAIL)
+    repository = DevelopmentRepository(sqlite3.connect(":memory:"))
+    repository.create_run(
+        tenant_id="tenant-1",
+        run_id=audit_run.run_id,
+        repository_id="repo-1",
+        execution_identity_hash=audit_run.execution_identity.execution_identity_hash,
+        base_sha=BASE,
+        head_sha=HEAD,
+        metadata={},
+        idempotency_key="run-create-0001",
+        request_sha256=HASH_A,
+    )
+
+    with repository.transaction() as cursor:
+        first = record_run_advisory_policy(cursor, audit_run=audit_run)
+        replay = record_run_advisory_policy(cursor, audit_run=audit_run)
+
+    events = repository.list_events("tenant-1", audit_run.run_id, None, 10)
+    items = events["items"]
+    assert first == replay == 1
+    assert isinstance(items, list) and len(items) == 1
+    event = items[0]
+    assert event["kind"] == "SCM_POLICY_DECISION"
+    assert event["policy_decision"]["mode"] == "advisory"
+    assert event["policy_decision"]["observed_audit_outcome"] == "FAIL"
+    assert event["policy_decision"]["enforcement"] == "ADVISORY"
+    assert event["policy_decision"]["blocks_merge"] is False
 
 
 def test_precalibration_blocking_request_is_non_passing_and_denied() -> None:

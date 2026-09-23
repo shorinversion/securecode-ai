@@ -25,6 +25,7 @@ from .worker_findings_store import complete_worker_run
 from .worker_queue import SqliteWorkerQueue, WorkerQueueClaimHandler, WorkerQueueConflict
 from .worker_queue_models import WorkerQueueLease
 from .worker_resource_models import WorkerResourceSettlement
+from .worker_scm_policy import record_run_advisory_policy
 
 _EVENT_KINDS: Final = frozenset(
     {
@@ -114,12 +115,14 @@ class WorkerQueueHandler:
             )
             terminal_transaction_effect = None
             baseline_store = self._baseline_store
-            if audit_run is not None and baseline_store is not None:
+            if audit_run is not None:
 
-                def record_baseline(cursor: sqlite3.Cursor) -> None:
-                    baseline_store.record_in_transaction(cursor, audit_run)
+                def record_completion_policy(cursor: sqlite3.Cursor) -> None:
+                    if baseline_store is not None:
+                        baseline_store.record_in_transaction(cursor, audit_run)
+                    record_run_advisory_policy(cursor, audit_run=audit_run)
 
-                terminal_transaction_effect = record_baseline
+                terminal_transaction_effect = record_completion_policy
             lease = complete_worker_run(
                 connection,
                 lease_seconds=_queue_lease_seconds(self._queue),
