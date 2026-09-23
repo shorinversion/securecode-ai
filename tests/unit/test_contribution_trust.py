@@ -117,6 +117,21 @@ def test_worker_protocol_rejects_unknown_trust_value() -> None:
         )
 
 
+def test_direct_worker_job_rejects_forged_trusted_label_before_environment_filtering() -> None:
+    """A caller must not bypass the authenticated transport parser to inherit secrets."""
+
+    with pytest.raises(ProtocolError):
+        WorkerJob(
+            session_id="session-1",
+            run_id="run-1",
+            version=1,
+            lease_seconds=30,
+            command=WorkerCommand.CONTINUE,
+            execution_identity=_identity(),
+            contribution_trust="TRUSTED_SAME_REPOSITORY",  # type: ignore[arg-type]
+        )
+
+
 def test_untrusted_contribution_filters_auth_environment() -> None:
     first_name = "_".join(("OPENAI", "API", "KEY"))
     second_name = "_".join(("GITLAB", "TOKEN"))

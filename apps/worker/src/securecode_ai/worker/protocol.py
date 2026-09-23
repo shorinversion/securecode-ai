@@ -48,6 +48,12 @@ class WorkerJob:
     execution_identity: RunExecutionIdentity
     contribution_trust: WorkerContributionTrust = WorkerContributionTrust.NOT_SCM
 
+    def __post_init__(self) -> None:
+        """Refuse a forged trust label before it can affect worker isolation."""
+
+        if type(self.contribution_trust) is not WorkerContributionTrust:
+            raise ProtocolError("worker job is invalid")
+
     @classmethod
     def from_document(cls, document: Mapping[str, object]) -> WorkerJob:
         allowed = {
