@@ -12,6 +12,7 @@ from typing import Protocol
 from securecode_ai.contracts import (
     ProducerRef,
     ResourceUsage,
+    ValidationGateOutcome,
     ValidationOutcome,
     ValidationResult,
 )
@@ -196,6 +197,26 @@ def validate_local_patch(
     if prepared is None or result is None:
         raise LocalRepairValidationError("VALIDATION_EXECUTION_FAILED")
     validation = result.validation
+    authoritative_gates = {
+        receipt.stage: receipt.gate.gate_outcome
+        for receipt in result.stages
+        if receipt.authoritative
+    }
+    oracle_validated = all(
+        authoritative_gates.get(stage) is ValidationGateOutcome.PASSED
+        for stage in (ValidationStage.SECURITY_POC, ValidationStage.SECURITY_POC_PLUS)
+    )
+    existing_regression_passed = (
+        authoritative_gates.get(ValidationStage.EXISTING_TESTS) is ValidationGateOutcome.PASSED
+    )
+    no_new_blocking_regressions = all(
+        authoritative_gates.get(stage) is ValidationGateOutcome.PASSED
+        for stage in (
+            ValidationStage.POST_PATCH_SCAN,
+            ValidationStage.REGRESSION_SCAN,
+            ValidationStage.RESOURCE_POLICY,
+        )
+    )
     if validation.validation_outcome is ValidationOutcome.VALIDATED and validated_sink is not None:
         validated_sink(validation)
     human_approval_pending = validation.validation_outcome is ValidationOutcome.VALIDATED
@@ -218,6 +239,21 @@ def validate_local_patch(
         "approval_state": "PENDING" if human_approval_pending else None,
         "reason": "HUMAN_APPROVAL_REQUIRED" if human_approval_pending else None,
         "validation_result_sha256": validation.result_sha256,
+        "remediation_data_only": True,
+        "remediation_sandbox_receipt_sha256": validation.result_sha256,
+        "remediation_sandbox_validated": validation.validation_outcome
+        is ValidationOutcome.VALIDATED,
+        "remediation_oracle_validated": oracle_validated,
+        "remediation_existing_regression_passed": existing_regression_passed,
+        "remediation_no_new_blocking_regressions": no_new_blocking_regressions,
+        "validation_gates": [
+            {
+                "stage": receipt.stage.value,
+                "outcome": receipt.gate.gate_outcome.value,
+                "authoritative": receipt.authoritative,
+            }
+            for receipt in result.stages
+        ],
         "runtime_image_digest": prepared.image_digest,
         "preparation_receipt_sha256": prepared.preparation_receipt_sha256,
         "first_failed_stage": result.first_failed_stage.value
