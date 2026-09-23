@@ -251,7 +251,7 @@ def _tree_cwe(compact: str, language: str) -> str | None:
     if language in {"javascript", "typescript"}:
         if re.match(r"(?:child_process\.)?exec(?:Sync)?\(", compact):
             return "CWE-78"
-        if re.match(r"fs\.readFile(?:Sync)?\(", compact) and "path.join(" in compact:
+        if re.match(r"fs\.(?:promises\.)?readFile(?:Sync)?\(", compact) and "path.join(" in compact:
             return "CWE-22"
         if re.match(r"(?:fetch|axios\.get|axios\.post)\(", compact):
             return "CWE-918"

@@ -221,6 +221,50 @@ def test_pathlib_joinpath_with_constant_segment_emits_no_path_traversal_fact() -
     )
 
 
+@pytest.mark.parametrize(
+    ("builder", "path", "source"),
+    [
+        (
+            build_javascript_symbol_index,
+            "api/read.js",
+            b"function read(req) { fs.promises.readFile(path.join(root, req.query.file)); }\n",
+        ),
+        (
+            build_typescript_symbol_index,
+            "api/read.ts",
+            b"function read(req: Request): void { fs.promises.readFile(path.join(root, req.query.file)); }\n",
+        ),
+    ],
+)
+def test_fs_promises_read_file_with_request_path_emits_path_traversal_fact(
+    builder: _IndexBuilder, path: str, source: bytes
+) -> None:
+    result = scan_cwe_portfolio(_index(builder, path, source))
+
+    assert tuple(signal.cwe for signal in result.signals) == ("CWE-22",)
+
+
+@pytest.mark.parametrize(
+    ("builder", "path", "source"),
+    [
+        (
+            build_javascript_symbol_index,
+            "api/read.js",
+            b"function read() { fs.promises.readFile(path.join(root, 'readme.txt')); }\n",
+        ),
+        (
+            build_typescript_symbol_index,
+            "api/read.ts",
+            b"function read(): void { fs.promises.readFile(path.join(root, 'readme.txt')); }\n",
+        ),
+    ],
+)
+def test_fs_promises_read_file_with_constant_path_emits_no_path_traversal_fact(
+    builder: _IndexBuilder, path: str, source: bytes
+) -> None:
+    assert scan_cwe_portfolio(_index(builder, path, source)).signals == ()
+
+
 def test_os_system_with_request_args_emits_command_injection_fact() -> None:
     source = b"import os\ndef run(request):\n os.system(request.args.get('cmd'))\n"
 
