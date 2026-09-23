@@ -105,6 +105,28 @@ def test_redacted_exporter_can_consume_otlp_exporter() -> None:
     assert result.count == 1
 
 
+def test_observation_snapshots_attributes_before_export() -> None:
+    attributes = {"operation": "run", "outcome": "success"}
+    observation = Observation(name="securecode.run.completed", attributes=attributes)
+    attributes["source"] = "private source"
+    attributes["operation"] = "changed"
+
+    with pytest.raises(TypeError):
+        observation.attributes["source"] = "private source"  # type: ignore[index]
+
+    transport = _Transport()
+    exporter = OtlpHttpExporter(
+        endpoint="https://collector.example/v1/logs",
+        transport=transport,
+        clock_ns=lambda: 1,
+    )
+    assert exporter.export((observation,))
+    record = json.loads(transport.calls[0][1])["resourceLogs"][0]["scopeLogs"][0]["logRecords"][0]
+    exported = {item["key"]: item["value"]["stringValue"] for item in record["attributes"]}
+    assert exported == {"operation": "run", "outcome": "success"}
+    assert b"private source" not in transport.calls[0][1]
+
+
 def test_empty_and_oversized_batches_fail_without_network() -> None:
     transport = _Transport()
     exporter = OtlpHttpExporter(
