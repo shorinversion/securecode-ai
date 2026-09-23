@@ -254,7 +254,7 @@ def _local_cwe89_parameter_binding_oracle(files: Mapping[str, bytes]) -> bool | 
         suffix = PurePosixPath(path).suffix.lower()
         if suffix == ".py":
             current = _python_binding_observations(source)
-        elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".go"}:
+        elif suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx", ".go"}:
             current = _lexical_binding_observations(source)
         else:
             return None

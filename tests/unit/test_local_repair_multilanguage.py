@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from securecode_ai.adapters.local_repair_contracts import _local_cwe89_parameter_binding_oracle
 from securecode_ai.adapters.local_repair_root_cause_oracle import _scan_signal_identities
 from securecode_ai.adapters.local_repair_security_scan import scan_cwe89_repository
 
@@ -34,3 +35,14 @@ def test_repair_scanner_and_independent_oracle_scan_node_typescript_extensions(
     assert len(scan_sha256) == 64
     assert signal_count == len(identities) == 1
     assert identities[0].path == relative_path
+
+
+@pytest.mark.parametrize("suffix", (".mts", ".cts"))
+def test_repair_contract_distinguishes_vulnerable_and_bound_node_typescript(
+    suffix: str,
+) -> None:
+    vulnerable = f"db.execute(`SELECT * FROM users WHERE id = ${'{'}id{'}'}`);".encode()
+    fixed = b"db.execute('SELECT * FROM users WHERE id = ?', [id]);"
+
+    assert _local_cwe89_parameter_binding_oracle({f"src/query{suffix}": vulnerable}) is False
+    assert _local_cwe89_parameter_binding_oracle({f"src/query{suffix}": fixed}) is True
