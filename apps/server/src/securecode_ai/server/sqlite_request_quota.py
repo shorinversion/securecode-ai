@@ -13,6 +13,7 @@ from .request_quota import (
     QuotaDecision,
     QuotaError,
     QuotaErrorCode,
+    _valid_tenant_id,
 )
 
 SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS = (
@@ -73,15 +74,7 @@ class SqliteQuotaLedger:
         cost_microunits: int = 0,
     ) -> QuotaDecision:
         if (
-            type(tenant_id) is not str
-            or not tenant_id
-            or len(tenant_id) > 128
-            or not tenant_id[0].isascii()
-            or not tenant_id[0].isalnum()
-            or any(
-                not character.isascii() or not (character.isalnum() or character in "._:-")
-                for character in tenant_id
-            )
+            not _valid_tenant_id(tenant_id)
             or type(now_ms) is not int
             or now_ms < 0
             or type(cost_microunits) is not int

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import Lock
-from typing import Final, Protocol
+from typing import Final, Protocol, TypeGuard
 
 MAX_TENANTS: Final = 10_000
 MAX_WINDOW_SECONDS: Final = 86_400
@@ -45,10 +45,7 @@ class QuotaPolicy:
 
     def __post_init__(self) -> None:
         if (
-            type(self.tenant_id) is not str
-            or not 1 <= len(self.tenant_id) <= 128
-            or not self.tenant_id[0].isalnum()
-            or any(not (character.isalnum() or character in "._:-") for character in self.tenant_id)
+            not _valid_tenant_id(self.tenant_id)
             or type(self.window_seconds) is not int
             or not 1 <= self.window_seconds <= MAX_WINDOW_SECONDS
             or type(self.max_requests) is not int
@@ -128,7 +125,7 @@ class QuotaLedger:
         """
 
         if (
-            type(tenant_id) is not str
+            not _valid_tenant_id(tenant_id)
             or type(now_ms) is not int
             or now_ms < 0
             or type(cost_microunits) is not int
@@ -164,6 +161,19 @@ class QuotaLedger:
                 max(0, policy.max_spend_microunits - window.spend_microunits),
                 0,
             )
+
+
+def _valid_tenant_id(value: object) -> TypeGuard[str]:
+    return (
+        type(value) is str
+        and 1 <= len(value) <= 128
+        and value[0].isascii()
+        and value[0].isalnum()
+        and all(
+            character.isascii() and (character.isalnum() or character in "._:-")
+            for character in value
+        )
+    )
 
 
 __all__ = [

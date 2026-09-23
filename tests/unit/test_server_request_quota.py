@@ -39,6 +39,7 @@ def test_policy_rejects_invalid_configuration() -> None:
         {"tenant_id": ""},
         {"tenant_id": "-leading"},
         {"tenant_id": "tenant 1"},
+        {"tenant_id": "тenant"},
         {"window_seconds": 0},
         {"window_seconds": MAX_REQUESTS_PER_WINDOW + 1},
         {"max_requests": 0},
@@ -120,6 +121,9 @@ def test_check_rejects_invalid_arguments() -> None:
     ledger = QuotaLedger((_policy(),))
     for arguments in (
         {"tenant_id": 1, "now_ms": 0},
+        {"tenant_id": "", "now_ms": 0},
+        {"tenant_id": "tenant 1", "now_ms": 0},
+        {"tenant_id": "тenant", "now_ms": 0},
         {"tenant_id": TENANT, "now_ms": -1},
         {"tenant_id": TENANT, "now_ms": 0, "cost_microunits": -1},
         {"tenant_id": TENANT, "now_ms": 0, "cost_microunits": MAX_SPEND_MICROUNITS + 1},
