@@ -488,6 +488,9 @@ def main(
         return 4
     except KeyboardInterrupt:
         return 130
+    except Exception:
+        errors.write("worker service failed\n")
+        return 4
 
 
 __all__ = ["RuntimeSettings", "WorkerService", "main", "serve"]

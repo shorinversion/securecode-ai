@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from io import StringIO
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +16,23 @@ from securecode_ai.worker.execution import ProductExecutor
 from securecode_ai.worker.liveness import heartbeat_path
 from securecode_ai.worker.protocol import WorkerJob
 from securecode_ai.worker.runtime_config import RuntimeSettings
+
+
+@pytest.mark.parametrize("failure", (OSError("socket failed"), RuntimeError("unexpected")))
+def test_service_main_maps_unexpected_failures_to_operational_exit_without_details(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    async def fail() -> None:
+        raise failure
+
+    stderr = StringIO()
+    monkeypatch.setattr(worker_service, "serve", fail)
+
+    code = worker_service.main([], stdout=StringIO(), stderr=stderr)
+
+    assert code == 4
+    assert stderr.getvalue() == "worker service failed\n"
 
 
 def test_worker_liveness_starts_while_waiting_for_scm_run(
