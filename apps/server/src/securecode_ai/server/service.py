@@ -274,12 +274,21 @@ def _safe_run_metadata(document: Mapping[str, object]) -> dict[str, object]:
 
 def _one(query: Mapping[str, tuple[str, ...]], name: str) -> str | None:
     values = query.get(name, ())
-    return values[0] if len(values) == 1 else None
+    if len(values) > 1:
+        raise ConflictError()
+    return values[0] if values else None
 
 
 def _limit(query: Mapping[str, tuple[str, ...]]) -> int:
     value = _one(query, "limit")
-    return int(value) if value is not None and value.isdigit() and 1 <= int(value) <= 100 else 50
+    if value is None:
+        return 50
+    if not value.isascii() or not value.isdecimal():
+        raise ConflictError()
+    limit = int(value)
+    if not 1 <= limit <= 100:
+        raise ConflictError()
+    return limit
 
 
 def _repository_allowed(request: ServiceRequest, repository_id: object) -> bool:

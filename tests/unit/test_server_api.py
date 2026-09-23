@@ -209,6 +209,42 @@ def test_authenticated_viewer_can_list_only_granted_repository_runs() -> None:
     assert payload["next_cursor"] is None
 
 
+def test_run_listing_rejects_invalid_and_repeated_pagination_parameters() -> None:
+    repository = DevelopmentRepository.in_memory()
+    service = DurableControlPlaneService(repository)
+    identity = VerifiedIdentity(
+        "user-1",
+        "tenant-a",
+        frozenset({"viewer"}),
+        repository_ids=frozenset({"repo-1"}),
+    )
+    invalid_queries = (
+        {"limit": ("0",)},
+        {"limit": ("101",)},
+        {"limit": ("invalid",)},
+        {"limit": ("\u0661",)},
+        {"limit": ("10", "20")},
+        {"cursor": ("a", "b")},
+    )
+
+    for query in invalid_queries:
+        request = ServiceRequest(
+            method="GET",
+            route="/api/v1/repositories/repo-1/runs",
+            action="runs.list",
+            identity=identity,
+            idempotency_key=None,
+            precondition=None,
+            path_params={"repository_id": "repo-1"},
+            query=query,
+            document=None,
+            raw_body=b"",
+        )
+        response = asyncio.run(service.dispatch(request))
+        assert response.status == 409
+        assert _mapping(response.document["error"])["code"] == "CONFLICT"
+
+
 def test_mutation_requires_verified_identity_and_idempotency_key() -> None:
     identity = VerifiedIdentity("user-1", "tenant-a", frozenset({"operator"}))
     app = create_app(
