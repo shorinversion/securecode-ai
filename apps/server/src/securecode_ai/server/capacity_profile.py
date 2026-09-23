@@ -69,15 +69,44 @@ def _percentile(values: Sequence[int], fraction: float) -> int | None:
 class InProcessCapacityExecutor:
     """Measure the real application under bounded concurrency."""
 
-    __slots__ = ("_app", "_requests")
+    __slots__ = ("_app", "_headers", "_requests")
 
     def __init__(
-        self, app: object, *, requests: Sequence[tuple[str, str, bytes]] | None = None
+        self,
+        app: object,
+        *,
+        requests: Sequence[tuple[str, str, bytes]] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> None:
-        if not callable(app):
+        if not callable(app) or (headers is not None and not isinstance(headers, Mapping)):
             raise TypeError("capacity executor needs a callable application")
+        request_headers = dict(headers or {})
+        if len(request_headers) > 32:
+            raise ValueError("capacity request headers are invalid")
+        encoded_headers: list[tuple[bytes, bytes]] = []
+        seen_names: set[str] = {"x-api-version"}
+        for name, value in request_headers.items():
+            if (
+                type(name) is not str
+                or type(value) is not str
+                or not name.isascii()
+                or not 1 <= len(name) <= 128
+                or any(not (character.isalnum() or character == "-") for character in name)
+                or not value.isascii()
+                or not 1 <= len(value) <= 8192
+                or any(not 32 <= ord(character) <= 126 for character in value)
+            ):
+                raise ValueError("capacity request headers are invalid")
+            normalized = name.casefold()
+            if normalized in seen_names:
+                raise ValueError("capacity request headers are invalid")
+            seen_names.add(normalized)
+            encoded_headers.append((normalized.encode("ascii"), value.encode("ascii")))
+        if sum(len(name) + len(value) for name, value in encoded_headers) > 16_384:
+            raise ValueError("capacity request headers are invalid")
         self._app = app
         self._requests = tuple(requests) if requests is not None else (("POST", LOGIN_PATH, b""),)
+        self._headers = tuple(encoded_headers)
 
     def execute(
         self,
@@ -172,7 +201,7 @@ class InProcessCapacityExecutor:
                 cancelled_workers += 1
         run_latencies = [item.run_ms for item in samples]
         queue_waits = [item.queue_ms for item in samples]
-        errors = sum(1 for item in samples if item.status >= 500)
+        errors = sum(1 for item in samples if not item.cancelled and not 200 <= item.status < 300)
         answered = [item for item in samples if not item.cancelled]
         throughput = len(answered) if elapsed <= 0 else int(len(answered) / elapsed)
         return CapacityCell(
@@ -214,7 +243,7 @@ class InProcessCapacityExecutor:
                     "type": "http",
                     "method": method,
                     "path": path,
-                    "headers": [(b"x-api-version", b"1")],
+                    "headers": [(b"x-api-version", b"1"), *self._headers],
                 },
                 receive,
                 send,

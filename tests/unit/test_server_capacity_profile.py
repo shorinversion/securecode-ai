@@ -14,6 +14,9 @@ from securecode_ai.server.capacity_profile import (
     render,
 )
 from securecode_ai.server.chaos import ChaosScenario
+from securecode_ai.server.runtime import RuntimeSettings
+
+from scripts import capacity_profile as capacity_cli
 
 Handler = Callable[
     [Mapping[str, object]],
@@ -87,6 +90,16 @@ def test_server_errors_are_counted() -> None:
     assert cell.completed
 
 
+def test_client_error_status_is_counted_as_a_capacity_failure() -> None:
+    cell = InProcessCapacityExecutor(_App(status=401)).execute(
+        ChaosScenario.DUPLICATE, concurrency=2, iterations=4
+    )
+
+    assert cell.errors == 4
+    assert cell.completed
+    assert not cell.passed
+
+
 def test_cancelled_workers_are_reported_not_hidden() -> None:
     """Abandoned workers must appear in the cell; completion describes the workload."""
 
@@ -132,6 +145,84 @@ def test_explicit_request_set_is_used() -> None:
     cell = executor.execute(ChaosScenario.LEASE_EXPIRY, concurrency=2, iterations=6)
     assert cell.completed
     assert app.calls == 6
+
+
+def test_executor_forwards_validated_headers_without_recording_them() -> None:
+    received: list[Mapping[str, object]] = []
+
+    async def app(
+        scope: Mapping[str, object],
+        receive: Callable[[], Awaitable[Mapping[str, object]]],
+        send: Callable[[Mapping[str, object]], Awaitable[None]],
+    ) -> None:
+        del receive
+        received.append(scope)
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    token = "private-capacity-token"
+    cell = InProcessCapacityExecutor(
+        app,
+        requests=(("GET", "/api/v1/policies", b""),),
+        headers={"authorization": f"Bearer {token}"},
+    ).execute(ChaosScenario.LEASE_EXPIRY, concurrency=1, iterations=1)
+
+    assert cell.completed
+    request_headers = received[0]["headers"]
+    assert isinstance(request_headers, list)
+    assert (b"authorization", f"Bearer {token}".encode("ascii")) in request_headers
+    assert token not in render(CapacityReceipt((cell,)))
+
+
+def test_capacity_cli_uses_environment_bearer_with_local_composition(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    token = "private-capacity-token"
+    received_headers: list[object] = []
+
+    async def app(
+        scope: Mapping[str, object],
+        receive: Callable[[], Awaitable[Mapping[str, object]]],
+        send: Callable[[Mapping[str, object]], Awaitable[None]],
+    ) -> None:
+        del receive
+        received_headers.append(scope["headers"])
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    settings = RuntimeSettings("127.0.0.1", 8080, "/tmp/securecode", "/tmp/securecode-tmp")
+    monkeypatch.setenv("SECURECODE_CAPACITY_BEARER", token)
+    monkeypatch.setattr(capacity_cli, "load_settings", lambda: settings)
+    monkeypatch.setattr(capacity_cli, "build_local_app", lambda _settings: app)
+
+    exit_code = capacity_cli.main(
+        ["--path", "/api/v1/policies", "--concurrency", "1", "--iterations", "1"]
+    )
+
+    assert exit_code == 0
+    assert len(received_headers) == len(EXECUTABLE_SCENARIOS)
+    assert all(
+        (b"authorization", f"Bearer {token}".encode("ascii")) in headers
+        for headers in received_headers
+        if isinstance(headers, list)
+    )
+    assert token not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"x-api-version": "2"},
+        {"authorization": "Bearer bad\r\nInjected: yes"},
+        {"authorization": "Bearer bad\x00token"},
+        {"bad header": "value"},
+        {"authorization": "ключ"},
+    ],
+)
+def test_executor_rejects_unsafe_request_headers(headers: dict[str, str]) -> None:
+    with pytest.raises(ValueError, match="headers are invalid"):
+        InProcessCapacityExecutor(_App(), headers=headers)
 
 
 async def _cooperative_application(

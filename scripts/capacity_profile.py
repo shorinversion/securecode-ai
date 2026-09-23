@@ -2,7 +2,7 @@
 
 Usage:
     python -I scripts/capacity_profile.py --concurrency 8 --iterations 256
-    python -I scripts/capacity_profile.py --path /api/v1/policies --bearer "$TOKEN"
+    SECURECODE_CAPACITY_BEARER="$TOKEN" python -I scripts/capacity_profile.py --path /api/v1/policies
 
 The profile drives the real control-plane application in process: no network,
 no external services, and no source or credentials in the output.
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,7 +25,7 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from securecode_ai.server.application import ServerApp  # noqa: E402
+from securecode_ai.server.bootstrap import build_local_app  # noqa: E402
 from securecode_ai.server.capacity import CapacityReceipt  # noqa: E402
 from securecode_ai.server.capacity_profile import (  # noqa: E402
     EXECUTABLE_SCENARIOS,
@@ -32,6 +33,7 @@ from securecode_ai.server.capacity_profile import (  # noqa: E402
     render,
 )
 from securecode_ai.server.resilience import ResiliencePlan, run  # noqa: E402  # noqa: E402
+from securecode_ai.server.runtime import load_settings  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,7 +41,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--iterations", type=int, default=256)
     parser.add_argument("--path", default="/api/v1/health/live")
-    parser.add_argument("--bearer", default="")
     parser.add_argument("--output", type=Path)
     arguments = parser.parse_args(argv)
 
@@ -48,8 +49,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         requests = (("GET", arguments.path, b""),)
-        app = ServerApp()
-        receipt = profile_with(app, requests, arguments.concurrency, arguments.iterations)
+        app = build_local_app(load_settings())
+        token = os.environ.get("SECURECODE_CAPACITY_BEARER")
+        headers = None if token is None else {"authorization": f"Bearer {token}"}
+        receipt = profile_with(
+            app,
+            requests,
+            arguments.concurrency,
+            arguments.iterations,
+            headers=headers,
+        )
     except (TypeError, ValueError) as error:
         print(f"CAPACITY=FAIL: {error}")
         return 1
@@ -72,6 +81,8 @@ def profile_with(
     requests: tuple[tuple[str, str, bytes], ...],
     concurrency: int,
     iterations: int,
+    *,
+    headers: dict[str, str] | None = None,
 ) -> CapacityReceipt:
     """Run the plan over the honestly measurable scenarios only."""
 
@@ -80,7 +91,7 @@ def profile_with(
         iterations=iterations,
         scenarios=EXECUTABLE_SCENARIOS,
     )
-    return run(plan, InProcessCapacityExecutor(app, requests=requests))
+    return run(plan, InProcessCapacityExecutor(app, requests=requests, headers=headers))
 
 
 if __name__ == "__main__":
