@@ -477,9 +477,7 @@ class GitlabRestAPI:
                 timeout_seconds=self._timeout_seconds,
             )
         )
-        if response.status_code in {301, 302, 303, 307, 308} or not _same_origin(
-            response.url, self._origin
-        ):
+        if 300 <= response.status_code < 400 or not _same_origin(response.url, self._origin):
             raise GitlabAPIError(GitlabAPIErrorCode.REDIRECT_BLOCKED)
         if response.status_code == 429 or 500 <= response.status_code <= 599:
             raise GitlabAPIError(GitlabAPIErrorCode.RETRYABLE)

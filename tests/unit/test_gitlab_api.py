@@ -240,7 +240,26 @@ def test_compare_commit_lineage_rejects_incomplete_or_unconnected_history(
     assert error.value.code is GitlabAPIErrorCode.RESPONSE_INVALID
 
 
-def test_retry_and_redirect_failures_are_redacted_without_automatic_duplicate_post() -> None:
+@pytest.mark.parametrize("status", [300, 301, 302, 303, 304, 307, 308, 399])
+def test_all_redirect_statuses_are_blocked_without_automatic_duplicate_post(
+    status: int,
+) -> None:
+    redirect_api, requester = _api([_response(status, {}, url="https://evil.example/api/v4")])
+
+    with pytest.raises(GitlabAPIError) as redirected:
+        redirect_api.upsert_merge_request_note(
+            project_id="project-1",
+            merge_request_iid="42",
+            idempotency_key="note-key",
+            body=_summary(),
+        )
+
+    assert redirected.value.code is GitlabAPIErrorCode.REDIRECT_BLOCKED
+    assert len(requester.calls) == 1
+    assert TOKEN not in str(redirected.value)
+
+
+def test_retry_failures_are_redacted_without_automatic_duplicate_post() -> None:
     api, requester = _api([_response(429, {"message": "retry"})])
 
     with pytest.raises(GitlabAPIError) as retry:
@@ -253,18 +272,6 @@ def test_retry_and_redirect_failures_are_redacted_without_automatic_duplicate_po
 
     assert retry.value.code is GitlabAPIErrorCode.RETRYABLE
     assert len(requester.calls) == 1
-
-    redirect_api, _ = _api([_response(302, {}, url="https://evil.example/api/v4")])
-    with pytest.raises(GitlabAPIError) as redirected:
-        redirect_api.upsert_merge_request_note(
-            project_id="project-1",
-            merge_request_iid="42",
-            idempotency_key="note-key",
-            body=_summary(),
-        )
-
-    assert redirected.value.code is GitlabAPIErrorCode.REDIRECT_BLOCKED
-    assert TOKEN not in str(redirected.value)
 
 
 def test_invalid_base_url_and_response_identifier_fail_closed() -> None:
