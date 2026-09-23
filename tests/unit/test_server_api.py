@@ -16,6 +16,7 @@ from securecode_ai.server import (
     VerifiedIdentity,
     create_app,
 )
+from securecode_ai.server.bootstrap import RoleAuthorization
 from securecode_ai.server.oidc_login import (
     OidcAuthorizationClient,
     OidcLoginService,
@@ -128,7 +129,7 @@ def test_finding_evidence_route_passes_authenticated_identity_to_service() -> No
     service = _Service()
     app = create_app(
         identities=_IdentityVerifier(identity),
-        authorization=_AllowAuthorization(),
+        authorization=RoleAuthorization(),
         service=service,
     )
 
