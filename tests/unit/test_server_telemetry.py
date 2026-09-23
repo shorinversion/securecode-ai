@@ -23,6 +23,18 @@ class _Sink:
         return self._outcome
 
 
+class _ReentrantFailingSink:
+    recorder: TelemetryRecorder | None = None
+
+    def export(self, observations: tuple[object, ...]) -> bool:
+        del observations
+        if self.recorder is None:
+            raise AssertionError("recorder was not configured")
+        self.recorder.record(action="runs.read", status=200, duration_ms=2)
+        self.recorder.record(action="runs.read", status=200, duration_ms=3)
+        return False
+
+
 def test_capacity_is_validated() -> None:
     for capacity in (0, -1, 65_537):
         with pytest.raises(TelemetryError):
@@ -70,6 +82,7 @@ def test_buffer_is_bounded_and_keeps_the_most_recent() -> None:
     batch = recorder.drain()
     assert len(batch) == 2
     assert [item.duration_ms for item in batch] == [3, 4]
+    assert recorder.dropped() == 3
 
 
 def test_drain_empties_the_buffer() -> None:
@@ -106,6 +119,21 @@ def test_failing_exporter_retains_observations(outcome: object) -> None:
     result = recorder.flush()
     assert not result.accepted and result.exported == 0
     assert recorder.pending() == 1
+
+
+def test_failed_flush_restores_batch_before_concurrent_arrivals_and_counts_drops() -> None:
+    sink = _ReentrantFailingSink()
+    recorder = TelemetryRecorder(exporter=sink, capacity=2)
+    sink.recorder = recorder
+    recorder.record(action="runs.read", status=200, duration_ms=1)
+
+    result = recorder.flush()
+
+    assert not result.accepted
+    assert result.pending == 2
+    assert result.dropped == 1
+    assert recorder.dropped() == 1
+    assert [item.duration_ms for item in recorder.drain()] == [1, 2]
 
 
 def test_empty_flush_is_accepted_without_touching_the_exporter() -> None:

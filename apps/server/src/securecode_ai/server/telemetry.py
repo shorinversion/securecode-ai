@@ -46,12 +46,13 @@ class TelemetryFlush:
     accepted: bool
     exported: int
     pending: int
+    dropped: int = 0
 
 
 class TelemetryRecorder:
     """Buffer bounded observations and export them through a redacting seam."""
 
-    __slots__ = ("_buffer", "_capacity", "_counters", "_exporter", "_lock")
+    __slots__ = ("_buffer", "_capacity", "_counters", "_dropped", "_exporter", "_lock")
 
     def __init__(
         self,
@@ -67,6 +68,7 @@ class TelemetryRecorder:
         self._capacity = capacity
         self._buffer: deque[Observation] = deque(maxlen=capacity)
         self._counters = counters
+        self._dropped = 0
         self._exporter = RedactedExporter(exporter) if exporter is not None else None
         self._lock = Lock()
 
@@ -93,6 +95,8 @@ class TelemetryRecorder:
             duration_ms=duration_ms,
         )
         with self._lock:
+            if len(self._buffer) == self._capacity:
+                self._dropped += 1
             self._buffer.append(observation)
             counters = self._counters
         if counters is not None:
@@ -105,6 +109,10 @@ class TelemetryRecorder:
     def pending(self) -> int:
         with self._lock:
             return len(self._buffer)
+
+    def dropped(self) -> int:
+        with self._lock:
+            return self._dropped
 
     def drain(self) -> tuple[Observation, ...]:
         """Take every buffered observation, leaving the buffer empty."""
@@ -119,24 +127,35 @@ class TelemetryRecorder:
 
         batch = self.drain()
         if not batch:
-            return TelemetryFlush(accepted=True, exported=0, pending=0)
+            return TelemetryFlush(accepted=True, exported=0, pending=0, dropped=self.dropped())
         if self._exporter is None:
-            with self._lock:
-                for observation in batch:
-                    self._buffer.append(observation)
-                pending = len(self._buffer)
-            return TelemetryFlush(accepted=False, exported=0, pending=pending)
+            pending = self._restore(batch)
+            return TelemetryFlush(
+                accepted=False, exported=0, pending=pending, dropped=self.dropped()
+            )
         try:
             result = self._exporter.export(batch)
         except Exception:
             result = None
         if result is None or not result.accepted:
-            with self._lock:
-                for observation in batch:
-                    self._buffer.append(observation)
-                pending = len(self._buffer)
-            return TelemetryFlush(accepted=False, exported=0, pending=pending)
-        return TelemetryFlush(accepted=True, exported=result.count, pending=0)
+            pending = self._restore(batch)
+            return TelemetryFlush(
+                accepted=False, exported=0, pending=pending, dropped=self.dropped()
+            )
+        return TelemetryFlush(
+            accepted=True, exported=result.count, pending=0, dropped=self.dropped()
+        )
+
+    def _restore(self, batch: tuple[Observation, ...]) -> int:
+        """Restore a failed batch ahead of concurrent arrivals, counting overflow."""
+
+        with self._lock:
+            concurrent = tuple(self._buffer)
+            combined = batch + concurrent
+            self._dropped += max(0, len(combined) - self._capacity)
+            self._buffer.clear()
+            self._buffer.extend(combined[: self._capacity])
+            return len(self._buffer)
 
 
 __all__ = [
