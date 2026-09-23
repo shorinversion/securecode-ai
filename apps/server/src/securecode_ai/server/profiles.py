@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from enum import StrEnum
+
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class ProfileConflict(Exception):
@@ -53,13 +56,24 @@ class ScanProfile:
         )
 
     def __post_init__(self) -> None:
-        if (
-            not all(
-                isinstance(value, str) and value
-                for value in (self.tenant_id, self.profile_id, self.content_sha256)
+        try:
+            canonical = json.dumps(
+                self.content,
+                ensure_ascii=True,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
             )
+        except (TypeError, ValueError):
+            raise ValueError("profile content is not canonical JSON") from None
+        actual_digest = hashlib.sha256(canonical.encode("ascii")).hexdigest()
+        if (
+            not all(isinstance(value, str) and value for value in (self.tenant_id, self.profile_id))
             or type(self.version) is not int
             or self.version < 1
+            or type(self.content_sha256) is not str
+            or _SHA256.fullmatch(self.content_sha256) is None
+            or self.content_sha256 != actual_digest
             or type(self.rollout) is not RolloutMode
             or type(self.calibrated) is not bool
             or type(self.content) is not dict

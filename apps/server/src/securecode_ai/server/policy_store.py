@@ -415,15 +415,23 @@ class PolicyStore:
         content = json.loads(str(row[6]))
         if not isinstance(content, dict):
             raise ProfileConflict("stored policy content is invalid")
-        return ScanProfile(
-            tenant_id=str(row[0]),
-            profile_id=str(row[1]),
-            version=int(row[2]),
-            content_sha256=str(row[3]),
-            rollout=RolloutMode(str(row[4])),
-            calibrated=bool(row[5]),
-            content=content,
-        )
+        try:
+            canonical_content = _canonical_profile_content(content)
+            if hashlib.sha256(canonical_content.encode("ascii")).hexdigest() != str(row[3]):
+                raise ProfileConflict("stored policy content integrity failed")
+            return ScanProfile(
+                tenant_id=str(row[0]),
+                profile_id=str(row[1]),
+                version=int(row[2]),
+                content_sha256=str(row[3]),
+                rollout=RolloutMode(str(row[4])),
+                calibrated=bool(row[5]),
+                content=content,
+            )
+        except ProfileConflict:
+            raise
+        except (TypeError, ValueError):
+            raise ProfileConflict("stored policy profile is invalid") from None
 
     def _replay(self, tenant_id: str, key: str) -> tuple[str, str, str] | None:
         row = self._db.execute(

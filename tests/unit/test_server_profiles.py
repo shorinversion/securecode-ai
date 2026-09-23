@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 from securecode_ai.server.policy_store import PolicyStore
 from securecode_ai.server.profiles import ProfileConflict, RolloutMode, ScanProfile
@@ -69,3 +71,25 @@ def test_precalibration_blocking_profile_and_divergent_version_fail_closed() -> 
             ),
             idempotency_key="key",
         )
+
+
+def test_policy_store_rejects_content_tampering_on_read() -> None:
+    connection = sqlite3.connect(":memory:")
+    store = PolicyStore(connection)
+    profile = ScanProfile.build(
+        tenant_id="t",
+        profile_id="p",
+        version=1,
+        rollout=RolloutMode.ADVISORY,
+        calibrated=False,
+        content={"rules": ["approved"]},
+    )
+    store.create(profile, idempotency_key="create-profile")
+    store.set_tenant_default(tenant_id="t", profile_id="p", version=1)
+    connection.execute(
+        "UPDATE scan_policy_versions SET content_json = ? WHERE tenant_id = ? AND profile_id = ?",
+        ('{"rules":["tampered"]}', "t", "p"),
+    )
+
+    with pytest.raises(ProfileConflict, match="stored policy content integrity failed"):
+        store.resolve_profile(tenant_id="t", repository_id="r")
