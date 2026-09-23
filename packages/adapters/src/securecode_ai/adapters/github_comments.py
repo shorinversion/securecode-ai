@@ -103,11 +103,20 @@ class GithubCommentPublisher:
         existing = self._existing_inline(installation_id, repository, change_id)
         written: list[str] = []
         suppressions: list[tuple[str, GithubCommentSuppression]] = []
-        for item in sorted(inline, key=lambda value: value.finding_id):
+        ordered_inline = sorted(inline, key=lambda value: value.finding_id)
+        for index, item in enumerate(ordered_inline):
             if item.finding_id in existing:
                 suppressions.append((item.finding_id, GithubCommentSuppression.EXISTING))
             elif len(written) >= MAX_GITHUB_INLINE_COMMENTS:
                 suppressions.append((item.finding_id, GithubCommentSuppression.VOLUME_LIMIT))
+            elif self._head(installation_id, repository_id, change_id) != expected_head:
+                for pending in ordered_inline[index:]:
+                    if pending.finding_id in existing:
+                        reason = GithubCommentSuppression.EXISTING
+                    else:
+                        reason = GithubCommentSuppression.STALE_SUPPRESSED
+                    suppressions.append((pending.finding_id, reason))
+                break
             else:
                 body = item.body + "\n\n<!-- securecode-ai-inline:" + item.finding_id + " -->"
                 response = self._api.request(

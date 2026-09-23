@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
-from securecode_ai.adapters.github_api import GitHubError, GitHubResponse
+from securecode_ai.adapters.github_api import GitHubApi, GitHubError, GitHubResponse
 from securecode_ai.adapters.github_comments import (
     MAX_GITHUB_INLINE_COMMENTS,
     GithubCommentPublisher,
@@ -39,6 +39,15 @@ class FakeApi:
             }
         )
         return self.responses.pop(0)
+
+
+class HeadSequence:
+    def __init__(self, values: list[str]) -> None:
+        self.values = values
+
+    def __call__(self, installation_id: str, repository_id: str, change_id: str) -> str:
+        del installation_id, repository_id, change_id
+        return self.values.pop(0)
 
 
 def response(status: int, document: object) -> GitHubResponse:
@@ -114,6 +123,35 @@ def test_existing_inline_is_suppressed() -> None:
     )
     receipt = invoke(api, inline=(GithubInlineProjection("f-1", "a.py", 4, "confirmed"),))
     assert receipt.suppressions == (("f-1", GithubCommentSuppression.EXISTING),)
+
+
+def test_head_change_after_reconciliation_suppresses_inline_write() -> None:
+    api = FakeApi(
+        [
+            response(200, []),
+            response(201, {"id": 1}),
+            response(200, []),
+        ]
+    )
+    publisher_with_racing_head = GithubCommentPublisher(
+        cast(GitHubApi, api),
+        pull_request_head=HeadSequence([HEAD, "b" * 40]),
+    )
+
+    receipt = publisher_with_racing_head.publish(
+        installation_id="i",
+        repository_id="42",
+        change_id="7",
+        expected_head=HEAD,
+        external_id="run-1",
+        summary="summary",
+        delivery_key="delivery",
+        inline=(GithubInlineProjection("f-1", "a.py", 4, "confirmed"),),
+    )
+
+    assert receipt.inline_written == ()
+    assert receipt.suppressions == (("f-1", GithubCommentSuppression.STALE_SUPPRESSED),)
+    assert not any(call["method"] == "POST" and "/pulls/" in call["path"] for call in api.calls)
 
 
 def test_volume_limit_is_visible() -> None:
