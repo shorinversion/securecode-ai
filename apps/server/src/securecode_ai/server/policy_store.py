@@ -464,7 +464,7 @@ _FORBIDDEN_PROFILE_KEYS = frozenset({"raw_source", "source_code", "prompt_text",
 
 def _canonical_profile_content(content: Mapping[str, object]) -> str:
     _validate_value(content, depth=0)
-    payload = _canonical(dict(content))
+    payload = _canonical(_plain_json(content))
     if len(payload.encode("ascii")) > 1_048_576:
         raise ProfileConflict("policy content is too large")
     return payload
@@ -507,6 +507,14 @@ def _canonical(value: object) -> str:
         )
     except (TypeError, ValueError) as error:
         raise ProfileConflict("policy content is not canonical JSON") from error
+
+
+def _plain_json(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {key: _plain_json(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_plain_json(item) for item in value]
+    return value
 
 
 def _digest(value: object) -> str:

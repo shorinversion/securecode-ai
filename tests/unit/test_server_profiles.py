@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
+from typing import cast
 
 import pytest
 from securecode_ai.server.policy_store import PolicyStore
@@ -37,6 +39,26 @@ def test_profiles_are_immutable_and_repository_assignment_overrides_default() ->
     )
     assert store.resolve_profile(tenant_id="t", repository_id="r") == strict
     assert store.resolve_profile(tenant_id="t", repository_id="other") == advisory
+
+
+def test_profile_content_is_deeply_immutable_and_detached_from_builder_input() -> None:
+    source: dict[str, object] = {"rules": [{"severity": "high"}]}
+    profile = ScanProfile.build(
+        tenant_id="t",
+        profile_id="p",
+        version=1,
+        rollout=RolloutMode.ADVISORY,
+        calibrated=False,
+        content=source,
+    )
+    source_rules = cast(list[object], source["rules"])
+    cast(dict[str, object], source_rules[0])["severity"] = "low"
+
+    profile_rules = cast(tuple[object, ...], profile.content["rules"])
+    profile_rule = cast(Mapping[str, object], profile_rules[0])
+    assert profile_rule["severity"] == "high"
+    with pytest.raises(TypeError):
+        cast(dict[str, object], profile_rule)["severity"] = "critical"
 
 
 def test_precalibration_blocking_profile_and_divergent_version_fail_closed() -> None:
