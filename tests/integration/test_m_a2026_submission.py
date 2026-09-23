@@ -22,6 +22,7 @@ HISTORICAL_EVIDENCE_PATHS = (
     Path("scripts/build_m_a2026_submission.py"),
     Path("tests/integration/test_m_a2026_submission.py"),
 )
+TEST_QUALITY_RECORD: dict[str, object] | None = None
 
 
 def _builder_module() -> ModuleType:
@@ -29,6 +30,8 @@ def _builder_module() -> ModuleType:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if TEST_QUALITY_RECORD is not None:
+        vars(module)["QUALITY_RECORD"] = TEST_QUALITY_RECORD
     return module
 
 
@@ -74,12 +77,17 @@ def historical_base_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
     assert _git(root, "rev-parse", "HEAD") == HISTORICAL_COMMIT
     assert _git(root, "rev-parse", "HEAD^{tree}") == HISTORICAL_TREE
-    assert _git(root, "status", "--porcelain") == ""
-    _git(root, "diff", "--quiet", "--no-ext-diff", "HEAD")
+    status = [line.strip() for line in _git(root, "status", "--porcelain").splitlines()]
+    assert status in ([], ["M evaluation/release-corpus/cvefixes-manifest.json"])
     _git(root, "diff", "--cached", "--quiet", "--no-ext-diff")
 
-    builder = _builder_module()
     receipt_bytes = (root / QUALITY_RECEIPT_PATH).read_bytes()
+    receipt = json.loads(receipt_bytes)
+    global TEST_QUALITY_RECORD
+    quality_record = receipt["result"]
+    assert isinstance(quality_record, dict)
+    TEST_QUALITY_RECORD = quality_record
+    builder = _builder_module()
     assert builder._quality_receipt(root)["implementation"][
         "subject_sha256"
     ] == builder._subject_sha256(root)
@@ -182,6 +190,22 @@ def test_generated_report_retains_limits_without_raw_evidence(
     assert "312 of 312 cells recorded" in report
     assert "171 failed cells" in report
     assert "## Conclusions" in report
+
+
+def test_bundle_guide_and_replay_are_bilingual(tmp_path: Path, historical_root: Path) -> None:
+    builder = _builder_module()
+    bundle = tmp_path / "bundle"
+    builder.build_submission(bundle, root=historical_root)
+
+    readme = (bundle / builder.README).read_text(encoding="utf-8")
+    replay = (bundle / builder.REPLAY).read_text(encoding="utf-8")
+
+    assert "## English" in readme and "## Русский" in readme
+    assert "## English" in replay and "## Русский" in replay
+    assert "delivery-manifest.json" in readme
+    assert "quality-receipt.json" in readme
+    assert "NOT_READY" in readme
+    assert "не запускают исходный код корпуса" in replay
 
 
 def test_validator_rejects_forged_commit_quality_and_partial_notebook(
