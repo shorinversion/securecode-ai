@@ -4,17 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import signal
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from typing import TextIO, TypeVar
-from urllib.parse import urlsplit
 
 from .control_plane import (
     ControlPlaneClient,
@@ -33,10 +31,12 @@ from .execution import (
 )
 from .liveness import touch as touch_liveness
 from .protocol import WorkerCommand, WorkerEvent, WorkerJob
-from .secure_files import read_ascii_secret
+from .runtime_config import RuntimeSettings
+from .service_state import ActiveSession as _ActiveSession
+from .service_state import Backoff as _Backoff
+from .service_state import await_task_completion as _await_task_completion
 from .usage import WorkerResourceUsage, WorkerUsageError, WorkerUsageMeter
 
-_OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _T = TypeVar("_T")
 _HELP = """usage: securecode-worker-service
 
@@ -44,152 +44,8 @@ Run the connected worker service using SECURECODE_WORKER_* environment values.
 """
 
 
-@dataclass(frozen=True, slots=True)
-class RuntimeSettings:
-    control_plane_url: str
-    token: str = field(repr=False)
-    worker_id: str
-    target: Path
-    requested_run_id: str | None
-    scm_resolution: tuple[str, str, str, str] | None
-    request_timeout_seconds: float
-    poll_seconds: float
-    max_backoff_seconds: float
-    artifact_hosts: frozenset[str]
-
-    @classmethod
-    def from_environment(cls, environment: Mapping[str, str]) -> RuntimeSettings:
-        try:
-            url = environment["SECURECODE_CONTROL_PLANE_URL"]
-            token = _worker_token(environment)
-            worker_id = environment["SECURECODE_WORKER_ID"]
-            target = Path(environment["SECURECODE_WORKER_TARGET"])
-            requested_run_id = environment.get("SECURECODE_WORKER_RUN_ID")
-            gitlab_values = (
-                environment.get("CI_PROJECT_ID"),
-                environment.get("CI_MERGE_REQUEST_IID"),
-                environment.get("CI_COMMIT_SHA"),
-            )
-            if requested_run_id is None and all(gitlab_values):
-                scm_resolution = (
-                    "gitlab",
-                    _ci_value(gitlab_values[0]),
-                    _ci_value(gitlab_values[1]),
-                    _ci_value(gitlab_values[2]),
-                )
-            elif requested_run_id is None and any(gitlab_values):
-                raise ValueError
-            else:
-                scm_resolution = None
-            timeout = float(environment.get("SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS", "15"))
-            poll = float(environment.get("SECURECODE_WORKER_POLL_SECONDS", "2"))
-            maximum = float(environment.get("SECURECODE_WORKER_MAX_BACKOFF_SECONDS", "30"))
-            parsed = urlsplit(url)
-            default_host = parsed.hostname
-            configured_hosts = environment.get("SECURECODE_WORKER_ARTIFACT_HOSTS")
-            artifact_hosts = (
-                frozenset(
-                    item.strip().lower() for item in configured_hosts.split(",") if item.strip()
-                )
-                if configured_hosts is not None
-                else frozenset({default_host})
-                if default_host
-                else frozenset()
-            )
-        except (KeyError, TypeError, ValueError):
-            raise ValueError("worker configuration is invalid") from None
-        if (
-            type(url) is not str
-            or type(token) is not str
-            or len(token) < 32
-            or type(worker_id) is not str
-            or _OPAQUE_ID.fullmatch(worker_id) is None
-            or not target.is_absolute()
-            or not target.is_dir()
-            or target.is_symlink()
-            or (requested_run_id is not None and _OPAQUE_ID.fullmatch(requested_run_id) is None)
-            or (
-                scm_resolution is not None
-                and (
-                    any(_OPAQUE_ID.fullmatch(item) is None for item in scm_resolution[:3])
-                    or re.fullmatch(r"[0-9a-f]{40}", scm_resolution[3]) is None
-                )
-            )
-            or not 1.0 <= timeout <= 120.0
-            or not 0.1 <= poll <= 60.0
-            or not poll <= maximum <= 300.0
-            or not artifact_hosts
-        ):
-            raise ValueError("worker configuration is invalid")
-        return cls(
-            control_plane_url=url,
-            token=token,
-            worker_id=worker_id,
-            target=target,
-            requested_run_id=requested_run_id,
-            scm_resolution=scm_resolution,
-            request_timeout_seconds=timeout,
-            poll_seconds=poll,
-            max_backoff_seconds=maximum,
-            artifact_hosts=artifact_hosts,
-        )
-
-
-def _ci_value(value: str | None) -> str:
-    if type(value) is not str or not value:
-        raise ValueError("worker CI identity is invalid")
-    return value
-
-
-def _worker_token(environment: Mapping[str, str]) -> str:
-    direct = environment.get("SECURECODE_WORKER_TOKEN")
-    file_name = environment.get("SECURECODE_WORKER_TOKEN_FILE")
-    if (direct is None) == (file_name is None):
-        raise ValueError("worker token source is invalid")
-    if direct is not None:
-        return direct
-    if not isinstance(file_name, str):
-        raise ValueError("worker token source is invalid")
-    try:
-        token = read_ascii_secret(Path(file_name), minimum=32, maximum=8192)
-    except ValueError:
-        raise ValueError("worker token source is invalid") from None
-    return token
-
-
 class WorkerCompletionUnconfirmed(RuntimeError):
     """A requested one-shot run did not confirm a terminal control-plane state."""
-
-
-@dataclass(slots=True)
-class _ActiveSession:
-    job: WorkerJob
-    sequence: int = 0
-    heartbeat_attempt: int = 0
-    last_heartbeat: float = field(default_factory=time.monotonic)
-
-    def apply(self, *, version: int, command: WorkerCommand, renewed: bool = False) -> None:
-        self.job = replace(self.job, version=version, command=command)
-        if renewed:
-            self.last_heartbeat = time.monotonic()
-
-
-class _Backoff:
-    def __init__(self, initial: float, maximum: float) -> None:
-        self._initial = initial
-        self._maximum = maximum
-        self._failures = 0
-
-    def reset(self) -> None:
-        self._failures = 0
-
-    def next_delay(self) -> float:
-        growth: float = 2.0 ** min(self._failures, 12)
-        ceiling: float = min(self._maximum, self._initial * growth)
-        self._failures += 1
-        jitter_units = int.from_bytes(os.urandom(3), "big") % 1_000_000
-        jitter: float = jitter_units / 1_000_000
-        return ceiling * (0.8 + jitter * 0.4)
 
 
 class WorkerService:
@@ -257,21 +113,48 @@ class WorkerService:
         failure: ProductExecutionError | None = None
         resource_usage: WorkerResourceUsage | None = None
         meter = WorkerUsageMeter()
-        try:
-            execution = await asyncio.to_thread(
+        execution_task = asyncio.create_task(
+            asyncio.to_thread(
                 self._executor.execute,
                 active.job,
                 control=control,
             )
+        )
+        try:
+            execution = await asyncio.shield(execution_task)
+        except asyncio.CancelledError:
+            # Cancelling asyncio.to_thread does not stop its OS thread. Signal the
+            # cooperative execution control, then wait for the executor to leave
+            # its bounded provider calls before settling and releasing the lease.
+            self._stopping.set()
+            control.request(WorkerCommand.CANCEL)
+            command_seen.set()
+            try:
+                execution = await _await_task_completion(execution_task)
+            except ProductExecutionError as error:
+                failure = error
+            except asyncio.CancelledError:
+                failure = ProductCancelled("product execution was cancelled")
+            except Exception:
+                failure = ProductExecutionError("product execution failed")
         except ProductExecutionError as error:
             failure = error
+        except Exception:
+            # Unexpected executor errors must settle as INDETERMINATE rather
+            # than escaping the worker loop and leaving the run non-terminal.
+            failure = ProductExecutionError("product execution failed")
         finally:
             try:
                 resource_usage = meter.finish(execution.scan if execution is not None else None)
             except WorkerUsageError:
                 resource_usage = None
             monitor_stop.set()
-            await monitor
+            try:
+                await _await_task_completion(monitor)
+            except Exception:
+                control.request(WorkerCommand.CANCEL)
+                command_seen.set()
+                failure = failure or ProductExecutionError("worker monitoring failed")
 
         if lease_lost.is_set():
             if execution is not None:
