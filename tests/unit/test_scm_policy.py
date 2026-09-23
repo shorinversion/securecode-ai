@@ -319,6 +319,49 @@ def test_connected_completion_records_an_idempotent_advisory_event() -> None:
     assert event["policy_decision"]["blocks_merge"] is False
 
 
+def test_advisory_receipt_binds_verified_baseline_comparison() -> None:
+    audit_run = _run(AuditRunOutcome.FAIL)
+    comparison = BaselineFingerprintComparison(
+        schema_version=BASELINE_FINGERPRINT_SCHEMA_VERSION,
+        tenant_id="tenant-1",
+        base_sha=BASE,
+        head_sha=HEAD,
+        baseline_fingerprints=(HASH_B,),
+        head_fingerprints=(HASH_B,),
+        new_fingerprints=(),
+    )
+    repository = DevelopmentRepository(sqlite3.connect(":memory:"))
+    repository.create_run(
+        tenant_id="tenant-1",
+        run_id=audit_run.run_id,
+        repository_id="repo-1",
+        execution_identity_hash=audit_run.execution_identity.execution_identity_hash,
+        base_sha=BASE,
+        head_sha=HEAD,
+        metadata={},
+        idempotency_key="run-create-0002",
+        request_sha256=HASH_A,
+    )
+
+    with repository.transaction() as cursor:
+        record_run_advisory_policy(
+            cursor,
+            audit_run=audit_run,
+            baseline_comparison=comparison,
+        )
+
+    events = repository.list_events("tenant-1", audit_run.run_id, None, 10)
+    items = events["items"]
+    assert isinstance(items, list) and len(items) == 1
+    event = items[0]
+    assert isinstance(event, dict)
+    policy_decision = event["policy_decision"]
+    assert isinstance(policy_decision, dict)
+    input_hashes = policy_decision["input_hashes"]
+    assert isinstance(input_hashes, dict)
+    assert input_hashes["baseline_comparison_sha256"]
+
+
 def test_precalibration_blocking_request_is_non_passing_and_denied() -> None:
     decision = evaluate_scm_policy(
         ScmPolicyRequest(_policy(calibrated=False), ScmPolicyMode.NEW_CODE, _run())

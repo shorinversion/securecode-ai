@@ -181,6 +181,65 @@ def test_discussion_and_optional_external_status_use_bounded_exact_payloads() ->
     }
 
 
+def test_compare_commit_lineage_requires_exact_first_parent_chain() -> None:
+    api, requester = _api(
+        [
+            _response(
+                200,
+                {
+                    "compare_timeout": False,
+                    "commits": [
+                        {"id": START, "parent_ids": [BASE]},
+                        {"id": HEAD, "parent_ids": [START, "e" * 40]},
+                    ],
+                    "commit": {"id": HEAD},
+                },
+            )
+        ]
+    )
+
+    assert api.compare_commit_lineage(project_id="project-1", base_sha=BASE, head_sha=HEAD) == (
+        BASE,
+        START,
+        HEAD,
+    )
+    request = requester.calls[0]
+    assert request.method == "GET"
+    assert f"from={BASE}&to={HEAD}&straight=true" in request.url
+    assert dict(request.headers)["PRIVATE-TOKEN"] == TOKEN
+
+
+@pytest.mark.parametrize(
+    "document",
+    (
+        {
+            "compare_timeout": True,
+            "commits": [{"id": HEAD, "parent_ids": [BASE]}],
+            "commit": {"id": HEAD},
+        },
+        {
+            "compare_timeout": False,
+            "commits": [{"id": HEAD, "parent_ids": [START]}],
+            "commit": {"id": HEAD},
+        },
+        {
+            "compare_timeout": False,
+            "commits": [{"id": START, "parent_ids": [BASE]}],
+            "commit": {"id": HEAD},
+        },
+    ),
+)
+def test_compare_commit_lineage_rejects_incomplete_or_unconnected_history(
+    document: object,
+) -> None:
+    api, _ = _api([_response(200, document)])
+
+    with pytest.raises(GitlabAPIError) as error:
+        api.compare_commit_lineage(project_id="project-1", base_sha=BASE, head_sha=HEAD)
+
+    assert error.value.code is GitlabAPIErrorCode.RESPONSE_INVALID
+
+
 def test_retry_and_redirect_failures_are_redacted_without_automatic_duplicate_post() -> None:
     api, requester = _api([_response(429, {"message": "retry"})])
 

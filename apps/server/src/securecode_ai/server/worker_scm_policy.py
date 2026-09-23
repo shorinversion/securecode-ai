@@ -9,6 +9,7 @@ import sqlite3
 from typing import Final
 
 from securecode_ai.contracts import AuditRun
+from securecode_ai.core.baseline_fingerprints import BaselineFingerprintComparison
 from securecode_ai.core.scm_policy import (
     ScmPolicyDecision,
     ScmPolicyDocument,
@@ -29,6 +30,7 @@ def record_run_advisory_policy(
     cursor: sqlite3.Cursor,
     *,
     audit_run: AuditRun,
+    baseline_comparison: BaselineFingerprintComparison | None = None,
 ) -> int:
     """Evaluate the immutable identity policy pin in advisory mode and persist it."""
 
@@ -45,6 +47,7 @@ def record_run_advisory_policy(
             policy=policy,
             mode=ScmPolicyMode.ADVISORY,
             audit_run=audit_run,
+            baseline_comparison=baseline_comparison,
         )
     )
     return record_advisory_policy_decision(

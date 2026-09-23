@@ -325,6 +325,7 @@ def build_local_app(
             artifact_authorizations=artifact_authorizations,
             uploaded_artifacts=LocalArtifactUploadVerifier(data_dir / "artifacts"),
             baseline_store=DurableBaselineStore(connection),
+            lineage_resolver=scm.lineage_resolver,
         ),
     )
     if scm.run_state is not None:

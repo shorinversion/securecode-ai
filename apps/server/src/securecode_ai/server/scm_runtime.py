@@ -13,8 +13,11 @@ from securecode_ai.adapters.github_writer import GitHubWriter
 from securecode_ai.adapters.gitlab_api import GitlabRestAPI
 from securecode_ai.adapters.gitlab_writer import GitlabPublicationWriter
 from securecode_ai.adapters.scm_head import (
+    GithubCommitLineageResolver,
     GithubPullRequestHeadResolver,
+    GitlabCommitLineageResolver,
     GitlabMergeRequestHeadResolver,
+    SCMHeadUnavailable,
 )
 from securecode_ai.contracts import ComponentPin
 
@@ -44,7 +47,44 @@ class SCMHandlers:
     github_writer: GitHubWriter | None = None
     gitlab_head: GitlabMergeRequestHeadResolver | None = None
     gitlab_writer: GitlabPublicationWriter | None = None
+    lineage_resolver: SCMRunCommitLineageResolver | None = None
     _secret_material: tuple[bytes, ...] = field(default=(), repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class SCMRunCommitLineageResolver:
+    """Resolve commit ancestry through the authenticated provider bound to a run."""
+
+    run_state: SqliteSCMRunState
+    github: GithubCommitLineageResolver | None
+    gitlab: GitlabCommitLineageResolver | None
+
+    def __call__(
+        self,
+        *,
+        run_id: str,
+        execution_identity_hash: str,
+        base_sha: str,
+        head_sha: str,
+    ) -> tuple[str, ...]:
+        try:
+            target = self.run_state.provider_target(run_id)
+            if target.execution_identity_hash != execution_identity_hash:
+                raise ValueError
+            if target.provider == "github" and self.github is not None:
+                return self.github(
+                    target.installation_id,
+                    target.repository_id,
+                    base_sha,
+                    head_sha,
+                )
+            if target.provider == "gitlab" and self.gitlab is not None:
+                return self.gitlab(target.repository_id, base_sha, head_sha)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            raise SCMHeadUnavailable("SCM commit lineage is unavailable") from None
+        raise SCMHeadUnavailable("SCM commit lineage is unavailable")
 
 
 class _FileInstallationTokenProvider:
@@ -108,6 +148,8 @@ def build_scm_handlers(
     github_writer: GitHubWriter | None = None
     gitlab_head: GitlabMergeRequestHeadResolver | None = None
     gitlab_writer: GitlabPublicationWriter | None = None
+    github_lineage: GithubCommitLineageResolver | None = None
+    gitlab_lineage: GitlabCommitLineageResolver | None = None
     if github_enabled:
         api_url = _required(values, "SECURECODE_GITHUB_API_URL")
         token_path = Path(_required(values, "SECURECODE_GITHUB_TOKEN_FILE"))
@@ -118,6 +160,7 @@ def build_scm_handlers(
             _FileInstallationTokenProvider(token_path, installation_id),
         )
         github_head = GithubPullRequestHeadResolver(github_api)
+        github_lineage = GithubCommitLineageResolver(github_api)
         github = GithubWebhookAdapter(
             webhook_secret=secret,
             pins=pins,
@@ -135,6 +178,7 @@ def build_scm_handlers(
             private_token=decode_ascii_secret(token_bytes),
         )
         gitlab_head = GitlabMergeRequestHeadResolver(gitlab_api)
+        gitlab_lineage = GitlabCommitLineageResolver(gitlab_api)
         gitlab = GitlabWebhookAdapter(
             webhook_token=secret,
             pins=pins,
@@ -155,6 +199,15 @@ def build_scm_handlers(
         github_writer=github_writer,
         gitlab_head=gitlab_head,
         gitlab_writer=gitlab_writer,
+        lineage_resolver=(
+            SCMRunCommitLineageResolver(
+                run_state=run_state,
+                github=github_lineage,
+                gitlab=gitlab_lineage,
+            )
+            if run_state is not None
+            else None
+        ),
         _secret_material=tuple(secrets),
     )
 

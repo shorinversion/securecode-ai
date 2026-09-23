@@ -202,6 +202,59 @@ class GitlabRestAPI:
             raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
         return sha
 
+    def compare_commit_lineage(
+        self, *, project_id: str, base_sha: str, head_sha: str
+    ) -> tuple[str, ...]:
+        """Return a verified first-parent chain for an exact straight comparison."""
+
+        _validate_identifiers(project_id, "lineage-read", "lineage-read")
+        if any(
+            type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None
+            for value in (base_sha, head_sha)
+        ):
+            raise GitlabAPIError(GitlabAPIErrorCode.INVALID_REQUEST)
+        path = (
+            f"projects/{_segment(project_id)}/repository/compare?"
+            f"from={quote(base_sha, safe='')}&to={quote(head_sha, safe='')}&straight=true"
+        )
+        response = self._json_request(
+            "GET",
+            path,
+            None,
+            "lineage-"
+            + hashlib.sha256(f"{project_id}\x00{base_sha}\x00{head_sha}".encode()).hexdigest(),
+            expected_statuses=frozenset({200}),
+        )
+        if type(response) is not dict or response.get("compare_timeout") is not False:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        commits = response.get("commits")
+        latest = response.get("commit")
+        if type(commits) is not list or len(commits) > 250 or type(latest) is not dict:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        if base_sha == head_sha:
+            if commits or latest.get("id") != head_sha:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            return (base_sha,)
+        lineage = [base_sha]
+        for item in commits:
+            if type(item) is not dict:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            commit_sha = item.get("id")
+            parents = item.get("parent_ids")
+            if (
+                type(commit_sha) is not str
+                or re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None
+                or type(parents) is not list
+                or not parents
+                or parents[0] != lineage[-1]
+                or commit_sha in lineage
+            ):
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            lineage.append(commit_sha)
+        if lineage[-1] != head_sha or latest.get("id") != head_sha:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        return tuple(lineage)
+
     def create_merge_request_discussion(
         self,
         *,

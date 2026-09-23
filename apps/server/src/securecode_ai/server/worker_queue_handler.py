@@ -10,10 +10,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Final, cast
 
+from securecode_ai.adapters.scm_head import SCMHeadUnavailable
 from securecode_ai.contracts import ArtifactRef
+from securecode_ai.core.baseline_fingerprints import BaselineFingerprintComparison
 
 from .artifact_upload_verifier import LocalArtifactUploadVerifier
-from .baseline_store import DurableBaselineStore
+from .baseline_store import BaselineStoreError, DurableBaselineStore
 from .ports import ServiceRequest, ServiceResponse, ServiceUnavailableError
 from .worker_artifact_authorization import (
     ArtifactAuthorizationDenied,
@@ -58,12 +60,16 @@ class WorkerQueueHandler:
         artifact_authorizations: SqliteArtifactAuthorizationStore,
         uploaded_artifacts: LocalArtifactUploadVerifier,
         baseline_store: DurableBaselineStore | None = None,
+        lineage_resolver: object | None = None,
     ) -> None:
         self._queue = queue
         self._claims = WorkerQueueClaimHandler(queue)
         self._artifact_authorizations = artifact_authorizations
         self._uploaded_artifacts = uploaded_artifacts
         self._baseline_store = baseline_store
+        if lineage_resolver is not None and not callable(lineage_resolver):
+            raise ValueError("SCM lineage resolver configuration is invalid")
+        self._lineage_resolver = cast(Callable[..., tuple[str, ...]] | None, lineage_resolver)
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if request.action == "worker_sessions.create":
@@ -116,11 +122,35 @@ class WorkerQueueHandler:
             terminal_transaction_effect = None
             baseline_store = self._baseline_store
             if audit_run is not None:
+                baseline_comparison: BaselineFingerprintComparison | None = None
+                revision = audit_run.execution_identity.repository_revision
+                if (
+                    baseline_store is not None
+                    and self._lineage_resolver is not None
+                    and revision.base_sha is not None
+                ):
+                    try:
+                        lineage = self._lineage_resolver(
+                            run_id=run_id,
+                            execution_identity_hash=identity_hash,
+                            base_sha=revision.base_sha,
+                            head_sha=revision.head_sha,
+                        )
+                        baseline_comparison = baseline_store.compare_for_audit(
+                            audit_run,
+                            commit_lineage=lineage,
+                        )
+                    except (BaselineStoreError, SCMHeadUnavailable, TypeError, ValueError):
+                        baseline_comparison = None
 
                 def record_completion_policy(cursor: sqlite3.Cursor) -> None:
                     if baseline_store is not None:
                         baseline_store.record_in_transaction(cursor, audit_run)
-                    record_run_advisory_policy(cursor, audit_run=audit_run)
+                    record_run_advisory_policy(
+                        cursor,
+                        audit_run=audit_run,
+                        baseline_comparison=baseline_comparison,
+                    )
 
                 terminal_transaction_effect = record_completion_policy
             lease = complete_worker_run(
