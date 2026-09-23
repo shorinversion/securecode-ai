@@ -68,6 +68,58 @@ def test_held_deletion_receipt_records_the_hold_actor() -> None:
     assert receipt.actor_id_hash == hashlib.sha256(b"legal-admin").hexdigest()
 
 
+def test_releasing_a_hold_requires_a_fresh_deletion_approval() -> None:
+    ledger = LifecycleLedger.in_memory()
+    request = DeletionRequest("delete-held", "tenant", "a" * 64, "artifact", "b" * 64, "owner", 1)
+    ledger.request(request, repository_id="repo", idempotency_key="request-key")
+    approved = ledger.approve(
+        deletion_id=request.deletion_id,
+        tenant_id=request.tenant_id,
+        actor_id="approver-one",
+        expected_version=request.version,
+    )
+    held = ledger.set_legal_hold(
+        deletion_id=request.deletion_id,
+        tenant_id=request.tenant_id,
+        identity_hash=request.identity_hash,
+        actor_id="legal-admin",
+        enabled=True,
+        reason="active investigation",
+        expected_version=approved.version,
+    )
+    released = ledger.set_legal_hold(
+        deletion_id=request.deletion_id,
+        tenant_id=request.tenant_id,
+        identity_hash=request.identity_hash,
+        actor_id="legal-admin",
+        enabled=False,
+        reason="investigation closed",
+        expected_version=held.version,
+    )
+
+    assert held.approved_by is None
+    assert released.approved_by is None
+    with pytest.raises(LifecycleConflict, match="deletion cannot be executed"):
+        ledger.execute(
+            deletion_id=request.deletion_id,
+            tenant_id=request.tenant_id,
+            identity_hash=request.identity_hash,
+            expected_version=released.version,
+        )
+    reapproved = ledger.approve(
+        deletion_id=request.deletion_id,
+        tenant_id=request.tenant_id,
+        actor_id="approver-two",
+        expected_version=released.version,
+    )
+    assert ledger.execute(
+        deletion_id=request.deletion_id,
+        tenant_id=request.tenant_id,
+        identity_hash=request.identity_hash,
+        expected_version=reapproved.version,
+    ).executed
+
+
 @pytest.mark.parametrize("operation", ("hold", "execute", "receipt"))
 def test_lifecycle_operations_reject_invalid_deletion_ids(operation: str) -> None:
     ledger = LifecycleLedger.in_memory()

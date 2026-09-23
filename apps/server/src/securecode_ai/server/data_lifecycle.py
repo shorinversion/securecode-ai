@@ -268,12 +268,16 @@ class LifecycleLedger:
             cursor.execute(
                 """UPDATE lifecycle_deletions
                    SET legal_hold=?, hold_actor=?, hold_reason_sha256=?,
+                       approved_by=CASE WHEN ? THEN NULL ELSE approved_by END,
+                       approved_at=CASE WHEN ? THEN NULL ELSE approved_at END,
                        version=version+1
                    WHERE tenant_id=? AND deletion_id=? AND version=?""",
                 (
                     int(enabled),
                     actor_id,
                     reason_hash,
+                    int(enabled),
+                    int(enabled),
                     tenant_id,
                     deletion_id,
                     expected_version,
@@ -281,7 +285,12 @@ class LifecycleLedger:
             )
             if cursor.rowcount != 1:
                 raise LifecycleConflict("legal hold transition lost a race")
-            updated = replace(value, legal_hold=enabled, version=expected_version + 1)
+            updated = replace(
+                value,
+                legal_hold=enabled,
+                approved_by=None if enabled else value.approved_by,
+                version=expected_version + 1,
+            )
             self._optional_remember(
                 cursor,
                 tenant_id,
