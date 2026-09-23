@@ -53,3 +53,25 @@ def test_divergent_replay_and_unallowlisted_data_fail_closed() -> None:
             attributes={"source": "no"},
             idempotency_key="key",
         )
+
+
+def test_corrupted_chain_cannot_be_exported_as_valid_evidence() -> None:
+    log = AuditLog()
+    log.append(
+        tenant_id="t",
+        repository_id="r",
+        run_id="run",
+        actor_id="actor",
+        action="runs.create",
+        identity_hash="a" * 64,
+        expected_sequence=0,
+        attributes={"outcome": "PASS"},
+        idempotency_key="key",
+    )
+    log._db.execute(
+        "UPDATE audit_chain_events SET event_hash = ? WHERE tenant_id = ? AND run_id = ?",
+        ("b" * 64, "t", "run"),
+    )
+
+    with pytest.raises(AuditConflict, match="hash chain"):
+        export_audit(log, tenant_id="t", run_id="run")

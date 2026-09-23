@@ -17,6 +17,7 @@ def export_audit(
     start: int = 1,
     end: int | None = None,
 ) -> dict[str, object]:
+    log.require_valid(tenant_id=tenant_id, run_id=run_id)
     events = log.range(tenant_id, run_id, start, end)
     document = {
         "tenant_id": tenant_id,
