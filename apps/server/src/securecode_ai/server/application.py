@@ -213,13 +213,21 @@ class ServerApp:
         if not route.raw_body and document is None:
             await self._send_error(send, 400, "INVALID_JSON", correlation_id)
             return
-        query = {
-            name: tuple(values)
-            for name, values in parse_qs(
-                _query(scope.get("query_string")),
+        query_string = _query(scope.get("query_string"))
+        if query_string is None:
+            await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
+            return
+        try:
+            parsed_query = parse_qs(
+                query_string,
                 keep_blank_values=True,
-            ).items()
-        }
+                encoding="utf-8",
+                errors="strict",
+            )
+        except (UnicodeDecodeError, ValueError):
+            await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
+            return
+        query = {name: tuple(values) for name, values in parsed_query.items()}
         repository_id = params.get("repository_id") or _repository_id(document, query)
         if not self._authorization.allows(
             identity, action=route.action, repository_id=repository_id

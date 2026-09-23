@@ -312,8 +312,13 @@ def _valid_precondition(value: str | None) -> bool:
     return value is not None and 1 <= len(value) <= 256 and "\r" not in value and "\n" not in value
 
 
-def _query(value: object) -> str:
-    return value.decode("ascii") if isinstance(value, bytes) else ""
+def _query(value: object) -> str | None:
+    if type(value) is not bytes:
+        return None
+    try:
+        return value.decode("ascii")
+    except UnicodeDecodeError:
+        return None
 
 
 def _safe_message(code: str) -> str:

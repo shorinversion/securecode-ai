@@ -69,6 +69,7 @@ async def _request(
     *,
     headers: dict[str, str] | None = None,
     document: object | None = None,
+    query_string: bytes = b"",
 ) -> tuple[int, dict[str, object]]:
     body = b"" if document is None else json.dumps(document).encode("utf-8")
     events: list[Mapping[str, object]] = []
@@ -95,7 +96,7 @@ async def _request(
             "method": method,
             "path": path,
             "headers": encoded_headers,
-            "query_string": b"",
+            "query_string": query_string,
         },
         receive,
         send,
@@ -108,6 +109,52 @@ async def _request(
     assert isinstance(decoded, dict)
     assert all(isinstance(key, str) for key in decoded)
     return status, {str(key): value for key, value in decoded.items()}
+
+
+def test_non_ascii_raw_query_bytes_are_rejected_as_invalid_request() -> None:
+    app = create_app(
+        identities=_IdentityVerifier(VerifiedIdentity("user-1", "tenant-a", frozenset({"viewer"}))),
+        authorization=RoleAuthorization(),
+        service=_Service(),
+    )
+
+    status, document = asyncio.run(
+        _request(
+            app,
+            "GET",
+            "/api/v1/runs/run-1",
+            headers={"authorization": "Bearer token"},
+            query_string=b"cursor=\xff",
+        )
+    )
+
+    assert status == 400
+    error = document.get("error")
+    assert isinstance(error, dict)
+    assert error.get("code") == "INVALID_REQUEST"
+
+
+def test_percent_encoded_invalid_utf8_query_is_rejected_as_invalid_request() -> None:
+    app = create_app(
+        identities=_IdentityVerifier(VerifiedIdentity("user-1", "tenant-a", frozenset({"viewer"}))),
+        authorization=RoleAuthorization(),
+        service=_Service(),
+    )
+
+    status, document = asyncio.run(
+        _request(
+            app,
+            "GET",
+            "/api/v1/runs/run-1",
+            headers={"authorization": "Bearer token"},
+            query_string=b"cursor=%FF",
+        )
+    )
+
+    assert status == 400
+    error = document.get("error")
+    assert isinstance(error, dict)
+    assert error.get("code") == "INVALID_REQUEST"
 
 
 def _mapping(value: object) -> Mapping[str, object]:
