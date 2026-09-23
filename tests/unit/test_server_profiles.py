@@ -33,6 +33,8 @@ def test_profiles_are_immutable_and_repository_assignment_overrides_default() ->
     assert (
         store.resolve(tenant_id="t", repository_id="r")["content_sha256"] == strict.content_sha256
     )
+    assert store.resolve_profile(tenant_id="t", repository_id="r") == strict
+    assert store.resolve_profile(tenant_id="t", repository_id="other") == advisory
 
 
 def test_precalibration_blocking_profile_and_divergent_version_fail_closed() -> None:

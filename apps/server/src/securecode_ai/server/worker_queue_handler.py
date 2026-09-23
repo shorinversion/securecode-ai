@@ -13,12 +13,13 @@ from typing import Final, cast
 from securecode_ai.contracts import ArtifactRef
 
 from .artifact_upload_verifier import LocalArtifactUploadVerifier
+from .baseline_store import DurableBaselineStore
 from .ports import ServiceRequest, ServiceResponse, ServiceUnavailableError
 from .worker_artifact_authorization import (
     ArtifactAuthorizationDenied,
     SqliteArtifactAuthorizationStore,
 )
-from .worker_completion_evidence import verify_terminal_evidence
+from .worker_completion_evidence import load_verified_terminal_audit_run
 from .worker_findings import WorkerFindingRecord, parse_worker_findings
 from .worker_findings_store import complete_worker_run
 from .worker_queue import SqliteWorkerQueue, WorkerQueueClaimHandler, WorkerQueueConflict
@@ -55,11 +56,13 @@ class WorkerQueueHandler:
         queue: SqliteWorkerQueue,
         artifact_authorizations: SqliteArtifactAuthorizationStore,
         uploaded_artifacts: LocalArtifactUploadVerifier,
+        baseline_store: DurableBaselineStore | None = None,
     ) -> None:
         self._queue = queue
         self._claims = WorkerQueueClaimHandler(queue)
         self._artifact_authorizations = artifact_authorizations
         self._uploaded_artifacts = uploaded_artifacts
+        self._baseline_store = baseline_store
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if request.action == "worker_sessions.create":
@@ -100,7 +103,7 @@ class WorkerQueueHandler:
             outcome = _required_text(document, "outcome")
             findings = _completion_findings(document, outcome)
             connection = _queue_connection(self._queue)
-            verify_terminal_evidence(
+            audit_run = load_verified_terminal_audit_run(
                 connection=connection,
                 artifact_root=_artifact_root(self._uploaded_artifacts),
                 tenant_id=request.identity.tenant_id,
@@ -109,6 +112,14 @@ class WorkerQueueHandler:
                 outcome=outcome,
                 findings=findings,
             )
+            terminal_transaction_effect = None
+            baseline_store = self._baseline_store
+            if audit_run is not None and baseline_store is not None:
+
+                def record_baseline(cursor: sqlite3.Cursor) -> None:
+                    baseline_store.record_in_transaction(cursor, audit_run)
+
+                terminal_transaction_effect = record_baseline
             lease = complete_worker_run(
                 connection,
                 lease_seconds=_queue_lease_seconds(self._queue),
@@ -123,6 +134,7 @@ class WorkerQueueHandler:
                 findings=findings,
                 resource_settlement=settlement,
                 resource_clock=resource_clock,
+                terminal_transaction_effect=terminal_transaction_effect,
             )
             return _lease_response(lease)
         except (WorkerQueueConflict, KeyError, TypeError, ValueError):

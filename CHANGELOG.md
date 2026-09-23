@@ -24,6 +24,10 @@ Changelog отвечает на вопрос «что и когда измени
 
 - Worker scans now render canonical SARIF beside the JSON report and publish it
   through the existing content-addressed, retry-safe artifact upload path.
+- P6.10 wires source-free run-action audit events to verified, repository-scoped audit exports and exposes bounded low-cardinality operational telemetry.
+- P6.12 adds a Compose deployment for the HTTPS control plane and connected
+  worker, with an API readiness probe, loopback-only host binding, non-root
+  hardening and a source-verified runtime environment inventory.
 
 - CR-094 makes canonical quality type-check every source file against both Linux and Windows APIs before unit tests.
 

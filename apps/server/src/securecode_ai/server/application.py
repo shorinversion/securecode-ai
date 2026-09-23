@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Final
@@ -12,6 +13,7 @@ from urllib.parse import parse_qs
 
 from .idempotency import ClaimState, InMemoryRequestReplayStore, RequestReplayStore
 from .json_boundary import JsonBoundaryError, load_json_object
+from .oidc_login import OidcLoginError, OidcLoginErrorCode, OidcLoginService
 from .openapi import API_VERSION, CAPABILITIES, SUPPORTED_MAJOR, build_openapi_document
 from .ports import (
     AuthorizationPort,
@@ -27,7 +29,9 @@ from .ports import (
     UnavailableControlPlaneService,
     VerifiedIdentity,
 )
+from .request_quota import QuotaLedger
 from .request_scope import repository_id as _repository_id
+from .telemetry import TelemetryRecorder
 
 _MAX_BODY_BYTES: Final = 16_777_216
 _IDEMPOTENCY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
@@ -55,6 +59,8 @@ _ROUTES: Final = (
     _Route("GET", "/api/v1/runs/{run_id}/events", "runs.events.read"),
     _Route("GET", "/api/v1/runs/{run_id}/findings", "runs.findings.read"),
     _Route("GET", "/api/v1/runs/{run_id}/artifacts", "runs.artifacts.read"),
+    _Route("GET", "/api/v1/runs/{run_id}/audit", "runs.audit.read"),
+    _Route("GET", "/api/v1/operations/metrics", "operations.metrics.read"),
     _Route("GET", "/api/v1/findings/{finding_id}", "findings.read"),
     _Route(
         "POST",
@@ -206,6 +212,9 @@ class ServerApp:
         replay_store: RequestReplayStore | None = None,
         webhook_identity: VerifiedIdentity | None = None,
         artifact_upload_identity: VerifiedIdentity | None = None,
+        telemetry: TelemetryRecorder | None = None,
+        oidc_login: OidcLoginService | None = None,
+        quota: QuotaLedger | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -217,6 +226,9 @@ class ServerApp:
             or any(type(value) is not str or not value for value in capabilities)
         ):
             raise ValueError("server application settings are invalid")
+        self._telemetry = telemetry if telemetry is not None else TelemetryRecorder()
+        self._oidc_login = oidc_login
+        self._quota = quota
         self._identities = identities or DenyIdentityVerifier()
         self._authorization = authorization or DenyAuthorization()
         self._service = service or UnavailableControlPlaneService()
@@ -262,8 +274,18 @@ class ServerApp:
                 {"api_version": API_VERSION, "capabilities": self._capabilities},
             )
             return
+        if path == "/api/v1/auth/login" and method == "POST":
+            await self._send_login_start(send, correlation_id)
+            return
         if path == "/api/v1/openapi.json" and method == "GET":
             await self._send_json(send, 200, build_openapi_document())
+            return
+        if path == "/api/v1/auth/callback" and method == "POST":
+            callback_body = await _read_body(receive, self._max_body_bytes)
+            if callback_body is None:
+                await self._send_error(send, 413, "BODY_TOO_LARGE", correlation_id)
+                return
+            await self._send_login_callback(send, callback_body, correlation_id)
             return
         route, params = _match_route(method, path)
         if route is None:
@@ -281,6 +303,23 @@ class ServerApp:
         if identity is None:
             await self._send_error(send, 401, "UNAUTHENTICATED", correlation_id)
             return
+        # Scope note: the quota charges routed API work, after the tenant is
+        # known. Early unauthenticated routes (login, health, capabilities)
+        # are not charged here; a login brute-force ceiling belongs with the
+        # login flow itself, not with tenant accounting.
+        if self._quota is not None:
+            decision = self._quota.check(
+                tenant_id=identity.tenant_id,
+                now_ms=int(time.monotonic() * 1000),
+            )
+            if not decision.allowed:
+                await self._send_json(
+                    send,
+                    429,
+                    {"error": {"code": "QUOTA_EXCEEDED", "correlation_id": correlation_id}},
+                    {"Retry-After": str(decision.retry_after_seconds)},
+                )
+                return
         if route.workload_only and not identity.workload:
             await self._send_error(send, 403, "FORBIDDEN", correlation_id)
             return
@@ -341,6 +380,7 @@ class ServerApp:
                     claim.response.headers,
                 )
                 return
+        started_at = time.monotonic()
         try:
             response = await self._service.dispatch(
                 ServiceRequest(
@@ -357,6 +397,7 @@ class ServerApp:
                     headers=headers,
                 )
             )
+            self._record_observation(route.action, response.status, started_at)
         except ServiceUnavailableError:
             self._release_idempotency(identity, key)
             await self._send_error(send, 503, "SERVICE_UNAVAILABLE", correlation_id)
@@ -399,12 +440,71 @@ class ServerApp:
             response=response,
         )
 
+    def _record_observation(self, action: str, status: int, started_at: float) -> None:
+        """Record one redacted observation; telemetry never breaks a request."""
+
+        elapsed_ms = int(max(0.0, (time.monotonic() - started_at) * 1000.0))
+        try:
+            self._telemetry.record(action=action, status=status, duration_ms=elapsed_ms)
+        except Exception:
+            return
+
     def _release_idempotency(self, identity: VerifiedIdentity, key: str | None) -> None:
         if key is not None:
             try:
                 self._replay_store.release(tenant_id=identity.tenant_id, key=key)
             except Exception:
                 return
+
+    async def _send_login_start(
+        self, send: Callable[[Mapping[str, object]], Awaitable[None]], correlation_id: str
+    ) -> None:
+        """Hand out one login attempt handle; unconfigured servers fail closed."""
+
+        if self._oidc_login is None:
+            await self._send_error(send, 503, "AUTH_NOT_CONFIGURED", correlation_id)
+            return
+        await self._send_json(send, 200, self._oidc_login.start().document())
+
+    async def _send_login_callback(
+        self,
+        send: Callable[[Mapping[str, object]], Awaitable[None]],
+        body: bytes,
+        correlation_id: str,
+    ) -> None:
+        """Exchange a callback token for a verified principal, or fail closed."""
+
+        if self._oidc_login is None:
+            await self._send_error(send, 503, "AUTH_NOT_CONFIGURED", correlation_id)
+            return
+        try:
+            document = load_json_object(body)
+        except JsonBoundaryError:
+            await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
+            return
+        token = document.get("token")
+        nonce = document.get("nonce")
+        state = document.get("state")
+        if type(token) is not str or type(nonce) is not str or type(state) is not str:
+            await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
+            return
+        try:
+            receipt = self._oidc_login.callback(token=token, nonce=nonce, state=state)
+        except OidcLoginError as error:
+            if error.code is OidcLoginErrorCode.RATE_LIMITED:
+                await self._send_json(
+                    send,
+                    429,
+                    {"error": {"code": error.code.value, "correlation_id": correlation_id}},
+                    {"Retry-After": "60"},
+                )
+                return
+            await self._send_error(send, 401, error.code.value, correlation_id)
+            return
+        except Exception:
+            await self._send_error(send, 401, "TOKEN_REJECTED", correlation_id)
+            return
+        await self._send_json(send, 200, receipt.document())
 
     async def _send_error(
         self,

@@ -72,6 +72,19 @@ def test_server_images_bind_the_container_interface() -> None:
         assert 'CMD ["python","-m","securecode_ai.server.main"]' in document
 
 
+def test_compose_uses_loopback_ingress_and_secret_backed_tls() -> None:
+    document = _text("docker-compose.yml")
+
+    assert '"127.0.0.1:8080:8080"' in document
+    assert "SECURECODE_CONTROL_PLANE_URL: https://server:8080" in document
+    assert "SSL_CERT_FILE: /run/secrets/server_ca" in document
+    assert "condition: service_healthy" in document
+    assert "read_only: true" in document
+    assert "SECURECODE_TLS_KEY_FILE: /run/secrets/server_tls_key" in document
+    assert "mode: 0400" in document
+    assert "SECURECODE_BOOTSTRAP_WORKER_TOKEN:" not in document
+
+
 def test_gitlab_source_job_dispatches_exact_head_without_worker_authority() -> None:
     raw = _text(".gitlab-ci.yml")
 

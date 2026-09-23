@@ -31,6 +31,7 @@ from .execution import (
     ProductSuperseded,
     WorkerExecutionResult,
 )
+from .liveness import touch as touch_liveness
 from .protocol import WorkerCommand, WorkerEvent, WorkerJob
 from .secure_files import read_ascii_secret
 from .usage import WorkerResourceUsage, WorkerUsageError, WorkerUsageMeter
@@ -494,6 +495,7 @@ async def serve(
     values = os.environ if environment is None else environment
     settings = RuntimeSettings.from_environment(values)
     stop_event = stopping or asyncio.Event()
+    data_dir = Path(values.get("SECURECODE_DATA_DIR", "/var/lib/securecode"))
     loop = asyncio.get_running_loop()
     if stopping is None:
         for value in (signal.SIGTERM, signal.SIGINT):
@@ -521,7 +523,23 @@ async def serve(
         settings=settings,
         stopping=stop_event,
     )
-    await service.run()
+    liveness = asyncio.create_task(_liveness_loop(data_dir, stop_event))
+    try:
+        await service.run()
+    finally:
+        stop_event.set()
+        liveness.cancel()
+        with suppress(asyncio.CancelledError):
+            await liveness
+
+
+async def _liveness_loop(data_dir: Path, stopping: asyncio.Event) -> None:
+    while not stopping.is_set():
+        await asyncio.to_thread(touch_liveness, data_dir)
+        try:
+            await asyncio.wait_for(stopping.wait(), timeout=5.0)
+        except TimeoutError:
+            continue
 
 
 async def _resolve_scm_run(

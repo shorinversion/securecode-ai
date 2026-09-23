@@ -7,6 +7,8 @@ transport remains SIMULATED; this module never qualifies or admits a provider.
 
 from __future__ import annotations
 
+from .endpoint import Resolver
+from .model import CredentialSupplier
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_runtime import AuthorizedLocalModelExecutor
 from .public_core_fixtures import build_public_core_fixture as build_public_core_fixture
@@ -31,6 +33,7 @@ from .public_core_runner_primitives import (
     PublicCoreHostInputs,
     PublicCoreRunnerError,
     PublicCoreRunResult,
+    SystemPublicResolver,
 )
 from .public_core_runner_runner import run_public_core_case
 from .public_discovery_observation import (
@@ -39,7 +42,12 @@ from .public_discovery_observation import (
 
 
 def _executor(
-    *, inputs: PublicCoreHostInputs, connector: object, native: bool
+    *,
+    inputs: PublicCoreHostInputs,
+    connector: object,
+    native: bool,
+    resolver: Resolver | None = None,
+    credential_supplier: CredentialSupplier | None = None,
 ) -> AuthorizedLocalModelExecutor:
     """Build an executor while retaining the historical patchable boundary."""
 
@@ -47,6 +55,8 @@ def _executor(
         inputs=inputs,
         connector=connector,
         native=native,
+        resolver=resolver,
+        credential_supplier=credential_supplier,
         connector_factory=OpenAICompatibleLocalHttpConnector,
     )
 
@@ -57,6 +67,7 @@ for _public_core_type in (
     PublicCoreArtifactPins,
     PublicCoreHostInputs,
     PinnedLiteralLoopbackResolver,
+    SystemPublicResolver,
     PreparedPublicCoreCase,
     PublicCoreRunResult,
 ):
@@ -70,6 +81,7 @@ __all__ = [
     "PublicCoreHostInputs",
     "PublicCoreRunResult",
     "PublicCoreRunnerError",
+    "SystemPublicResolver",
     "load_public_core_inputs",
     "preflight_public_core_case",
     "prepare_public_core_case",

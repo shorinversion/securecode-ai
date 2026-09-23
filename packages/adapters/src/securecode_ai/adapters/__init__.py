@@ -102,6 +102,7 @@ from .model import (
     parse_model_request,
 )
 from .openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
+from .otlp_http import OtlpHttpExporter, OtlpTransport, StdlibOtlpTransport
 from .program_graph import (
     DEFAULT_PROGRAM_GRAPH_ADAPTER_LIMITS,
     ProgramCallFact,
@@ -214,6 +215,8 @@ __all__ = [
     "OsvBatchRequest",
     "OsvBatchResponse",
     "OsvPackageResult",
+    "OtlpHttpExporter",
+    "OtlpTransport",
     "ParsedDependencyManifest",
     "PayloadValidation",
     "PreparedModelContext",
@@ -245,6 +248,7 @@ __all__ = [
     "SecretProducer",
     "SecretScanResult",
     "SelectionProvenance",
+    "StdlibOtlpTransport",
     "StructuredPayloadValidator",
     "SystemTraceIdSource",
     "SystemUTCClock",

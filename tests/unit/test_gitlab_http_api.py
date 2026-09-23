@@ -34,4 +34,3 @@ def test_named_client_satisfies_publication_protocol() -> None:
 def test_named_client_preserves_strict_transport_configuration(base_url: str) -> None:
     with pytest.raises(GitlabAPIError):
         GitlabHttpAPI(base_url=base_url, private_token="token")
-

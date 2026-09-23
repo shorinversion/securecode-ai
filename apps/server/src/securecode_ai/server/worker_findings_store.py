@@ -40,6 +40,7 @@ def complete_worker_run(
     findings: tuple[WorkerFindingRecord, ...],
     resource_settlement: WorkerResourceSettlement | None = None,
     resource_clock: Callable[[], int] | None = None,
+    terminal_transaction_effect: Callable[[sqlite3.Cursor], None] | None = None,
 ) -> WorkerQueueLease:
     if (
         outcome not in OUTCOME_STATES
@@ -47,6 +48,7 @@ def complete_worker_run(
         or any(type(item) is not WorkerFindingRecord for item in findings)
         or type(resource_settlement) is not WorkerResourceSettlement
         or not callable(resource_clock)
+        or (terminal_transaction_effect is not None and not callable(terminal_transaction_effect))
         or (outcome in {"CANCELLED", "SUPERSEDED"} and findings)
         or (
             outcome in {"PASS", "FAIL", "INDETERMINATE"}
@@ -82,6 +84,8 @@ def complete_worker_run(
                 findings=findings,
             )
             settle_worker_resources(cursor, resource_settlement, now_ms=resource_now_ms)
+            if terminal_transaction_effect is not None:
+                terminal_transaction_effect(cursor)
             connection.commit()
             return _lease(row, lease_seconds)
 
@@ -126,6 +130,8 @@ def complete_worker_run(
         )
         if cursor.rowcount != 1:
             raise WorkerQueueConflict()
+        if terminal_transaction_effect is not None:
+            terminal_transaction_effect(cursor)
         updated = _current(cursor, tenant_id, session_id)
         connection.commit()
         return _lease(updated, lease_seconds)

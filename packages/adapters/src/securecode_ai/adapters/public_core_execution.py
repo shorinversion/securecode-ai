@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, NoReturn
 
+from securecode_ai.adapters.endpoint import Resolver
 from securecode_ai.adapters.local_provider_admission import CoreCase
+from securecode_ai.adapters.model import CredentialSupplier
 from securecode_ai.adapters.product_scan import ProductCandidateFlow, ProductCompositionFailure
 from securecode_ai.adapters.public_core_runner import (
     PublicCoreDiagnosticSampling,
@@ -249,6 +251,8 @@ def execute_public_core_case(
     expected_backend: BackendIdentity,
     observe_backend: Callable[[], BackendObservation],
     simulated_transport: object | None = None,
+    resolver: Resolver | None = None,
+    credential_supplier: CredentialSupplier | None = None,
 ) -> PublicCoreExecutionResult:
     """Measure one configured run with exact before/after host identity pins."""
     if (
@@ -306,7 +310,11 @@ def execute_public_core_case(
     try:
         binding = _binding(case, inputs)
         run = run_public_core_case(
-            case=case, inputs=inputs, simulated_transport=simulated_transport
+            case=case,
+            inputs=inputs,
+            simulated_transport=simulated_transport,
+            resolver=resolver,
+            credential_supplier=credential_supplier,
         )
     except (TypeError, ValueError, RuntimeError):
         binding, run = None, None

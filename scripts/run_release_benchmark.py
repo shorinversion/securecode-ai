@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -25,6 +27,8 @@ from securecode_ai.adapters.product_scanner import FirstPartyStaticWorker
 from securecode_ai.core.release_benchmark import BenchmarkCell, Configuration, aggregate
 from securecode_ai.core.repository import RepositoryFile
 from securecode_ai.core.scanning import ScannerRequest
+
+from scripts.benchmark_spend_guard import AttemptQuote, BenchmarkSpendGuard, SpendGuardError
 
 LANGUAGE_EXTENSIONS = {"python": ".py", "javascript-typescript": ".ts", "go": ".go"}
 MODEL_LANES = frozenset(
@@ -40,6 +44,41 @@ class Case:
     expected_label: str
     language: str
     lineage: str
+
+
+@dataclass(frozen=True, slots=True)
+class RemoteBudget:
+    """A conservative, durable reservation policy for public model calls."""
+
+    ledger: Path
+    phase: str
+    candidate_sha: str
+    profile_sha256: str
+    max_input_tokens: int
+    max_output_tokens: int
+    input_micro_usd_per_million: int
+    output_micro_usd_per_million: int
+
+    def reserve(self, case: Case, lane: Configuration, repetition: int) -> bool:
+        identity = hashlib.sha256(f"{case.case_id}:{lane.value}:{repetition}".encode()).hexdigest()
+        quote = AttemptQuote(
+            attempt_id=f"release-{identity}",
+            phase=self.phase,
+            candidate_sha=self.candidate_sha,
+            profile_sha256=self.profile_sha256,
+            max_input_tokens=self.max_input_tokens,
+            max_output_tokens=self.max_output_tokens,
+            input_micro_usd_per_million=self.input_micro_usd_per_million,
+            output_micro_usd_per_million=self.output_micro_usd_per_million,
+        )
+        try:
+            return BenchmarkSpendGuard(self.ledger).reserve(quote)
+        except SpendGuardError as error:
+            raise RemoteBudgetError() from error
+
+
+class RemoteBudgetError(ValueError):
+    """A fixed non-echo result when an API attempt cannot be reserved."""
 
 
 def _sha256(source: str) -> str:
@@ -150,6 +189,138 @@ def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool
     return value, tokens
 
 
+def _semgrep_prediction(
+    case: Case,
+    source: str,
+    *,
+    command: str,
+    config: Path,
+) -> bool:
+    """Run one pinned local Semgrep configuration without retaining source bytes."""
+    if not command or not (config.is_file() or config.is_dir()):
+        raise ValueError("Semgrep command or configuration is unavailable")
+    language_config = config
+    if config.is_dir():
+        language_config = (
+            config
+            / {
+                "python": "python",
+                "javascript-typescript": "javascript",
+                "go": "go",
+            }[case.language]
+        )
+    if not (language_config.is_file() or language_config.is_dir()):
+        raise ValueError("Semgrep language configuration is unavailable")
+    suffix = LANGUAGE_EXTENSIONS[case.language]
+    with tempfile.TemporaryDirectory(prefix="securecode-ai-benchmark-") as directory:
+        source_path = Path(directory) / ("case" + suffix)
+        source_path.write_text(source, encoding="utf-8", newline="\n")
+        try:
+            completed = subprocess.run(
+                (
+                    command,
+                    "scan",
+                    "--config",
+                    str(language_config),
+                    "--json",
+                    "--no-git-ignore",
+                    "--quiet",
+                    str(source_path),
+                ),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ValueError("Semgrep invocation failed") from error
+    if completed.returncode not in {0, 1}:
+        raise ValueError("Semgrep invocation failed")
+    try:
+        results = json.loads(completed.stdout)["results"]
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError("Semgrep response is invalid") from error
+    if type(results) is not list:
+        raise ValueError("Semgrep response is invalid")
+    return bool(results)
+
+
+def _semgrep_predictions(
+    cases: tuple[tuple[Case, str], ...],
+    *,
+    command: str,
+    config: Path,
+) -> tuple[tuple[Case, bool, int, str], ...]:
+    """Batch local Semgrep by language so rules compile once per language."""
+    grouped: dict[str, list[tuple[Case, str]]] = {}
+    for case, source in cases:
+        grouped.setdefault(case.language, []).append((case, source))
+    predictions: list[tuple[Case, bool, int, str]] = []
+    for language, values in grouped.items():
+        language_config = config
+        if config.is_dir():
+            language_config = (
+                config
+                / {
+                    "python": "python",
+                    "javascript-typescript": "javascript",
+                    "go": "go",
+                }[language]
+            )
+        if not (language_config.is_file() or language_config.is_dir()):
+            raise ValueError("Semgrep language configuration is unavailable")
+        with tempfile.TemporaryDirectory(prefix="securecode-ai-benchmark-") as directory:
+            root = Path(directory)
+            names: dict[str, Case] = {}
+            for index, (case, source) in enumerate(values):
+                name = f"case-{index}{LANGUAGE_EXTENSIONS[language]}"
+                (root / name).write_text(source, encoding="utf-8", newline="\n")
+                names[name] = case
+            started = time.monotonic_ns()
+            try:
+                completed = subprocess.run(
+                    (
+                        command,
+                        "scan",
+                        "--config",
+                        str(language_config),
+                        "--json",
+                        "--no-git-ignore",
+                        "--quiet",
+                        str(root),
+                    ),
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ValueError("Semgrep invocation failed") from error
+            elapsed = (time.monotonic_ns() - started) // 1_000_000
+            if completed.returncode not in {0, 1}:
+                raise ValueError("Semgrep invocation failed")
+            try:
+                results = json.loads(completed.stdout)["results"]
+            except (KeyError, TypeError, json.JSONDecodeError) as error:
+                raise ValueError("Semgrep response is invalid") from error
+            if type(results) is not list:
+                raise ValueError("Semgrep response is invalid")
+            matched: set[str] = set()
+            for result in results:
+                if type(result) is not dict or type(result.get("path")) is not str:
+                    raise ValueError("Semgrep response is invalid")
+                name = Path(result["path"]).name
+                if name not in names:
+                    raise ValueError("Semgrep response is invalid")
+                matched.add(name)
+            per_case_latency = elapsed // len(values)
+            predictions.extend(
+                (case, name in matched, per_case_latency, "completed")
+                for name, case in names.items()
+            )
+    return tuple(predictions)
+
+
 def _cell(
     case: Case,
     lane: Configuration,
@@ -178,39 +349,89 @@ def _cell(
 
 
 def run(
-    cases: Iterable[Case], database: Path, lane: Configuration, repetitions: int, remote: bool
+    cases: Iterable[Case],
+    database: Path,
+    lane: Configuration,
+    repetitions: int,
+    remote: bool,
+    *,
+    semgrep_command: str = "semgrep",
+    semgrep_config: Path | None = None,
+    remote_budget: RemoteBudget | None = None,
 ) -> tuple[BenchmarkCell, ...]:
     if lane in MODEL_LANES and not remote:
         raise ValueError("remote lanes require --allow-public-remote")
     uri = database.resolve(strict=True).as_uri() + "?mode=ro&immutable=1"
     cells: list[BenchmarkCell] = []
     with sqlite3.connect(uri, uri=True) as connection:
+        if lane is Configuration.SEMGREP:
+            if semgrep_config is None:
+                raise ValueError("Semgrep configuration is unavailable")
+            sources = tuple((case, _source(connection, case)) for case in cases)
+            try:
+                predictions = _semgrep_predictions(
+                    sources, command=semgrep_command, config=semgrep_config
+                )
+            except ValueError:
+                return tuple(
+                    _cell(case, lane, repetition, False, 0, 0, "semgrep-failed")
+                    for case, _source in sources
+                    for repetition in range(1, repetitions + 1)
+                )
+            return tuple(
+                _cell(case, lane, repetition, predicted, latency, 0, status)
+                for case, predicted, latency, status in predictions
+                for repetition in range(1, repetitions + 1)
+            )
         for case in cases:
             source = _source(connection, case)
-            try:
-                scanner = _deterministic(case, source)
-            except (TypeError, ValueError, RuntimeError):
-                for repetition in range(1, repetitions + 1):
-                    cells.append(_cell(case, lane, repetition, False, 0, 0, "scanner-failed"))
-                continue
+            scanner: bool | None = None
+            scanner_failed = False
+            if lane in {Configuration.DETERMINISTIC, Configuration.SCANNER, Configuration.HYBRID}:
+                try:
+                    scanner = _deterministic(case, source)
+                except (TypeError, ValueError, RuntimeError):
+                    scanner_failed = True
+                    if lane is not Configuration.HYBRID:
+                        for repetition in range(1, repetitions + 1):
+                            cells.append(
+                                _cell(case, lane, repetition, False, 0, 0, "scanner-failed")
+                            )
+                        continue
             for repetition in range(1, repetitions + 1):
                 started = time.monotonic_ns()
                 tokens = 0
-                if lane is Configuration.DETERMINISTIC:
-                    predicted = scanner
-                elif lane is Configuration.SCANNER:
-                    predicted, tokens = (
-                        _remote_prediction(case, source, one_shot=False) if scanner else (False, 0)
-                    )
-                elif lane is Configuration.MODEL:
-                    predicted, tokens = _remote_prediction(case, source, one_shot=False)
-                elif lane is Configuration.ONE_SHOT:
-                    predicted, tokens = _remote_prediction(case, source, one_shot=True)
-                elif lane is Configuration.HYBRID:
-                    model, tokens = _remote_prediction(case, source, one_shot=False)
-                    predicted = scanner or model
-                else:
-                    raise ValueError("Semgrep lane is run by its pinned adapter, not this command")
+                try:
+                    if (
+                        lane in MODEL_LANES
+                        and (lane is not Configuration.SCANNER or bool(scanner))
+                        and remote_budget is not None
+                        and not remote_budget.reserve(case, lane, repetition)
+                    ):
+                        raise RemoteBudgetError()
+                    if lane is Configuration.DETERMINISTIC:
+                        predicted = bool(scanner)
+                    elif lane is Configuration.SCANNER:
+                        predicted, tokens = (
+                            _remote_prediction(case, source, one_shot=False)
+                            if scanner
+                            else (False, 0)
+                        )
+                    elif lane is Configuration.MODEL:
+                        predicted, tokens = _remote_prediction(case, source, one_shot=False)
+                    elif lane is Configuration.ONE_SHOT:
+                        predicted, tokens = _remote_prediction(case, source, one_shot=True)
+                    elif lane is Configuration.HYBRID:
+                        model, tokens = _remote_prediction(case, source, one_shot=False)
+                        predicted = bool(scanner) or model
+                    else:
+                        raise ValueError("unsupported benchmark configuration")
+                except RemoteBudgetError:
+                    cells.append(_cell(case, lane, repetition, False, 0, 0, "budget-rejected"))
+                    continue
+                except (SpendGuardError, ValueError):
+                    cells.append(_cell(case, lane, repetition, False, 0, 0, "model-failed"))
+                    continue
                 cells.append(
                     _cell(
                         case,
@@ -219,6 +440,7 @@ def run(
                         predicted,
                         (time.monotonic_ns() - started) // 1_000_000,
                         tokens,
+                        "scanner-failed" if scanner_failed else "completed",
                     )
                 )
     return tuple(cells)
@@ -237,6 +459,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--allow-public-remote", action="store_true")
+    parser.add_argument("--semgrep-command", default="semgrep")
+    parser.add_argument("--semgrep-config", type=Path)
+    parser.add_argument("--spend-ledger", type=Path)
+    parser.add_argument("--budget-phase", choices=("development", "final"))
+    parser.add_argument("--candidate-sha")
+    parser.add_argument("--profile-sha256")
+    parser.add_argument("--max-input-tokens", type=int)
+    parser.add_argument("--max-output-tokens", type=int)
+    parser.add_argument("--input-microusd-per-million", type=int)
+    parser.add_argument("--output-microusd-per-million", type=int)
     arguments = parser.parse_args(argv)
     try:
         if (
@@ -244,12 +476,51 @@ def main(argv: Sequence[str] | None = None) -> int:
         ) or not 1 <= arguments.repetitions <= 3:
             raise ValueError("limit and repetitions are invalid")
         lane = Configuration(arguments.configuration)
+        remote_budget: RemoteBudget | None = None
+        if lane in MODEL_LANES:
+            values = (
+                arguments.spend_ledger,
+                arguments.budget_phase,
+                arguments.candidate_sha,
+                arguments.profile_sha256,
+                arguments.max_input_tokens,
+                arguments.max_output_tokens,
+                arguments.input_microusd_per_million,
+                arguments.output_microusd_per_million,
+            )
+            if any(value is None for value in values):
+                raise ValueError("remote lanes require an explicit spend budget")
+            assert arguments.spend_ledger is not None
+            assert arguments.budget_phase is not None
+            assert arguments.candidate_sha is not None
+            assert arguments.profile_sha256 is not None
+            assert arguments.max_input_tokens is not None
+            assert arguments.max_output_tokens is not None
+            assert arguments.input_microusd_per_million is not None
+            assert arguments.output_microusd_per_million is not None
+            remote_budget = RemoteBudget(
+                arguments.spend_ledger,
+                arguments.budget_phase,
+                arguments.candidate_sha,
+                arguments.profile_sha256,
+                arguments.max_input_tokens,
+                arguments.max_output_tokens,
+                arguments.input_microusd_per_million,
+                arguments.output_microusd_per_million,
+            )
         cells = run(
             _load_cases(arguments.manifest.resolve(strict=True), arguments.limit),
             arguments.database,
             lane,
             arguments.repetitions,
             arguments.allow_public_remote,
+            semgrep_command=arguments.semgrep_command,
+            semgrep_config=(
+                arguments.semgrep_config.resolve(strict=True)
+                if arguments.semgrep_config is not None
+                else None
+            ),
+            remote_budget=remote_budget,
         )
         result: dict[str, Any] = {
             "cells": [asdict(cell) for cell in cells],
