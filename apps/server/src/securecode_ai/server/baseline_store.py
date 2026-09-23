@@ -41,6 +41,22 @@ class DurableBaselineStore:
         self.connection.commit()
 
     def record(self, audit_run: AuditRun) -> BaselineFingerprintSnapshot:
+        cursor = self.connection.cursor()
+        try:
+            with self.connection:
+                return self.record_in_transaction(cursor, audit_run)
+        finally:
+            cursor.close()
+
+    def record_in_transaction(
+        self,
+        cursor: sqlite3.Cursor,
+        audit_run: AuditRun,
+    ) -> BaselineFingerprintSnapshot:
+        """Persist a snapshot inside the caller's terminal-run transaction."""
+
+        if not isinstance(cursor, sqlite3.Cursor):
+            raise BaselineStoreError("baseline transaction cursor is invalid")
         if type(audit_run) is not AuditRun:
             raise BaselineStoreError("baseline audit run is invalid")
         revision = audit_run.execution_identity.repository_revision
@@ -56,22 +72,21 @@ class DurableBaselineStore:
             separators=(",", ":"),
             sort_keys=True,
         )
-        with self.connection:
-            existing = self.connection.execute(
-                """SELECT candidates_json FROM scm_baseline_snapshots
-                   WHERE tenant_id=? AND repository_id=? AND revision_sha=?""",
-                (revision.tenant_id, revision.repository_id, revision.head_sha),
-            ).fetchone()
-            if existing is not None:
-                if existing[0] != document:
-                    raise BaselineStoreError("baseline revision conflicts")
-                return snapshot
-            self.connection.execute(
-                """INSERT INTO scm_baseline_snapshots
-                   (tenant_id, repository_id, revision_sha, candidates_json)
-                   VALUES (?, ?, ?, ?)""",
-                (revision.tenant_id, revision.repository_id, revision.head_sha, document),
-            )
+        existing = cursor.execute(
+            """SELECT candidates_json FROM scm_baseline_snapshots
+               WHERE tenant_id=? AND repository_id=? AND revision_sha=?""",
+            (revision.tenant_id, revision.repository_id, revision.head_sha),
+        ).fetchone()
+        if existing is not None:
+            if existing[0] != document:
+                raise BaselineStoreError("baseline revision conflicts")
+            return snapshot
+        cursor.execute(
+            """INSERT INTO scm_baseline_snapshots
+               (tenant_id, repository_id, revision_sha, candidates_json)
+               VALUES (?, ?, ?, ?)""",
+            (revision.tenant_id, revision.repository_id, revision.head_sha, document),
+        )
         return snapshot
 
     def load(

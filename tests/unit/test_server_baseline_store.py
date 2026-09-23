@@ -68,3 +68,42 @@ def test_compare_uses_the_exact_persisted_base_and_trusted_lineage() -> None:
     assert comparison.base_sha == base
     assert comparison.head_sha == head
     assert comparison.new_fingerprints == ()
+
+
+def test_record_in_transaction_is_rolled_back_with_terminal_transition() -> None:
+    connection = sqlite3.connect(":memory:")
+    store = DurableBaselineStore(connection)
+    revision = SimpleNamespace(tenant_id="tenant", repository_id="repository", head_sha="a" * 40)
+    audit = AuditRun.model_construct(
+        execution_identity=SimpleNamespace(repository_revision=revision),
+        coverage_manifest=SimpleNamespace(discovery_candidates=()),
+    )
+    cursor = connection.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        store.record_in_transaction(cursor, audit)
+        connection.rollback()
+    finally:
+        cursor.close()
+
+    with pytest.raises(BaselineStoreError, match="baseline revision is unavailable"):
+        store.load(tenant_id="tenant", repository_id="repository", revision_sha="a" * 40)
+
+
+def test_record_in_transaction_commits_with_terminal_transition() -> None:
+    connection = sqlite3.connect(":memory:")
+    store = DurableBaselineStore(connection)
+    revision = SimpleNamespace(tenant_id="tenant", repository_id="repository", head_sha="a" * 40)
+    audit = AuditRun.model_construct(
+        execution_identity=SimpleNamespace(repository_revision=revision),
+        coverage_manifest=SimpleNamespace(discovery_candidates=()),
+    )
+    cursor = connection.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        store.record_in_transaction(cursor, audit)
+        connection.commit()
+    finally:
+        cursor.close()
+
+    assert store.load(tenant_id="tenant", repository_id="repository", revision_sha="a" * 40)

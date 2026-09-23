@@ -112,6 +112,14 @@ class WorkerQueueHandler:
                 outcome=outcome,
                 findings=findings,
             )
+            terminal_transaction_effect = None
+            baseline_store = self._baseline_store
+            if audit_run is not None and baseline_store is not None:
+
+                def record_baseline(cursor: sqlite3.Cursor) -> None:
+                    baseline_store.record_in_transaction(cursor, audit_run)
+
+                terminal_transaction_effect = record_baseline
             lease = complete_worker_run(
                 connection,
                 lease_seconds=_queue_lease_seconds(self._queue),
@@ -126,9 +134,8 @@ class WorkerQueueHandler:
                 findings=findings,
                 resource_settlement=settlement,
                 resource_clock=resource_clock,
+                terminal_transaction_effect=terminal_transaction_effect,
             )
-            if audit_run is not None and self._baseline_store is not None:
-                self._baseline_store.record(audit_run)
             return _lease_response(lease)
         except (WorkerQueueConflict, KeyError, TypeError, ValueError):
             return _denied(
