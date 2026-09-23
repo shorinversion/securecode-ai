@@ -160,6 +160,8 @@ class ScmPolicyDecision:
             raise ValueError("policy evaluation error must fail closed")
         if self.enforcement is ScmPolicyEnforcement.BLOCK and not self.blocks_merge:
             raise ValueError("blocking policy decision must block merge")
+        if self.enforcement is ScmPolicyEnforcement.ALLOW and self.blocks_merge:
+            raise ValueError("allowing policy decision cannot block merge")
         if self.enforcement is ScmPolicyEnforcement.ADVISORY and self.blocks_merge:
             raise ValueError("advisory policy decision cannot block merge")
         if (

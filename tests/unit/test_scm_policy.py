@@ -467,6 +467,56 @@ def test_strict_policy_cannot_allow_failed_audit_with_valid_receipt_metadata() -
         )
 
 
+def test_allow_receipt_cannot_claim_blocking_merge() -> None:
+    hashes = ScmPolicyInputHashes(
+        policy_document_sha256=HASH_A,
+        audit_run_sha256=HASH_B,
+        execution_identity_sha256="c" * 64,
+        baseline_comparison_sha256="d" * 64,
+    )
+    metadata = {
+        "blocks_merge": True,
+        "enforcement": ScmPolicyEnforcement.ALLOW.value,
+        "error_code": None,
+        "input_hashes": {
+            "audit_run_sha256": hashes.audit_run_sha256,
+            "baseline_comparison_sha256": hashes.baseline_comparison_sha256,
+            "execution_identity_sha256": hashes.execution_identity_sha256,
+            "policy_document_sha256": hashes.policy_document_sha256,
+        },
+        "is_passing": True,
+        "matched_rule_ids": ("complete_non_blocking",),
+        "mode": ScmPolicyMode.STRICT.value,
+        "observed_audit_outcome": AuditRunOutcome.PASS.value,
+        "policy_id": "policy-v1",
+        "policy_version": "1.0.0",
+        "publication_permitted": True,
+        "schema_version": SCM_POLICY_SCHEMA_VERSION,
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            metadata, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
+        ).encode("ascii")
+    ).hexdigest()
+
+    with pytest.raises(ValueError, match="allowing policy decision cannot block merge"):
+        ScmPolicyDecision(
+            schema_version=SCM_POLICY_SCHEMA_VERSION,
+            policy_id="policy-v1",
+            policy_version="1.0.0",
+            mode=ScmPolicyMode.STRICT,
+            observed_audit_outcome=AuditRunOutcome.PASS,
+            enforcement=ScmPolicyEnforcement.ALLOW,
+            is_passing=True,
+            blocks_merge=True,
+            publication_permitted=True,
+            input_hashes=hashes,
+            matched_rule_ids=("complete_non_blocking",),
+            error_code=None,
+            decision_sha256=digest,
+        )
+
+
 def test_missing_coverage_is_non_passing_even_when_advisory() -> None:
     decision = evaluate_scm_policy(
         ScmPolicyRequest(
