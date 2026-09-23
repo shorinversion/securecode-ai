@@ -89,6 +89,17 @@ class WorkerSessionStore(Protocol):
         outcome: str,
     ) -> WorkerSession: ...
 
+    def command(
+        self,
+        *,
+        session_id: str,
+        tenant_id: str,
+        worker_id: str,
+        identity_hash: str,
+        command: WorkerCommand,
+        expected_version: int,
+    ) -> WorkerSession: ...
+
 
 class WorkerSessions:
     """In-process worker state with identity and version-bound mutations."""
@@ -255,6 +266,8 @@ class WorkerSessions:
         *,
         session_id: str,
         tenant_id: str,
+        worker_id: str,
+        identity_hash: str,
         command: WorkerCommand,
         expected_version: int,
     ) -> WorkerSession:
@@ -262,6 +275,8 @@ class WorkerSessions:
         if (
             current is None
             or current.tenant_id != tenant_id
+            or current.worker_id != worker_id
+            or current.identity_hash != identity_hash
             or current.version != expected_version
             or current.terminal
         ):
