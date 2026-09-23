@@ -38,7 +38,9 @@ class _IdentityVerifier:
 
 class _AllowAuthorization:
     def allows(self, identity: VerifiedIdentity, *, action: str, repository_id: str | None) -> bool:
-        return identity.tenant_id == "tenant-a" and action.startswith(("runs.", "worker_sessions."))
+        return identity.tenant_id == "tenant-a" and action.startswith(
+            ("runs.", "findings.", "worker_sessions.")
+        )
 
 
 @dataclass
@@ -118,6 +120,32 @@ def test_openapi_advertises_the_accepted_worker_and_run_routes() -> None:
     paths = _mapping(payload["paths"])
     assert "/api/v1/runs" in paths
     assert "/api/v1/worker-sessions/{session_id}:complete" in paths
+    assert "/api/v1/findings/{finding_id}/evidence" in paths
+
+
+def test_finding_evidence_route_passes_authenticated_identity_to_service() -> None:
+    identity = VerifiedIdentity("user-1", "tenant-a", frozenset({"viewer"}))
+    service = _Service()
+    app = create_app(
+        identities=_IdentityVerifier(identity),
+        authorization=_AllowAuthorization(),
+        service=service,
+    )
+
+    status, payload = asyncio.run(
+        _request(
+            app,
+            "GET",
+            "/api/v1/findings/finding-1/evidence",
+            headers={"authorization": "Bearer token"},
+        )
+    )
+
+    assert status == 201
+    assert payload["run_id"] == "run-1"
+    assert len(service.requests) == 1
+    assert service.requests[0].action == "findings.evidence.read"
+    assert service.requests[0].path_params == {"finding_id": "finding-1"}
 
 
 def test_mutation_requires_verified_identity_and_idempotency_key() -> None:
