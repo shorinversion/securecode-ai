@@ -275,6 +275,7 @@ def _request_hash(operation: str, record: BackupRecord) -> str:
         "backup_id": record.backup_id,
         "component_hashes": list(record.component_hashes),
         "region": record.region,
+        "encryption_key_ref": record.encryption_key_ref,
         "version": record.version,
         "state": record.state,
         "manifest_sha256": record.manifest_sha256,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from dataclasses import replace
 
 import pytest
 from securecode_ai.server.backup_repository import BackupConflict, BackupRecord, BackupRepository
@@ -99,6 +100,15 @@ def test_restore_replay_is_idempotent_without_another_executor_call() -> None:
 
     assert replay == first
     assert executor.restores == 1
+
+
+def test_plan_replay_rejects_a_changed_encryption_key_reference() -> None:
+    service = _service(_Executor())
+    service.plan(_record(), idempotency_key="plan-1")
+
+    changed = replace(_record(), encryption_key_ref="different-key-reference")
+    with pytest.raises(BackupConflict, match="idempotency key"):
+        service.plan(changed, idempotency_key="plan-1")
 
 
 def test_manifest_mismatch_does_not_claim_backup_or_restore_success() -> None:
