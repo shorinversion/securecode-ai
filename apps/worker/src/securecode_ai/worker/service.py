@@ -391,23 +391,23 @@ async def serve(
         timeout_seconds=settings.request_timeout_seconds,
         artifact_hosts=settings.artifact_hosts,
     )
-    if settings.requested_run_id is None and settings.scm_resolution is not None:
-        requested_run_id = await _resolve_scm_run(
-            client,
-            settings.scm_resolution,
-            stopping=stop_event,
-            poll_seconds=settings.poll_seconds,
-        )
-        settings = replace(settings, requested_run_id=requested_run_id)
-    executor = ProductExecutor(target=settings.target, environment=values)
-    service = WorkerService(
-        client=client,
-        executor=executor,
-        settings=settings,
-        stopping=stop_event,
-    )
     liveness = asyncio.create_task(_liveness_loop(data_dir, stop_event))
     try:
+        if settings.requested_run_id is None and settings.scm_resolution is not None:
+            requested_run_id = await _resolve_scm_run(
+                client,
+                settings.scm_resolution,
+                stopping=stop_event,
+                poll_seconds=settings.poll_seconds,
+            )
+            settings = replace(settings, requested_run_id=requested_run_id)
+        executor = ProductExecutor(target=settings.target, environment=values)
+        service = WorkerService(
+            client=client,
+            executor=executor,
+            settings=settings,
+            stopping=stop_event,
+        )
         await service.run()
     finally:
         stop_event.set()
