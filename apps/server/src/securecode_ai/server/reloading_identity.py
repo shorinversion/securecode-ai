@@ -25,11 +25,12 @@ class ReloadingIdentityVerifier:
         self._lock = Lock()
 
     def verify_bearer(self, token: str) -> VerifiedIdentity | None:
-        verifier = self._reload()
-        if verifier is None:
-            return None
         try:
-            return verifier.verify_bearer(token)
+            with self._lock:
+                verifier = self._load()
+                if verifier is None:
+                    return None
+                return verifier.verify_bearer(token)
         except Exception:
             return None
 
@@ -41,12 +42,15 @@ class ReloadingIdentityVerifier:
     def _reload(self) -> IdentityVerifier | None:
         try:
             with self._lock:
-                verifier = self._loader()
-            if verifier is None or not callable(getattr(verifier, "verify_bearer", None)):
-                return None
-            return verifier
+                return self._load()
         except Exception:
             return None
+
+    def _load(self) -> IdentityVerifier | None:
+        verifier = self._loader()
+        if verifier is None or not callable(getattr(verifier, "verify_bearer", None)):
+            return None
+        return verifier
 
 
 __all__ = ["IdentityVerifierLoader", "ReloadingIdentityVerifier"]
