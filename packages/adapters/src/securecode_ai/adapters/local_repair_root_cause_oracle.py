@@ -73,7 +73,7 @@ def evaluate_cwe89_root_cause(root: Path, manifest: dict[str, Any]) -> str:
         raise RootCauseOracleError
     source = path.read_text(encoding="utf-8", errors="strict")
     suffix = path.suffix.lower()
-    if suffix == ".py":
+    if suffix in {".py", ".pyi"}:
         return _python_sql_state(source, start_line, end_line)
     if suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx", ".go"}:
         lines = source.splitlines()
@@ -205,6 +205,7 @@ def _scan_signal_identities(
     scanned_paths: set[str] = set()
     builders: dict[str, Any] = {
         ".py": cst.build_python_symbol_index,
+        ".pyi": cst.build_python_symbol_index,
         ".js": cst.build_javascript_symbol_index,
         ".jsx": cst.build_javascript_symbol_index,
         ".mjs": cst.build_javascript_symbol_index,

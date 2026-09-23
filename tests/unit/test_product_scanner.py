@@ -25,6 +25,7 @@ from tests.unit.test_native_sources import build, repository
 
 SOURCES = [
     ("a.py", b"import requests\ndef check(request):\n requests.get(request.args.get('url'))\n"),
+    ("a.pyi", b"import requests\ndef check(request):\n requests.get(request.args.get('url'))\n"),
     ("a.js", b"function check(req) { fetch(req.query.url); }\n"),
     ("a.ts", b"function check(req: Request) { fetch(req.query.url); }\n"),
     ("a.mts", b"function check(req: Request) { fetch(req.query.url); }\n"),

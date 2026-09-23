@@ -96,6 +96,7 @@ class FirstPartyStaticWorker:
         suffix = Path(request.file.path).suffix.lower()
         builders = {
             ".py": cst.build_python_symbol_index,
+            ".pyi": cst.build_python_symbol_index,
             ".js": cst.build_javascript_symbol_index,
             ".jsx": cst.build_javascript_symbol_index,
             ".mjs": cst.build_javascript_symbol_index,

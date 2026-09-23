@@ -20,6 +20,10 @@ SQL_SOURCES = [
         b'def lookup(request, db):\n id = request.args.get("id")\n db.execute(f"SELECT * FROM users WHERE id = {id}")\n',
     ),
     (
+        "a.pyi",
+        b'def lookup(request, db):\n id = request.args.get("id")\n db.execute(f"SELECT * FROM users WHERE id = {id}")\n',
+    ),
+    (
         "a.js",
         b"const id = req.query.id;\nconst sql = `SELECT * FROM users WHERE id = ${id}`;\ndb.query(sql);\n",
     ),

@@ -46,3 +46,27 @@ def test_repair_contract_distinguishes_vulnerable_and_bound_node_typescript(
 
     assert _local_cwe89_parameter_binding_oracle({f"src/query{suffix}": vulnerable}) is False
     assert _local_cwe89_parameter_binding_oracle({f"src/query{suffix}": fixed}) is True
+
+
+def test_repair_scanner_and_contract_accept_python_stub_files(tmp_path: Path) -> None:
+    source = (
+        b"def lookup(request, db):\n"
+        b' id = request.args.get("id")\n'
+        b' db.execute(f"SELECT * FROM users WHERE id = {id}")\n'
+    )
+    relative_path = "src/query.pyi"
+    (tmp_path / "src").mkdir()
+    (tmp_path / relative_path).write_bytes(source)
+    manifest = {
+        "finding": {
+            "repository_revision": {"repository_id": "example/python-app"},
+            "locations": [{"path": relative_path}],
+        }
+    }
+
+    scan_sha256, signal_count = scan_cwe89_repository(tmp_path, manifest, "a" * 40)
+    identities = _scan_signal_identities(tmp_path, manifest, "a" * 40)
+
+    assert len(scan_sha256) == 64
+    assert signal_count == len(identities) == 1
+    assert _local_cwe89_parameter_binding_oracle({relative_path: source}) is False

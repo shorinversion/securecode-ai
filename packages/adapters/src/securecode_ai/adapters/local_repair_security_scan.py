@@ -22,6 +22,7 @@ def scan_cwe89_repository(root: Path, manifest: dict[str, Any], revision: str) -
     total = 0
     builders: dict[str, Any] = {
         ".py": cst.build_python_symbol_index,
+        ".pyi": cst.build_python_symbol_index,
         ".js": cst.build_javascript_symbol_index,
         ".jsx": cst.build_javascript_symbol_index,
         ".mjs": cst.build_javascript_symbol_index,
