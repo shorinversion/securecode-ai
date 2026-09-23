@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
@@ -206,22 +207,39 @@ class _StoredUpload:
 
 
 class SCMArtifactPublisher:
-    """Create idempotent work items and record bounded transport outcomes."""
+    """Create idempotent work items and persist bounded transport outcomes."""
 
-    __slots__ = ("_adapter", "_allowed_https_hosts", "_lock", "_uploads")
+    __slots__ = ("_adapter", "_allowed_https_hosts", "_connection", "_lock")
 
     def __init__(
         self,
         adapter: GithubAppAdapter,
         *,
         allowed_https_hosts: frozenset[str] = DEFAULT_ALLOWED_HTTPS_ARTIFACT_HOSTS,
+        connection: sqlite3.Connection | None = None,
     ) -> None:
-        if type(adapter) is not GithubAppAdapter or not _valid_hosts(allowed_https_hosts):
+        if (
+            type(adapter) is not GithubAppAdapter
+            or not _valid_hosts(allowed_https_hosts)
+            or (connection is not None and not isinstance(connection, sqlite3.Connection))
+        ):
             raise SCMArtifactError(SCMArtifactErrorCode.INVALID_REQUEST)
         self._adapter = adapter
         self._allowed_https_hosts = allowed_https_hosts
         self._lock = RLock()
-        self._uploads: dict[str, _StoredUpload] = {}
+        self._connection = connection or sqlite3.connect(":memory:", check_same_thread=False)
+        self._connection.execute(
+            """CREATE TABLE IF NOT EXISTS scm_artifact_uploads (
+                upload_idempotency_key TEXT PRIMARY KEY,
+                scm_run_id TEXT NOT NULL,
+                execution_identity_json TEXT NOT NULL,
+                projection_json TEXT NOT NULL,
+                attempts INTEGER NOT NULL,
+                disposition TEXT NOT NULL,
+                CHECK (attempts >= 0)
+            )"""
+        )
+        self._connection.commit()
 
     def project(self, request: SCMArtifactRequest) -> SCMArtifactBatchReceipt:
         """Authorize exact HEAD and create metadata-only upload work items."""
@@ -281,7 +299,7 @@ class SCMArtifactPublisher:
         ):
             raise SCMArtifactError(SCMArtifactErrorCode.INVALID_REQUEST)
         with self._lock:
-            stored = self._uploads.get(upload_idempotency_key)
+            stored = self._load(upload_idempotency_key)
             if stored is None:
                 raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
             run_id = stored.scm_run_id
@@ -298,8 +316,10 @@ class SCMArtifactPublisher:
                 publication=publication,
             )
         self._verify_publication(publication, identity)
-        with self._lock:
-            stored = self._uploads[upload_idempotency_key]
+        with self._lock, self._connection:
+            stored = self._load(upload_idempotency_key)
+            if stored is None:
+                raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
             if stored.disposition is SCMArtifactDisposition.UPLOADED:
                 return _upload_receipt(stored, SCMArtifactDisposition.IDEMPOTENT, publication)
             if stored.disposition is SCMArtifactDisposition.FAILED:
@@ -310,9 +330,10 @@ class SCMArtifactPublisher:
                 return _upload_receipt(stored, SCMArtifactDisposition.UPLOADED, publication)
             if stored.attempts >= MAX_UPLOAD_ATTEMPTS:
                 stored.disposition = SCMArtifactDisposition.FAILED
-                return _upload_receipt(stored, SCMArtifactDisposition.FAILED, publication)
-            stored.disposition = SCMArtifactDisposition.RETRY_READY
-            return _upload_receipt(stored, SCMArtifactDisposition.RETRY_READY, publication)
+            else:
+                stored.disposition = SCMArtifactDisposition.RETRY_READY
+            self._save(stored)
+            return _upload_receipt(stored, stored.disposition, publication)
 
     def _store_projection(
         self,
@@ -320,23 +341,73 @@ class SCMArtifactPublisher:
         projection: SCMArtifactProjection,
         publication: SCMRunPublicationReceipt,
     ) -> SCMArtifactUploadReceipt:
-        with self._lock:
-            stored = self._uploads.get(projection.upload_idempotency_key)
-            if stored is None:
-                stored = _StoredUpload(
-                    scm_run_id=request.scm_run_id,
-                    execution_identity=request.execution_identity,
-                    projection=projection,
-                )
-                self._uploads[projection.upload_idempotency_key] = stored
-                return _upload_receipt(stored, SCMArtifactDisposition.CREATED, publication)
+        with self._lock, self._connection:
+            stored = _StoredUpload(
+                scm_run_id=request.scm_run_id,
+                execution_identity=request.execution_identity,
+                projection=projection,
+            )
+            cursor = self._connection.execute(
+                """INSERT OR IGNORE INTO scm_artifact_uploads (
+                       upload_idempotency_key, scm_run_id, execution_identity_json,
+                       projection_json, attempts, disposition
+                   ) VALUES (?, ?, ?, ?, ?, ?)""",
+                _stored_values(stored),
+            )
+            existing = self._load(projection.upload_idempotency_key)
+            if existing is None:
+                raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
             if (
-                stored.scm_run_id != request.scm_run_id
-                or stored.execution_identity != request.execution_identity
-                or stored.projection != projection
+                existing.scm_run_id != request.scm_run_id
+                or existing.execution_identity != request.execution_identity
+                or existing.projection != projection
             ):
                 raise SCMArtifactError(SCMArtifactErrorCode.IDENTITY_MISMATCH)
-            return _upload_receipt(stored, SCMArtifactDisposition.IDEMPOTENT, publication)
+            disposition = (
+                SCMArtifactDisposition.CREATED
+                if cursor.rowcount == 1
+                else SCMArtifactDisposition.IDEMPOTENT
+            )
+            return _upload_receipt(existing, disposition, publication)
+
+    def _load(self, upload_idempotency_key: str) -> _StoredUpload | None:
+        row = self._connection.execute(
+            """SELECT scm_run_id, execution_identity_json, projection_json, attempts, disposition
+               FROM scm_artifact_uploads WHERE upload_idempotency_key=?""",
+            (upload_idempotency_key,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            scm_run_id, identity_json, projection_json, attempts, disposition = row
+            if type(scm_run_id) is not str or type(identity_json) is not str:
+                raise ValueError
+            if type(projection_json) is not str or type(attempts) is not int:
+                raise ValueError
+            identity = RunExecutionIdentity.model_validate_json(identity_json)
+            projection = _projection_from_json(projection_json)
+            return _StoredUpload(
+                scm_run_id=scm_run_id,
+                execution_identity=identity,
+                projection=projection,
+                attempts=attempts,
+                disposition=SCMArtifactDisposition(disposition),
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN) from None
+
+    def _save(self, stored: _StoredUpload) -> None:
+        cursor = self._connection.execute(
+            """UPDATE scm_artifact_uploads
+               SET attempts=?, disposition=? WHERE upload_idempotency_key=?""",
+            (
+                stored.attempts,
+                stored.disposition.value,
+                stored.projection.upload_idempotency_key,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise SCMArtifactError(SCMArtifactErrorCode.UPLOAD_UNKNOWN)
 
     def _authorize(self, scm_run_id: str) -> SCMRunPublicationReceipt:
         try:
@@ -416,6 +487,94 @@ def _upload_receipt(
         audit_outcome_changed=False,
         merge_authority=False,
         publication=publication,
+    )
+
+
+def _stored_values(stored: _StoredUpload) -> tuple[object, ...]:
+    projection = stored.projection
+    projection_json = json.dumps(
+        {
+            "comments_merge_authority": projection.comments_merge_authority,
+            "content_sha256": projection.content_sha256,
+            "execution_identity_hash": projection.execution_identity_hash,
+            "head_sha": projection.head_sha,
+            "kind": projection.kind.value,
+            "media_type": projection.media_type,
+            "merge_authority": projection.merge_authority,
+            "metadata_reference": projection.metadata_reference,
+            "safe_name": projection.safe_name,
+            "sarif_merge_authority": projection.sarif_merge_authority,
+            "size_bytes": projection.size_bytes,
+            "upload_idempotency_key": projection.upload_idempotency_key,
+        },
+        ensure_ascii=True,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return (
+        projection.upload_idempotency_key,
+        stored.scm_run_id,
+        stored.execution_identity.model_dump_json(),
+        projection_json,
+        stored.attempts,
+        stored.disposition.value,
+    )
+
+
+def _projection_from_json(value: str) -> SCMArtifactProjection:
+    document = json.loads(value)
+    expected = {
+        "comments_merge_authority",
+        "content_sha256",
+        "execution_identity_hash",
+        "head_sha",
+        "kind",
+        "media_type",
+        "merge_authority",
+        "metadata_reference",
+        "safe_name",
+        "sarif_merge_authority",
+        "size_bytes",
+        "upload_idempotency_key",
+    }
+    if type(document) is not dict or set(document) != expected:
+        raise ValueError
+    if (
+        any(
+            type(document[name]) is not bool
+            for name in (
+                "comments_merge_authority",
+                "merge_authority",
+                "sarif_merge_authority",
+            )
+        )
+        or type(document["size_bytes"]) is not int
+        or any(
+            type(document[name]) is not str
+            for name in expected
+            - {
+                "comments_merge_authority",
+                "merge_authority",
+                "sarif_merge_authority",
+                "size_bytes",
+            }
+        )
+    ):
+        raise ValueError
+    return SCMArtifactProjection(
+        upload_idempotency_key=document["upload_idempotency_key"],
+        safe_name=document["safe_name"],
+        kind=SCMArtifactKind(document["kind"]),
+        content_sha256=document["content_sha256"],
+        size_bytes=document["size_bytes"],
+        media_type=document["media_type"],
+        metadata_reference=document["metadata_reference"],
+        execution_identity_hash=document["execution_identity_hash"],
+        head_sha=document["head_sha"],
+        merge_authority=document["merge_authority"],
+        comments_merge_authority=document["comments_merge_authority"],
+        sarif_merge_authority=document["sarif_merge_authority"],
     )
 
 

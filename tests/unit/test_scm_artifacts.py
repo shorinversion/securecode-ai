@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import importlib.util
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +161,27 @@ def test_upload_failures_are_bounded_retry_receipts_and_never_pass() -> None:
         publisher.record_upload_result(key, succeeded=True).disposition
         is SCMArtifactDisposition.FAILED
     )
+
+
+def test_upload_attempts_survive_publisher_recreation() -> None:
+    identity = _fixture()._admitted_run().execution_identity
+    adapter, run_id, _ = _admit(identity)
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    request = _request(run_id, identity, _input())
+    first_publisher = SCMArtifactPublisher(adapter, connection=connection)
+    first = first_publisher.project(request)
+    key = first.uploads[0].upload_idempotency_key
+
+    failed = first_publisher.record_upload_result(key, succeeded=False)
+    resumed_publisher = SCMArtifactPublisher(adapter, connection=connection)
+    replayed = resumed_publisher.project(request)
+    failed_again = resumed_publisher.record_upload_result(key, succeeded=False)
+
+    assert failed.attempt_count == 1
+    assert replayed.uploads[0].disposition is SCMArtifactDisposition.IDEMPOTENT
+    assert replayed.uploads[0].attempt_count == 1
+    assert failed_again.attempt_count == 2
+    assert failed_again.disposition is SCMArtifactDisposition.RETRY_READY
 
 
 def test_stale_run_suppresses_projection_and_transport_result() -> None:
