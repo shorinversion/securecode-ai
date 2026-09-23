@@ -16,10 +16,12 @@ operators need access. Do not expose the container port directly.
 
 Create five files outside the repository: a TLS certificate, its private key,
 the issuing CA certificate, an admin bearer token, and a separate worker bearer
-token. Tokens must contain at least 32 ASCII characters. On Linux, make the
-private key and token files readable only by UID 65532, the non-root image user;
-the TLS key must have no group or other permission bits. Keep the CA certificate
-readable by the worker. Do not pass token values in Compose environment fields.
+token. Tokens must contain at least 32 ASCII characters. The private-key source
+must be readable by UID 65532, the non-root image user. At startup the server
+copies it into its private state directory with mode `0600`, so Compose's
+read-only secret mount never reaches the TLS listener directly. Keep the CA
+certificate readable by the worker. Do not pass token values in Compose
+environment fields.
 
 Set these Compose inputs in the shell or in an untracked `.env` beside this
 file:
