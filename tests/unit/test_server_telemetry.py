@@ -167,6 +167,11 @@ def test_counters_collapse_actions_and_status_classes() -> None:
         assert isinstance(row, dict)
         latency[row["operation"]] = row["total"]
     assert latency["worker"] == 3
+    percentile_rows = snapshot["latency_percentiles_ms"]
+    assert isinstance(percentile_rows, tuple)
+    percentiles = {row["operation"]: row for row in percentile_rows}
+    assert percentiles["worker"] == {"operation": "worker", "p50": 5, "p95": 5}
+    assert percentiles["run"] == {"operation": "run", "p50": 1, "p95": 5}
 
 
 def test_default_capacity_is_documented_and_positive() -> None:

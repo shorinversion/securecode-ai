@@ -118,7 +118,8 @@ def test_cancel_writes_one_immutable_event_and_retry_replays_it() -> None:
     assert audit.verify(tenant_id="tenant-a", run_id="run-1")
     assert telemetry.snapshot() == {
         "counters": ({"operation": "run", "outcome": "cancelled", "count": 2},),
-        "latency_ms": ({"operation": "run", "total": 20},),
+        "latency_ms": ({"operation": "run", "total": 20, "count": 2},),
+        "latency_percentiles_ms": ({"operation": "run", "p50": 10, "p95": 10},),
     }
 
 
@@ -253,7 +254,8 @@ def test_corrupt_audit_chain_fails_closed_and_metrics_have_fixed_labels() -> Non
     assert "repo-a" not in json.dumps(snapshot.document)
     assert snapshot.document == {
         "counters": ({"operation": "export", "outcome": "error", "count": 1},),
-        "latency_ms": ({"operation": "export", "total": 10},),
+        "latency_ms": ({"operation": "export", "total": 10, "count": 1},),
+        "latency_percentiles_ms": ({"operation": "export", "p50": 10, "p95": 10},),
     }
 
 
