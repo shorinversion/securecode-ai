@@ -75,7 +75,7 @@ def evaluate_cwe89_root_cause(root: Path, manifest: dict[str, Any]) -> str:
     suffix = path.suffix.lower()
     if suffix == ".py":
         return _python_sql_state(source, start_line, end_line)
-    if suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".go"}:
+    if suffix in {".js", ".jsx", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx", ".go"}:
         lines = source.splitlines()
         snippet = "\n".join(lines[max(0, start_line - 2) : min(len(lines), end_line + 1)])
         return _text_sql_state(snippet, suffix)
@@ -210,6 +210,8 @@ def _scan_signal_identities(
         ".mjs": cst.build_javascript_symbol_index,
         ".cjs": cst.build_javascript_symbol_index,
         ".ts": cst.build_typescript_symbol_index,
+        ".mts": cst.build_typescript_symbol_index,
+        ".cts": cst.build_typescript_symbol_index,
         ".tsx": cst.build_typescript_symbol_index,
         ".go": cst.build_go_symbol_index,
     }

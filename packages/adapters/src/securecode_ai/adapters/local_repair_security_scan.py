@@ -27,6 +27,8 @@ def scan_cwe89_repository(root: Path, manifest: dict[str, Any], revision: str) -
         ".mjs": cst.build_javascript_symbol_index,
         ".cjs": cst.build_javascript_symbol_index,
         ".ts": cst.build_typescript_symbol_index,
+        ".mts": cst.build_typescript_symbol_index,
+        ".cts": cst.build_typescript_symbol_index,
         ".tsx": cst.build_typescript_symbol_index,
         ".go": cst.build_go_symbol_index,
     }
