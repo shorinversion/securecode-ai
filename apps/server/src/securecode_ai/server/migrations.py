@@ -33,8 +33,10 @@ from .tenant_key_migration import (
 )
 from .waivers import WAIVER_SCHEMA_STATEMENTS
 
-SCHEMA_VERSION = "1.4.0"
-_PREVIOUS_SCHEMA_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.6.0"
+_PREVIOUS_SCHEMA_VERSION = "1.5.0"
+_SESSION_SCHEMA_VERSION = "1.4.0"
+_QUOTA_SCHEMA_VERSION = "1.3.0"
 _OCCURRENCE_SCHEMA_VERSION = "1.2.0"
 _TENANT_KEY_SCHEMA_VERSION = "1.1.0"
 _LEGACY_SCHEMA_VERSION = "1.0.0"
@@ -48,6 +50,7 @@ _TENANT_PRIMARY_KEYS = {
     "lifecycle_repository_scopes": ("tenant_id", "deletion_id"),
     "finding_occurrences": ("tenant_id", "run_id", "finding_id"),
     "finding_decisions": ("tenant_id", "finding_id", "decision_id"),
+    "auth_sessions": ("tenant_id", "token_hash"),
 }
 _TENANT_FOREIGN_KEYS = {
     "approval_decisions": (
@@ -246,6 +249,33 @@ _STATEMENTS = (
     + AUDIT_LOG_SCHEMA_STATEMENTS
     + EGRESS_SCHEMA_STATEMENTS
     + SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS
+    + (
+        """CREATE TABLE IF NOT EXISTS auth_sessions (
+            tenant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
+            subject_id TEXT NOT NULL, roles_json TEXT NOT NULL,
+            repository_grants_json TEXT NOT NULL, expires_at TEXT NOT NULL,
+            revoked INTEGER NOT NULL CHECK (revoked IN (0, 1)),
+            PRIMARY KEY (tenant_id, token_hash), UNIQUE (token_hash)
+        )""",
+        """CREATE TABLE IF NOT EXISTS oidc_login_states (
+            state_hash TEXT NOT NULL PRIMARY KEY,
+            nonce_hash TEXT NOT NULL,
+            expires_at INTEGER NOT NULL CHECK (expires_at >= 0)
+        )""",
+        """CREATE TABLE IF NOT EXISTS oidc_nonce_replays (
+            subject_hash TEXT NOT NULL,
+            nonce_hash TEXT NOT NULL,
+            expires_at INTEGER NOT NULL CHECK (expires_at >= 0),
+            PRIMARY KEY (subject_hash, nonce_hash)
+        )""",
+        """CREATE TABLE IF NOT EXISTS oidc_login_rate_limit (
+            bucket TEXT NOT NULL PRIMARY KEY CHECK (bucket IN ('start', 'callback')),
+            window_started_at INTEGER NOT NULL CHECK (window_started_at >= 0),
+            attempts INTEGER NOT NULL CHECK (attempts >= 1)
+        )""",
+        "CREATE INDEX IF NOT EXISTS oidc_login_states_expiry ON oidc_login_states (expires_at)",
+        "CREATE INDEX IF NOT EXISTS oidc_nonce_replays_expiry ON oidc_nonce_replays (expires_at)",
+    )
 )
 
 
@@ -290,6 +320,49 @@ def _migrate_sqlite_http_idempotency(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE http_idempotency_records ADD COLUMN claimed_at_ms INTEGER")
 
 
+def _migrate_auth_sessions(connection: sqlite3.Connection) -> None:
+    columns = tuple(str(row[1]) for row in connection.execute("PRAGMA table_info(auth_sessions)"))
+    target_columns = (
+        "tenant_id",
+        "token_hash",
+        "subject_id",
+        "roles_json",
+        "repository_grants_json",
+        "expires_at",
+        "revoked",
+    )
+    if columns == target_columns:
+        return
+    if columns != (
+        "token_hash",
+        "subject_id",
+        "tenant_id",
+        "roles_json",
+        "repository_grants_json",
+        "expires_at",
+        "revoked",
+    ):
+        raise SchemaVersionError("database session schema is incompatible")
+    connection.execute(
+        """CREATE TABLE auth_sessions_new (
+            tenant_id TEXT NOT NULL, token_hash TEXT NOT NULL,
+            subject_id TEXT NOT NULL, roles_json TEXT NOT NULL,
+            repository_grants_json TEXT NOT NULL, expires_at TEXT NOT NULL,
+            revoked INTEGER NOT NULL CHECK (revoked IN (0, 1)),
+            PRIMARY KEY (tenant_id, token_hash), UNIQUE (token_hash)
+        )"""
+    )
+    connection.execute(
+        """INSERT INTO auth_sessions_new
+           (tenant_id, token_hash, subject_id, roles_json, repository_grants_json,
+            expires_at, revoked)
+           SELECT tenant_id, token_hash, subject_id, roles_json, repository_grants_json,
+                  expires_at, revoked FROM auth_sessions"""
+    )
+    connection.execute("DROP TABLE auth_sessions")
+    connection.execute("ALTER TABLE auth_sessions_new RENAME TO auth_sessions")
+
+
 def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
     try:
         connection.execute("PRAGMA foreign_keys = ON")
@@ -301,10 +374,20 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
         expected = _expected_objects()
         occurrence = ("table", "finding_occurrences")
         occurrence_index = ("index", "finding_occurrences_revision_uq")
-        pre_occurrence = expected - {occurrence, occurrence_index}
+        added_auth_tables = {
+            ("table", "auth_sessions"),
+            ("table", "oidc_login_states"),
+            ("table", "oidc_nonce_replays"),
+            ("table", "oidc_login_rate_limit"),
+            ("index", "oidc_login_states_expiry"),
+            ("index", "oidc_nonce_replays_expiry"),
+        }
+        previous_expected = expected - added_auth_tables
+        pre_occurrence = previous_expected - {occurrence, occurrence_index}
         metadata = ("table", "schema_metadata")
         update_metadata = False
         insert_metadata = False
+        migrate_auth_sessions = False
         if not existing:
             for statement in _STATEMENTS:
                 connection.execute(statement)
@@ -340,22 +423,44 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 _migrate_finding_decisions(connection)
                 update_metadata = True
             elif version == _OCCURRENCE_SCHEMA_VERSION:
-                if not (expected - {occurrence_index}).issubset(existing):
+                if not (previous_expected - {occurrence_index}).issubset(existing):
                     raise SchemaVersionError("database schema is incomplete")
                 _create_finding_occurrence_revision_index(connection)
                 _migrate_finding_decisions(connection)
                 update_metadata = True
-            elif version == _PREVIOUS_SCHEMA_VERSION:
-                previous_expected = expected - {
+            elif version == _QUOTA_SCHEMA_VERSION:
+                quota_previous_expected = previous_expected - {
                     ("table", "request_quota_windows"),
                 }
-                if not previous_expected.issubset(existing):
+                if not quota_previous_expected.issubset(existing):
                     raise SchemaVersionError("database schema is incomplete")
                 for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
                     connection.execute(statement)
                 update_metadata = True
+            elif version == _PREVIOUS_SCHEMA_VERSION:
+                if not (
+                    expected
+                    - {
+                        ("table", "oidc_login_states"),
+                        ("table", "oidc_nonce_replays"),
+                        ("table", "oidc_login_rate_limit"),
+                        ("index", "oidc_login_states_expiry"),
+                        ("index", "oidc_nonce_replays_expiry"),
+                    }
+                ).issubset(existing):
+                    raise SchemaVersionError("database schema is incomplete")
+                update_metadata = True
+                migrate_auth_sessions = True
+            elif version == _SESSION_SCHEMA_VERSION:
+                if not previous_expected.issubset(existing):
+                    raise SchemaVersionError("database schema is incomplete")
+                update_metadata = True
             else:
                 raise SchemaVersionError("database schema version is incompatible")
+        for statement in _STATEMENTS[-6:]:
+            connection.execute(statement)
+        if migrate_auth_sessions:
+            _migrate_auth_sessions(connection)
         _migrate_sqlite_http_idempotency(connection)
         for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
             connection.execute(statement)
@@ -443,6 +548,39 @@ def _require_tenant_key_shapes(connection: sqlite3.Connection) -> None:
         )
         if primary_key != expected_pk:
             raise SchemaVersionError("database tenant key is incompatible")
+    session_columns = tuple(
+        str(row[1]) for row in connection.execute("PRAGMA table_info(auth_sessions)")
+    )
+    if session_columns != (
+        "tenant_id",
+        "token_hash",
+        "subject_id",
+        "roles_json",
+        "repository_grants_json",
+        "expires_at",
+        "revoked",
+    ) or ("token_hash",) not in _unique_index_columns(connection, "auth_sessions"):
+        raise SchemaVersionError("database session key is incompatible")
+    for table, columns, primary_key in (
+        ("oidc_login_states", ("state_hash", "nonce_hash", "expires_at"), ("state_hash",)),
+        (
+            "oidc_nonce_replays",
+            ("subject_hash", "nonce_hash", "expires_at"),
+            ("subject_hash", "nonce_hash"),
+        ),
+        (
+            "oidc_login_rate_limit",
+            ("bucket", "window_started_at", "attempts"),
+            ("bucket",),
+        ),
+    ):
+        info = connection.execute(f"PRAGMA table_info({table})").fetchall()
+        actual_columns = tuple(str(row[1]) for row in info)
+        actual_pk = tuple(
+            str(row[1]) for row in sorted(info, key=lambda item: int(item[5])) if int(row[5]) > 0
+        )
+        if actual_columns != columns or actual_pk != primary_key:
+            raise SchemaVersionError("database OIDC state schema is incompatible")
     for table, expected_fk in _TENANT_FOREIGN_KEYS.items():
         if expected_fk not in _foreign_key_groups(connection, table):
             raise SchemaVersionError("database tenant foreign key is incompatible")
@@ -451,7 +589,7 @@ def _require_tenant_key_shapes(connection: sqlite3.Connection) -> None:
 def _has_base_tenant_key_shapes(connection: sqlite3.Connection) -> bool:
     try:
         for table, expected_pk in _TENANT_PRIMARY_KEYS.items():
-            if table == "finding_decisions":
+            if table in {"finding_decisions", "auth_sessions"}:
                 continue
             rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
             primary_key = tuple(
@@ -469,6 +607,16 @@ def _has_base_tenant_key_shapes(connection: sqlite3.Connection) -> bool:
     except SchemaVersionError:
         return False
     return True
+
+
+def _unique_index_columns(connection: sqlite3.Connection, table: str) -> frozenset[tuple[str, ...]]:
+    values: set[tuple[str, ...]] = set()
+    for row in connection.execute(f"PRAGMA index_list({table})"):
+        if len(row) < 3 or type(row[1]) is not str or type(row[2]) is not int or row[2] != 1:
+            continue
+        columns = tuple(str(item[2]) for item in connection.execute(f"PRAGMA index_info({row[1]})"))
+        values.add(columns)
+    return frozenset(values)
 
 
 def _require_tenant_columns(connection: sqlite3.Connection) -> None:

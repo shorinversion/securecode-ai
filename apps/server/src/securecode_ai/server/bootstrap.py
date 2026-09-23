@@ -18,7 +18,7 @@ from .assurance_repository import AssuranceRepository
 from .assurance_service import AssuranceService
 from .assurance_verifiers import load_assurance_verifier_registry
 from .audit_log import AuditLog
-from .auth_configuration import build_oidc_verifier
+from .auth_configuration import build_oidc_login_service, build_oidc_verifier
 from .auth_runtime import CompositeIdentityVerifier
 from .baseline_store import DurableBaselineStore
 from .bootstrap_identity import (
@@ -81,6 +81,7 @@ from .scm_resolution import SCMRunResolutionHandler
 from .scm_runtime import build_scm_handlers
 from .secure_files import read_secret_bytes
 from .service import DurableControlPlaneService
+from .sessions import SessionIdentityVerifier, SessionStore
 from .sqlite_database import (
     SqliteSchemaReadiness,
     open_private_sqlite,
@@ -211,26 +212,38 @@ def build_local_app(
     repository = DevelopmentRepository(connection)
     oidc = build_oidc_verifier(values)
     identities = load_bootstrap_identities(values, required=oidc is None)
+    session_store = SessionStore(connection=connection)
+    oidc_login = build_oidc_login_service(
+        values,
+        oidc,
+        session_store,
+        verifier_loader=lambda: build_oidc_verifier(values),
+        connection=connection,
+    )
     identity_readiness: list[ReloadingIdentityVerifier] = []
     oidc_identity = (
         None if oidc is None else ReloadingIdentityVerifier(lambda: build_oidc_verifier(values))
     )
     if oidc_identity is not None:
         identity_readiness.append(oidc_identity)
+    identity_verifiers: list[IdentityVerifier] = []
+    if oidc_identity is not None:
+        identity_verifiers.append(oidc_identity)
     if identities:
         bootstrap_identity = ReloadingIdentityVerifier(
             lambda: HashedTokenIdentityVerifier(load_bootstrap_identities(values, required=True))
         )
         identity_readiness.append(bootstrap_identity)
-        identity_verifier: IdentityVerifier = (
-            bootstrap_identity
-            if oidc_identity is None
-            else CompositeIdentityVerifier(oidc_identity, bootstrap_identity)
-        )
-    elif oidc_identity is not None:
-        identity_verifier = oidc_identity
-    else:
+        identity_verifiers.append(bootstrap_identity)
+    if oidc_login is not None:
+        identity_verifiers.append(SessionIdentityVerifier(session_store))
+    if not identity_verifiers:
         raise ValueError("identity verification is not configured")
+    identity_verifier: IdentityVerifier = (
+        identity_verifiers[0]
+        if len(identity_verifiers) == 1
+        else CompositeIdentityVerifier(*identity_verifiers)
+    )
     scm_tenant = values.get("SECURECODE_SCM_TENANT_ID")
     if scm_tenant is None:
         scm_tenant = identities[0].identity.tenant_id if identities else "local"
@@ -401,8 +414,13 @@ def build_local_app(
         )
         if not available
     }
+    available_capabilities = (
+        (*CAPABILITIES, "oidc-login") if oidc_login is not None else CAPABILITIES
+    )
     return create_app(
         identities=identity_verifier,
+        oidc_login=oidc_login,
+        sessions=session_store if oidc_login is not None else None,
         authorization=authorization,
         service=service,
         readiness=CompositeReadiness(
@@ -435,7 +453,11 @@ def build_local_app(
             workload=True,
         ),
         capabilities=tuple(
-            capability for capability in CAPABILITIES if capability not in disabled_capabilities
+            sorted(
+                capability
+                for capability in available_capabilities
+                if capability not in disabled_capabilities
+            )
         ),
     )
 

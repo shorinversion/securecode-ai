@@ -7,6 +7,7 @@ import json
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from urllib.parse import parse_qs, urlsplit
 
 from securecode_ai.server import (
     ServerApp,
@@ -15,6 +16,12 @@ from securecode_ai.server import (
     VerifiedIdentity,
     create_app,
 )
+from securecode_ai.server.oidc_login import (
+    OidcAuthorizationClient,
+    OidcLoginService,
+)
+from securecode_ai.server.oidc_sessions import NonceReplayLedger
+from securecode_ai.server.sessions import SessionStore
 from securecode_ai.server.sqlite_request_quota import (
     SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS,
     SqliteQuotaLedger,
@@ -71,6 +78,8 @@ async def _request(
     await app(
         {
             "type": "http",
+            "scheme": "https",
+            "client": ("127.0.0.1", 43120),
             "method": method,
             "path": path,
             "headers": encoded_headers,
@@ -223,3 +232,41 @@ def test_persistent_quota_returns_retry_after_and_fails_closed() -> None:
     failed = asyncio.run(_request(unavailable, "GET", "/api/v1/runs/run-1", headers=headers))
     assert failed[0] == 503
     assert _mapping(failed[1]["error"])["code"] == "QUOTA_UNAVAILABLE"
+
+
+def test_oidc_login_start_returns_state_nonce_and_pkce_authorization_url() -> None:
+    class Admission:
+        def admit(self, token: str, *, nonce: str) -> object:
+            raise AssertionError("login start must not admit a token")
+
+    login = OidcLoginService(
+        admission=Admission(),  # type: ignore[arg-type]
+        ledger=NonceReplayLedger(),
+        authorization_client=OidcAuthorizationClient(
+            authorization_endpoint="https://idp.example/authorize",
+            client_id="securecode-client",
+            redirect_uri="https://securecode.example/auth/callback",
+        ),
+    )
+    app = create_app(oidc_login=login, sessions=SessionStore())
+    status, payload = asyncio.run(_request(app, "POST", "/api/v1/auth/login"))
+
+    assert status == 200
+    assert type(payload.get("state")) is str and payload["state"]
+    assert type(payload.get("nonce")) is str and payload["nonce"]
+    assert type(payload.get("code_verifier")) is str and payload["code_verifier"]
+    assert payload["code_challenge_method"] == "S256"
+    authorization_url = payload.get("authorization_url")
+    assert type(authorization_url) is str
+    query = parse_qs(urlsplit(authorization_url).query)
+    assert query["state"] == [payload["state"]]
+    assert query["nonce"] == [payload["nonce"]]
+    assert query["code_challenge_method"] == ["S256"]
+    assert query["response_type"] == ["code"]
+
+
+def test_oidc_login_start_fails_closed_when_authentication_is_unconfigured() -> None:
+    status, payload = asyncio.run(_request(create_app(), "POST", "/api/v1/auth/login"))
+
+    assert status == 503
+    assert _mapping(payload["error"])["code"] == "AUTH_NOT_CONFIGURED"

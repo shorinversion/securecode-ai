@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from securecode_ai.server.identity import Role
 from securecode_ai.server.oidc import (
@@ -17,7 +19,7 @@ from securecode_ai.server.oidc_login import (
     OidcLoginService,
     OidcLoginStart,
 )
-from securecode_ai.server.oidc_sessions import NonceReplayLedger
+from securecode_ai.server.oidc_sessions import IssuedOidcSession, NonceReplayLedger
 
 NOW = 2
 NONCE = "n"
@@ -84,14 +86,23 @@ class _Issuer:
     def __init__(self, mode: str = "ok") -> None:
         self._mode = mode
 
-    def issue(self, principal: object) -> object:
+    def issue(self, principal: object, *, token_expires_at: int) -> IssuedOidcSession:
         if self._mode == "raise":
             raise RuntimeError("issuer unavailable")
         if self._mode == "wrong":
-            return "not-a-receipt"
+            return IssuedOidcSession(
+                token="s" * 32,
+                receipt=OidcReceipt("other", "tenant", ("auditor",), token_expires_at - 1),
+            )
         if self._mode == "long":
-            return OidcReceipt("user", "tenant", ("auditor",), 9999999999 + 200_000)
-        return OidcReceipt("user", "tenant", ("auditor",), 9999999999 - 1)
+            return IssuedOidcSession(
+                token="s" * 32,
+                receipt=OidcReceipt("user", "tenant", ("auditor",), token_expires_at + 200_000),
+            )
+        return IssuedOidcSession(
+            token="s" * 32,
+            receipt=OidcReceipt("user", "tenant", ("auditor",), int(time.time()) + 3600),
+        )
 
 
 def test_service_rejects_invalid_configuration() -> None:
@@ -166,9 +177,9 @@ def test_attempts_are_bounded() -> None:
 def test_issuer_supplies_the_session_receipt() -> None:
     service, start = _started_service(issuer=_Issuer("ok"))
     receipt = service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
-    assert receipt.session_receipt.expires_at == 9999999999 - 1
+    assert 0 < receipt.session_receipt.expires_at - int(time.time()) <= 3600
     assert receipt.session_receipt is not receipt.receipt
-    assert receipt.document()["session_expires_at"] == 9999999999 - 1
+    assert receipt.document()["session_expires_at"] == receipt.session_receipt.expires_at
 
 
 def test_failing_issuer_is_refused() -> None:

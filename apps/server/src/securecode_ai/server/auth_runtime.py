@@ -262,7 +262,26 @@ class BearerJwtIdentityVerifier:
         except Exception:
             return None
 
+    @property
+    def policy(self) -> JwtVerificationPolicy:
+        return self._policy
+
+    def verify_claims(self, token: str) -> dict[str, object] | None:
+        """Return only claims needed by the interactive OIDC admission port."""
+
+        try:
+            claims = self._verify_signed_claims(token)
+        except Exception:
+            return None
+        names = ("iss", "sub", "aud", "azp", "exp", "iat", "nonce", "groups")
+        result = {name: claims[name] for name in names if name in claims}
+        result["alg"] = self._policy.algorithm
+        return result
+
     def _verify_bearer(self, token: str) -> VerifiedIdentity:
+        return self._identity(self._verify_signed_claims(token))
+
+    def _verify_signed_claims(self, token: str) -> dict[str, object]:
         policy: JwtVerificationPolicy = self._policy
         if (
             type(token) is not str
@@ -314,7 +333,7 @@ class BearerJwtIdentityVerifier:
             raise AuthenticationDenied
         current_time = int(now)
         self._validate_registered_claims(claims, policy, current_time)
-        return self._identity(claims)
+        return claims
 
     @staticmethod
     def _validate_header(header: dict[str, object], policy: JwtVerificationPolicy) -> None:

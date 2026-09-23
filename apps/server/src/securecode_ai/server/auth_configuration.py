@@ -5,7 +5,8 @@ from __future__ import annotations
 import base64
 import binascii
 import hmac
-from collections.abc import Mapping
+import sqlite3
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from .auth_runtime import (
@@ -18,7 +19,16 @@ from .auth_runtime import (
     RsaPublicKey,
     RsaSha256SignatureVerifier,
 )
+from .identity import Principal, Role
+from .oidc import OidcAdmission, OidcDenied, OidcPolicy, OidcReceipt, SubjectBinding, TenantState
+from .oidc_login import (
+    OidcAuthorizationClient,
+    OidcLoginError,
+    OidcLoginService,
+)
+from .oidc_sessions import NonceReplayLedger, OpaqueSessionIssuer, SqliteOidcLoginState
 from .secure_files import read_json_object, read_secret_bytes
+from .sessions import SessionStore
 
 
 def build_oidc_verifier(
@@ -50,6 +60,14 @@ def build_oidc_verifier(
         "roles_claim",
         "workload_claim",
         "repository_ids_claim",
+        "login_role_groups",
+        "login_subject_bindings",
+        "authorization_endpoint",
+        "client_id",
+        "redirect_uri",
+        "login_scope",
+        "login_attempt_limit",
+        "login_attempt_window_seconds",
     }
     if set(document) - allowed:
         raise ValueError("OIDC configuration is invalid")
@@ -107,6 +125,207 @@ def build_oidc_verifier(
         ),
         signature_verifier=signature_verifier,
     )
+
+
+def build_oidc_login_service(
+    values: Mapping[str, str],
+    verifier: BearerJwtIdentityVerifier | None,
+    sessions: SessionStore,
+    *,
+    verifier_loader: Callable[[], BearerJwtIdentityVerifier | None] | None = None,
+    connection: sqlite3.Connection | None = None,
+) -> OidcLoginService | None:
+    """Enable interactive login only with explicit group and subject bindings."""
+
+    config_path = values.get("SECURECODE_OIDC_CONFIG_FILE")
+    if verifier is None or config_path is None:
+        return None
+    loader = verifier_loader or (lambda: verifier)
+    if _build_oidc_admission(values, verifier) is None:
+        return None
+    authorization_client = _build_oidc_authorization_client(values)
+    if (
+        authorization_client is None
+        or verifier.policy.authorized_party != authorization_client.client_id
+    ):
+        raise ValueError("OIDC authorization client configuration is required")
+    login_attempt_limit, login_attempt_window = _oidc_login_limits(config_path)
+    return OidcLoginService(
+        admission=_ReloadingOidcAdmission(values, loader),
+        ledger=NonceReplayLedger(connection=connection),
+        issuer=OpaqueSessionIssuer(sessions),
+        state_store=None if connection is None else SqliteOidcLoginState(connection),
+        authorization_client=authorization_client,
+        attempt_limit=login_attempt_limit,
+        attempt_window_seconds=login_attempt_window,
+    )
+
+
+def _build_oidc_admission(
+    values: Mapping[str, str],
+    verifier: BearerJwtIdentityVerifier,
+) -> OidcAdmission | None:
+    config_path = values.get("SECURECODE_OIDC_CONFIG_FILE")
+    if config_path is None:
+        return None
+    document = read_json_object(Path(config_path), 65_536)
+    groups_value = document.get("login_role_groups")
+    bindings_value = document.get("login_subject_bindings")
+    if groups_value is None and bindings_value is None:
+        return None
+    if (
+        not isinstance(groups_value, dict)
+        or not groups_value
+        or len(groups_value) > 128
+        or type(bindings_value) is not list
+        or not 1 <= len(bindings_value) <= 10_000
+    ):
+        raise ValueError("OIDC login configuration is invalid")
+    role_groups: dict[str, Role] = {}
+    for group, role_name in groups_value.items():
+        if type(group) is not str or type(role_name) is not str:
+            raise ValueError("OIDC login configuration is invalid")
+        try:
+            role = Role(role_name)
+        except ValueError:
+            raise ValueError("OIDC login configuration is invalid") from None
+        if role is Role.WORKER or not 1 <= len(group) <= 128:
+            raise ValueError("OIDC login configuration is invalid")
+        role_groups[group] = role
+    subject_bindings: list[SubjectBinding] = []
+    for binding in bindings_value:
+        if type(binding) is not dict or set(binding) != {
+            "subject",
+            "tenant_id",
+            "state",
+            "grants",
+        }:
+            raise ValueError("OIDC login configuration is invalid")
+        subject = binding.get("subject")
+        tenant_id = binding.get("tenant_id")
+        grants = binding.get("grants")
+        state_value = binding.get("state")
+        if (
+            type(subject) is not str
+            or not 1 <= len(subject) <= 256
+            or type(tenant_id) is not str
+            or not 1 <= len(tenant_id) <= 256
+            or type(grants) is not list
+            or len(grants) > 128
+            or not all(type(grant) is str and 1 <= len(grant) <= 256 for grant in grants)
+            or len(grants) != len(set(grants))
+            or type(state_value) is not str
+        ):
+            raise ValueError("OIDC login configuration is invalid")
+        try:
+            state = TenantState(state_value)
+        except ValueError:
+            raise ValueError("OIDC login configuration is invalid") from None
+        subject_bindings.append(
+            SubjectBinding(
+                issuer=verifier.policy.issuer,
+                subject=subject,
+                tenant_id=tenant_id,
+                state=state,
+                grants=frozenset(grants),
+            )
+        )
+    authorized_party = verifier.policy.authorized_party
+    if authorized_party is None:
+        raise ValueError("OIDC login authorized party is missing")
+    admission = OidcAdmission(
+        _VerifiedJwtClaims(verifier),
+        OidcPolicy(
+            issuer=verifier.policy.issuer,
+            audience=verifier.policy.audience,
+            allowed_azp=frozenset({authorized_party}),
+            role_groups=role_groups,
+        ),
+        tuple(subject_bindings),
+    )
+    return admission
+
+
+def _build_oidc_authorization_client(
+    values: Mapping[str, str],
+) -> OidcAuthorizationClient | None:
+    config_path = values.get("SECURECODE_OIDC_CONFIG_FILE")
+    if config_path is None:
+        return None
+    document = read_json_object(Path(config_path), 65_536)
+    endpoint = document.get("authorization_endpoint")
+    client_id = document.get("client_id")
+    redirect_uri = document.get("redirect_uri")
+    scope = document.get("login_scope", "openid profile email")
+    if (
+        type(endpoint) is not str
+        or not endpoint
+        or type(client_id) is not str
+        or not client_id
+        or type(redirect_uri) is not str
+        or not redirect_uri
+        or type(scope) is not str
+        or not scope
+    ):
+        raise ValueError("OIDC authorization client configuration is invalid")
+    try:
+        return OidcAuthorizationClient(
+            authorization_endpoint=endpoint,
+            client_id=client_id,
+            redirect_uri=redirect_uri,
+            scope=scope,
+        )
+    except (OidcLoginError, TypeError, ValueError):
+        raise ValueError("OIDC authorization client configuration is invalid") from None
+
+
+def _oidc_login_limits(config_path: str) -> tuple[int, int]:
+    document = read_json_object(Path(config_path), 65_536)
+    attempt_limit = _integer(document, "login_attempt_limit", 60)
+    attempt_window = _integer(document, "login_attempt_window_seconds", 60)
+    if not 1 <= attempt_limit <= 100_000 or not 1 <= attempt_window <= 3600:
+        raise ValueError("OIDC login limits are invalid")
+    return attempt_limit, attempt_window
+
+
+class _ReloadingOidcAdmission:
+    __slots__ = ("_values", "_verifier_loader")
+
+    def __init__(
+        self,
+        values: Mapping[str, str],
+        verifier_loader: Callable[[], BearerJwtIdentityVerifier | None],
+    ) -> None:
+        self._values = values
+        self._verifier_loader = verifier_loader
+
+    def admit(self, token: str, *, nonce: str) -> tuple[Principal, OidcReceipt]:
+        try:
+            verifier = self._verifier_loader()
+            if verifier is None:
+                raise OidcDenied()
+            admission = _build_oidc_admission(self._values, verifier)
+            if admission is None:
+                raise OidcDenied()
+            return admission.admit(token, nonce=nonce)
+        except Exception:
+            raise OidcDenied() from None
+
+
+class _VerifiedJwtClaims:
+    __slots__ = ("_verifier",)
+
+    def __init__(self, verifier: BearerJwtIdentityVerifier) -> None:
+        self._verifier = verifier
+
+    def verify(self, token: str) -> dict[str, object] | None:
+        try:
+            claims = self._verifier.verify_claims(token)
+        except Exception:
+            return None
+        if claims is None:
+            return None
+        return claims
 
 
 def _rsa_key(path: Path, key_id: str) -> RsaPublicKey:
@@ -205,4 +424,4 @@ def _string_list(
     return tuple(value)
 
 
-__all__ = ["build_oidc_verifier"]
+__all__ = ["build_oidc_login_service", "build_oidc_verifier"]
