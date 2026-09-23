@@ -224,6 +224,28 @@ def test_authorization_rejects_unknown_purpose(tmp_path: Path) -> None:
         world.authorize(purpose="not-a-purpose")
 
 
+@pytest.mark.parametrize(
+    "purpose",
+    ["audit-report", "audit-run", "evidence-graph", "sarif-report"],
+)
+def test_authorization_accepts_every_worker_published_purpose(tmp_path: Path, purpose: str) -> None:
+    world = _world(tmp_path)
+
+    authorization = world.authorize(purpose=purpose, idempotency_key=f"upload-{purpose}")
+
+    assert authorization.purpose == purpose
+
+
+def test_sarif_authorization_is_idempotent_for_retries(tmp_path: Path) -> None:
+    world = _world(tmp_path)
+
+    first = world.authorize(purpose="sarif-report", idempotency_key="sarif-retry")
+    replay = world.authorize(purpose="sarif-report", idempotency_key="sarif-retry")
+
+    assert replay.authorization_id == first.authorization_id
+    assert replay.receipt_signature == first.receipt_signature
+
+
 def test_authorization_is_idempotent_for_one_key(tmp_path: Path) -> None:
     world = _world(tmp_path)
     first = world.authorize()

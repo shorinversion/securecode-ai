@@ -18,7 +18,7 @@ from securecode_ai.contracts import ArtifactRef
 
 from .ports import ServiceRequest, ServiceResponse
 
-_PURPOSES: Final = frozenset({"audit-report", "evidence-graph"})
+_PURPOSES: Final = frozenset({"audit-report", "audit-run", "evidence-graph", "sarif-report"})
 
 
 class ArtifactAuthorizationDenied(Exception):
