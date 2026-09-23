@@ -207,6 +207,11 @@ class WorkerService:
                 with suppress(Exception):
                     execution.cancel()
                 return await self._finish_command(active, update.command)
+            requested_command = self._requested_command(active, command_seen)
+            if requested_command is not None:
+                with suppress(Exception):
+                    execution.cancel()
+                return await self._finish_command(active, requested_command)
             for artifact in execution.artifacts:
                 artifact_job = active.job
                 update = await self._retry_call(
@@ -218,11 +223,29 @@ class WorkerService:
                     with suppress(Exception):
                         execution.cancel()
                     return await self._finish_command(active, update.command)
+                requested_command = self._requested_command(active, command_seen)
+                if requested_command is not None:
+                    with suppress(Exception):
+                        execution.cancel()
+                    return await self._finish_command(active, requested_command)
             completion_command = await self._append_event(active, "RUN_COMPLETED")
             if completion_command is not WorkerCommand.CONTINUE:
                 with suppress(Exception):
                     execution.cancel()
-                return await self._finish_command(active, completion_command)
+                return await self._finish_command(
+                    active,
+                    completion_command,
+                    event_already_recorded=True,
+                )
+            requested_command = self._requested_command(active, command_seen)
+            if requested_command is not None:
+                with suppress(Exception):
+                    execution.cancel()
+                return await self._finish_command(
+                    active,
+                    requested_command,
+                    event_already_recorded=True,
+                )
             completion_job = active.job
             await self._retry_call(
                 active,
@@ -291,6 +314,24 @@ class WorkerService:
                 control.request(WorkerCommand.CANCEL)
                 lease_lost.set()
                 return
+        if not monitor_stop.is_set() and self._stopping.is_set():
+            control.request(WorkerCommand.CANCEL)
+            command_seen.set()
+
+    def _requested_command(
+        self,
+        active: _ActiveSession,
+        command_seen: asyncio.Event,
+    ) -> WorkerCommand | None:
+        if self._stopping.is_set():
+            command_seen.set()
+        if not command_seen.is_set():
+            return None
+        return (
+            active.job.command
+            if active.job.command is not WorkerCommand.CONTINUE
+            else WorkerCommand.CANCEL
+        )
 
     async def _append_event(self, active: _ActiveSession, kind: str) -> WorkerCommand:
         active.sequence += 1
@@ -308,11 +349,18 @@ class WorkerService:
         active.apply(version=update.version, command=update.command)
         return update.command
 
-    async def _finish_command(self, active: _ActiveSession, command: WorkerCommand) -> bool:
+    async def _finish_command(
+        self,
+        active: _ActiveSession,
+        command: WorkerCommand,
+        *,
+        event_already_recorded: bool = False,
+    ) -> bool:
         outcome = "SUPERSEDED" if command is WorkerCommand.SUPERSEDE else "CANCELLED"
         kind = "RUN_SUPERSEDED" if outcome == "SUPERSEDED" else "RUN_CANCELLED"
-        with suppress(LeaseLost, ControlPlaneRejected, RetryableControlPlaneError):
-            await self._append_event(active, kind)
+        if not event_already_recorded:
+            with suppress(LeaseLost, ControlPlaneRejected, RetryableControlPlaneError):
+                await self._append_event(active, kind)
         try:
             completion_job = active.job
             await self._retry_call(
