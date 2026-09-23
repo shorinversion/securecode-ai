@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import sqlite3
+
 import pytest
 from securecode_ai.server.backup_repository import BackupConflict, BackupRecord, BackupRepository
 from securecode_ai.server.backup_service import (
@@ -10,6 +13,11 @@ from securecode_ai.server.backup_service import (
     BackupService,
     manifest_sha256,
 )
+from securecode_ai.server.operations_handler_backup import (
+    BackupOperationsHandler,
+    BackupScopeRepository,
+)
+from securecode_ai.server.ports import ServiceRequest, VerifiedIdentity
 
 
 class _Executor:
@@ -130,3 +138,80 @@ def test_executor_failure_is_explicit_and_never_marks_completion() -> None:
 
     with pytest.raises(BackupExecutorUnavailable):
         service.complete_backup("tenant-1", "backup-1", planned.version)
+
+
+def test_failed_create_does_not_reserve_backup_scope() -> None:
+    connection = sqlite3.connect(":memory:")
+    scopes = BackupScopeRepository(connection)
+    handler = BackupOperationsHandler(
+        BackupService(BackupRepository(connection), _Executor()),
+        scopes,
+        executor_available=True,
+    )
+    identity = VerifiedIdentity("admin-1", "tenant-1", frozenset({"admin"}))
+
+    first = asyncio.run(
+        handler.dispatch(
+            _create_request(
+                identity,
+                backup_id="existing-backup",
+                repository_id="repo-a",
+                idempotency_key="request-1",
+            )
+        )
+    )
+    rejected = asyncio.run(
+        handler.dispatch(
+            _create_request(
+                identity,
+                backup_id="retryable-backup",
+                repository_id="repo-b",
+                idempotency_key="request-1",
+            )
+        )
+    )
+
+    assert first.status == 201
+    assert rejected.status == 409
+    assert scopes.repository(tenant_id="tenant-1", backup_id="retryable-backup") is None
+
+    accepted = asyncio.run(
+        handler.dispatch(
+            _create_request(
+                identity,
+                backup_id="retryable-backup",
+                repository_id="repo-c",
+                idempotency_key="request-2",
+            )
+        )
+    )
+
+    assert accepted.status == 201
+    assert scopes.repository(tenant_id="tenant-1", backup_id="retryable-backup") == "repo-c"
+
+
+def _create_request(
+    identity: VerifiedIdentity,
+    *,
+    backup_id: str,
+    repository_id: str,
+    idempotency_key: str,
+) -> ServiceRequest:
+    return ServiceRequest(
+        method="POST",
+        route="/api/v1/backups",
+        action="backups.create",
+        identity=identity,
+        idempotency_key=idempotency_key,
+        precondition=None,
+        path_params={},
+        query={},
+        document={
+            "backup_id": backup_id,
+            "repository_id": repository_id,
+            "component_hashes": ["a" * 64],
+            "region": "region-1",
+            "encryption_key_ref": "key-reference-1",
+        },
+        raw_body=b"{}",
+    )

@@ -142,6 +142,12 @@ class BackupOperationsHandler:
         if not repository_allowed(request.identity, repository_id):
             return FORBIDDEN
         try:
+            scoped_repository = self._scopes.repository(
+                tenant_id=request.identity.tenant_id,
+                backup_id=backup_id,
+            )
+            if scoped_repository is not None and scoped_repository != repository_id:
+                raise BackupConflict("backup scope conflicts")
             record = BackupRecord(
                 tenant_id=request.identity.tenant_id,
                 backup_id=backup_id,
@@ -152,14 +158,14 @@ class BackupOperationsHandler:
                 state="PLANNED",
             )
             validate_backup_record(record)
-            self._scopes.bind(
-                tenant_id=request.identity.tenant_id,
-                backup_id=backup_id,
-                repository_id=repository_id,
-            )
             planned = self._service.plan(
                 record,
                 idempotency_key=request.idempotency_key,
+            )
+            self._scopes.bind(
+                tenant_id=planned.tenant_id,
+                backup_id=planned.backup_id,
+                repository_id=repository_id,
             )
             receipt = self._service.receipt(
                 tenant_id=planned.tenant_id,
