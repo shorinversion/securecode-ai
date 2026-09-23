@@ -106,6 +106,9 @@ class SqliteQuotaLedger:
                 (tenant_id,),
             ).fetchone()
             if row is None:
+                if cost_microunits > self._max_spend_microunits:
+                    self._connection.rollback()
+                    return _refused(self._window_ms // 1000)
                 count = cursor.execute("SELECT COUNT(*) FROM request_quota_windows").fetchone()[0]
                 if type(count) is not int or count >= self._max_tenants:
                     # Persist expiry cleanup so stale tenants cannot occupy

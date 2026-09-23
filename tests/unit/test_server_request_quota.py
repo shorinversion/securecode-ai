@@ -180,6 +180,28 @@ def test_sqlite_quota_persists_across_ledger_recreation_and_tenants() -> None:
     assert restarted.check(tenant_id="tenant-a", now_ms=61_000).allowed
 
 
+def test_sqlite_quota_refuses_a_first_request_above_the_spend_ceiling() -> None:
+    """The first persisted charge must obey the same ceiling as later charges."""
+
+    connection = sqlite3.connect(":memory:")
+    for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
+        connection.execute(statement)
+    ledger = SqliteQuotaLedger(
+        connection,
+        window_seconds=60,
+        max_requests=2,
+        max_spend_microunits=500,
+    )
+
+    refused = ledger.check(tenant_id=TENANT, now_ms=1_000, cost_microunits=501)
+
+    assert not refused.allowed
+    assert refused.remaining_requests == 0
+    assert refused.remaining_spend_microunits == 0
+    assert connection.execute("SELECT COUNT(*) FROM request_quota_windows").fetchone() == (0,)
+    connection.close()
+
+
 def test_sqlite_quota_bounds_tenants_and_fails_closed_without_storage() -> None:
     connection, ledger = _sqlite_quota(max_tenants=1)
     assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
