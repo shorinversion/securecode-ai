@@ -19,6 +19,19 @@ class _Transport:
         return self.status
 
 
+class _SequenceTransport:
+    def __init__(self, responses: list[object]) -> None:
+        self._responses = responses
+        self.calls: list[tuple[str, bytes, int]] = []
+
+    def post_json(self, *, endpoint: str, payload: bytes, timeout_ms: int) -> int:
+        self.calls.append((endpoint, payload, timeout_ms))
+        response = self._responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response  # type: ignore[return-value]
+
+
 def _observation(*, duration_ms: int | None = None) -> Observation:
     return Observation(
         name="securecode.run.completed",
@@ -87,6 +100,39 @@ def test_failed_transport_and_non_success_are_not_export_success() -> None:
         clock_ns=lambda: 1,
     )
     assert not broken.export((_observation(),))
+
+
+def test_exporter_retries_transient_failures_with_the_same_bounded_payload() -> None:
+    transport = _SequenceTransport([503, ConnectionError("collector unavailable"), 200])
+    exporter = OtlpHttpExporter(
+        endpoint="https://collector.example/v1/logs",
+        transport=transport,
+        timeout_ms=321,
+        max_attempts=3,
+        clock_ns=lambda: 1,
+    )
+
+    assert exporter.export((_observation(duration_ms=17),))
+    assert len(transport.calls) == 3
+    assert {endpoint for endpoint, _, _ in transport.calls} == {"https://collector.example/v1/logs"}
+    assert {timeout_ms for _, _, timeout_ms in transport.calls} == {321}
+    assert len({payload for _, payload, _ in transport.calls}) == 1
+
+
+def test_exporter_does_not_retry_permanent_failure_or_invalid_attempt_configuration() -> None:
+    transport = _SequenceTransport([400, 200])
+    exporter = OtlpHttpExporter(
+        endpoint="https://collector.example/v1/logs",
+        transport=transport,
+        max_attempts=3,
+        clock_ns=lambda: 1,
+    )
+
+    assert not exporter.export((_observation(),))
+    assert len(transport.calls) == 1
+    for value in (0, 6, True, "3"):
+        with pytest.raises(ValueError, match="OTLP_MAX_ATTEMPTS_REJECTED"):
+            OtlpHttpExporter(endpoint="https://collector.example/v1/logs", max_attempts=value)  # type: ignore[arg-type]
 
 
 def test_redacted_exporter_can_consume_otlp_exporter() -> None:

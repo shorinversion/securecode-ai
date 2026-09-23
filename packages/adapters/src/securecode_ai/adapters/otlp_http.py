@@ -15,6 +15,8 @@ from securecode_ai.core.operational_telemetry import OperationalObservation
 _MAX_BATCH: Final = 256
 _MAX_PAYLOAD_BYTES: Final = 65_536
 _ALLOWED_PORTS: Final = frozenset({443, 4318})
+_DEFAULT_MAX_ATTEMPTS: Final = 3
+_MAX_ATTEMPTS: Final = 5
 
 
 class OtlpTransport(Protocol):
@@ -57,7 +59,7 @@ class StdlibOtlpTransport:
 class OtlpHttpExporter:
     """Export only bounded, source-free observations to a configured collector."""
 
-    __slots__ = ("_clock_ns", "_endpoint", "_timeout_ms", "_transport")
+    __slots__ = ("_clock_ns", "_endpoint", "_max_attempts", "_timeout_ms", "_transport")
 
     def __init__(
         self,
@@ -65,12 +67,15 @@ class OtlpHttpExporter:
         endpoint: str,
         transport: OtlpTransport | None = None,
         timeout_ms: int = 5_000,
+        max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
         clock_ns: Callable[[], int] = time.time_ns,
     ) -> None:
         if not _valid_endpoint(endpoint):
             raise ValueError("OTLP_ENDPOINT_REJECTED")
         if type(timeout_ms) is not int or not 1 <= timeout_ms <= 60_000:
             raise ValueError("OTLP_TIMEOUT_REJECTED")
+        if type(max_attempts) is not int or not 1 <= max_attempts <= _MAX_ATTEMPTS:
+            raise ValueError("OTLP_MAX_ATTEMPTS_REJECTED")
         if not callable(clock_ns):
             raise TypeError("OTLP_CLOCK_REJECTED")
         resolved_transport = StdlibOtlpTransport() if transport is None else transport
@@ -79,6 +84,7 @@ class OtlpHttpExporter:
         self._endpoint = endpoint
         self._transport = resolved_transport
         self._timeout_ms = timeout_ms
+        self._max_attempts = max_attempts
         self._clock_ns = clock_ns
 
     def __repr__(self) -> str:
@@ -99,19 +105,35 @@ class OtlpHttpExporter:
             payload = _payload(observations, observed_at_ns=now)
             if len(payload) > _MAX_PAYLOAD_BYTES:
                 return False
-            return (
-                200
-                <= self._transport.post_json(
-                    endpoint=self._endpoint,
-                    payload=payload,
-                    timeout_ms=self._timeout_ms,
-                )
-                < 300
-            )
+            return self._post_with_retries(payload)
         except (KeyboardInterrupt, SystemExit, GeneratorExit):
             raise
         except Exception:
             return False
+
+    def _post_with_retries(self, payload: bytes) -> bool:
+        """Retry only bounded transient failures with an unchanged payload."""
+
+        for attempt in range(self._max_attempts):
+            try:
+                status = self._transport.post_json(
+                    endpoint=self._endpoint,
+                    payload=payload,
+                    timeout_ms=self._timeout_ms,
+                )
+            except (KeyboardInterrupt, SystemExit, GeneratorExit):
+                raise
+            except Exception:
+                if attempt + 1 == self._max_attempts:
+                    return False
+                continue
+            if type(status) is not int:
+                return False
+            if 200 <= status < 300:
+                return True
+            if not _retryable_status(status) or attempt + 1 == self._max_attempts:
+                return False
+        return False
 
 
 def _valid_endpoint(value: object) -> bool:
@@ -128,6 +150,10 @@ def _valid_endpoint(value: object) -> bool:
         and parsed.path == "/v1/logs"
         and (parsed.port or 443) in _ALLOWED_PORTS
     )
+
+
+def _retryable_status(status: int) -> bool:
+    return status == 408 or status == 429 or 500 <= status <= 599
 
 
 def _payload(observations: tuple[OperationalObservation, ...], *, observed_at_ns: int) -> bytes:
