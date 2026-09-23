@@ -201,6 +201,19 @@ def test_scope_and_arguments_are_immutable() -> None:
         arguments.path = "tests/a.py"  # type: ignore[misc]
 
 
+def test_windows_alternate_data_stream_selector_is_not_a_repository_path() -> None:
+    """A scoped file path must not authorize an NTFS alternate data stream."""
+
+    with pytest.raises(ValueError):
+        ReadRangeArguments(
+            TOOL_ARGUMENT_SCHEMA_VERSION,
+            HEAD,
+            "packages/a.py:secret",
+            1,
+            2,
+        )
+
+
 @pytest.mark.parametrize(
     "factory",
     [

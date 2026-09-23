@@ -67,6 +67,12 @@ def _valid_path(value: object, *, allow_empty: bool = False) -> bool:
     return all(
         part
         and part not in {".", ".."}
+        # A colon in a Windows path component selects an NTFS alternate data
+        # stream (for example ``source.py:secret``), which is outside the
+        # repository file named by the scope.  Repository paths are portable
+        # POSIX-style names at this boundary, so reject that selector before a
+        # backend can interpret it with filesystem semantics.
+        and ":" not in part
         and unicodedata.normalize("NFC", part) == part
         and not any(ord(character) < 32 or ord(character) == 127 for character in part)
         for part in parts
