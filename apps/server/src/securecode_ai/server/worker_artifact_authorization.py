@@ -231,6 +231,8 @@ class SqliteArtifactAuthorizationStore:
                     raise ArtifactAuthorizationDenied()
                 authorization = _row_authorization(replay)
                 self._verify(authorization)
+                if authorization.expires_at <= _utc(self._now()):
+                    raise ArtifactAuthorizationDenied()
                 self._connection.commit()
                 return authorization
 

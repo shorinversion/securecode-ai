@@ -254,6 +254,16 @@ def test_authorization_is_idempotent_for_one_key(tmp_path: Path) -> None:
     assert first.receipt_signature == second.receipt_signature
 
 
+def test_expired_authorization_is_not_returned_for_idempotent_replay(tmp_path: Path) -> None:
+    world = _world(tmp_path)
+    first = world.authorize()
+
+    world.clock["now"] = first.expires_at
+
+    with pytest.raises(ArtifactAuthorizationDenied):
+        world.authorize()
+
+
 def test_authorization_rejects_foreign_tenant_reference(tmp_path: Path) -> None:
     world = _world(tmp_path)
     with pytest.raises(ArtifactAuthorizationDenied):
