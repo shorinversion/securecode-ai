@@ -66,6 +66,8 @@ class FindingEvidenceReader:
         if len(records) != 1:
             raise RepositoryError("finding evidence record is invalid")
         record = records[0]
+        if record.evidence_graph_ref.tenant_id != tenant_id:
+            raise RepositoryError("finding evidence identity is invalid")
         run_id = finding.get("run_id")
         if type(run_id) is not str or not run_id:
             raise RepositoryError("finding run binding is invalid")

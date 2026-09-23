@@ -223,6 +223,16 @@ def test_rejects_missing_matching_artifact(tmp_path: Path) -> None:
         reader.read(tenant_id=TENANT, finding_id="finding-1")
 
 
+def test_rejects_cross_tenant_artifact_reference(tmp_path: Path) -> None:
+    reader, _, repository = _fixture(tmp_path)
+    reference = repository.finding["evidence_graph_ref"]
+    assert isinstance(reference, dict)
+    reference["tenant_id"] = "tenant-2"
+
+    with pytest.raises(RepositoryError):
+        reader.read(tenant_id=TENANT, finding_id="finding-1")
+
+
 def test_service_exposes_evidence_only_to_authorized_repository(tmp_path: Path) -> None:
     reader, _, repository = _fixture(tmp_path)
     service = DurableControlPlaneService(repository, finding_evidence=reader)  # type: ignore[arg-type]
