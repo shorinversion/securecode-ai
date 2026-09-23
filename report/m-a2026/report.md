@@ -24,7 +24,7 @@ The submission combines three evidence layers: a pinned synthetic CWE-89 detect,
 - Repair study: 0 attempted patches and 0 independently validated patches; root-cause repair rate is unavailable.
 - Real local demo: outcome=COMPLETED, lane agreement=AGREED, patch=PROPOSED, ephemeral validation=PASSED, source unchanged=true.
 - Observed runtime: Ollama 0.16.2, model qwen2.5-coder:7b-instruct-q4_K_M, quantization Q4_K_M, digest sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364.
-- Repository quality: `PASS`, 2912 passed, 32 skipped, 80.14% Core branch coverage.
+- Repository quality: `PASS`, 2970 passed, 32 skipped, 80.66% Core branch coverage.
 
 ## Conclusions
 
@@ -48,7 +48,7 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 
 | Path | SHA-256 |
 | --- | --- |
-| `README.md` | `1c6107e484b35f7edcea175a8f0aab51cab9c1515306d0f02f00ca1e6cbba11a` |
+| `README.md` | `949d05366cbbcac709a449f2db7037534d7fecef71b50242fa940991b759ea69` |
 | `artifacts/gates/G2/promotion-manifest.json` | `d63e16e891971b7f75d02a475716b323b0f92437fab0b006c5ffcd6b724f07e2` |
 | `artifacts/gates/G2/test-results/deterministic-core-validation.md` | `dd64d5feff2b62ddf9b3244cdb0e87da22d7b5e1c569a27032d71e80eb2264ce` |
 | `artifacts/gates/G3/promotion-manifest.json` | `012d85d83108e308cbf16801005a65b022859c5199a3d6f21355edf3b27ffd2d` |
@@ -73,9 +73,9 @@ The pinned Python reference demonstrates the intended detect, suggest, ephemeral
 | `report/m-a2026/evidence/p917-real-local/p917-ephemeral-validation.json` | `130c1595e7e5aee1847a5c7e79422efef2e685456f00f9c67034b310e2a89bd8` |
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.html` | `400ff949e73e65f6b6987551e75f8c105b47b95f83b69d648bcbcabed220c6be` |
 | `report/m-a2026/evidence/p917-real-local/p917-local-demo.json` | `d18a2b706dd4faae55c4139a464a50c1de51401718cd95a89bed7047f651ec6b` |
-| `scripts/build_m_a2026_submission.py` | `0bc2dd2cec09dd2f47aa82be72135174cf1e5cd689c30e3cdfdafd233bad4edc` |
+| `scripts/build_m_a2026_submission.py` | `86efdd9b3029ca677f01a64b489612538640848797a53282a2c1c13bb9c02610` |
 | `tests/integration/test_cwe_portfolio_pipeline.py` | `e5b3fae0abb313477c7b74379471a7bc887c3043c8e9fac48bbea1156aa3d6a7` |
-| `tests/integration/test_m_a2026_submission.py` | `5f46ea984efd26a855d73a19d2b7b1eab585de8b4abd2fd588e4b2fca5494598` |
+| `tests/integration/test_m_a2026_submission.py` | `d996d75360d7070bbec82994b64ffef6e621f1224bf2eb355090ff76fb362467` |
 | `tests/integration/test_multilanguage_pipeline.py` | `00eb71e74e88dfe4b5a424f4f4acc9f0da0c81dddac6c59a743f013d17dc33fc` |
 | `tests/integration/test_mvp_demo.py` | `2faa6dc45ebd7cb5719f27c90a778f8068cc8cf27f62ec97e7d61e10f3d84dfa` |
 | `tests/integration/test_p917_real_local_demo.py` | `91729ef1916df05e502d25bbb6e3b7b54955f804bd0eebc6a044fd8a7312b21a` |

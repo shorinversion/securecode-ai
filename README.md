@@ -92,7 +92,7 @@ Command Injection, `CWE-22` Path Traversal, `CWE-862` Missing Authorization и
 
 Текущий staged-кандидат проверен командой
 `uv run --locked --offline --no-sync --group quality python -I scripts/quality.py`:
-`2554 passed`, `32 skipped`, branch coverage Core `80.10%`, `QUALITY=PASS`.
+`2970 passed`, `32 skipped`, branch coverage Core `80.66%`, `QUALITY=PASS`.
 Отдельный opt-in прогон `tests/unit/test_development_corpus.py` с
 `SECURECODE_RUN_DOCKER_ORACLE=1` завершился как `22 passed`, поэтому все пять
 Docker oracle сценариев исполнены. Остальные skips платформенные: Linux worker
@@ -575,7 +575,7 @@ with its [limitations](report/development-benchmark/limitations.md).
 
 The current staged candidate was checked with
 `uv run --locked --offline --no-sync --group quality python -I scripts/quality.py`:
-`2554 passed`, `32 skipped`, `80.10%` Core branch coverage, `QUALITY=PASS`.
+`2970 passed`, `32 skipped`, `80.66%` Core branch coverage, `QUALITY=PASS`.
 A separate opt-in run of `tests/unit/test_development_corpus.py` with
 `SECURECODE_RUN_DOCKER_ORACLE=1` finished with `22 passed`, so all five Docker
 oracle scenarios executed. The remaining skips are platform-specific Linux
