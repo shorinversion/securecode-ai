@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 
 import pytest
 from securecode_ai.server.identity import Role
+from securecode_ai.server.migrations import apply_schema
 from securecode_ai.server.oidc import (
     OidcAdmission,
     OidcPolicy,
@@ -19,7 +21,11 @@ from securecode_ai.server.oidc_login import (
     OidcLoginService,
     OidcLoginStart,
 )
-from securecode_ai.server.oidc_sessions import IssuedOidcSession, NonceReplayLedger
+from securecode_ai.server.oidc_sessions import (
+    IssuedOidcSession,
+    NonceReplayLedger,
+    SqliteOidcLoginState,
+)
 
 NOW = 2
 NONCE = "n"
@@ -80,6 +86,20 @@ def _started_service(
     if isinstance(values, dict):
         values["nonce"] = start.nonce
     return service, start
+
+
+def _durable_started_service() -> tuple[OidcLoginService, OidcLoginStart, sqlite3.Connection]:
+    values = dict(CLAIMS)
+    connection = sqlite3.connect(":memory:")
+    apply_schema(connection)
+    service = OidcLoginService(
+        admission=_admission(values),
+        ledger=NonceReplayLedger(now=lambda: NOW, connection=connection),
+        state_store=SqliteOidcLoginState(connection),
+    )
+    start = service.start()
+    values["nonce"] = start.nonce
+    return service, start, connection
 
 
 class _Issuer:
@@ -163,14 +183,15 @@ def test_replayed_nonce_is_refused() -> None:
 
 def test_attempts_are_bounded() -> None:
     service = _service(attempt_limit=2)
+    starts: list[OidcLoginStart] = []
     for _ in range(2):
         start = service.start()
+        starts.append(start)
         with pytest.raises(OidcLoginError) as error:
             service.callback(token="forged", nonce=start.nonce, state=start.state)
         assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
-    start = service.start()
     with pytest.raises(OidcLoginError) as error:
-        service.callback(token="forged", nonce=start.nonce, state=start.state)
+        service.callback(token="forged", nonce=starts[0].nonce, state=starts[0].state)
     assert error.value.code is OidcLoginErrorCode.RATE_LIMITED
 
 
@@ -218,4 +239,21 @@ def test_callback_rejects_a_tampered_or_unknown_state() -> None:
     with pytest.raises(OidcLoginError) as error:
         service.callback(token=TOKEN, nonce=start.nonce, state="tampered")
 
+    assert error.value.code is OidcLoginErrorCode.STATE_REJECTED
+
+
+def test_durable_state_survives_token_rejection_and_is_consumed_once() -> None:
+    service, start, connection = _durable_started_service()
+
+    with pytest.raises(OidcLoginError) as error:
+        service.callback(token="forged", nonce=start.nonce, state=start.state)
+    assert error.value.code is OidcLoginErrorCode.TOKEN_REJECTED
+    assert connection.execute("SELECT COUNT(*) FROM oidc_login_states").fetchone() == (1,)
+
+    receipt = service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
+    assert receipt.principal.subject_id == "user"
+    assert connection.execute("SELECT COUNT(*) FROM oidc_login_states").fetchone() == (0,)
+
+    with pytest.raises(OidcLoginError) as error:
+        service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.STATE_REJECTED

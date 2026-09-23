@@ -232,7 +232,7 @@ class OidcLoginService:
                 state_store is not None
                 and not all(
                     callable(getattr(state_store, method, None))
-                    for method in ("create", "consume", "charge_attempt")
+                    for method in ("create", "matches", "consume", "charge_attempt")
                 )
             )
         ):
@@ -303,7 +303,7 @@ class OidcLoginService:
         ):
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED)
         self._charge_attempt(bucket="callback")
-        if not self._consume_start(state=state, nonce=nonce):
+        if not self._matches_start(state=state, nonce=nonce):
             raise OidcLoginError(OidcLoginErrorCode.STATE_REJECTED)
         try:
             principal, receipt = self._admission.admit(token, nonce=nonce)
@@ -311,6 +311,8 @@ class OidcLoginService:
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED) from None
         except (TypeError, ValueError):
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED) from None
+        if not self._consume_start(state=state, nonce=nonce):
+            raise OidcLoginError(OidcLoginErrorCode.STATE_REJECTED)
         try:
             self._ledger.consume(receipt, nonce)
         except OidcDenied:
@@ -355,6 +357,22 @@ class OidcLoginService:
                     retry_after_seconds=self._attempt_window_seconds,
                 )
             self._attempts.append(now)
+
+    def _matches_start(self, *, state: str, nonce: str) -> bool:
+        if self._state_store is not None:
+            try:
+                return self._state_store.matches(
+                    state=state,
+                    nonce=nonce,
+                    now=int(time.time()),
+                )
+            except Exception:
+                return False
+        now = time.monotonic()
+        with self._lock:
+            self._discard_expired_states(now)
+            binding = self._pending_states.get(state)
+            return binding is not None and secrets.compare_digest(binding[0], nonce)
 
     def _remember_start(self, *, state: str, nonce: str) -> None:
         """Store one bounded, short-lived state to nonce binding."""

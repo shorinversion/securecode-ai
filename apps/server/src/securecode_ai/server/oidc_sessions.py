@@ -27,6 +27,8 @@ class SessionIssuer(Protocol):
 class LoginStatePort(Protocol):
     def create(self, *, state: str, nonce: str, expires_at: int) -> None: ...
 
+    def matches(self, *, state: str, nonce: str, now: int) -> bool: ...
+
     def consume(self, *, state: str, nonce: str, now: int) -> bool: ...
 
     def charge_attempt(self, *, bucket: str, now: int, limit: int, window_seconds: int) -> None: ...
@@ -71,6 +73,22 @@ class SqliteOidcLoginState:
                 raise
             except Exception:
                 _rollback_savepoint(self._connection, "oidc_state_create")
+                raise OidcDenied() from None
+
+    def matches(self, *, state: str, nonce: str, now: int) -> bool:
+        state_hash = _state_hash(b"state", state)
+        nonce_hash = _state_hash(b"nonce", nonce)
+        if type(now) is not int or now < 0:
+            raise OidcDenied()
+        with self._lock:
+            try:
+                row = self._connection.execute(
+                    "SELECT 1 FROM oidc_login_states "
+                    "WHERE state_hash=? AND nonce_hash=? AND expires_at>?",
+                    (state_hash, nonce_hash, now),
+                ).fetchone()
+                return row is not None and type(row[0]) is int and row[0] == 1
+            except Exception:
                 raise OidcDenied() from None
 
     def consume(self, *, state: str, nonce: str, now: int) -> bool:
