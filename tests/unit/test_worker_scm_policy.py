@@ -13,12 +13,14 @@ from securecode_ai.core.scm_policy import (
     SCM_POLICY_SCHEMA_VERSION,
     ScmPolicyDecision,
     ScmPolicyEnforcement,
+    ScmPolicyErrorCode,
     ScmPolicyInputHashes,
     ScmPolicyMode,
 )
 from securecode_ai.server.worker_scm_policy import (
     ScmPolicyReceiptConflict,
     record_advisory_policy_decision,
+    record_scm_policy_decision,
 )
 
 _DIGEST = "a" * 64
@@ -68,6 +70,54 @@ def _decision() -> ScmPolicyDecision:
         input_hashes=hashes,
         matched_rule_ids=("advisory_non_blocking",),
         error_code=None,
+        decision_sha256=digest,
+    )
+
+
+def _strict_non_pass_decision() -> ScmPolicyDecision:
+    hashes = ScmPolicyInputHashes(
+        policy_document_sha256=_DIGEST,
+        audit_run_sha256="b" * 64,
+        execution_identity_sha256="c" * 64,
+        baseline_comparison_sha256=None,
+    )
+    material = {
+        "blocks_merge": False,
+        "enforcement": ScmPolicyEnforcement.NON_PASS.value,
+        "error_code": ScmPolicyErrorCode.PRECALIBRATION_BLOCKING.value,
+        "input_hashes": {
+            "policy_document_sha256": hashes.policy_document_sha256,
+            "audit_run_sha256": hashes.audit_run_sha256,
+            "execution_identity_sha256": hashes.execution_identity_sha256,
+            "baseline_comparison_sha256": None,
+        },
+        "is_passing": False,
+        "matched_rule_ids": ("precalibration_blocking_rejected",),
+        "mode": ScmPolicyMode.STRICT.value,
+        "observed_audit_outcome": AuditRunOutcome.PASS.value,
+        "policy_id": "policy-v1",
+        "policy_version": "1.0.0",
+        "publication_permitted": False,
+        "schema_version": SCM_POLICY_SCHEMA_VERSION,
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            material, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
+        ).encode("ascii")
+    ).hexdigest()
+    return ScmPolicyDecision(
+        schema_version=SCM_POLICY_SCHEMA_VERSION,
+        policy_id="policy-v1",
+        policy_version="1.0.0",
+        mode=ScmPolicyMode.STRICT,
+        observed_audit_outcome=AuditRunOutcome.PASS,
+        enforcement=ScmPolicyEnforcement.NON_PASS,
+        is_passing=False,
+        blocks_merge=False,
+        publication_permitted=False,
+        input_hashes=hashes,
+        matched_rule_ids=("precalibration_blocking_rejected",),
+        error_code=ScmPolicyErrorCode.PRECALIBRATION_BLOCKING,
         decision_sha256=digest,
     )
 
@@ -136,6 +186,44 @@ def test_policy_receipt_is_scoped_by_tenant_and_run() -> None:
 
     assert first == second == 1
     assert connection.execute("SELECT COUNT(*) FROM run_events").fetchone()[0] == 2
+
+
+def test_non_pass_rollout_decision_can_be_persisted_idempotently() -> None:
+    connection = _connection()
+    decision = _strict_non_pass_decision()
+
+    with connection:
+        first = record_scm_policy_decision(
+            connection.cursor(), tenant_id="tenant-1", run_id="run-1", decision=decision
+        )
+        replay = record_scm_policy_decision(
+            connection.cursor(), tenant_id="tenant-1", run_id="run-1", decision=decision
+        )
+
+    row = connection.execute("SELECT metadata_json FROM run_events").fetchone()
+    assert first == replay == 1
+    assert json.loads(row[0])["policy_decision"]["error_code"] == "PRECALIBRATION_BLOCKING"
+
+
+def test_run_cannot_record_a_second_policy_decision() -> None:
+    connection = _connection()
+
+    with connection:
+        record_scm_policy_decision(
+            connection.cursor(),
+            tenant_id="tenant-1",
+            run_id="run-1",
+            decision=_decision(),
+        )
+        with pytest.raises(ScmPolicyReceiptConflict):
+            record_scm_policy_decision(
+                connection.cursor(),
+                tenant_id="tenant-1",
+                run_id="run-1",
+                decision=_strict_non_pass_decision(),
+            )
+
+    assert connection.execute("SELECT COUNT(*) FROM run_events").fetchone()[0] == 1
 
 
 @pytest.mark.parametrize(

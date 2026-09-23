@@ -68,19 +68,40 @@ def record_advisory_policy_decision(
     """Store one idempotent advisory decision in the existing run event stream."""
 
     if (
+        type(decision) is not ScmPolicyDecision
+        or decision.mode is not ScmPolicyMode.ADVISORY
+        or decision.enforcement is not ScmPolicyEnforcement.ADVISORY
+        or decision.blocks_merge
+        or not decision.publication_permitted
+    ):
+        raise ScmPolicyReceiptConflict("advisory policy receipt is invalid")
+    return record_scm_policy_decision(
+        cursor,
+        tenant_id=tenant_id,
+        run_id=run_id,
+        decision=decision,
+    )
+
+
+def record_scm_policy_decision(
+    cursor: sqlite3.Cursor,
+    *,
+    tenant_id: str,
+    run_id: str,
+    decision: ScmPolicyDecision,
+) -> int:
+    """Store one verified policy decision idempotently in the run event stream."""
+
+    if (
         not isinstance(cursor, sqlite3.Cursor)
         or type(tenant_id) is not str
         or _IDENTIFIER.fullmatch(tenant_id) is None
         or type(run_id) is not str
         or _IDENTIFIER.fullmatch(run_id) is None
         or type(decision) is not ScmPolicyDecision
-        or decision.mode is not ScmPolicyMode.ADVISORY
-        or decision.enforcement is not ScmPolicyEnforcement.ADVISORY
-        or decision.blocks_merge
-        or not decision.publication_permitted
         or not _decision_digest_is_valid(decision)
     ):
-        raise ScmPolicyReceiptConflict("advisory policy receipt is invalid")
+        raise ScmPolicyReceiptConflict("SCM policy receipt is invalid")
 
     metadata = {
         "kind": "SCM_POLICY_DECISION",
@@ -89,18 +110,18 @@ def record_advisory_policy_decision(
     encoded = json.dumps(
         metadata, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
     )
-    event_id = f"securecode-policy-{decision.decision_sha256}"
-    existing = cursor.execute(
+    existing_rows = cursor.execute(
         """SELECT sequence, metadata_json FROM run_events
-           WHERE tenant_id=? AND run_id=? AND event_id=?""",
-        (tenant_id, run_id, event_id),
-    ).fetchone()
-    if existing is not None:
-        if existing[1] != encoded:
-            raise ScmPolicyReceiptConflict("advisory policy replay conflicts")
-        sequence = existing[0]
+           WHERE tenant_id=? AND run_id=? AND event_id LIKE 'securecode-policy-%'
+           ORDER BY sequence""",
+        (tenant_id, run_id),
+    ).fetchall()
+    if existing_rows:
+        if len(existing_rows) != 1 or existing_rows[0][1] != encoded:
+            raise ScmPolicyReceiptConflict("SCM policy replay conflicts")
+        sequence = existing_rows[0][0]
         if type(sequence) is not int or sequence < 1:
-            raise ScmPolicyReceiptConflict("advisory policy replay is invalid")
+            raise ScmPolicyReceiptConflict("SCM policy replay is invalid")
         return sequence
 
     sequence = cursor.execute(
@@ -109,7 +130,8 @@ def record_advisory_policy_decision(
         (tenant_id, run_id),
     ).fetchone()[0]
     if type(sequence) is not int or sequence < 1:
-        raise ScmPolicyReceiptConflict("advisory policy event sequence is invalid")
+        raise ScmPolicyReceiptConflict("SCM policy event sequence is invalid")
+    event_id = "securecode-policy-decision-v1"
     cursor.execute(
         """INSERT INTO run_events
            (tenant_id, run_id, sequence, event_id, metadata_json)
@@ -132,4 +154,5 @@ __all__ = [
     "ScmPolicyReceiptConflict",
     "record_advisory_policy_decision",
     "record_run_advisory_policy",
+    "record_scm_policy_decision",
 ]
