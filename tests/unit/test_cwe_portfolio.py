@@ -199,6 +199,16 @@ def test_pathlib_joinpath_with_request_segment_emits_path_traversal_fact() -> No
     assert tuple(signal.cwe for signal in result.signals) == ("CWE-22",)
 
 
+def test_open_with_request_args_subscription_emits_path_traversal_fact() -> None:
+    source = (
+        b"import os\ndef read(request):\n return open(os.path.join('/srv', request.args['file']))\n"
+    )
+
+    result = scan_cwe_portfolio(_index(build_python_symbol_index, "api/read.py", source))
+
+    assert tuple(signal.cwe for signal in result.signals) == ("CWE-22",)
+
+
 def test_pathlib_joinpath_with_constant_segment_emits_no_path_traversal_fact() -> None:
     source = (
         b"from pathlib import Path\n"

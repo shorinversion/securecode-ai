@@ -179,6 +179,7 @@ def _python_is_source(node: ast.expr) -> bool:
         token in text
         for token in (
             "request.args.get(",
+            "request.args[",
             "request.GET[",
             "request.query_params.get(",
             "request.query.",
