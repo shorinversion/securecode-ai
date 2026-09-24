@@ -55,13 +55,18 @@ from . import (
     cwe89,
     cwe89_multilanguage,
     cwe_portfolio,
-    ecmascript_cwe22,
     ecmascript_cwe1321,
+    ecmascript_cwe22,
+    ecmascript_cwe601,
+    ecmascript_cwe90,
     ecmascript_cwe94,
     go_cwe22,
+    go_cwe918,
     go_cwe_crypto,
     python_ast,
     python_cwe502,
+    python_cwe90,
+    python_cwe918,
     python_cwe94,
 )
 from .native_sources import NativeSourceCatalogue
@@ -84,13 +89,18 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio.py",
     "cwe_portfolio_helpers.py",
     "cwe_portfolio_models.py",
-    "ecmascript_cwe22.py",
     "ecmascript_cwe1321.py",
+    "ecmascript_cwe22.py",
+    "ecmascript_cwe601.py",
+    "ecmascript_cwe90.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
+    "go_cwe918.py",
     "go_cwe_crypto.py",
     "python_ast.py",
     "python_cwe502.py",
+    "python_cwe90.py",
+    "python_cwe918.py",
     "python_cwe94.py",
     "scanner_plugin.py",
 )
@@ -162,6 +172,32 @@ class FirstPartyStaticWorker:
                         ordinal=ordinal,
                     )
                 )
+            ldap = python_cwe90.scan_python_cwe90(index, python_analysis)
+            for ordinal, signal in enumerate(ldap.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=ldap.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            ssrf = python_cwe918.scan_python_cwe918(index, python_analysis)
+            for ordinal, signal in enumerate(ssrf.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=ssrf.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             python_scan = python_cwe94.scan_python_cwe94(index, python_analysis)
             for ordinal, signal in enumerate(python_scan.signals):
                 signals.append(
@@ -203,7 +239,46 @@ class FirstPartyStaticWorker:
                         rule_id="portfolio-cwe-22",
                     )
                 )
+            ssrf = go_cwe918.scan_go_cwe918(index)
+            for ordinal, signal in enumerate(ssrf.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=ssrf.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
         elif index.language in {"javascript", "typescript"}:
+            ldap = ecmascript_cwe90.scan_ecmascript_cwe90(index)
+            for ordinal, signal in enumerate(ldap.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=ldap.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            redirects = ecmascript_cwe601.scan_ecmascript_cwe601(index)
+            for ordinal, signal in enumerate(redirects.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=redirects.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             prototype_pollution = ecmascript_cwe1321.scan_ecmascript_cwe1321(index)
             for ordinal, signal in enumerate(prototype_pollution.signals):
                 signals.append(
