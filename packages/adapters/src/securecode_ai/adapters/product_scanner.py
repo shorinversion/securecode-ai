@@ -81,6 +81,7 @@ from . import (
     ecmascript_cwe918,
     ecmascript_cwe94,
     ecmascript_cwe639,
+    ecmascript_cwe306,
     go_cwe22,
     go_cwe295,
     go_cwe367,
@@ -103,6 +104,7 @@ from . import (
     go_cwe918,
     go_cwe_crypto,
     go_cwe639,
+    go_cwe306,
     python_ast,
     python_cwe502,
     python_cwe295,
@@ -127,6 +129,7 @@ from . import (
     python_cwe918,
     python_cwe94,
     python_cwe639,
+    python_cwe306,
 )
 from .native_sources import NativeSourceCatalogue
 from .repository_view import SealedRepositoryView
@@ -174,6 +177,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe918.py",
     "ecmascript_cwe94.py",
     "ecmascript_cwe639.py",
+    "ecmascript_cwe306.py",
     "go_cwe22.py",
     "go_cwe295.py",
     "go_cwe367.py",
@@ -196,6 +200,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe918.py",
     "go_cwe_crypto.py",
     "go_cwe639.py",
+    "go_cwe306.py",
     "python_ast.py",
     "python_cwe502.py",
     "python_cwe295.py",
@@ -222,6 +227,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe918.py",
     "python_cwe94.py",
     "python_cwe639.py",
+    "python_cwe306.py",
     "scanner_plugin.py",
 )
 
@@ -1223,6 +1229,29 @@ class FirstPartyStaticWorker:
                     rule_id=signal.rule_id,
                 )
             )
+        critical_authentication = None
+        if index.language == "python":
+            if python_analysis is None:
+                raise ValueError("Python AST analysis is unavailable")
+            critical_authentication = python_cwe306.scan_python_cwe306(index, python_analysis)
+        elif index.language == "go":
+            critical_authentication = go_cwe306.scan_go_cwe306(index)
+        else:
+            critical_authentication = ecmascript_cwe306.scan_ecmascript_cwe306(index)
+        if critical_authentication is not None:
+            for ordinal, signal in enumerate(critical_authentication.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=critical_authentication.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
         sql: cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult
         if index.language == "python":
             if python_analysis is None:
