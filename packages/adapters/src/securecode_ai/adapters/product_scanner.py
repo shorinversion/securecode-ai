@@ -59,17 +59,22 @@ from . import (
     ecmascript_cwe22,
     ecmascript_cwe601,
     ecmascript_cwe78,
+    ecmascript_cwe79,
     ecmascript_cwe90,
     ecmascript_cwe918,
     ecmascript_cwe94,
     go_cwe22,
+    go_cwe601,
     go_cwe78,
+    go_cwe79,
     go_cwe90,
     go_cwe918,
     go_cwe_crypto,
     python_ast,
     python_cwe502,
+    python_cwe601,
     python_cwe78,
+    python_cwe79,
     python_cwe90,
     python_cwe918,
     python_cwe94,
@@ -98,17 +103,22 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe22.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
+    "ecmascript_cwe79.py",
     "ecmascript_cwe90.py",
     "ecmascript_cwe918.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
+    "go_cwe601.py",
     "go_cwe78.py",
+    "go_cwe79.py",
     "go_cwe90.py",
     "go_cwe918.py",
     "go_cwe_crypto.py",
     "python_ast.py",
     "python_cwe502.py",
+    "python_cwe601.py",
     "python_cwe78.py",
+    "python_cwe79.py",
     "python_cwe90.py",
     "python_cwe918.py",
     "python_cwe94.py",
@@ -169,6 +179,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            redirects = python_cwe601.scan_python_cwe601(index, python_analysis)
+            for ordinal, signal in enumerate(redirects.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=redirects.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             commands = python_cwe78.scan_python_cwe78(index, python_analysis)
             for ordinal, signal in enumerate(commands.signals):
                 signals.append(
@@ -181,6 +204,19 @@ class FirstPartyStaticWorker:
                         scan_sha256=commands.scan_sha256,
                         ordinal=ordinal,
                         rule_id="portfolio-cwe-78",
+                    )
+                )
+            xss = python_cwe79.scan_python_cwe79(index, python_analysis)
+            for ordinal, signal in enumerate(xss.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xss.scan_sha256,
+                        ordinal=ordinal,
                     )
                 )
             deserialization = python_cwe502.scan_python_cwe502(index, python_analysis)
@@ -237,6 +273,32 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            xss = go_cwe79.scan_go_cwe79(index)
+            for ordinal, signal in enumerate(xss.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xss.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            redirects = go_cwe601.scan_go_cwe601(index)
+            for ordinal, signal in enumerate(redirects.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=redirects.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             commands = go_cwe78.scan_go_cwe78(index)
             for ordinal, signal in enumerate(commands.signals):
                 signals.append(
@@ -318,6 +380,19 @@ class FirstPartyStaticWorker:
                         scan_sha256=commands.scan_sha256,
                         ordinal=ordinal,
                         rule_id="portfolio-cwe-78",
+                    )
+                )
+            xss = ecmascript_cwe79.scan_ecmascript_cwe79(index)
+            for ordinal, signal in enumerate(xss.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xss.scan_sha256,
+                        ordinal=ordinal,
                     )
                 )
             ldap = ecmascript_cwe90.scan_ecmascript_cwe90(index)
