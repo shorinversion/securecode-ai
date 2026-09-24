@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .endpoint import Resolver
 from .model import CredentialSupplier
+from .remote_provider_budget import RemoteProviderBudgetPort
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_runtime import AuthorizedLocalModelExecutor
 from .public_core_fixtures import build_public_core_fixture as build_public_core_fixture
@@ -48,6 +49,7 @@ def _executor(
     native: bool,
     resolver: Resolver | None = None,
     credential_supplier: CredentialSupplier | None = None,
+    spend_budget: RemoteProviderBudgetPort | None = None,
 ) -> AuthorizedLocalModelExecutor:
     """Build an executor while retaining the historical patchable boundary."""
 
@@ -57,6 +59,7 @@ def _executor(
         native=native,
         resolver=resolver,
         credential_supplier=credential_supplier,
+        spend_budget=spend_budget,
         connector_factory=OpenAICompatibleLocalHttpConnector,
     )
 

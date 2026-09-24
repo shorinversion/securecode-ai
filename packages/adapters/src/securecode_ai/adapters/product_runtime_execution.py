@@ -53,6 +53,7 @@ from .model_types import (
     ProviderAttemptBinding,
     _ProviderConnector,
 )
+from .remote_provider_budget import RemoteProviderCallContext
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_model import (
     DiscoverySchemaRefusalCategory,
@@ -247,6 +248,7 @@ class AuthorizedLocalModelExecutor:
                         model_id: str,
                         timeout_ms: int,
                         binding: ProviderAttemptBinding,
+                        call_budget: RemoteProviderCallContext,
                     ) -> ProviderAttempt:
                         try:
                             selected = base_connector
@@ -264,6 +266,7 @@ class AuthorizedLocalModelExecutor:
                                 model_id=model_id,
                                 timeout_ms=remaining_timeout(),
                                 binding=binding,
+                                call_budget=call_budget,
                             )
                         finally:
                             close = getattr(channel, "close", None)

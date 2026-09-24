@@ -36,6 +36,7 @@ from .openai_compatible_local_codec import (
     _closed_json_object,
     _reject_json_constant,
 )
+from .remote_provider_budget import RemoteProviderCallContext
 
 
 @dataclass(slots=True)
@@ -371,6 +372,7 @@ class OpenAICompatibleLocalHttpConnector:
         model_id: str,
         timeout_ms: int,
         binding: ProviderAttemptBinding,
+        call_budget: RemoteProviderCallContext,
     ) -> ProviderAttempt:
         started = time.monotonic()
         if (
@@ -386,6 +388,7 @@ class OpenAICompatibleLocalHttpConnector:
             or timeout_ms < 1
             or timeout_ms > self._profile.budgets.timeout_seconds * 1000
             or not isinstance(binding, ProviderAttemptBinding)
+            or type(call_budget) is not RemoteProviderCallContext
         ):
             return self._attempt(
                 started=started,

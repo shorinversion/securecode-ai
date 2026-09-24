@@ -31,6 +31,14 @@ from .openai_compatible_local_codec import (
     _closed_json_object,
     _reject_json_constant,
 )
+from .remote_provider_budget import (
+    RemoteProviderBudgetError,
+    RemoteProviderBudgetPort,
+    RemoteProviderCallContext,
+    RemoteProviderSpendLease,
+    RemoteProviderSpendRequest,
+    RemoteProviderSpendUsage,
+)
 
 
 @dataclass(slots=True)
@@ -58,9 +66,15 @@ class _RemoteHttpsChannel:
 class OpenAICompatibleRemoteHttpsConnector:
     """A single-request HTTPS connector for an approved remote profile."""
 
-    __slots__ = ("_endpoint_path", "_max_output_tokens", "_port", "_profile")
+    __slots__ = ("_endpoint_path", "_max_output_tokens", "_port", "_profile", "_spend_budget")
 
-    def __init__(self, *, profile: ProviderProfile, max_output_tokens: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        profile: ProviderProfile,
+        max_output_tokens: int | None = None,
+        spend_budget: RemoteProviderBudgetPort | None = None,
+    ) -> None:
         parsed = urlsplit(profile.endpoint.base_url)
         if (
             profile.provider_kind is not ProviderKind.OPENAI_COMPATIBLE_REMOTE
@@ -88,6 +102,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         )
         self._port = port
         self._profile = profile
+        self._spend_budget = spend_budget
 
     def __repr__(self) -> str:
         return "OpenAICompatibleRemoteHttpsConnector(<redacted>)"
@@ -163,6 +178,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         model_id: str,
         timeout_ms: int,
         binding: ProviderAttemptBinding,
+        call_budget: RemoteProviderCallContext,
     ) -> ProviderAttempt:
         started = time.monotonic()
         if (
@@ -178,10 +194,20 @@ class OpenAICompatibleRemoteHttpsConnector:
             or type(timeout_ms) is not int
             or not 1 <= timeout_ms <= self._profile.budgets.timeout_seconds * 1000
             or not isinstance(binding, ProviderAttemptBinding)
+            or type(call_budget) is not RemoteProviderCallContext
         ):
             return self._attempt(
                 started=started, binding=binding, transport_failure=TransportFailure.PROVIDER_ERROR
             )
+        budget = self._spend_budget
+        if budget is None or not _valid_budget_port(budget):
+            return self._attempt(
+                started=started,
+                binding=binding,
+                transport_failure=TransportFailure.BUDGET_EXHAUSTED,
+            )
+        lease: RemoteProviderSpendLease | None = None
+        send_attempted = False
         try:
             prompt = payload.decode("utf-8", "strict")
             body = json.dumps(
@@ -189,7 +215,7 @@ class OpenAICompatibleRemoteHttpsConnector:
                     "model": model_id,
                     "messages": [{"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"},
-                    "max_tokens": self._max_output_tokens,
+                    "max_tokens": min(self._max_output_tokens, call_budget.max_output_tokens),
                     "temperature": 0,
                     "thinking": {"type": "disabled"},
                     "reasoning_effort": "none",
@@ -208,7 +234,43 @@ class OpenAICompatibleRemoteHttpsConnector:
                 f"Content-Length: {len(body)}\r\n"
                 "Connection: close\r\n\r\n"
             ).encode("ascii") + body
+            try:
+                lease = budget.reserve(
+                    RemoteProviderSpendRequest(
+                        tenant_id=call_budget.tenant_id,
+                        model_id=model_id,
+                        request_id=call_budget.request_id,
+                        attempt=call_budget.attempt,
+                        max_input_tokens=call_budget.max_input_tokens,
+                        max_output_tokens=call_budget.max_output_tokens,
+                    )
+                )
+            except Exception:
+                return self._attempt(
+                    started=started,
+                    binding=binding,
+                    transport_failure=TransportFailure.BUDGET_EXHAUSTED,
+                )
+            if (
+                type(lease) is not RemoteProviderSpendLease
+                or lease.tenant_id != call_budget.tenant_id
+                or lease.model_id != model_id
+                or lease.request_id != call_budget.request_id
+                or lease.attempt != call_budget.attempt
+                or lease.max_input_tokens != call_budget.max_input_tokens
+                or lease.max_output_tokens != call_budget.max_output_tokens
+            ):
+                if type(lease) is RemoteProviderSpendLease:
+                    with suppress(Exception):
+                        budget.release(lease)
+                lease = None
+                return self._attempt(
+                    started=started,
+                    binding=binding,
+                    transport_failure=TransportFailure.BUDGET_EXHAUSTED,
+                )
             channel._socket.settimeout(timeout_ms / 1000)
+            send_attempted = True
             channel._socket.sendall(request)
             response = http.client.HTTPResponse(channel._socket)
             response.begin()
@@ -219,6 +281,8 @@ class OpenAICompatibleRemoteHttpsConnector:
                 raise ValueError
             status = response.status
             if not 200 <= status < 300:
+                budget.charge_maximum(lease)
+                lease = None
                 return self._attempt(
                     started=started,
                     binding=binding,
@@ -226,26 +290,77 @@ class OpenAICompatibleRemoteHttpsConnector:
                     response_bytes=raw,
                     redirected=300 <= status < 400,
                 )
+            canonical, input_tokens, output_tokens = _canonicalize_remote_envelope_with_usage(
+                raw, expected_model_id=model_id
+            )
+            budget.settle(
+                lease,
+                RemoteProviderSpendUsage(input_tokens=input_tokens, output_tokens=output_tokens),
+            )
+            lease = None
             return self._attempt(
                 started=started,
                 binding=binding,
                 http_status=status,
-                response_bytes=_canonicalize_remote_envelope(raw, expected_model_id=model_id),
+                response_bytes=canonical,
             )
         except TimeoutError:
+            if lease is not None and send_attempted:
+                try:
+                    budget.charge_maximum(lease)
+                except Exception:
+                    return self._attempt(
+                        started=started,
+                        binding=binding,
+                        transport_failure=TransportFailure.BUDGET_EXHAUSTED,
+                    )
+                lease = None
             return self._attempt(
                 started=started, binding=binding, transport_failure=TransportFailure.TIMEOUT
             )
+        except RemoteProviderBudgetError:
+            if lease is not None and send_attempted:
+                with suppress(Exception):
+                    budget.charge_maximum(lease)
+                lease = None
+            return self._attempt(
+                started=started,
+                binding=binding,
+                transport_failure=TransportFailure.BUDGET_EXHAUSTED,
+            )
         except Exception:
+            if lease is not None and send_attempted:
+                try:
+                    budget.charge_maximum(lease)
+                except Exception:
+                    return self._attempt(
+                        started=started,
+                        binding=binding,
+                        transport_failure=TransportFailure.BUDGET_EXHAUSTED,
+                    )
+                lease = None
             return self._attempt(
                 started=started, binding=binding, transport_failure=TransportFailure.PROVIDER_ERROR
             )
         finally:
+            if lease is not None and not send_attempted:
+                with suppress(Exception):
+                    budget.release(lease)
             channel.close()
 
 
 def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) -> bytes:
     """Accept the public OpenAI-compatible subset and strip provider metadata."""
+    canonical, _, _ = _canonicalize_remote_envelope_with_usage(
+        response, expected_model_id=expected_model_id
+    )
+    return canonical
+
+
+def _canonicalize_remote_envelope_with_usage(
+    response: bytes, *, expected_model_id: str
+) -> tuple[bytes, int, int]:
+    """Return the bounded public envelope and validated provider usage."""
     document = json.loads(
         response, object_pairs_hook=_closed_json_object, parse_constant=_reject_json_constant
     )
@@ -265,9 +380,11 @@ def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) ->
         or not isinstance(usage, dict)
         or type(usage.get("prompt_tokens")) is not int
         or type(usage.get("completion_tokens")) is not int
+        or not 0 <= usage["prompt_tokens"] <= 1_000_000_000
+        or not 0 <= usage["completion_tokens"] <= 1_000_000_000
     ):
         raise ValueError("remote response envelope is invalid")
-    return json.dumps(
+    canonical = json.dumps(
         {
             "id": document["id"],
             "choices": [
@@ -290,3 +407,14 @@ def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) ->
         separators=(",", ":"),
         sort_keys=True,
     ).encode("ascii")
+    return canonical, usage["prompt_tokens"], usage["completion_tokens"]
+
+
+def _valid_budget_port(value: object) -> bool:
+    try:
+        return all(
+            callable(getattr(value, name, None))
+            for name in ("reserve", "settle", "charge_maximum", "release")
+        )
+    except Exception:
+        return False

@@ -23,6 +23,7 @@ from securecode_ai.core import (
 )
 
 from .native_repository_tools import NativeRepositoryToolCall
+from .remote_provider_budget import RemoteProviderCallContext
 
 _MAX_NATIVE_BYTES: Final = 1024 * 1024
 _MAX_JSON_DEPTH: Final = 64
@@ -456,6 +457,7 @@ class _ProviderConnector(Protocol):
         model_id: str,
         timeout_ms: int,
         binding: ProviderAttemptBinding,
+        call_budget: RemoteProviderCallContext,
     ) -> ProviderAttempt: ...
 
 

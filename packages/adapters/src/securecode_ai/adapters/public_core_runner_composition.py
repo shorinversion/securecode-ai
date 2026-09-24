@@ -8,6 +8,7 @@ transport remains SIMULATED; this module never qualifies or admits a provider.
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -17,6 +18,10 @@ from securecode_ai.adapters.endpoint import EndpointAuthorizationIssuer, Resolve
 from securecode_ai.adapters.model import AuthorizedProviderHarness, CredentialSupplier
 from securecode_ai.adapters.openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from securecode_ai.adapters.openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
+from securecode_ai.adapters.remote_provider_budget import RemoteProviderBudgetPort
+from securecode_ai.adapters.remote_provider_budget_config import (
+    build_remote_provider_budget_from_environment,
+)
 from securecode_ai.adapters.product_model import MODEL_NATIVE_DISCOVERY_WIRE_PIN
 from securecode_ai.adapters.product_runtime import (
     PRODUCT_DISCOVERY_PROMPT_PIN,
@@ -172,6 +177,7 @@ def _executor(
     native: bool,
     resolver: Resolver | None = None,
     credential_supplier: CredentialSupplier | None = None,
+    spend_budget: RemoteProviderBudgetPort | None = None,
     connector_factory: Callable[..., object] = OpenAICompatibleLocalHttpConnector,
 ) -> AuthorizedLocalModelExecutor:
     registry = ProviderProfileRegistry((inputs.profile,))
@@ -185,7 +191,16 @@ def _executor(
                 native_frames=native,
             )
         else:
-            connector = OpenAICompatibleRemoteHttpsConnector(profile=inputs.profile)
+            if spend_budget is None:
+                spend_budget = build_remote_provider_budget_from_environment(
+                    os.environ,
+                    tenant_id=inputs.policy.tenant_scope,
+                    model_id=inputs.profile.model_id,
+                )
+            connector = OpenAICompatibleRemoteHttpsConnector(
+                profile=inputs.profile,
+                spend_budget=spend_budget,
+            )
     if not callable(getattr(connector, "connect", None)) or not callable(
         getattr(connector, "send", None)
     ):

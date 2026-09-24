@@ -43,6 +43,7 @@ from .model_types import (
     _ProviderConnector,
 )
 from .native_repository_tools import parse_native_tool_calls
+from .remote_provider_budget import RemoteProviderCallContext
 
 ContextBuilder = Callable[[], PreparedModelContext]
 CredentialSupplier = Callable[[ProviderProfile], CredentialLease | None]
@@ -446,6 +447,13 @@ class AuthorizedProviderHarness:
                 model_id=profile.model_id,
                 timeout_ms=request.budget.timeout_ms,
                 binding=binding,
+                call_budget=RemoteProviderCallContext(
+                    tenant_id=request.tenant_id,
+                    request_id=request.request_id,
+                    attempt=request.attempt,
+                    max_input_tokens=request.budget.max_input_tokens,
+                    max_output_tokens=request.budget.max_output_tokens,
+                ),
             )
             if native:
                 execution = _native_turn_execution(

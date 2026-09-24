@@ -30,6 +30,7 @@ from securecode_ai.adapters.product_scanner import (
 from securecode_ai.adapters.public_discovery_observation import (
     PublicDiscoveryObservationRecorder,
 )
+from securecode_ai.adapters.remote_provider_budget import RemoteProviderBudgetPort
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ComponentPin,
@@ -68,6 +69,7 @@ def run_public_core_case(
     simulated_transport: object | None = None,
     resolver: Resolver | None = None,
     credential_supplier: CredentialSupplier | None = None,
+    remote_provider_budget: RemoteProviderBudgetPort | None = None,
 ) -> PublicCoreRunResult:
     """Compose the real Core ports.  An injected transport remains explicitly simulated."""
     if type(inputs) is not PublicCoreHostInputs:
@@ -90,6 +92,7 @@ def run_public_core_case(
             native=True,
             resolver=selected_resolver,
             credential_supplier=credential_supplier,
+            spend_budget=remote_provider_budget,
         )
         auditor_executor = _executor(
             inputs=inputs,
@@ -97,6 +100,7 @@ def run_public_core_case(
             native=False,
             resolver=selected_resolver,
             credential_supplier=credential_supplier,
+            spend_budget=remote_provider_budget,
         )
         catalogue = prepared.fixture.catalogue
         plan = ModelNativeDiscoveryPlan(
