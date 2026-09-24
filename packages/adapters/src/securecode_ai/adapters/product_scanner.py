@@ -79,6 +79,7 @@ from . import (
     go_cwe400,
     go_cwe307,
     go_cwe327,
+    go_cwe532,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -97,6 +98,7 @@ from . import (
     python_cwe307,
     python_cwe327,
     python_cwe400,
+    python_cwe532,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -148,6 +150,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe400.py",
     "go_cwe307.py",
     "go_cwe327.py",
+    "go_cwe532.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -166,6 +169,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe307.py",
     "python_cwe327.py",
     "python_cwe400.py",
+    "python_cwe532.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -231,6 +235,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            sensitive_logging = python_cwe532.scan_python_cwe532(index, python_analysis)
+            for ordinal, signal in enumerate(sensitive_logging.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=sensitive_logging.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             weak_crypto = python_cwe327.scan_python_cwe327(index, python_analysis)
             for ordinal, signal in enumerate(weak_crypto.signals):
                 signals.append(
@@ -455,6 +472,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            sensitive_logging = go_cwe532.scan_go_cwe532(index)
+            for ordinal, signal in enumerate(sensitive_logging.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=sensitive_logging.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             rate_limit = go_cwe307.scan_go_cwe307(index)
             for ordinal, signal in enumerate(rate_limit.signals):
                 signals.append(
