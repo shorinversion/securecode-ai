@@ -67,6 +67,7 @@ from . import (
     ecmascript_cwe400,
     ecmascript_cwe307,
     ecmascript_cwe532,
+    ecmascript_cwe776,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -100,6 +101,7 @@ from . import (
     python_cwe327,
     python_cwe400,
     python_cwe532,
+    python_cwe776,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -139,6 +141,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe400.py",
     "ecmascript_cwe307.py",
     "ecmascript_cwe532.py",
+    "ecmascript_cwe776.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -172,6 +175,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe327.py",
     "python_cwe400.py",
     "python_cwe532.py",
+    "python_cwe776.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -237,6 +241,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            xml_expansion = python_cwe776.scan_python_cwe776(index, python_analysis)
+            for ordinal, signal in enumerate(xml_expansion.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xml_expansion.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             sensitive_logging = python_cwe532.scan_python_cwe532(index, python_analysis)
             for ordinal, signal in enumerate(sensitive_logging.signals):
                 signals.append(
@@ -673,6 +690,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            xml_expansion = ecmascript_cwe776.scan_ecmascript_cwe776(index)
+            for ordinal, signal in enumerate(xml_expansion.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xml_expansion.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             sensitive_logging = ecmascript_cwe532.scan_ecmascript_cwe532(index)
             for ordinal, signal in enumerate(sensitive_logging.signals):
                 signals.append(
