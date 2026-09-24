@@ -55,6 +55,8 @@ from . import (
     cwe89,
     cwe89_multilanguage,
     cwe_portfolio,
+    ecmascript_cwe94,
+    go_cwe22,
     go_cwe_crypto,
     python_ast,
     python_cwe94,
@@ -79,6 +81,8 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio.py",
     "cwe_portfolio_helpers.py",
     "cwe_portfolio_models.py",
+    "ecmascript_cwe94.py",
+    "go_cwe22.py",
     "go_cwe_crypto.py",
     "python_ast.py",
     "python_cwe94.py",
@@ -166,6 +170,34 @@ class FirstPartyStaticWorker:
                         ordinal=ordinal,
                     )
                 )
+            paths = go_cwe22.scan_go_cwe22(index)
+            for ordinal, signal in enumerate(paths.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe="CWE-22",
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=paths.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="portfolio-cwe-22",
+                    )
+                )
+        elif index.language in {"javascript", "typescript"}:
+            dynamic_code = ecmascript_cwe94.scan_ecmascript_cwe94(index)
+            for ordinal, signal in enumerate(dynamic_code.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=dynamic_code.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
         sql: cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult
         if index.language == "python":
             if python_analysis is None:
@@ -232,6 +264,7 @@ def _fact_to_raw_signal(
     location: SourceRange,
     scan_sha256: str,
     ordinal: int,
+    rule_id: str | None = None,
 ) -> RawSignal:
     """Bind one rule-specific source range to the normal scanner contract."""
 
@@ -252,7 +285,7 @@ def _fact_to_raw_signal(
         f"{request.tenant_id}:{request.repository_id}:{request.head_sha}:"
         f"{request.file.path}:{cwe}:{detector}:{scan_sha256}:{ordinal}".encode("utf-8")
     ).hexdigest()
-    stable_rule = f"{detector.split('@', maxsplit=1)[0]}:{cwe.lower()}"
+    stable_rule = rule_id or f"{detector.split('@', maxsplit=1)[0]}:{cwe.lower()}"
     return RawSignal(
         schema_version="0.2.0",
         raw_signal_id=f"product-{cwe.lower()}-{digest}",
