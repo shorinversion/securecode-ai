@@ -59,6 +59,8 @@ from . import (
     ecmascript_cwe22,
     ecmascript_cwe295,
     ecmascript_cwe1333,
+    ecmascript_cwe367,
+    ecmascript_cwe611,
     ecmascript_cwe377,
     ecmascript_cwe502,
     ecmascript_cwe601,
@@ -113,6 +115,8 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe295.py",
     "ecmascript_cwe1333.py",
     "ecmascript_cwe377.py",
+    "ecmascript_cwe367.py",
+    "ecmascript_cwe611.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -479,6 +483,32 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            toctou = ecmascript_cwe367.scan_ecmascript_cwe367(index)
+            for ordinal, signal in enumerate(toctou.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=toctou.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            xml = ecmascript_cwe611.scan_ecmascript_cwe611(index)
+            for ordinal, signal in enumerate(xml.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xml.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             temporary_files = ecmascript_cwe377.scan_ecmascript_cwe377(index)
             for ordinal, signal in enumerate(temporary_files.signals):
                 signals.append(
