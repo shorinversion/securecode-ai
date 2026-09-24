@@ -84,6 +84,7 @@ from . import (
     python_cwe502,
     python_cwe295,
     python_cwe614,
+    python_cwe732,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -140,6 +141,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe502.py",
     "python_cwe295.py",
     "python_cwe614.py",
+    "python_cwe732.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -205,6 +207,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            file_permissions = python_cwe732.scan_python_cwe732(index, python_analysis)
+            for ordinal, signal in enumerate(file_permissions.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=file_permissions.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             cookie_security = python_cwe614.scan_python_cwe614(index, python_analysis)
             for ordinal, signal in enumerate(cookie_security.signals):
                 signals.append(
