@@ -58,6 +58,7 @@ from . import (
     ecmascript_cwe1321,
     ecmascript_cwe22,
     ecmascript_cwe295,
+    ecmascript_cwe1333,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -67,6 +68,7 @@ from . import (
     ecmascript_cwe94,
     go_cwe22,
     go_cwe295,
+    go_cwe502,
     go_cwe1333,
     go_cwe601,
     go_cwe78,
@@ -106,6 +108,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe1321.py",
     "ecmascript_cwe22.py",
     "ecmascript_cwe295.py",
+    "ecmascript_cwe1333.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -115,6 +118,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe94.py",
     "go_cwe22.py",
     "go_cwe295.py",
+    "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
     "go_cwe78.py",
@@ -125,6 +129,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_ast.py",
     "python_cwe502.py",
     "python_cwe611.py",
+    "python_cwe1333.py",
     "python_cwe601.py",
     "python_cwe78.py",
     "python_cwe79.py",
@@ -228,6 +233,19 @@ class FirstPartyStaticWorker:
                         ordinal=ordinal,
                     )
                 )
+            regex_dos = python_cwe1333.scan_python_cwe1333(index, python_analysis)
+            for ordinal, signal in enumerate(regex_dos.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=regex_dos.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             deserialization = python_cwe502.scan_python_cwe502(index, python_analysis)
             for ordinal, signal in enumerate(deserialization.signals):
                 signals.append(
@@ -318,6 +336,19 @@ class FirstPartyStaticWorker:
                         detector=signal.detector,
                         location=signal.sink,
                         scan_sha256=tls_validation.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            deserialization = go_cwe502.scan_go_cwe502(index)
+            for ordinal, signal in enumerate(deserialization.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=deserialization.scan_sha256,
                         ordinal=ordinal,
                     )
                 )
@@ -416,6 +447,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            regex_dos = ecmascript_cwe1333.scan_ecmascript_cwe1333(index)
+            for ordinal, signal in enumerate(regex_dos.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=regex_dos.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             tls_validation = ecmascript_cwe295.scan_ecmascript_cwe295(index)
             for ordinal, signal in enumerate(tls_validation.signals):
                 signals.append(
