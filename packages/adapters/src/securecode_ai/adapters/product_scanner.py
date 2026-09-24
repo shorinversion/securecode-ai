@@ -80,6 +80,7 @@ from . import (
     go_cwe_crypto,
     python_ast,
     python_cwe502,
+    python_cwe295,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -132,6 +133,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe_crypto.py",
     "python_ast.py",
     "python_cwe502.py",
+    "python_cwe295.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -197,6 +199,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            tls_validation = python_cwe295.scan_python_cwe295(index, python_analysis)
+            for ordinal, signal in enumerate(tls_validation.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=tls_validation.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             redirects = python_cwe601.scan_python_cwe601(index, python_analysis)
             for ordinal, signal in enumerate(redirects.signals):
                 signals.append(
