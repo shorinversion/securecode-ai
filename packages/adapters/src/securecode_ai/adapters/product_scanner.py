@@ -60,13 +60,16 @@ from . import (
     ecmascript_cwe601,
     ecmascript_cwe78,
     ecmascript_cwe90,
+    ecmascript_cwe918,
     ecmascript_cwe94,
     go_cwe22,
     go_cwe78,
+    go_cwe90,
     go_cwe918,
     go_cwe_crypto,
     python_ast,
     python_cwe502,
+    python_cwe78,
     python_cwe90,
     python_cwe918,
     python_cwe94,
@@ -96,13 +99,16 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
     "ecmascript_cwe90.py",
+    "ecmascript_cwe918.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
     "go_cwe78.py",
+    "go_cwe90.py",
     "go_cwe918.py",
     "go_cwe_crypto.py",
     "python_ast.py",
     "python_cwe502.py",
+    "python_cwe78.py",
     "python_cwe90.py",
     "python_cwe918.py",
     "python_cwe94.py",
@@ -163,6 +169,20 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            commands = python_cwe78.scan_python_cwe78(index, python_analysis)
+            for ordinal, signal in enumerate(commands.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=commands.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="portfolio-cwe-78",
+                    )
+                )
             deserialization = python_cwe502.scan_python_cwe502(index, python_analysis)
             for ordinal, signal in enumerate(deserialization.signals):
                 signals.append(
@@ -200,6 +220,7 @@ class FirstPartyStaticWorker:
                         location=signal.sink,
                         scan_sha256=ssrf.scan_sha256,
                         ordinal=ordinal,
+                        rule_id="portfolio-cwe-918",
                     )
                 )
             python_scan = python_cwe94.scan_python_cwe94(index, python_analysis)
@@ -228,6 +249,19 @@ class FirstPartyStaticWorker:
                         scan_sha256=commands.scan_sha256,
                         ordinal=ordinal,
                         rule_id="portfolio-cwe-78",
+                    )
+                )
+            ldap = go_cwe90.scan_go_cwe90(index)
+            for ordinal, signal in enumerate(ldap.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=ldap.scan_sha256,
+                        ordinal=ordinal,
                     )
                 )
             crypto = go_cwe_crypto.scan_go_cwe_crypto(index)
@@ -268,6 +302,7 @@ class FirstPartyStaticWorker:
                         location=signal.sink,
                         scan_sha256=ssrf.scan_sha256,
                         ordinal=ordinal,
+                        rule_id="portfolio-cwe-918",
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
@@ -296,6 +331,20 @@ class FirstPartyStaticWorker:
                         location=signal.sink,
                         scan_sha256=ldap.scan_sha256,
                         ordinal=ordinal,
+                    )
+                )
+            ssrf = ecmascript_cwe918.scan_ecmascript_cwe918(index)
+            for ordinal, signal in enumerate(ssrf.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=ssrf.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="portfolio-cwe-918",
                     )
                 )
             redirects = ecmascript_cwe601.scan_ecmascript_cwe601(index)
