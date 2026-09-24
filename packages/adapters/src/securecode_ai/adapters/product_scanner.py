@@ -55,10 +55,13 @@ from . import (
     cwe89,
     cwe89_multilanguage,
     cwe_portfolio,
+    ecmascript_cwe22,
+    ecmascript_cwe1321,
     ecmascript_cwe94,
     go_cwe22,
     go_cwe_crypto,
     python_ast,
+    python_cwe502,
     python_cwe94,
 )
 from .native_sources import NativeSourceCatalogue
@@ -81,10 +84,13 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio.py",
     "cwe_portfolio_helpers.py",
     "cwe_portfolio_models.py",
+    "ecmascript_cwe22.py",
+    "ecmascript_cwe1321.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
     "go_cwe_crypto.py",
     "python_ast.py",
+    "python_cwe502.py",
     "python_cwe94.py",
     "scanner_plugin.py",
 )
@@ -143,6 +149,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            deserialization = python_cwe502.scan_python_cwe502(index, python_analysis)
+            for ordinal, signal in enumerate(deserialization.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=deserialization.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             python_scan = python_cwe94.scan_python_cwe94(index, python_analysis)
             for ordinal, signal in enumerate(python_scan.signals):
                 signals.append(
@@ -185,6 +204,33 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            prototype_pollution = ecmascript_cwe1321.scan_ecmascript_cwe1321(index)
+            for ordinal, signal in enumerate(prototype_pollution.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=prototype_pollution.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            paths = ecmascript_cwe22.scan_ecmascript_cwe22(index)
+            for ordinal, signal in enumerate(paths.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe="CWE-22",
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=paths.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="portfolio-cwe-22",
+                    )
+                )
             dynamic_code = ecmascript_cwe94.scan_ecmascript_cwe94(index)
             for ordinal, signal in enumerate(dynamic_code.signals):
                 signals.append(
