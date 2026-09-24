@@ -57,6 +57,7 @@ from . import (
     cwe_portfolio,
     ecmascript_cwe1321,
     ecmascript_cwe22,
+    ecmascript_cwe295,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -102,6 +103,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio_models.py",
     "ecmascript_cwe1321.py",
     "ecmascript_cwe22.py",
+    "ecmascript_cwe295.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -370,6 +372,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            tls_validation = ecmascript_cwe295.scan_ecmascript_cwe295(index)
+            for ordinal, signal in enumerate(tls_validation.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=tls_validation.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             deserialization = ecmascript_cwe502.scan_ecmascript_cwe502(index)
             for ordinal, signal in enumerate(deserialization.signals):
                 signals.append(
