@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 from pathlib import Path
 
 from .artifact_upload import ArtifactUploadRejected
 from .filesystem_paths import lexical_absolute_path
+
+_AUTHORIZATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 
 
 class LocalArtifactUploadVerifier:
@@ -33,9 +36,17 @@ class LocalArtifactUploadVerifier:
         size_bytes: int,
         purpose: str,
     ) -> None:
+        if type(authorization_id) is not str or _AUTHORIZATION_ID.fullmatch(authorization_id) is None:
+            raise ArtifactUploadRejected()
         target = self._root / tenant_id / content_sha256[:2] / content_sha256
         _plain_chain(self._root, target)
-        receipt = _json(_read_regular(target / "receipt.json", 65_536))
+        primary = _json(_read_regular(target / "receipt.json", 65_536))
+        if primary.get("authorization_id") == authorization_id:
+            receipt = primary
+        else:
+            authorization_directory = target / "authorizations" / authorization_id
+            _plain_chain(self._root, authorization_directory)
+            receipt = _json(_read_regular(authorization_directory / "receipt.json", 65_536))
         expected = {
             "authorization_id": authorization_id,
             "tenant_id": tenant_id,

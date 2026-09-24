@@ -9,6 +9,7 @@ import os
 import sqlite3
 import stat
 import sys
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Final, NoReturn, TextIO
@@ -18,9 +19,17 @@ from .data_lifecycle_models import RetentionProfile
 from .filesystem_paths import lexical_absolute_path
 from .lifecycle_scheduler import ApprovedDeletionScheduler, ScheduledDeletionResult
 from .migrations import SchemaVersionError, require_schema_version
+from .oidc_sessions import NonceReplayLedger, SqliteOidcLoginState
+from .request_quota import MAX_REQUESTS_PER_WINDOW, MAX_WINDOW_SECONDS
+from .resource_repository import ResourceRepository
+from .resource_service import ResourceService
 from .retention_planner import ArtifactRetentionPlanner, PlannedArtifactDeletion
 from .runtime import load_settings
+from .secret_provider_runtime import build_secret_provider
+from .secret_service import SecretDenied, SecretService
+from .sessions import SessionStore
 from .sqlite_database import open_private_sqlite
+from .sqlite_request_quota import SqliteQuotaLedger
 from .storage_executor import LocalArtifactStorageExecutor
 
 _SCHEMA_VERSION: Final = 1
@@ -50,6 +59,16 @@ def run(arguments: Sequence[str] | None = None) -> int:
         connection = _open_existing_database(database_path)
         try:
             _require_schema(connection)
+            secret_provider, secret_provider_available = build_secret_provider(os.environ)
+            secrets = SecretService(secret_provider, connection)
+            sessions = SessionStore(connection=connection)
+            oidc_states = SqliteOidcLoginState(connection)
+            oidc_nonces = NonceReplayLedger(connection=connection)
+            quotas = SqliteQuotaLedger(
+                connection,
+                window_seconds=MAX_WINDOW_SECONDS,
+                max_requests=MAX_REQUESTS_PER_WINDOW,
+            )
             storage = LocalArtifactStorageExecutor(connection, artifact_root)
             ledger = LifecycleLedger(connection, storage=storage)
             planner = ArtifactRetentionPlanner(
@@ -69,12 +88,72 @@ def run(arguments: Sequence[str] | None = None) -> int:
                 tenant_id=profile.tenant_id,
                 max_items=options.execute_limit,
             )
+            expired_secret_grants = secrets.expire_due_grants(
+                tenant_id=profile.tenant_id,
+                max_items=options.execute_limit,
+            )
+            secret_expiry_pending = secrets.has_due_grants(tenant_id=profile.tenant_id)
+            revoked_secret_leases = 0
+            if secret_provider_available:
+                try:
+                    revoked_secret_leases = secrets.retry_provider_revocations(
+                        tenant_id=profile.tenant_id,
+                        limit=options.execute_limit,
+                    )
+                except SecretDenied as error:
+                    if error.code != "PROVIDER_UNAVAILABLE":
+                        raise
+            secret_revocation_pending = secrets.has_pending_provider_revocations(
+                tenant_id=profile.tenant_id
+            )
+            session_purge_count = sessions.purge_inactive_sessions(
+                max_items=options.execute_limit
+            )
+            session_cleanup_pending = sessions.has_inactive_sessions()
+            oidc_now = int(time.time())
+            oidc_state_purge_count = oidc_states.purge_expired(
+                now=oidc_now,
+                max_items=options.execute_limit,
+            )
+            oidc_nonce_purge_count = oidc_nonces.purge_expired(
+                now=oidc_now,
+                max_items=options.execute_limit,
+            )
+            oidc_cleanup_pending = (
+                oidc_states.has_expired(now=oidc_now)
+                or oidc_nonces.has_expired(now=oidc_now)
+            )
+            quota_now_ms = time.time_ns() // 1_000_000
+            resources = ResourceService(ResourceRepository(connection))
+            expired_resource_reservations = resources.expire(
+                tenant_id=profile.tenant_id,
+                now_ms=quota_now_ms,
+                max_items=options.execute_limit,
+            )
+            resource_expiration_pending = resources.has_expired(
+                tenant_id=profile.tenant_id,
+                now_ms=quota_now_ms,
+            )
+            quota_purge_count = quotas.purge_expired_windows(
+                now_ms=quota_now_ms,
+                max_items=options.execute_limit,
+            )
+            quota_cleanup_pending = quotas.has_expired_windows(now_ms=quota_now_ms)
         finally:
             connection.close()
         conflict_count = sum(item.outcome == "CONFLICT" for item in executed)
+        authentication_cleanup_pending = session_cleanup_pending or oidc_cleanup_pending
+        partial = (
+            conflict_count > 0
+            or secret_expiry_pending
+            or secret_revocation_pending
+            or authentication_cleanup_pending
+            or quota_cleanup_pending
+            or resource_expiration_pending
+        )
         output = {
             "schema_version": _SCHEMA_VERSION,
-            "status": "partial" if conflict_count else "ok",
+            "status": "partial" if partial else "ok",
             "tenant_sha256": _text_hash(profile.tenant_id),
             "owner_sha256": _text_hash(options.owner_id),
             "profile_sha256": _profile_hash(profile),
@@ -82,10 +161,22 @@ def run(arguments: Sequence[str] | None = None) -> int:
             "planned_receipt_sha256": _planned_hash(planned),
             "executed_count": sum(item.outcome == "EXECUTED" for item in executed),
             "conflict_count": conflict_count,
+            "expired_secret_grant_count": expired_secret_grants,
+            "secret_expiry_pending": secret_expiry_pending,
+            "revoked_secret_lease_count": revoked_secret_leases,
+            "secret_revocation_pending": secret_revocation_pending,
+            "purged_auth_session_count": session_purge_count,
+            "purged_oidc_state_count": oidc_state_purge_count,
+            "purged_oidc_nonce_count": oidc_nonce_purge_count,
+            "authentication_cleanup_pending": authentication_cleanup_pending,
+            "purged_quota_bucket_count": quota_purge_count,
+            "quota_cleanup_pending": quota_cleanup_pending,
+            "expired_resource_reservation_count": expired_resource_reservations,
+            "resource_expiration_pending": resource_expiration_pending,
             "execution_receipt_sha256": _execution_hash(executed),
         }
         _write_json(sys.stdout, output)
-        return 2 if conflict_count else 0
+        return 2 if partial else 0
     except SystemExit:
         raise
     except Exception:

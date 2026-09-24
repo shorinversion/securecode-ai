@@ -6,7 +6,8 @@ import hashlib
 import ipaddress
 import json
 import ssl
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.client import HTTPMessage
@@ -204,7 +205,13 @@ class ControlPlaneClient:
             self._raise_status(status)
         return _session_update(document, job.version)
 
-    def publish_artifact(self, job: WorkerJob, artifact: WorkerArtifact) -> SessionUpdate:
+    def publish_artifact(
+        self,
+        job: WorkerJob,
+        artifact: WorkerArtifact,
+        *,
+        deadline: Callable[[], float] | None = None,
+    ) -> SessionUpdate:
         reference = artifact.reference.model_dump(mode="json")
         authorize_body = {
             "artifact_ref": reference,
@@ -214,6 +221,7 @@ class ControlPlaneClient:
             "repository_id": job.execution_identity.repository_revision.repository_id,
             "run_id": job.run_id,
             "schema_version": "0.2.0",
+            "session_id": job.session_id,
             "worker_id": self._worker_id,
         }
         authorize_key = _idempotency_key(
@@ -224,6 +232,7 @@ class ControlPlaneClient:
             "api/v1/artifacts:authorize",
             authorize_body,
             idempotency_key=authorize_key,
+            timeout_seconds=self._request_timeout(deadline),
         )
         if status not in {HTTPStatus.OK, HTTPStatus.CREATED}:
             self._raise_status(status)
@@ -238,7 +247,12 @@ class ControlPlaneClient:
             or not isinstance(upload_headers, Mapping)
         ):
             raise ControlPlaneRejected("artifact authorization is invalid")
-        self._upload(upload_url, artifact.content, upload_headers)
+        self._upload(
+            upload_url,
+            artifact.content,
+            upload_headers,
+            timeout_seconds=self._request_timeout(deadline),
+        )
 
         commit_body = self._session_body(job)
         commit_body.update(
@@ -256,6 +270,7 @@ class ControlPlaneClient:
                 "artifact", job.session_id, artifact.reference.content_sha256, artifact.purpose
             ),
             version=job.version,
+            timeout_seconds=self._request_timeout(deadline),
         )
         if status in {HTTPStatus.CONFLICT, HTTPStatus.PRECONDITION_FAILED, HTTPStatus.GONE}:
             raise LeaseLost("worker artifact commit lost its lease")
@@ -371,6 +386,7 @@ class ControlPlaneClient:
         *,
         idempotency_key: str,
         version: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> tuple[int, dict[str, object]]:
         payload = json.dumps(
             document,
@@ -395,12 +411,20 @@ class ControlPlaneClient:
             method=method,
         )
         try:
-            with self._opener.open(request, timeout=self._timeout) as response:
+            with self._opener.open(
+                request,
+                timeout=self._timeout if timeout_seconds is None else timeout_seconds,
+            ) as response:
                 status = int(response.status)
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except HTTPError as error:
             status = int(error.code)
-            raw = error.read(_MAX_RESPONSE_BYTES + 1)
+            try:
+                raw = error.read(_MAX_RESPONSE_BYTES + 1)
+            except (OSError, TimeoutError, URLError):
+                raise RetryableControlPlaneError(
+                    "control-plane transport is unavailable"
+                ) from None
         except (OSError, TimeoutError, URLError):
             raise RetryableControlPlaneError("control-plane transport is unavailable") from None
         if len(raw) > _MAX_RESPONSE_BYTES:
@@ -413,15 +437,32 @@ class ControlPlaneClient:
             raise ControlPlaneRejected("control-plane response is invalid") from None
         if type(decoded) is not dict:
             raise ControlPlaneRejected("control-plane response is invalid")
+        if (
+            status == HTTPStatus.CONFLICT
+            and _error_code(decoded) == "IDEMPOTENCY_IN_FLIGHT"
+        ):
+            raise RetryableControlPlaneError("control-plane request is still in flight")
         return status, decoded
 
-    def _upload(self, url: str, content: bytes, headers: Mapping[object, object]) -> None:
-        parsed = _validated_endpoint(url)
+    def _upload(
+        self,
+        url: str,
+        content: bytes,
+        headers: Mapping[object, object],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> None:
+        try:
+            parsed = _validated_endpoint(url)
+        except ValueError:
+            raise ControlPlaneRejected("artifact upload destination is invalid") from None
         if parsed.hostname not in self._artifact_hosts:
             raise ControlPlaneRejected("artifact upload destination is not allowed")
         upload_headers = {"Content-Length": str(len(content))}
         for name, value in headers.items():
             if type(name) is not str or type(value) is not str:
+                raise ControlPlaneRejected("artifact upload headers are invalid")
+            if not _is_http_header_name(name):
                 raise ControlPlaneRejected("artifact upload headers are invalid")
             lowered = name.lower()
             if lowered in {"authorization", "proxy-authorization", "cookie", "host"}:
@@ -435,18 +476,37 @@ class ControlPlaneClient:
             upload_headers[name] = value
         request = Request(url, data=content, headers=upload_headers, method="PUT")
         try:
-            with self._opener.open(request, timeout=self._timeout) as response:
+            with self._opener.open(
+                request,
+                timeout=self._timeout if timeout_seconds is None else timeout_seconds,
+            ) as response:
                 status = int(response.status)
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except HTTPError as error:
             status = int(error.code)
-            raw = error.read(_MAX_RESPONSE_BYTES + 1)
+            try:
+                raw = error.read(_MAX_RESPONSE_BYTES + 1)
+            except (OSError, TimeoutError, URLError):
+                raise RetryableControlPlaneError("artifact upload is unavailable") from None
         except (OSError, TimeoutError, URLError):
             raise RetryableControlPlaneError("artifact upload is unavailable") from None
         if len(raw) > _MAX_RESPONSE_BYTES:
             raise ControlPlaneRejected("artifact upload response is too large")
         if status not in {HTTPStatus.OK, HTTPStatus.CREATED, HTTPStatus.NO_CONTENT}:
+            if (
+                status == HTTPStatus.CONFLICT
+                and _response_error_code(raw) == "IDEMPOTENCY_IN_FLIGHT"
+            ):
+                raise RetryableControlPlaneError("artifact upload is still in flight")
             self._raise_status(status)
+
+    def _request_timeout(self, deadline: Callable[[], float] | None) -> float | None:
+        if deadline is None:
+            return None
+        remaining = deadline() - time.monotonic()
+        if remaining < 0.1:
+            raise RetryableControlPlaneError("worker lease time is exhausted")
+        return min(self._timeout, remaining)
 
     @staticmethod
     def _raise_status(status: int) -> None:
@@ -469,9 +529,33 @@ def _session_update(document: Mapping[str, object], current_version: int) -> Ses
     return SessionUpdate(version, command)
 
 
+def _error_code(document: Mapping[str, object]) -> str | None:
+    error = document.get("error")
+    if not isinstance(error, Mapping):
+        return None
+    code = error.get("code")
+    return code if type(code) is str else None
+
+
+def _response_error_code(raw: bytes) -> str | None:
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return _error_code(document) if type(document) is dict else None
+
+
 def _idempotency_key(*parts: str) -> str:
     digest = hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
     return "worker-" + digest
+
+
+def _is_http_header_name(name: str) -> bool:
+    return bool(name) and all(
+        character.isascii()
+        and (character.isalnum() or character in "!#$%&'*+-.^_`|~")
+        for character in name
+    )
 
 
 def _validated_endpoint(url: str) -> SplitResult:

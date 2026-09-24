@@ -152,8 +152,21 @@ class ResourceService:
             cancelled=cancelled,
         )
 
-    def expire(self, *, tenant_id: str, now_ms: int) -> int:
-        return self._repository.expire(tenant_id=tenant_id, now_ms=now_ms)
+    def expire(
+        self,
+        *,
+        tenant_id: str,
+        now_ms: int,
+        max_items: int = 100,
+    ) -> int:
+        return self._repository.expire(
+            tenant_id=tenant_id,
+            now_ms=now_ms,
+            max_items=max_items,
+        )
+
+    def has_expired(self, *, tenant_id: str, now_ms: int) -> bool:
+        return self._repository.has_expired(tenant_id=tenant_id, now_ms=now_ms)
 
 
 __all__ = ["ResourceService"]

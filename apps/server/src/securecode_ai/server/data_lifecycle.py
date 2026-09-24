@@ -568,6 +568,14 @@ def _from_row(row: sqlite3.Row) -> DeletionRequest:
     executed = _persisted_flag(row["executed"], "executed")
     legal_hold = _persisted_flag(row["legal_hold"], "legal_hold")
     approved_by = row["approved_by"]
+    approved_at = row["approved_at"]
+    executed_at = row["executed_at"]
+    if (approved_by is None) != (approved_at is None):
+        raise LifecycleConflict("lifecycle state is inconsistent")
+    if (executed_at is None) != (not executed):
+        raise LifecycleConflict("lifecycle state is inconsistent")
+    if legal_hold and (approved_by is not None or approved_at is not None):
+        raise LifecycleConflict("lifecycle state is inconsistent")
     if executed and (legal_hold or approved_by is None):
         raise LifecycleConflict("lifecycle state is inconsistent")
     return DeletionRequest(

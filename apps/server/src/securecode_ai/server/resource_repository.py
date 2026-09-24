@@ -160,8 +160,12 @@ class ResourceRepository:
             self._expire(cursor, request.tenant_id, request.now_ms)
             active = cursor.execute(
                 """SELECT COUNT(*) FROM resource_reservations
-                   WHERE tenant_id=? AND state=?""",
-                (request.tenant_id, ReservationState.RESERVED.value),
+                   WHERE tenant_id=? AND state=? AND lease_expires_at_ms>?""",
+                (
+                    request.tenant_id,
+                    ReservationState.RESERVED.value,
+                    request.now_ms,
+                ),
             ).fetchone()[0]
             if active >= limits.max_concurrent_runs:
                 _reject(ResourceGovernorErrorCode.CONCURRENCY_EXCEEDED)
@@ -392,27 +396,60 @@ class ResourceRepository:
             )
             return receipt_from_row(updated, idempotent=False)
 
-    def expire(self, *, tenant_id: str, now_ms: int) -> int:
-        if not identifier(tenant_id) or not bounded_nonnegative(now_ms):
+    def expire(
+        self,
+        *,
+        tenant_id: str,
+        now_ms: int,
+        max_items: int = 100,
+    ) -> int:
+        if (
+            not identifier(tenant_id)
+            or not bounded_nonnegative(now_ms)
+            or type(max_items) is not int
+            or not 1 <= max_items <= 10_000
+        ):
             _reject(ResourceGovernorErrorCode.INVALID_REQUEST)
         with self._transaction() as cursor:
-            return self._expire(cursor, tenant_id, now_ms)
+            return self._expire(cursor, tenant_id, now_ms, max_items)
 
     @staticmethod
-    def _expire(cursor: sqlite3.Cursor, tenant_id: str, now_ms: int) -> int:
+    def _expire(
+        cursor: sqlite3.Cursor,
+        tenant_id: str,
+        now_ms: int,
+        max_items: int = 100,
+    ) -> int:
         cursor.execute(
             """UPDATE resource_reservations
                SET state=?, state_version=state_version+1,
                    terminal_at_ms=lease_expires_at_ms
-               WHERE tenant_id=? AND state=? AND lease_expires_at_ms<=?""",
+               WHERE tenant_id=? AND reservation_id IN (
+                   SELECT reservation_id FROM resource_reservations
+                   WHERE tenant_id=? AND state=? AND lease_expires_at_ms<=?
+                   ORDER BY lease_expires_at_ms, reservation_id LIMIT ?
+               )""",
             (
                 ReservationState.RELEASED.value,
                 tenant_id,
+                tenant_id,
                 ReservationState.RESERVED.value,
                 now_ms,
+                max_items,
             ),
         )
         return cursor.rowcount
+
+    def has_expired(self, *, tenant_id: str, now_ms: int) -> bool:
+        if not identifier(tenant_id) or not bounded_nonnegative(now_ms):
+            _reject(ResourceGovernorErrorCode.INVALID_REQUEST)
+        row = self._connection.execute(
+            """SELECT 1 FROM resource_reservations
+               WHERE tenant_id=? AND state=? AND lease_expires_at_ms<=?
+               LIMIT 1""",
+            (tenant_id, ReservationState.RESERVED.value, now_ms),
+        ).fetchone()
+        return row is not None
 
     @staticmethod
     def _require_active(row: sqlite3.Row, expected_version: int, now_ms: int) -> None:

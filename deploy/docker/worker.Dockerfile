@@ -21,7 +21,8 @@ ENV PYTHONPATH=/app/apps/worker/src:/app/packages/adapters/src:/app/packages/con
     PYTHONUNBUFFERED=1 \
     SECURECODE_DATA_DIR=/var/lib/securecode \
     SECURECODE_TMP_DIR=/tmp/securecode
-RUN mkdir -p /var/lib/securecode /tmp/securecode \
+RUN install -d -o root -g root -m 0755 /etc/securecode-ai /run/securecode \
+    && mkdir -p /var/lib/securecode /tmp/securecode \
     && chown -R 65532:65532 /var/lib/securecode /tmp/securecode \
     && chmod 0700 /var/lib/securecode /tmp/securecode \
     && chmod -R a-w /app

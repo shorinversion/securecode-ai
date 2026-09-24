@@ -12,6 +12,7 @@ from urllib.parse import quote, urlsplit
 
 _MAX_BODY_BYTES = 1_048_576
 _INSTALLATION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+_REPOSITORY_ID = re.compile(r"[1-9][0-9]{0,19}\Z")
 
 
 class GitHubError(Exception):
@@ -30,7 +31,7 @@ class InstallationTokenProvider(Protocol):
 @dataclass(frozen=True, slots=True)
 class GitHubResponse:
     status: int
-    document: dict[str, object] | None
+    document: dict[str, object] | list[object] | None
     headers: dict[str, str]
 
 
@@ -63,9 +64,9 @@ class GitHubApi:
         document: dict[str, object] | None = None,
         idempotency_key: str | None = None,
     ) -> GitHubResponse:
-        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+        if type(method) is not str or method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
             raise GitHubError("INVALID_METHOD")
-        if not path.startswith("/") or ".." in path.split("/"):
+        if type(path) is not str or not path.startswith("/") or ".." in path.split("/"):
             raise GitHubError("INVALID_PATH")
         if type(installation_id) is not str or _INSTALLATION_ID.fullmatch(installation_id) is None:
             raise GitHubError("INVALID_INSTALLATION")
@@ -91,7 +92,11 @@ class GitHubApi:
         if body is not None:
             headers["Content-Type"] = "application/json"
         if idempotency_key is not None:
-            if not 1 <= len(idempotency_key) <= 256 or not idempotency_key.isascii():
+            if (
+                type(idempotency_key) is not str
+                or not 1 <= len(idempotency_key) <= 256
+                or not idempotency_key.isascii()
+            ):
                 raise GitHubError("INVALID_IDEMPOTENCY_KEY")
             headers["Idempotency-Key"] = idempotency_key
 
@@ -131,6 +136,37 @@ class GitHubApi:
             )
         return HTTPConnection(hostname, self._base.port, timeout=15)
 
+    def repository_path_for_id(self, installation_id: str, repository_id: str) -> str:
+        """Resolve GitHub's database repository ID to a canonical REST path."""
+
+        if (
+            type(installation_id) is not str
+            or type(repository_id) is not str
+            or _INSTALLATION_ID.fullmatch(installation_id) is None
+            or _REPOSITORY_ID.fullmatch(repository_id) is None
+        ):
+            raise GitHubError("INVALID_REPOSITORY")
+        response = self.request(
+            "GET",
+            "/repositories/" + repository_id,
+            installation_id=installation_id,
+        )
+        document = response.document
+        full_name = document.get("full_name") if type(document) is dict else None
+        if type(full_name) is not str or full_name.count("/") != 1:
+            raise GitHubError("INVALID_REPOSITORY")
+        owner, repository = full_name.split("/", 1)
+        if any(
+            not component
+            or component in {".", ".."}
+            or len(component) > 100
+            or not component.isascii()
+            or any(ord(character) < 33 or ord(character) > 126 for character in component)
+            for component in (owner, repository)
+        ):
+            raise GitHubError("INVALID_REPOSITORY")
+        return repository_path(owner, repository)
+
 
 def _request_body(document: dict[str, object] | None) -> bytes | None:
     if document is None:
@@ -150,14 +186,27 @@ def _request_body(document: dict[str, object] | None) -> bytes | None:
     return body
 
 
-def _response_document(raw: bytes) -> dict[str, object] | None:
+def _response_document(raw: bytes) -> dict[str, object] | list[object] | None:
     if not raw:
         return None
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate response key")
+            value[key] = item
+        return value
+
     try:
-        parsed = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        parsed = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
         raise GitHubError("INVALID_RESPONSE") from None
-    if type(parsed) is not dict:
+    if type(parsed) not in {dict, list}:
         raise GitHubError("INVALID_RESPONSE")
     return parsed
 

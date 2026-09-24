@@ -361,13 +361,14 @@ class OidcLoginService:
     def _matches_start(self, *, state: str, nonce: str) -> bool:
         if self._state_store is not None:
             try:
-                return self._state_store.matches(
+                matched = self._state_store.matches(
                     state=state,
                     nonce=nonce,
                     now=int(time.time()),
                 )
             except Exception:
                 return False
+            return type(matched) is bool and matched
         now = time.monotonic()
         with self._lock:
             self._discard_expired_states(now)
@@ -389,13 +390,14 @@ class OidcLoginService:
     def _consume_start(self, *, state: str, nonce: str) -> bool:
         if self._state_store is not None:
             try:
-                return self._state_store.consume(
+                consumed = self._state_store.consume(
                     state=state,
                     nonce=nonce,
                     now=int(time.time()),
                 )
             except Exception:
                 return False
+            return type(consumed) is bool and consumed
         now = time.monotonic()
         with self._lock:
             self._discard_expired_states(now)

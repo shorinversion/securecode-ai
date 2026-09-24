@@ -113,16 +113,19 @@ class SessionStore:
         try:
             with self._lock:
                 token_hash = _hash(token)
+                now = self._now()
+                if type(now) is not datetime or now.utcoffset() is None:
+                    raise SessionError()
+                now = now.astimezone(UTC)
                 if self._connection is None:
                     record = self._sessions.get(token_hash)
-                    if record is None or not _active(record[0], self._now()):
+                    if record is None or not _active(record[0], now):
                         raise SessionError()
                     return record[1]
-                now = self._now()
-                if type(now) is not datetime or now.tzinfo is None:
-                    raise SessionError()
-                return self._verify_persisted_session(token_hash, now.astimezone(UTC))
-        except (UnicodeEncodeError, ValueError):
+                return self._verify_persisted_session(token_hash, now)
+        except SessionError:
+            raise
+        except Exception:
             raise SessionError() from None
 
     def revoke_session(self, token: str) -> None:
@@ -151,6 +154,76 @@ class SessionStore:
             raise SessionError()
         with self._lock:
             record[0].revoked = True
+
+    def purge_inactive_sessions(
+        self,
+        *,
+        max_items: int = 100,
+        now: datetime | None = None,
+    ) -> int:
+        """Delete a bounded batch of expired or revoked persisted sessions."""
+
+        if type(max_items) is not int or not 1 <= max_items <= 10_000:
+            raise SessionError()
+        try:
+            current = self._now() if now is None else now
+            if type(current) is not datetime or current.utcoffset() is None:
+                raise SessionError()
+            current = current.astimezone(UTC)
+            with self._lock:
+                if self._connection is None:
+                    inactive: list[str] = []
+                    for token_hash, (record, _) in self._sessions.items():
+                        if record.revoked or record.expires_at <= current:
+                            inactive.append(token_hash)
+                            if len(inactive) >= max_items:
+                                break
+                    for token_hash in inactive:
+                        del self._sessions[token_hash]
+                    return len(inactive)
+                self._connection.execute("SAVEPOINT session_purge")
+                changed = self._connection.execute(
+                    """DELETE FROM auth_sessions
+                       WHERE token_hash IN (
+                           SELECT token_hash FROM auth_sessions
+                           WHERE revoked=1 OR expires_at<=?
+                           ORDER BY expires_at, token_hash LIMIT ?
+                       )""",
+                    (current.isoformat(timespec="microseconds"), max_items),
+                ).rowcount
+                self._connection.execute("RELEASE session_purge")
+                return changed
+        except SessionError:
+            if self._connection is not None:
+                _rollback_savepoint(self._connection, "session_purge")
+            raise
+        except Exception:
+            if self._connection is not None:
+                _rollback_savepoint(self._connection, "session_purge")
+            raise SessionError() from None
+
+    def has_inactive_sessions(self, *, now: datetime | None = None) -> bool:
+        try:
+            current = self._now() if now is None else now
+            if type(current) is not datetime or current.utcoffset() is None:
+                raise SessionError()
+            current = current.astimezone(UTC)
+            with self._lock:
+                if self._connection is None:
+                    return any(
+                        record.revoked or record.expires_at <= current
+                        for record, _ in self._sessions.values()
+                    )
+                row = self._connection.execute(
+                    """SELECT 1 FROM auth_sessions
+                       WHERE revoked=1 OR expires_at<=? LIMIT 1""",
+                    (current.isoformat(timespec="microseconds"),),
+                ).fetchone()
+                return row is not None
+        except SessionError:
+            raise
+        except Exception:
+            raise SessionError() from None
 
     def rotate_session(
         self, token: str, *, lifetime_seconds: int = 900

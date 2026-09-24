@@ -72,6 +72,8 @@ def _coverage_units(
         *([_graph_unit("evidence_graph", flow, host)] if scenario else []),
     ]
     units.extend(unit for outcome in review.outcomes for unit in outcome.coverage_units)
+    if host.operation == "repair":
+        units.extend(host.repair_coverage_units)
     units.extend(
         [
             _skipped_unit("coverage_guard", "COVERAGE_GUARD_RECEIPT_MISSING"),

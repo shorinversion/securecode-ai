@@ -244,7 +244,7 @@ def run_scanner_plugin(
     try:
         signals = _validate_receipt(receipt, binding, request)
         output_bytes = sum(raw_signal_payload_bytes(signal) for signal in signals)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError):
         return _failure(
             binding,
             request,
@@ -364,7 +364,7 @@ def _receive_worker_receipt(
             return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED
         except OSError:
             return elapsed_ns, None, ScannerFailureCode.OUTPUT_BUDGET_EXCEEDED
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
             return elapsed_ns, None, None
         if not process.is_alive():
             return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED

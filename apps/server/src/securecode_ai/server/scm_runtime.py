@@ -9,12 +9,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from securecode_ai.adapters.github_api import GitHubApi
+from securecode_ai.adapters.github_comments import GithubCommentPublisher
 from securecode_ai.adapters.github_writer import GitHubWriter
 from securecode_ai.adapters.gitlab_api import GitlabRestAPI
 from securecode_ai.adapters.gitlab_writer import GitlabPublicationWriter
 from securecode_ai.adapters.scm_head import (
+    GithubChangedLinesResolver,
     GithubCommitLineageResolver,
     GithubPullRequestHeadResolver,
+    GitlabChangedLinesResolver,
     GitlabCommitLineageResolver,
     GitlabMergeRequestHeadResolver,
     SCMHeadUnavailable,
@@ -45,9 +48,11 @@ class SCMHandlers:
     run_state: SqliteSCMRunState | None = None
     github_head: GithubPullRequestHeadResolver | None = None
     github_writer: GitHubWriter | None = None
+    github_comments: GithubCommentPublisher | None = None
     gitlab_head: GitlabMergeRequestHeadResolver | None = None
     gitlab_writer: GitlabPublicationWriter | None = None
     lineage_resolver: SCMRunCommitLineageResolver | None = None
+    changed_lines_resolver: SCMRunChangedLinesResolver | None = None
     _secret_material: tuple[bytes, ...] = field(default=(), repr=False)
 
 
@@ -85,6 +90,42 @@ class SCMRunCommitLineageResolver:
         except Exception:
             raise SCMHeadUnavailable("SCM commit lineage is unavailable") from None
         raise SCMHeadUnavailable("SCM commit lineage is unavailable")
+
+
+@dataclass(frozen=True, slots=True)
+class SCMRunChangedLinesResolver:
+    """Resolve changed HEAD locations through the provider bound to a run."""
+
+    run_state: SqliteSCMRunState
+    github: GithubChangedLinesResolver | None
+    gitlab: GitlabChangedLinesResolver | None
+
+    def __call__(
+        self,
+        *,
+        run_id: str,
+        execution_identity_hash: str,
+        base_sha: str,
+        head_sha: str,
+    ) -> tuple[tuple[str, int], ...]:
+        try:
+            target = self.run_state.provider_target(run_id)
+            if target.execution_identity_hash != execution_identity_hash:
+                raise ValueError
+            if target.provider == "github" and self.github is not None:
+                return self.github(
+                    target.installation_id,
+                    target.repository_id,
+                    base_sha,
+                    head_sha,
+                )
+            if target.provider == "gitlab" and self.gitlab is not None:
+                return self.gitlab(target.repository_id, base_sha, head_sha)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            raise SCMHeadUnavailable("SCM changed lines are unavailable") from None
+        raise SCMHeadUnavailable("SCM changed lines are unavailable")
 
 
 class _FileInstallationTokenProvider:
@@ -146,10 +187,13 @@ def build_scm_handlers(
     gitlab: GitlabWebhookAdapter | None = None
     github_head: GithubPullRequestHeadResolver | None = None
     github_writer: GitHubWriter | None = None
+    github_comments: GithubCommentPublisher | None = None
     gitlab_head: GitlabMergeRequestHeadResolver | None = None
     gitlab_writer: GitlabPublicationWriter | None = None
     github_lineage: GithubCommitLineageResolver | None = None
     gitlab_lineage: GitlabCommitLineageResolver | None = None
+    github_changed_lines: GithubChangedLinesResolver | None = None
+    gitlab_changed_lines: GitlabChangedLinesResolver | None = None
     if github_enabled:
         api_url = _required(values, "SECURECODE_GITHUB_API_URL")
         token_path = Path(_required(values, "SECURECODE_GITHUB_TOKEN_FILE"))
@@ -161,6 +205,7 @@ def build_scm_handlers(
         )
         github_head = GithubPullRequestHeadResolver(github_api)
         github_lineage = GithubCommitLineageResolver(github_api)
+        github_changed_lines = GithubChangedLinesResolver(github_api)
         github = GithubWebhookAdapter(
             webhook_secret=secret,
             pins=pins,
@@ -168,6 +213,10 @@ def build_scm_handlers(
             head_resolver=github_head,
         )
         github_writer = GitHubWriter(github_api, pull_request_head=github_head)
+        github_comments = GithubCommentPublisher(
+            github_api,
+            pull_request_head=github_head,
+        )
         secrets.append(secret)
     if gitlab_enabled:
         api_url = _required(values, "SECURECODE_GITLAB_API_URL")
@@ -179,6 +228,7 @@ def build_scm_handlers(
         )
         gitlab_head = GitlabMergeRequestHeadResolver(gitlab_api)
         gitlab_lineage = GitlabCommitLineageResolver(gitlab_api)
+        gitlab_changed_lines = GitlabChangedLinesResolver(gitlab_api)
         gitlab = GitlabWebhookAdapter(
             webhook_token=secret,
             pins=pins,
@@ -197,6 +247,7 @@ def build_scm_handlers(
         run_state=run_state,
         github_head=github_head,
         github_writer=github_writer,
+        github_comments=github_comments,
         gitlab_head=gitlab_head,
         gitlab_writer=gitlab_writer,
         lineage_resolver=(
@@ -204,6 +255,15 @@ def build_scm_handlers(
                 run_state=run_state,
                 github=github_lineage,
                 gitlab=gitlab_lineage,
+            )
+            if run_state is not None
+            else None
+        ),
+        changed_lines_resolver=(
+            SCMRunChangedLinesResolver(
+                run_state=run_state,
+                github=github_changed_lines,
+                gitlab=gitlab_changed_lines,
             )
             if run_state is not None
             else None
@@ -237,4 +297,9 @@ def _load_pins(path: Path, tenant_id: str) -> WebhookExecutionPins:
         raise ValueError("SCM execution pins are invalid") from None
 
 
-__all__ = ["SCMHandlers", "build_scm_handlers"]
+__all__ = [
+    "SCMHandlers",
+    "SCMRunChangedLinesResolver",
+    "SCMRunCommitLineageResolver",
+    "build_scm_handlers",
+]

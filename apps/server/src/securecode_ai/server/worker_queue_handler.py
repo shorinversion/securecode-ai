@@ -11,8 +11,14 @@ from pathlib import Path
 from typing import Final, cast
 
 from securecode_ai.adapters.scm_head import SCMHeadUnavailable
-from securecode_ai.contracts import ArtifactRef
-from securecode_ai.core.baseline_fingerprints import BaselineFingerprintComparison
+from securecode_ai.contracts import AnalysisHealth, ArtifactRef, EvidenceKind, TrustLabel
+from securecode_ai.core.baseline_fingerprints import (
+    BaselineChangedScope,
+    BaselineFingerprintComparison,
+    BaselineFingerprintError,
+)
+from securecode_ai.core.scm_policy import ScmPolicyDocument
+from securecode_ai.core.evidence_graph import EvidenceGraph
 
 from .artifact_upload_verifier import LocalArtifactUploadVerifier
 from .baseline_store import BaselineStoreError, DurableBaselineStore
@@ -27,7 +33,7 @@ from .worker_findings_store import complete_worker_run
 from .worker_queue import SqliteWorkerQueue, WorkerQueueClaimHandler, WorkerQueueConflict
 from .worker_queue_models import WorkerQueueLease
 from .worker_resource_models import WorkerResourceSettlement
-from .worker_scm_policy import record_run_advisory_policy
+from .worker_scm_policy import record_run_advisory_policy, record_run_scm_policy
 
 _EVENT_KINDS: Final = frozenset(
     {
@@ -61,6 +67,8 @@ class WorkerQueueHandler:
         uploaded_artifacts: LocalArtifactUploadVerifier,
         baseline_store: DurableBaselineStore | None = None,
         lineage_resolver: object | None = None,
+        changed_lines_resolver: object | None = None,
+        policy_resolver: Callable[[object], ScmPolicyDocument] | None = None,
     ) -> None:
         self._queue = queue
         self._claims = WorkerQueueClaimHandler(queue)
@@ -70,6 +78,15 @@ class WorkerQueueHandler:
         if lineage_resolver is not None and not callable(lineage_resolver):
             raise ValueError("SCM lineage resolver configuration is invalid")
         self._lineage_resolver = cast(Callable[..., tuple[str, ...]] | None, lineage_resolver)
+        if changed_lines_resolver is not None and not callable(changed_lines_resolver):
+            raise ValueError("SCM changed-line resolver configuration is invalid")
+        self._changed_lines_resolver = cast(
+            Callable[..., tuple[tuple[str, int], ...]] | None,
+            changed_lines_resolver,
+        )
+        if policy_resolver is not None and not callable(policy_resolver):
+            raise ValueError("SCM policy resolver configuration is invalid")
+        self._policy_resolver = policy_resolver
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if request.action == "worker_sessions.create":
@@ -82,7 +99,7 @@ class WorkerQueueHandler:
                 "ARTIFACT_AUTHORIZATION_DENIED",
                 "artifact upload is not authorized",
             )
-        except (WorkerQueueConflict, KeyError, TypeError, ValueError):
+        except (BaselineStoreError, WorkerQueueConflict, KeyError, TypeError, ValueError):
             return _denied(
                 409,
                 "WORKER_CONFLICT",
@@ -110,7 +127,7 @@ class WorkerQueueHandler:
             outcome = _required_text(document, "outcome")
             findings = _completion_findings(document, outcome)
             connection = _queue_connection(self._queue)
-            audit_run = load_verified_terminal_audit_run(
+            verified_terminal = load_verified_terminal_audit_run(
                 connection=connection,
                 artifact_root=_artifact_root(self._uploaded_artifacts),
                 tenant_id=request.identity.tenant_id,
@@ -118,11 +135,31 @@ class WorkerQueueHandler:
                 execution_identity_hash=identity_hash,
                 outcome=outcome,
                 findings=findings,
+                include_graph=True,
             )
+            if verified_terminal is None:
+                audit_run = None
+                evidence_graph = None
+            elif type(verified_terminal) is tuple:
+                audit_run, evidence_graph = verified_terminal
+            else:
+                raise WorkerQueueConflict()
             terminal_transaction_effect = None
             baseline_store = self._baseline_store
             if audit_run is not None:
                 baseline_comparison: BaselineFingerprintComparison | None = None
+                changed_scope: BaselineChangedScope | None = None
+                confirmed_fingerprints = tuple(
+                    sorted(
+                        {
+                            finding.root_cause_fingerprint
+                            for finding in findings
+                            if finding.finding_id in audit_run.finding_ids
+                            and finding.verdict == "CONFIRMED"
+                            and finding.revision_sha == audit_run.current_head_sha
+                        }
+                    )
+                )
                 revision = audit_run.execution_identity.repository_revision
                 if (
                     baseline_store is not None
@@ -139,18 +176,70 @@ class WorkerQueueHandler:
                         baseline_comparison = baseline_store.compare_for_audit(
                             audit_run,
                             commit_lineage=lineage,
+                            verified_finding_fingerprints=confirmed_fingerprints,
                         )
                     except (BaselineStoreError, SCMHeadUnavailable, TypeError, ValueError):
                         baseline_comparison = None
+                if (
+                    baseline_comparison is not None
+                    and self._changed_lines_resolver is not None
+                    and revision.base_sha is not None
+                ):
+                    try:
+                        changed_lines = self._changed_lines_resolver(
+                            run_id=run_id,
+                            execution_identity_hash=identity_hash,
+                            base_sha=revision.base_sha,
+                            head_sha=revision.head_sha,
+                        )
+                        changed_scope = BaselineChangedScope(
+                            tenant_id=revision.tenant_id,
+                            base_sha=revision.base_sha,
+                            head_sha=revision.head_sha,
+                            changed_lines=changed_lines,
+                            finding_locations=_finding_locations(findings),
+                            data_flow_locations=_data_flow_locations(
+                                evidence_graph,
+                                confirmed_fingerprints,
+                            ),
+                        )
+                        changed_scope.validate_for(baseline_comparison)
+                    except (
+                        BaselineFingerprintError,
+                        SCMHeadUnavailable,
+                        TypeError,
+                        ValueError,
+                    ):
+                        changed_scope = None
 
                 def record_completion_policy(cursor: sqlite3.Cursor) -> None:
-                    if baseline_store is not None:
-                        baseline_store.record_in_transaction(cursor, audit_run)
-                    record_run_advisory_policy(
-                        cursor,
-                        audit_run=audit_run,
-                        baseline_comparison=baseline_comparison,
-                    )
+                    if (
+                        baseline_store is not None
+                        and audit_run.analysis_health is AnalysisHealth.HEALTHY
+                        and audit_run.coverage_manifest.coverage_complete
+                    ):
+                        baseline_store.record_in_transaction(
+                            cursor,
+                            audit_run,
+                            verified_finding_fingerprints=confirmed_fingerprints,
+                        )
+                    if self._policy_resolver is None:
+                        record_run_advisory_policy(
+                            cursor,
+                            audit_run=audit_run,
+                            baseline_comparison=baseline_comparison,
+                            changed_scope=changed_scope,
+                            verified_findings=findings,
+                        )
+                    else:
+                        record_run_scm_policy(
+                            cursor,
+                            audit_run=audit_run,
+                            policy=self._policy_resolver(audit_run),
+                            baseline_comparison=baseline_comparison,
+                            changed_scope=changed_scope,
+                            verified_findings=findings,
+                        )
 
                 terminal_transaction_effect = record_completion_policy
             lease = complete_worker_run(
@@ -170,7 +259,7 @@ class WorkerQueueHandler:
                 terminal_transaction_effect=terminal_transaction_effect,
             )
             return _lease_response(lease)
-        except (WorkerQueueConflict, KeyError, TypeError, ValueError):
+        except (BaselineStoreError, WorkerQueueConflict, KeyError, TypeError, ValueError):
             return _denied(
                 409,
                 "WORKER_CONFLICT",
@@ -255,6 +344,55 @@ class WorkerQueueHandler:
         else:
             raise ServiceUnavailableError()
         return _lease_response(lease)
+
+
+def _finding_locations(
+    findings: tuple[WorkerFindingRecord, ...],
+) -> tuple[tuple[str, tuple[tuple[str, int, int], ...]], ...]:
+    grouped: dict[str, set[tuple[str, int, int]]] = {}
+    for finding in findings:
+        if finding.verdict != "CONFIRMED":
+            continue
+        locations = grouped.setdefault(finding.root_cause_fingerprint, set())
+        locations.update(
+            (item.path, item.start_line, item.end_line) for item in finding.locations
+        )
+    return tuple(
+        (fingerprint, tuple(sorted(locations)))
+        for fingerprint, locations in sorted(grouped.items())
+    )
+
+
+def _data_flow_locations(
+    graph: EvidenceGraph | None,
+    fingerprints: tuple[str, ...],
+) -> tuple[tuple[str, tuple[tuple[str, int, int], ...]], ...]:
+    if graph is None:
+        return ()
+    selected = set(fingerprints)
+    evidence_by_id = {item.evidence_id: item for item in graph.evidence}
+    grouped: dict[str, set[tuple[str, int, int]]] = {}
+    for candidate in graph.candidates:
+        fingerprint = candidate.root_cause_fingerprint
+        if fingerprint not in selected:
+            continue
+        for evidence_id in candidate.evidence_ids:
+            evidence = evidence_by_id.get(evidence_id)
+            if (
+                evidence is None
+                or evidence.evidence_kind is not EvidenceKind.DATA_FLOW
+                or evidence.trust_label is not TrustLabel.TRUSTED_DETERMINISTIC
+                or evidence.location is None
+            ):
+                continue
+            location = evidence.location
+            grouped.setdefault(fingerprint, set()).add(
+                (location.path, location.start.line, location.end.line)
+            )
+    return tuple(
+        (fingerprint, tuple(sorted(locations)))
+        for fingerprint, locations in sorted(grouped.items())
+    )
 
 
 def _events(

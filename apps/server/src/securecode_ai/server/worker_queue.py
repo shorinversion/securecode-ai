@@ -348,6 +348,22 @@ class SqliteWorkerQueue:
                 (tenant_id, run_id),
             ).fetchone()[0]
             for event in events:
+                metadata_json = _canonical(
+                    {
+                        "event_hash": event["event_hash"],
+                        "kind": event["kind"],
+                        "worker_sequence": event["sequence"],
+                    }
+                )
+                previous = cursor.execute(
+                    """SELECT metadata_json FROM run_events
+                       WHERE tenant_id=? AND run_id=? AND event_id=?""",
+                    (tenant_id, run_id, event["event_id"]),
+                ).fetchone()
+                if previous is not None:
+                    if previous["metadata_json"] != metadata_json:
+                        raise WorkerQueueConflict()
+                    continue
                 cursor.execute(
                     """INSERT INTO run_events
                        (tenant_id, run_id, sequence, event_id, metadata_json)
@@ -357,13 +373,7 @@ class SqliteWorkerQueue:
                         run_id,
                         next_sequence,
                         event["event_id"],
-                        _canonical(
-                            {
-                                "event_hash": event["event_hash"],
-                                "kind": event["kind"],
-                                "worker_sequence": event["sequence"],
-                            }
-                        ),
+                        metadata_json,
                     ),
                 )
                 next_sequence += 1

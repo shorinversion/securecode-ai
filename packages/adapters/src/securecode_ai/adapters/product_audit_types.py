@@ -21,6 +21,7 @@ from securecode_ai.contracts import (
     AuditRun,
     CandidateOrigin,
     ComponentPin,
+    CoverageUnit,
     ModelRequest,
     RunExecutionIdentity,
 )
@@ -204,6 +205,8 @@ class ProductAuditHostInputs:
     deterministic_execution: ProductDeterministicExecution | None = None
     state_probe: ProductAuditStateProbe | None = None
     operation: str = "scan"
+    repair_requested_candidate_ids: tuple[str, ...] = ()
+    repair_coverage_units: tuple[CoverageUnit, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

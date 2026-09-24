@@ -51,7 +51,23 @@ class Principal:
     repository_grants: frozenset[str] = frozenset()
 
     def allows(self, *, action: str, repository_id: str | None) -> bool:
-        if not action or not self.roles:
+        # Principal instances can be reconstructed from external identity
+        # state, so do not let an unknown role turn authorization into an
+        # exception.  Malformed principals must fail closed.
+        if (
+            type(self.subject_id) is not str
+            or not self.subject_id
+            or type(self.tenant_id) is not str
+            or not self.tenant_id
+            or type(action) is not str
+            or not action
+            or type(self.roles) is not frozenset
+            or not self.roles
+            or not all(type(role) is Role for role in self.roles)
+            or type(self.repository_grants) is not frozenset
+            or any(type(grant) is not str or not grant for grant in self.repository_grants)
+            or (repository_id is not None and (type(repository_id) is not str or not repository_id))
+        ):
             return False
         if (
             repository_id is not None

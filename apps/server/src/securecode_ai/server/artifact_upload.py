@@ -249,21 +249,75 @@ class _AtomicContentAddressedStore:
             decoded = json.loads(receipt_raw.decode("ascii"))
             if type(decoded) is not dict:
                 raise ArtifactUploadConflict()
-            receipt = _parse_receipt(decoded)
-            if not _same_authorization(receipt, expected):
+            primary = _parse_receipt(decoded)
+            if (
+                primary.tenant_id != expected.tenant_id
+                or primary.content_sha256 != expected.content_sha256
+                or primary.size_bytes != expected.size_bytes
+                or primary.object_key != expected.object_key
+            ):
                 raise ArtifactUploadConflict()
             payload_digest, payload_size = _digest_regular(
                 target / "payload", max_bytes=self._max_bytes
             )
-            if payload_size != receipt.size_bytes or not hmac.compare_digest(
-                payload_digest, receipt.content_sha256
+            if payload_size != expected.size_bytes or not hmac.compare_digest(
+                payload_digest, expected.content_sha256
             ):
                 raise ArtifactUploadConflict()
-            return receipt
+            if _same_authorization(primary, expected):
+                return primary
+            return self._authorization_receipt(target, expected)
         except ArtifactUploadConflict:
             raise
         except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
             raise ArtifactUploadConflict() from None
+
+    def _authorization_receipt(
+        self, target: Path, expected: ArtifactUploadReceipt
+    ) -> ArtifactUploadReceipt:
+        if not _safe_identifier(expected.authorization_id):
+            raise ArtifactUploadConflict()
+        root = target / "authorizations"
+        self._create_owned_directories(root)
+        authorization_directory = root / expected.authorization_id
+        if _lexists(authorization_directory):
+            return self._read_authorization_receipt(authorization_directory, expected)
+
+        stage = Path(tempfile.mkdtemp(prefix=".receipt-", dir=target.parent))
+        committed = False
+        try:
+            self._assert_owned_directory(stage)
+            _write_new(
+                stage / "receipt.json",
+                _canonical(expected.document()).encode("ascii"),
+            )
+            _sync_directory(stage)
+            self._assert_owned_directory(root)
+            try:
+                stage.rename(authorization_directory)
+                committed = True
+            except OSError:
+                if not _lexists(authorization_directory):
+                    raise
+                return self._read_authorization_receipt(authorization_directory, expected)
+            _sync_directory(root)
+            return expected
+        finally:
+            if not committed:
+                _discard_receipt_stage(stage)
+
+    def _read_authorization_receipt(
+        self, directory: Path, expected: ArtifactUploadReceipt
+    ) -> ArtifactUploadReceipt:
+        self._assert_owned_directory(directory)
+        raw = _read_regular(directory / "receipt.json", _RECEIPT_LIMIT)
+        decoded = json.loads(raw.decode("ascii"))
+        if type(decoded) is not dict:
+            raise ArtifactUploadConflict()
+        receipt = _parse_receipt(decoded)
+        if not _same_authorization(receipt, expected):
+            raise ArtifactUploadConflict()
+        return receipt
 
     def _object_directory(self, tenant_id: str, digest: str) -> Path:
         if not _safe_identifier(tenant_id) or not _sha256(digest):
@@ -500,6 +554,19 @@ def _discard_stage(stage: Path) -> None:
             candidate = stage / name
             if _lexists(candidate):
                 candidate.unlink()
+        stage.rmdir()
+    except OSError:
+        return
+
+
+def _discard_receipt_stage(stage: Path) -> None:
+    try:
+        details = stage.lstat()
+        if _link_like(details) or not stat.S_ISDIR(details.st_mode):
+            return
+        receipt = stage / "receipt.json"
+        if _lexists(receipt):
+            receipt.unlink()
         stage.rmdir()
     except OSError:
         return

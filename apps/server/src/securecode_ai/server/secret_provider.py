@@ -24,7 +24,13 @@ class OpaqueSecretLease:
 
 
 class SecretProvider(Protocol):
-    """External secret manager that issues and revokes opaque leases."""
+    """External secret manager that issues, retrieves, and revokes opaque leases.
+
+    ``rotate`` issues a replacement lease but leaves the previous grant live.
+    The service revokes the previous grant only after its replacement is durable.
+    ``revoke`` must be idempotent because service retries can follow a provider
+    success whose database acknowledgement was interrupted.
+    """
 
     def issue(
         self,

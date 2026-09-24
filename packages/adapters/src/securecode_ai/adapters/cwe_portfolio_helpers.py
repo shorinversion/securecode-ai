@@ -80,7 +80,13 @@ def _python_facts(source: bytes) -> tuple[tuple[str, SourceRange, SourceRange], 
         if cwe is None:
             continue
         security_argument = _python_security_argument(call, cwe, compact)
-        source_node = _python_source_node(security_argument)
+        source_node = _python_resolve_source(
+            security_argument,
+            call=call,
+            tree=tree,
+            source=source,
+            seen=frozenset(),
+        )
         if source_node is None:
             continue
         if cwe == "CWE-862" and _python_guarded(call, tree, source, security_argument):
@@ -96,7 +102,8 @@ def _python_cwe(compact: str) -> str | None:
         return "CWE-78"
     path_builder = "os.path.join(" in compact or "Path(" in compact or ".joinpath(" in compact
     if compact.startswith("open(") or (
-        (".read_text(" in compact or ".read_bytes(" in compact) and path_builder
+        (".open(" in compact or ".read_text(" in compact or ".read_bytes(" in compact)
+        and path_builder
     ):
         return "CWE-22"
     if re.match(r"(?:requests\.)?(?:get|post|request)\(", compact):
@@ -111,6 +118,7 @@ def _python_security_argument(call: ast.Call, cwe: str, compact: str) -> ast.exp
         return call.args[1]
     if cwe == "CWE-22" and not call.args:
         if isinstance(call.func, ast.Attribute) and call.func.attr in {
+            "open",
             "read_bytes",
             "read_text",
         }:
@@ -172,6 +180,83 @@ def _python_source_node(subject: ast.expr) -> ast.expr | None:
     return None
 
 
+def _python_resolve_source(
+    subject: ast.expr,
+    *,
+    call: ast.Call,
+    tree: ast.AST,
+    source: bytes,
+    seen: frozenset[str],
+    before: tuple[int, int] | None = None,
+) -> ast.expr | None:
+    direct = _python_source_node(subject)
+    if direct is not None:
+        return direct
+    if isinstance(subject, ast.Name) and subject.id not in seen:
+        scope = _python_enclosing_scope(call, tree)
+        if scope is not None:
+            boundary = before or (call.lineno, call.col_offset)
+            assignment = _python_latest_assignment(scope, subject.id, boundary)
+            if assignment is not None:
+                assigned_at = (assignment.lineno, assignment.col_offset)
+                value = _python_assignment_value(assignment)
+                if value is not None:
+                    return _python_resolve_source(
+                        value,
+                        call=call,
+                        tree=tree,
+                        source=source,
+                        seen=seen | {subject.id},
+                        before=assigned_at,
+                    )
+    for child in ast.iter_child_nodes(subject):
+        if isinstance(child, ast.expr):
+            resolved = _python_resolve_source(
+                child,
+                call=call,
+                tree=tree,
+                source=source,
+                seen=seen,
+                before=before,
+            )
+            if resolved is not None:
+                return resolved
+    return None
+
+
+def _python_latest_assignment(
+    scope: ast.FunctionDef | ast.AsyncFunctionDef,
+    name: str,
+    before: tuple[int, int],
+) -> ast.Assign | ast.AnnAssign | None:
+    candidates: list[ast.Assign | ast.AnnAssign] = []
+    stack: list[ast.AST] = list(reversed(scope.body))
+    while stack:
+        node = stack.pop()
+        if node is not scope and isinstance(
+            node,
+            (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef),
+        ):
+            continue
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            position = (node.lineno, node.col_offset)
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if position < before and any(
+                _python_target_has_name(target, name) for target in targets
+            ):
+                candidates.append(node)
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+    return max(candidates, key=lambda item: (item.lineno, item.col_offset), default=None)
+
+
+def _python_target_has_name(target: ast.expr, name: str) -> bool:
+    return any(isinstance(node, ast.Name) and node.id == name for node in ast.walk(target))
+
+
+def _python_assignment_value(assignment: ast.Assign | ast.AnnAssign) -> ast.expr | None:
+    return assignment.value
+
+
 def _python_is_source(node: ast.expr) -> bool:
     try:
         text = ast.unparse(node).replace(" ", "")
@@ -183,8 +268,23 @@ def _python_is_source(node: ast.expr) -> bool:
             "request.args.get(",
             "request.args[",
             "request.GET[",
+            "request.POST[",
+            "request.POST.get(",
+            "request.form.get(",
+            "request.form[",
+            "request.values.get(",
+            "request.values[",
             "request.query_params.get(",
+            "request.query_params[",
             "request.query.",
+            "request.json",
+            "request.data",
+            "request.body",
+            "request.headers.get(",
+            "request.headers[",
+            "request.cookies.get(",
+            "request.cookies[",
+            "request.get_json(",
         )
     )
 
@@ -249,6 +349,26 @@ def _tree_facts(language: str, source: bytes) -> tuple[tuple[str, SourceRange, S
         if security_argument is None:
             continue
         source_node = _tree_source_node(source, security_argument, language)
+        if source_node is None and cwe in {"CWE-78", "CWE-918"}:
+            if language == "go":
+                function = _go_enclosing_function(call)
+                if function is not None:
+                    source_node = _go_resolve_path(
+                        source,
+                        function,
+                        security_argument,
+                        set(),
+                    )
+            elif language in {"javascript", "typescript"}:
+                function = _javascript_enclosing_function(call)
+                if function is not None:
+                    source_node = _javascript_resolve_path(
+                        source,
+                        function,
+                        security_argument,
+                        language,
+                        set(),
+                    )
         if source_node is None:
             continue
         if cwe == "CWE-862" and _tree_guarded(call, source, security_argument):
@@ -271,7 +391,16 @@ def _tree_cwe(compact: str, language: str) -> str | None:
         if compact.startswith("exec.Command(") and ('"sh"' in compact or '"bash"' in compact):
             return "CWE-78"
         if (
-            compact.startswith(("os.ReadFile(", "ioutil.ReadFile(", "ReadFile("))
+            compact.startswith(
+                (
+                    "os.ReadFile(",
+                    "ioutil.ReadFile(",
+                    "ReadFile(",
+                    "os.Open(",
+                    "os.Create(",
+                    "os.OpenFile(",
+                )
+            )
             and "filepath.Join(" in compact
         ):
             return "CWE-22"
@@ -286,7 +415,16 @@ def _go_path_traversal_source(source: bytes, sink: Node) -> Node | None:
     """Resolve one direct Go query-to-join-to-read flow through locals."""
 
     compact = _compact(source, sink)
-    if not compact.startswith(("os.ReadFile(", "ioutil.ReadFile(", "ReadFile(")):
+    if not compact.startswith(
+        (
+            "os.ReadFile(",
+            "ioutil.ReadFile(",
+            "ReadFile(",
+            "os.Open(",
+            "os.Create(",
+            "os.OpenFile(",
+        )
+    ):
         return None
     arguments = sink.child_by_field_name("arguments")
     if arguments is None or not arguments.named_children:
@@ -488,11 +626,21 @@ def _tree_source_node(source: bytes, subject: Node, language: str) -> Node | Non
     for node in _preorder(subject):
         compact = _compact(source, node)
         if language in {"javascript", "typescript"} and re.search(
-            r"(?:req|request)\.(?:query|params)\.[A-Za-z_$][A-Za-z0-9_$]*", compact
+            r"(?:req|request)\.(?:query|params|body|headers|cookies)(?:\.[A-Za-z_$][A-Za-z0-9_$]*|\[)",
+            compact,
+        ):
+            return node
+        if language in {"javascript", "typescript"} and re.search(
+            r"(?:req|request)\.(?:get|header)\(", compact
+        ):
+            return node
+        if language in {"javascript", "typescript"} and re.search(
+            r"ctx\.(?:query|request\.body|headers)\.[A-Za-z_$][A-Za-z0-9_$]*", compact
         ):
             return node
         if language == "go" and re.search(
-            r"[A-Za-z_][A-Za-z0-9_]*\.URL\.Query\(\)\.Get\(", compact
+            r"[A-Za-z_][A-Za-z0-9_]*\.(?:URL\.Query\(\)(?:\.Get\(|\[)|FormValue\(|PostFormValue\(|Header\.Get\()",
+            compact,
         ):
             return node
     return None

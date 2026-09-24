@@ -14,6 +14,7 @@ from securecode_ai.contracts import (
     CandidateInterpretationReceipt,
     CandidateOrigin,
     ComponentPin,
+    CoverageUnit,
     ModelCallStatus,
     ModelPurpose,
     ModelRequest,
@@ -46,11 +47,84 @@ from .product_scan import (
 )
 
 
+_PRODUCT_OPERATIONS = frozenset({"scan", "repair"})
+_REPAIR_STAGE_IDS = frozenset(
+    {"root_cause_localization", "security_test_generation", "architect", "validation_ladder"}
+)
+
+
 def _require_scan_operation(host: ProductAuditHostInputs) -> None:
-    if type(host.operation) is not str or host.operation != "scan":
+    if type(host.operation) is not str or host.operation not in _PRODUCT_OPERATIONS:
         raise _AuditObstacle(
-            "PRODUCT_OPERATION_UNSUPPORTED", "scan-only executor cannot complete repair requests"
+            "PRODUCT_OPERATION_UNSUPPORTED", "product operation is unsupported"
         )
+
+
+def _repair_requested_candidate_ids(
+    flow: ProductCandidateFlow,
+    review: ProductReviewResult,
+    host: ProductAuditHostInputs,
+) -> tuple[str, ...]:
+    """Validate the repair boundary without fabricating repair receipts.
+
+    Repair coverage is supplied by the host after root-cause, security-test,
+    architect and validation stages have produced immutable ``CoverageUnit``
+    receipts.  The audit composer only binds those receipts to the current
+    candidate graph; it never turns a repair request into completed coverage.
+    """
+
+    requested = host.repair_requested_candidate_ids
+    units = host.repair_coverage_units
+    if type(requested) is not tuple or any(type(item) is not str for item in requested):
+        raise _AuditObstacle("PRODUCT_REPAIR_INPUT_INVALID", "repair candidate IDs are invalid")
+    if type(units) is not tuple or any(type(item) is not CoverageUnit for item in units):
+        raise _AuditObstacle("PRODUCT_REPAIR_INPUT_INVALID", "repair coverage units are invalid")
+    if host.operation == "scan":
+        if requested or units:
+            raise _AuditObstacle(
+                "PRODUCT_REPAIR_INPUT_INVALID",
+                "repair receipts cannot be attached to a scan operation",
+            )
+        return ()
+    if not requested or tuple(sorted(requested)) != requested or len(set(requested)) != len(requested):
+        raise _AuditObstacle(
+            "PRODUCT_REPAIR_INPUT_INVALID", "repair operation requires sorted unique candidate IDs"
+        )
+    candidates = {(item.candidate_id, item.candidate_version): item for item in flow.graph.candidates}
+    blocking_ids = {
+        outcome.candidate_id
+        for outcome in review.outcomes
+        if outcome.has_known_blocking_finding
+    }
+    if any(item not in candidates for item in requested) or not set(requested).issubset(blocking_ids):
+        raise _AuditObstacle(
+            "PRODUCT_REPAIR_INPUT_INVALID",
+            "repair requests must target current confirmed blocking candidates",
+        )
+    expected = {
+        (stage_id, candidate_id)
+        for candidate_id in requested
+        for stage_id in _REPAIR_STAGE_IDS
+    }
+    actual = {(unit.stage_id, unit.subject_id) for unit in units}
+    if actual != expected or len(actual) != len(units):
+        raise _AuditObstacle(
+            "PRODUCT_REPAIR_COVERAGE_INCOMPLETE",
+            "repair operation requires one bound receipt for every repair stage",
+        )
+    if any(
+        not unit.required
+        or not unit.applicable
+        or unit.subject_id not in requested
+        or unit.stage_id not in _REPAIR_STAGE_IDS
+        for unit in units
+    ):
+        raise _AuditObstacle(
+            "PRODUCT_REPAIR_INPUT_INVALID", "repair coverage units are not mandatory bound stages"
+        )
+    if len({unit.coverage_unit_id for unit in units}) != len(units):
+        raise _AuditObstacle("PRODUCT_REPAIR_INPUT_INVALID", "repair coverage IDs are duplicated")
+    return requested
 
 
 def _probe_current_state(host: ProductAuditHostInputs) -> ProductAuditStateObservation:
@@ -85,7 +159,7 @@ def _probe_current_state(host: ProductAuditHostInputs) -> ProductAuditStateObser
 
 def _validate_host(
     flow: ProductCandidateFlow, review: ProductReviewResult, host: ProductAuditHostInputs
-) -> None:
+) -> tuple[str, ...]:
     if (
         type(flow) is not ProductCandidateFlow
         or type(review) is not ProductReviewResult
@@ -134,6 +208,7 @@ def _validate_host(
     # This revalidates immutable intake bytes and language indexes.  It does not
     # create an intake or language-discovery stage receipt.
     host.source_catalogue.repository_view()
+    return _repair_requested_candidate_ids(flow, review, host)
 
 
 def _model_candidate_mismatch(flow: ProductCandidateFlow) -> ProductAuditObstacle | None:

@@ -76,6 +76,16 @@ class LoopbackOllamaBackend:
         except (ValueError, TypeError, UnicodeError, RecursionError):
             return _failure(502, dispatched=True)
 
+    def ready(self, *, timeout_seconds: float) -> bool:
+        """Verify the exact pinned Ollama runtime and model without sending source."""
+        if (
+            type(timeout_seconds) not in (float, int)
+            or not math.isfinite(timeout_seconds)
+            or not 0 < timeout_seconds <= self._policy.timeout_seconds
+        ):
+            return False
+        return self._identity_matches(time.monotonic() + timeout_seconds)
+
     def _identity_matches(self, deadline: float) -> bool:
         try:
             version = self._exchange(

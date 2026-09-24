@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Final
+from typing import BinaryIO, Final
 
 from .data_lifecycle_models import LifecycleConflict
 from .filesystem_paths import lexical_absolute_path
@@ -120,7 +120,7 @@ class LocalArtifactStorageExecutor:
 
         target = self._object_path(tenant_id, content_sha256)
         if marker is None:
-            receipt = self._validated_receipt(target)
+            receipt = self._validated_receipt(target, binding)
             self._require_receipt_binding(receipt, binding)
             marker = self._new_tombstone(binding)
             self._write_marker(marker_path, marker)
@@ -160,10 +160,14 @@ class LocalArtifactStorageExecutor:
             execution_identity_hash=str(row["identity_hash"]),
         )
 
-    def _validated_receipt(self, target: Path) -> Mapping[str, object]:
+    def _validated_receipt(
+        self, target: Path, binding: _DeletionBinding
+    ) -> Mapping[str, object]:
         _require_plain_directory(target)
         entries = {entry.name for entry in target.iterdir()}
-        if entries != {"payload", "receipt.json"}:
+        if not {"payload", "receipt.json"}.issubset(entries) or not entries.issubset(
+            {"payload", "receipt.json", "authorizations"}
+        ):
             raise LifecycleConflict("artifact object layout is invalid")
         payload = target / "payload"
         receipt_path = target / "receipt.json"
@@ -183,7 +187,49 @@ class LocalArtifactStorageExecutor:
         digest, size = _digest_file(payload)
         if digest != expected_hash or size != expected_size:
             raise LifecycleConflict("artifact payload integrity check failed")
-        return value
+        candidates = [value]
+        if "authorizations" in entries:
+            authorization_root = target / "authorizations"
+            _require_plain_directory(authorization_root)
+            for authorization_directory in authorization_root.iterdir():
+                if not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", authorization_directory.name
+                ):
+                    raise LifecycleConflict("artifact authorization receipt path is invalid")
+                _require_plain_directory(authorization_directory)
+                if {entry.name for entry in authorization_directory.iterdir()} != {"receipt.json"}:
+                    raise LifecycleConflict("artifact authorization receipt layout is invalid")
+                receipt_path = authorization_directory / "receipt.json"
+                _require_regular_file(receipt_path)
+                try:
+                    candidate = json.loads(
+                        _read_bounded(receipt_path, _MAX_RECEIPT_BYTES).decode("ascii")
+                    )
+                except (UnicodeError, json.JSONDecodeError):
+                    raise LifecycleConflict("artifact authorization receipt is invalid") from None
+                if (
+                    not isinstance(candidate, Mapping)
+                    or candidate.get("authorization_id") != authorization_directory.name
+                    or candidate.get("tenant_id") != binding.tenant_id
+                    or candidate.get("content_sha256") != binding.content_sha256
+                    or candidate.get("size_bytes") != size
+                ):
+                    raise LifecycleConflict("artifact authorization receipt scope conflicts")
+                candidates.append(candidate)
+        selected = next(
+            (
+                receipt
+                for receipt in candidates
+                if receipt.get("tenant_id") == binding.tenant_id
+                and receipt.get("repository_id") == binding.repository_id
+                and receipt.get("content_sha256") == binding.content_sha256
+                and receipt.get("execution_identity_hash") == binding.execution_identity_hash
+            ),
+            None,
+        )
+        if selected is None:
+            raise LifecycleConflict("artifact authorization receipt is unavailable")
+        return selected
 
     def _require_receipt_binding(
         self,
@@ -351,7 +397,7 @@ class LocalArtifactStorageExecutor:
             return
         _require_plain_directory(target)
         entries = {entry.name: entry for entry in target.iterdir()}
-        if not set(entries).issubset({"payload", "receipt.json"}):
+        if not set(entries).issubset({"payload", "receipt.json", "authorizations"}):
             raise LifecycleConflict("artifact object layout is invalid")
         for name in ("payload", "receipt.json"):
             path = entries.get(name)
@@ -362,6 +408,37 @@ class LocalArtifactStorageExecutor:
                 path.unlink()
             except OSError as error:
                 raise LifecycleConflict("artifact byte removal failed") from error
+        authorizations = entries.get("authorizations")
+        if authorizations is not None:
+            _require_plain_directory(authorizations)
+            for authorization_directory in authorizations.iterdir():
+                if not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", authorization_directory.name
+                ):
+                    raise LifecycleConflict("artifact authorization receipt path is invalid")
+                _require_plain_directory(authorization_directory)
+                contents = {entry.name for entry in authorization_directory.iterdir()}
+                if not contents.issubset({"receipt.json"}):
+                    raise LifecycleConflict("artifact authorization receipt layout is invalid")
+                receipt = authorization_directory / "receipt.json"
+                if "receipt.json" in contents:
+                    _require_regular_file(receipt)
+                    try:
+                        receipt.unlink()
+                    except OSError as error:
+                        raise LifecycleConflict(
+                            "artifact authorization receipt removal failed"
+                        ) from error
+                try:
+                    authorization_directory.rmdir()
+                except OSError as error:
+                    raise LifecycleConflict(
+                        "artifact authorization receipt removal failed"
+                    ) from error
+            try:
+                authorizations.rmdir()
+            except OSError as error:
+                raise LifecycleConflict("artifact authorization directory removal failed") from error
         try:
             target.rmdir()
         except OSError as error:
@@ -477,9 +554,36 @@ def _link_like(details: os.stat_result) -> bool:
     return stat.S_ISLNK(details.st_mode) or bool(attributes & _REPARSE_POINT)
 
 
+def _open_regular_file(path: Path) -> BinaryIO:
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        opened = os.fstat(descriptor)
+        current = os.lstat(path)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or not stat.S_ISREG(current.st_mode)
+            or not os.path.samestat(opened, current)
+        ):
+            raise LifecycleConflict("artifact file is unsafe")
+        stream = os.fdopen(descriptor, "rb")
+        descriptor = -1
+        return stream
+    except LifecycleConflict:
+        raise
+    except OSError as error:
+        raise LifecycleConflict("artifact file cannot be opened safely") from error
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
 def _read_bounded(path: Path, limit: int) -> bytes:
     try:
-        with path.open("rb") as stream:
+        with _open_regular_file(path) as stream:
             value = stream.read(limit + 1)
     except OSError as error:
         raise LifecycleConflict("artifact file cannot be read") from error
@@ -492,7 +596,7 @@ def _digest_file(path: Path) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
     try:
-        with path.open("rb") as stream:
+        with _open_regular_file(path) as stream:
             while chunk := stream.read(65_536):
                 digest.update(chunk)
                 size += len(chunk)

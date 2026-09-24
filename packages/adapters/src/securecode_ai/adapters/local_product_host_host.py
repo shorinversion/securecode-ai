@@ -38,6 +38,8 @@ class LocalProductHost:
     policy: EgressPolicyDocument
     registry: ProviderProfileRegistry
     artifact_manifest: dict[str, str]
+    ollama_version: str
+    ollama_artifact_sha256: str
     approval_record_sha256: str
     artifact_manifest_sha256: str
     approved_bundle_sha256: str
@@ -104,6 +106,8 @@ def load_local_product_host() -> LocalProductHost:
             policy,
             registry,
             manifest,
+            pins.bindings.ollama_version,
+            pins.bindings.ollama_artifact_sha256,
             anchor.approval_record_sha256,
             anchor.artifact_manifest_sha256,
             bundle.content_sha256,

@@ -43,6 +43,12 @@ def require_transfer(
 ) -> None:
     if type(profile) is not ResidencyProfile:
         raise ResidencyDenied()
+    # An allowlist identifies regions in which data may reside.  It is not
+    # consent to move data between two allowed regions.  Cross-region moves
+    # need a separate, audited policy decision and therefore remain denied by
+    # this default enforcement path.
+    if source_region != destination_region:
+        raise ResidencyDenied()
     if not profile.allows(source_region) or not profile.allows(destination_region):
         raise ResidencyDenied()
 

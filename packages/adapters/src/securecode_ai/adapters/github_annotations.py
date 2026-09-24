@@ -5,12 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Callable, Final, Protocol
 
 from securecode_ai.contracts import FindingCase, FindingVerdict, RunExecutionIdentity
 from securecode_ai.core.scm_run_state import PublicationDisposition, SCMRunPublicationReceipt
 
-from .github_app import GithubAppAdapter, GithubAppError
+from .github_app import GithubAppError
 
 MAX_GITHUB_ANNOTATIONS: Final = 50
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -96,6 +96,10 @@ class GithubAnnotationRequest:
 
 @dataclass(frozen=True, slots=True)
 class GithubAnnotationProjection:
+    tenant_id: str
+    repository_id: str
+    head_sha: str
+    execution_identity_hash: str
     finding_id: str
     cwe_id: str
     path: str
@@ -119,21 +123,26 @@ class GithubAnnotationReceipt:
     suppressions: tuple[GithubAnnotationSuppressionReceipt, ...]
 
 
+class GithubPublicationAuthorizer(Protocol):
+    def authorize_publication(self, run_id: str) -> SCMRunPublicationReceipt: ...
+
+
 class GithubAnnotationPublisher:
     """Filter and project high-signal annotations after P5.5 current-HEAD authorization."""
 
-    __slots__ = ("_adapter",)
+    __slots__ = ("_authorize",)
 
-    def __init__(self, adapter: GithubAppAdapter) -> None:
-        if type(adapter) is not GithubAppAdapter:
+    def __init__(self, authorizer: GithubPublicationAuthorizer) -> None:
+        authorize = getattr(authorizer, "authorize_publication", None)
+        if not callable(authorize):
             raise GithubAnnotationError()
-        self._adapter = adapter
+        self._authorize: Callable[[str], SCMRunPublicationReceipt] = authorize
 
     def project(self, request: GithubAnnotationRequest) -> GithubAnnotationReceipt:
         if type(request) is not GithubAnnotationRequest:
             raise GithubAnnotationError()
         try:
-            publication = self._adapter.authorize_publication(request.scm_run_id)
+            publication = self._authorize(request.scm_run_id)
         except GithubAppError as error:
             raise GithubAnnotationError() from error
         if publication.disposition is PublicationDisposition.SUPERSEDED:
@@ -172,7 +181,7 @@ class GithubAnnotationPublisher:
                     )
                 )
             else:
-                annotations.append(_annotation(candidate.finding))
+                annotations.append(_annotation(candidate.finding, identity))
         return GithubAnnotationReceipt(
             publication=publication,
             annotations=tuple(annotations),
@@ -212,9 +221,16 @@ def _suppression_reason(
     return None
 
 
-def _annotation(finding: FindingCase) -> GithubAnnotationProjection:
+def _annotation(
+    finding: FindingCase,
+    identity: RunExecutionIdentity,
+) -> GithubAnnotationProjection:
     location = finding.locations[0]
     return GithubAnnotationProjection(
+        tenant_id=identity.repository_revision.tenant_id,
+        repository_id=identity.repository_revision.repository_id,
+        head_sha=identity.repository_revision.head_sha,
+        execution_identity_hash=identity.execution_identity_hash,
         finding_id=finding.finding_id,
         cwe_id=finding.cwe_id,
         path=location.path,
@@ -239,6 +255,7 @@ __all__ = [
     "GithubAnnotationError",
     "GithubAnnotationProjection",
     "GithubAnnotationPublisher",
+    "GithubPublicationAuthorizer",
     "GithubAnnotationReceipt",
     "GithubAnnotationRequest",
     "GithubAnnotationSuppression",

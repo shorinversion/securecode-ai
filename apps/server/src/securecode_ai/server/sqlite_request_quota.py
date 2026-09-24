@@ -25,6 +25,11 @@ SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS = (
     )""",
 )
 
+_QUOTA_SAVEPOINT = "securecode_quota_charge"
+_QUOTA_PURGE_SAVEPOINT = "securecode_quota_purge"
+_MAX_WINDOW_MS = MAX_WINDOW_SECONDS * 1000
+_SQLITE_INTEGER_MAX = (1 << 63) - 1
+
 
 class SqliteQuotaLedger:
     """Atomically charge all authenticated tenants against a persistent ceiling."""
@@ -84,11 +89,70 @@ class SqliteQuotaLedger:
         with self._lock:
             return self._charge(tenant_id, now_ms, cost_microunits)
 
+    def purge_expired_windows(self, *, now_ms: int, max_items: int = 100) -> int:
+        """Delete a bounded batch older than every supported quota window."""
+
+        if (
+            type(now_ms) is not int
+            or not 0 <= now_ms <= _SQLITE_INTEGER_MAX
+            or type(max_items) is not int
+            or not 1 <= max_items <= MAX_TENANTS
+        ):
+            raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
+        cutoff_ms = now_ms - _MAX_WINDOW_MS
+        with self._lock:
+            cursor: sqlite3.Cursor | None = None
+            active = False
+            try:
+                cursor = self._connection.cursor()
+                cursor.execute(f"SAVEPOINT {_QUOTA_PURGE_SAVEPOINT}")
+                active = True
+                changed = cursor.execute(
+                    """DELETE FROM request_quota_windows
+                       WHERE tenant_id IN (
+                           SELECT tenant_id FROM request_quota_windows
+                           WHERE started_ms<=? ORDER BY started_ms, tenant_id LIMIT ?
+                       )""",
+                    (cutoff_ms, max_items),
+                ).rowcount
+                cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_PURGE_SAVEPOINT}")
+                active = False
+                return changed
+            except sqlite3.Error:
+                if active and cursor is not None:
+                    try:
+                        cursor.execute(f"ROLLBACK TO SAVEPOINT {_QUOTA_PURGE_SAVEPOINT}")
+                        cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_PURGE_SAVEPOINT}")
+                    except sqlite3.Error:
+                        pass
+                raise QuotaError(QuotaErrorCode.STORE_UNAVAILABLE) from None
+            finally:
+                if cursor is not None:
+                    cursor.close()
+
+    def has_expired_windows(self, *, now_ms: int) -> bool:
+        if type(now_ms) is not int or not 0 <= now_ms <= _SQLITE_INTEGER_MAX:
+            raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
+        try:
+            row = self._connection.execute(
+                "SELECT 1 FROM request_quota_windows WHERE started_ms<=? LIMIT 1",
+                (now_ms - _MAX_WINDOW_MS,),
+            ).fetchone()
+            return row is not None
+        except sqlite3.Error:
+            raise QuotaError(QuotaErrorCode.STORE_UNAVAILABLE) from None
+
     def _charge(self, tenant_id: str, now_ms: int, cost_microunits: int) -> QuotaDecision:
         cursor: sqlite3.Cursor | None = None
+        savepoint_active = False
         try:
             cursor = self._connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            # The control-plane connection is shared by repositories that may
+            # already have an open transaction.  A top-level BEGIN would fail
+            # in that case, while commit/rollback would also affect unrelated
+            # writes.  A savepoint keeps this charge atomic and composable.
+            cursor.execute(f"SAVEPOINT {_QUOTA_SAVEPOINT}")
+            savepoint_active = True
             cursor.execute(
                 "DELETE FROM request_quota_windows WHERE started_ms + ? <= ?",
                 (self._window_ms, now_ms),
@@ -100,20 +164,24 @@ class SqliteQuotaLedger:
             ).fetchone()
             if row is None:
                 if cost_microunits > self._max_spend_microunits:
-                    self._connection.rollback()
+                    cursor.execute(f"ROLLBACK TO SAVEPOINT {_QUOTA_SAVEPOINT}")
+                    cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                    savepoint_active = False
                     return _refused(self._window_ms // 1000)
                 count = cursor.execute("SELECT COUNT(*) FROM request_quota_windows").fetchone()[0]
                 if type(count) is not int or count >= self._max_tenants:
                     # Persist expiry cleanup so stale tenants cannot occupy
                     # every slot and cause permanent refusals.
-                    self._connection.commit()
+                    cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                    savepoint_active = False
                     return _refused(self._window_ms // 1000)
                 cursor.execute(
                     "INSERT INTO request_quota_windows "
                     "(tenant_id, started_ms, requests, spend_microunits) VALUES (?, ?, 1, ?)",
                     (tenant_id, now_ms, cost_microunits),
                 )
-                self._connection.commit()
+                cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                savepoint_active = False
                 return QuotaDecision(
                     True,
                     self._max_requests - 1,
@@ -129,14 +197,18 @@ class SqliteQuotaLedger:
                 or requests < 0
                 or spend < 0
             ):
-                self._connection.rollback()
+                cursor.execute(f"ROLLBACK TO SAVEPOINT {_QUOTA_SAVEPOINT}")
+                cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                savepoint_active = False
                 return _refused(self._window_ms // 1000)
             if (
                 requests + 1 > self._max_requests
                 or spend + cost_microunits > self._max_spend_microunits
             ):
                 retry_ms = started_ms + self._window_ms - now_ms
-                self._connection.rollback()
+                cursor.execute(f"ROLLBACK TO SAVEPOINT {_QUOTA_SAVEPOINT}")
+                cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                savepoint_active = False
                 return _refused(
                     max(1, (retry_ms + 999) // 1000),
                     remaining_requests=max(0, self._max_requests - requests),
@@ -148,9 +220,12 @@ class SqliteQuotaLedger:
                 (requests + 1, spend + cost_microunits, tenant_id, started_ms),
             )
             if cursor.rowcount != 1:
-                self._connection.rollback()
+                cursor.execute(f"ROLLBACK TO SAVEPOINT {_QUOTA_SAVEPOINT}")
+                cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                savepoint_active = False
                 return _refused(self._window_ms // 1000)
-            self._connection.commit()
+            cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+            savepoint_active = False
             return QuotaDecision(
                 True,
                 self._max_requests - requests - 1,
@@ -158,7 +233,12 @@ class SqliteQuotaLedger:
                 0,
             )
         except sqlite3.Error:
-            self._connection.rollback()
+            if savepoint_active and cursor is not None:
+                try:
+                    cursor.execute(f"ROLLBACK TO SAVEPOINT {_QUOTA_SAVEPOINT}")
+                    cursor.execute(f"RELEASE SAVEPOINT {_QUOTA_SAVEPOINT}")
+                except sqlite3.Error:
+                    pass
             raise QuotaError(QuotaErrorCode.STORE_UNAVAILABLE) from None
         finally:
             if cursor is not None:

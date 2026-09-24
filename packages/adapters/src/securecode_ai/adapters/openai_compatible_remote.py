@@ -170,6 +170,7 @@ class OpenAICompatibleRemoteHttpsConnector:
             or channel._closed
             or not isinstance(credential, str)
             or not credential
+            or not all(0x21 <= ord(character) <= 0x7E for character in credential)
             or not isinstance(payload, bytes)
             or not payload
             or len(payload) > _MAX_RESPONSE_BYTES

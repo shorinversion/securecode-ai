@@ -303,12 +303,7 @@ def _artifacts(scan: LocalProductScanResult) -> tuple[WorkerArtifact, ...]:
             prefix="worker-sarif",
             content=scan.sarif_rendered,
         ),
-        _artifact(
-            tenant_id=tenant_id,
-            purpose="evidence-graph",
-            prefix="worker-graph",
-            content=scan.graph_artifact,
-        ),
+        _evidence_graph_artifact(scan, tenant_id=tenant_id),
         _artifact(
             tenant_id=tenant_id,
             purpose="audit-run",
@@ -321,6 +316,35 @@ def _artifacts(scan: LocalProductScanResult) -> tuple[WorkerArtifact, ...]:
                 sort_keys=True,
             ).encode("utf-8"),
         ),
+    )
+
+
+def _evidence_graph_artifact(
+    scan: LocalProductScanResult, *, tenant_id: str
+) -> WorkerArtifact:
+    digest = hashlib.sha256(scan.graph_artifact).hexdigest()
+    report_findings = scan.composition.report.findings
+    if report_findings:
+        reference = report_findings[0].finding.evidence_graph_ref
+        if any(item.finding.evidence_graph_ref != reference for item in report_findings):
+            raise ProductIdentityMismatch("product findings do not share one evidence graph")
+        if (
+            reference.tenant_id != tenant_id
+            or reference.content_sha256 != digest
+            or reference.size_bytes != len(scan.graph_artifact)
+            or reference.data_class is not DataClass.CONFIDENTIAL_SECURITY
+        ):
+            raise ProductIdentityMismatch("product evidence graph reference is invalid")
+        return WorkerArtifact(
+            reference=reference,
+            purpose="evidence-graph",
+            content=scan.graph_artifact,
+        )
+    return _artifact(
+        tenant_id=tenant_id,
+        purpose="evidence-graph",
+        prefix="worker-graph",
+        content=scan.graph_artifact,
     )
 
 
@@ -346,6 +370,7 @@ def _findings(
             finding.repository_revision != revision
             or reference.tenant_id != revision.tenant_id
             or reference.content_sha256 != graph_sha256
+            or reference != graph_reference
         ):
             raise ProductIdentityMismatch("finding evidence does not match the product run")
         values.append(
@@ -369,9 +394,8 @@ def _findings(
                 root_cause_fingerprint=finding.root_cause_fingerprint,
             )
         )
-    if tuple(value.finding_id for value in values) != tuple(
-        sorted(value.finding_id for value in values)
-    ):
+    finding_ids = tuple(value.finding_id for value in values)
+    if finding_ids != tuple(sorted(finding_ids)) or len(finding_ids) != len(set(finding_ids)):
         raise ProductExecutionError("product findings are not canonical")
     return tuple(values)
 

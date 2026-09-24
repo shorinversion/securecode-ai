@@ -19,6 +19,7 @@ from securecode_ai.contracts import (
     DataClass,
     DiscoveryCandidate,
     Evidence,
+    FindingCase,
     RepositoryRevision,
     RunExecutionIdentity,
     SourceLocation,
@@ -112,7 +113,9 @@ def load_verified_terminal_audit_run(
     execution_identity_hash: str,
     outcome: str,
     findings: tuple[WorkerFindingRecord, ...],
-) -> AuditRun | None:
+    include_graph: bool = False,
+    include_findings: bool = False,
+) -> AuditRun | tuple[AuditRun, EvidenceGraph] | tuple[AuditRun, EvidenceGraph, tuple[FindingCase, ...]] | None:
     """Load an AuditRun only after validating its stored terminal evidence."""
 
     if outcome not in {"PASS", "FAIL"}:
@@ -162,7 +165,7 @@ def load_verified_terminal_audit_run(
         audit_run = AuditRun.model_validate_json(run_bytes)
     except (TypeError, ValueError):
         raise WorkerQueueConflict() from None
-    _validate_report(
+    report_findings = _validate_report(
         report,
         expected_identity=expected_identity,
         tenant_id=tenant_id,
@@ -173,7 +176,11 @@ def load_verified_terminal_audit_run(
         graph_digest=graph_digest,
         audit_run=audit_run,
     )
-    return audit_run
+    if include_findings:
+        if not include_graph:
+            raise WorkerQueueConflict()
+        return audit_run, graph, report_findings
+    return (audit_run, graph) if include_graph else audit_run
 
 
 def load_verified_evidence_graph(
@@ -205,7 +212,7 @@ def _validate_report(
     graph: EvidenceGraph,
     graph_digest: str,
     audit_run: AuditRun,
-) -> None:
+) -> tuple[FindingCase, ...]:
     try:
         if (
             set(document) != _REPORT_KEYS
@@ -260,8 +267,11 @@ def _validate_report(
             or (outcome == "PASS" and not audit_run.publication_preconditions_met)
         ):
             raise ValueError
-        for reported, finding in zip(report_findings, findings, strict=True):
+        validated_findings = tuple(
             _validate_finding(reported, finding, graph, graph_digest)
+            for reported, finding in zip(report_findings, findings, strict=True)
+        )
+        return validated_findings
     except (KeyError, TypeError, ValueError):
         raise WorkerQueueConflict() from None
 
@@ -288,9 +298,10 @@ def _validate_finding(
     finding: WorkerFindingRecord,
     graph: EvidenceGraph,
     graph_digest: str,
-) -> None:
+) -> FindingCase:
     if not isinstance(value, Mapping) or set(value) != _REPORT_FINDING_KEYS:
         raise ValueError
+    finding_case = FindingCase.model_validate_json(_json_value(value))
     reference = ArtifactRef.model_validate_json(_json_value(value["evidence_graph_ref"]))
     locations_value = value["locations"]
     if type(locations_value) is not list:
@@ -358,6 +369,7 @@ def _validate_finding(
         or value["validation_refs"] != []
     ):
         raise ValueError
+    return finding_case
 
 
 def _validated_graph(document: dict[str, Any], digest: str) -> EvidenceGraph:

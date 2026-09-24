@@ -127,7 +127,12 @@ class TelemetryRecorder:
 
         batch = self.drain()
         if not batch:
-            return TelemetryFlush(accepted=True, exported=0, pending=0, dropped=self.dropped())
+            return TelemetryFlush(
+                accepted=True,
+                exported=0,
+                pending=self.pending(),
+                dropped=self.dropped(),
+            )
         if self._exporter is None:
             pending = self._restore(batch)
             return TelemetryFlush(
@@ -143,7 +148,10 @@ class TelemetryRecorder:
                 accepted=False, exported=0, pending=pending, dropped=self.dropped()
             )
         return TelemetryFlush(
-            accepted=True, exported=result.count, pending=0, dropped=self.dropped()
+            accepted=True,
+            exported=result.count,
+            pending=self.pending(),
+            dropped=self.dropped(),
         )
 
     def _restore(self, batch: tuple[Observation, ...]) -> int:

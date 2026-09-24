@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 
@@ -24,8 +25,11 @@ _SCHEMA = """CREATE TABLE IF NOT EXISTS scm_baseline_snapshots (
     repository_id TEXT NOT NULL,
     revision_sha TEXT NOT NULL,
     candidates_json TEXT NOT NULL,
+    verification_version INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (tenant_id, repository_id, revision_sha)
 )"""
+_FINGERPRINT = re.compile(r"[0-9a-f]{64}\Z")
+_VERIFICATION_VERSION = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,13 +42,31 @@ class DurableBaselineStore:
         if not isinstance(self.connection, sqlite3.Connection):
             raise TypeError("baseline store requires a SQLite connection")
         self.connection.execute(_SCHEMA)
+        columns = {
+            row[1]
+            for row in self.connection.execute("PRAGMA table_info(scm_baseline_snapshots)")
+        }
+        if "verification_version" not in columns:
+            self.connection.execute(
+                "ALTER TABLE scm_baseline_snapshots "
+                "ADD COLUMN verification_version INTEGER NOT NULL DEFAULT 0"
+            )
         self.connection.commit()
 
-    def record(self, audit_run: AuditRun) -> BaselineFingerprintSnapshot:
+    def record(
+        self,
+        audit_run: AuditRun,
+        *,
+        verified_finding_fingerprints: tuple[str, ...],
+    ) -> BaselineFingerprintSnapshot:
         cursor = self.connection.cursor()
         try:
             with self.connection:
-                return self.record_in_transaction(cursor, audit_run)
+                return self.record_in_transaction(
+                    cursor,
+                    audit_run,
+                    verified_finding_fingerprints=verified_finding_fingerprints,
+                )
         finally:
             cursor.close()
 
@@ -52,6 +74,8 @@ class DurableBaselineStore:
         self,
         cursor: sqlite3.Cursor,
         audit_run: AuditRun,
+        *,
+        verified_finding_fingerprints: tuple[str, ...],
     ) -> BaselineFingerprintSnapshot:
         """Persist a snapshot inside the caller's terminal-run transaction."""
 
@@ -67,11 +91,15 @@ class DurableBaselineStore:
             or not audit_run.coverage_manifest.coverage_complete
         ):
             raise BaselineStoreError("baseline audit run is incomplete")
+        candidates = _verified_finding_candidates(
+            audit_run,
+            verified_finding_fingerprints,
+        )
         snapshot = BaselineFingerprintSnapshot(
             schema_version=BASELINE_FINGERPRINT_SCHEMA_VERSION,
             tenant_id=revision.tenant_id,
             revision_sha=revision.head_sha,
-            findings=audit_run.coverage_manifest.discovery_candidates,
+            findings=candidates,
         )
         document = json.dumps(
             [item.model_dump(mode="json") for item in snapshot.findings],
@@ -80,19 +108,25 @@ class DurableBaselineStore:
             sort_keys=True,
         )
         existing = cursor.execute(
-            """SELECT candidates_json FROM scm_baseline_snapshots
+            """SELECT candidates_json, verification_version FROM scm_baseline_snapshots
                WHERE tenant_id=? AND repository_id=? AND revision_sha=?""",
             (revision.tenant_id, revision.repository_id, revision.head_sha),
         ).fetchone()
         if existing is not None:
-            if existing[0] != document:
+            if existing[1] != _VERIFICATION_VERSION or existing[0] != document:
                 raise BaselineStoreError("baseline revision conflicts")
             return snapshot
         cursor.execute(
             """INSERT INTO scm_baseline_snapshots
-               (tenant_id, repository_id, revision_sha, candidates_json)
-               VALUES (?, ?, ?, ?)""",
-            (revision.tenant_id, revision.repository_id, revision.head_sha, document),
+               (tenant_id, repository_id, revision_sha, candidates_json, verification_version)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                revision.tenant_id,
+                revision.repository_id,
+                revision.head_sha,
+                document,
+                _VERIFICATION_VERSION,
+            ),
         )
         return snapshot
 
@@ -104,12 +138,14 @@ class DurableBaselineStore:
         revision_sha: str,
     ) -> BaselineFingerprintSnapshot:
         row = self.connection.execute(
-            """SELECT candidates_json FROM scm_baseline_snapshots
+            """SELECT candidates_json, verification_version FROM scm_baseline_snapshots
                WHERE tenant_id=? AND repository_id=? AND revision_sha=?""",
             (tenant_id, repository_id, revision_sha),
         ).fetchone()
         if row is None:
             raise BaselineStoreError("baseline revision is unavailable")
+        if row[1] != _VERIFICATION_VERSION:
+            raise BaselineStoreError("baseline revision requires a verified rebuild")
         try:
             document = json.loads(row[0])
             if not isinstance(document, list):
@@ -129,6 +165,7 @@ class DurableBaselineStore:
         audit_run: AuditRun,
         *,
         commit_lineage: tuple[str, ...],
+        verified_finding_fingerprints: tuple[str, ...],
     ) -> BaselineFingerprintComparison:
         """Compare one verified head run with its exact persisted base revision."""
 
@@ -146,7 +183,10 @@ class DurableBaselineStore:
             schema_version=BASELINE_FINGERPRINT_SCHEMA_VERSION,
             tenant_id=revision.tenant_id,
             revision_sha=revision.head_sha,
-            findings=audit_run.coverage_manifest.discovery_candidates,
+            findings=_verified_finding_candidates(
+                audit_run,
+                verified_finding_fingerprints,
+            ),
         )
         return compare_baseline_fingerprints(
             baseline=baseline,
@@ -154,3 +194,29 @@ class DurableBaselineStore:
             current_head_sha=audit_run.current_head_sha,
             commit_lineage=commit_lineage,
         )
+
+
+def _verified_finding_candidates(
+    audit_run: AuditRun,
+    fingerprints: tuple[str, ...],
+) -> tuple[DiscoveryCandidate, ...]:
+    """Keep only candidates bound to independently verified findings."""
+
+    if type(fingerprints) is not tuple or len(fingerprints) > 100_000:
+        raise BaselineStoreError("verified baseline findings are invalid")
+    if any(
+        type(item) is not str or _FINGERPRINT.fullmatch(item) is None
+        for item in fingerprints
+    ):
+        raise BaselineStoreError("verified baseline findings are invalid")
+    if fingerprints != tuple(sorted(set(fingerprints))):
+        raise BaselineStoreError("verified baseline findings are invalid")
+    candidates = audit_run.coverage_manifest.discovery_candidates
+    available = {item.root_cause_fingerprint for item in candidates}
+    if not set(fingerprints).issubset(available):
+        raise BaselineStoreError("verified baseline findings do not match the audit run")
+    selected = set(fingerprints)
+    result = tuple(item for item in candidates if item.root_cause_fingerprint in selected)
+    if len(result) != len(selected):
+        raise BaselineStoreError("verified baseline findings are ambiguous")
+    return result

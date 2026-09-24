@@ -18,17 +18,42 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
         or _O_NOFOLLOW == 0
         or not isinstance(path, Path)
         or not path.is_absolute()
-        or path.is_symlink()
+        or ".." in path.parts
         or type(limit) is not int
         or not 1 <= limit <= 1_048_576
     ):
         raise ValueError("configuration path is unsafe")
+    directory_descriptor = -1
+    opened_directories: list[int] = []
     descriptor = -1
     try:
-        before = path.stat(follow_symlinks=False)
+        directory_flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_DIRECTORY", 0)
+            | _O_NOFOLLOW
+        )
+        directory_descriptor = os.open(path.anchor, directory_flags)
+        opened_directories.append(directory_descriptor)
+        for component in path.parent.parts[1:]:
+            if component in {"", ".", ".."}:
+                raise ValueError("configuration path is unsafe")
+            directory_descriptor = os.open(
+                component,
+                directory_flags,
+                dir_fd=directory_descriptor,
+            )
+            opened_directories.append(directory_descriptor)
+        before = os.stat(path.name, dir_fd=directory_descriptor, follow_symlinks=False)
         _validate_regular_file(before, limit)
-        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | _O_NOFOLLOW
-        descriptor = os.open(path, flags)
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_BINARY", 0)
+            | _O_NOFOLLOW
+        )
+        descriptor = os.open(path.name, flags, dir_fd=directory_descriptor)
         opened = os.fstat(descriptor)
         _validate_regular_file(opened, limit)
         if not _same_file(before, opened):
@@ -43,6 +68,8 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+        for opened_directory in reversed(opened_directories):
+            os.close(opened_directory)
     if not value or len(value) > limit:
         raise ValueError("configuration file is invalid")
     return value

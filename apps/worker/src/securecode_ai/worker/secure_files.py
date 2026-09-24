@@ -19,6 +19,7 @@ def read_ascii_secret(path: Path, *, minimum: int, maximum: int) -> str:
     if (
         not isinstance(path, Path)
         or not path.is_absolute()
+        or ".." in path.parts
         or type(minimum) is not int
         or type(maximum) is not int
         or minimum < 1
@@ -27,15 +28,42 @@ def read_ascii_secret(path: Path, *, minimum: int, maximum: int) -> str:
         or _O_NOFOLLOW == 0
     ):
         raise ValueError("worker secret file is invalid")
+    directory_flags = (
+        os.O_RDONLY
+        | _O_CLOEXEC
+        | getattr(os, "O_DIRECTORY", 0)
+        | _O_NOFOLLOW
+    )
     descriptor = -1
+    directory_descriptors: list[int] = []
     try:
+        directory_descriptor = os.open(path.anchor, directory_flags)
+        directory_descriptors.append(directory_descriptor)
+        for component in path.parent.parts[1:]:
+            if component in {"", ".", ".."}:
+                raise ValueError("worker secret file is invalid")
+            directory_descriptor = os.open(
+                component,
+                directory_flags,
+                dir_fd=directory_descriptor,
+            )
+            directory_descriptors.append(directory_descriptor)
+        details_before = os.stat(
+            path.name,
+            dir_fd=directory_descriptor,
+            follow_symlinks=False,
+        )
         descriptor = os.open(
-            path,
+            path.name,
             os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW | _O_NONBLOCK,
+            dir_fd=directory_descriptor,
         )
         details = os.fstat(descriptor)
         if (
-            not stat.S_ISREG(details.st_mode)
+            details_before.st_dev != details.st_dev
+            or details_before.st_ino != details.st_ino
+            or details_before.st_mode != details.st_mode
+            or not stat.S_ISREG(details.st_mode)
             or not minimum <= details.st_size <= maximum
             or details.st_mode & 0o077
             or details.st_nlink != 1
@@ -55,8 +83,7 @@ def read_ascii_secret(path: Path, *, minimum: int, maximum: int) -> str:
         if (
             len(raw) > maximum
             or len(raw) != details.st_size
-            or final_details.st_size != details.st_size
-            or final_details.st_mtime_ns != details.st_mtime_ns
+            or not _same_file_state(details, final_details)
         ):
             raise ValueError("worker secret file is invalid")
         value = raw.rstrip(b"\r\n").decode("ascii")
@@ -65,11 +92,26 @@ def read_ascii_secret(path: Path, *, minimum: int, maximum: int) -> str:
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+        for directory_descriptor in reversed(directory_descriptors):
+            os.close(directory_descriptor)
     if not minimum <= len(value) <= maximum or any(
         ord(character) < 33 or ord(character) > 126 for character in value
     ):
         raise ValueError("worker secret file is invalid")
     return value
+
+
+def _same_file_state(before: os.stat_result, after: os.stat_result) -> bool:
+    return (
+        before.st_dev == after.st_dev
+        and before.st_ino == after.st_ino
+        and before.st_mode == after.st_mode
+        and before.st_nlink == after.st_nlink
+        and before.st_uid == after.st_uid
+        and before.st_size == after.st_size
+        and before.st_mtime_ns == after.st_mtime_ns
+        and before.st_ctime_ns == after.st_ctime_ns
+    )
 
 
 __all__ = ["read_ascii_secret"]

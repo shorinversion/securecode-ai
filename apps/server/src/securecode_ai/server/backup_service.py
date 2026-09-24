@@ -5,11 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from threading import Lock, RLock
 from typing import Protocol
 
-from .backup_repository import BackupConflict, BackupRecord, BackupRepository
+from .backup_repository import (
+    BackupConflict,
+    BackupRecord,
+    BackupRepository,
+    validate_backup_record,
+)
 
 
 class BackupExecutorUnavailable(BackupConflict):
@@ -49,6 +56,12 @@ class BackupExecutor(Protocol):
     def restore(self, record: BackupRecord) -> BackupExecutionResult: ...
 
 
+class _TransitionLock(Protocol):
+    def acquire(self) -> bool: ...
+
+    def release(self) -> None: ...
+
+
 class BackupService:
     """Coordinates external I/O and persists only verified state transitions."""
 
@@ -62,8 +75,11 @@ class BackupService:
         self.repo = repo
         self.executor = executor
         self._clock = clock or (lambda: int(time.time()))
+        self._transition_locks_guard = Lock()
+        self._transition_locks: dict[tuple[str, str], tuple[_TransitionLock, int]] = {}
 
     def plan(self, record: BackupRecord, *, idempotency_key: str | None = None) -> BackupRecord:
+        validate_backup_record(record)
         if (
             record.state != "PLANNED"
             or record.version != 1
@@ -84,7 +100,9 @@ class BackupService:
             manifest_sha256=manifest,
             created_at=record.created_at or self._now(),
         )
-        request_hash = _request_hash("plan", planned)
+        # created_at and manifest_sha256 are derived by this method.  They must
+        # not change the identity of a retried plan request.
+        request_hash = _request_hash("plan", record)
         return self.repo.save(
             planned,
             None,
@@ -101,38 +119,39 @@ class BackupService:
         *,
         idempotency_key: str | None = None,
     ) -> BackupRecord:
-        request_hash = _transition_hash("backup", tenant, backup, expected)
-        replay = self.repo.replay(
-            tenant_id=tenant,
-            idempotency_key=idempotency_key,
-            operation="complete-backup",
-            request_sha256=request_hash,
-        )
-        if replay is not None:
-            return replay
-        item = self.repo.get(tenant, backup)
-        if item.state != "PLANNED" or item.version != expected:
-            raise BackupConflict("backup precondition failed")
-        observed = self._execute_backup(item)
-        if not _matches_manifest(item, observed):
-            raise BackupConflict("backup content failed manifest verification")
-        updated = replace(
-            item,
-            version=item.version + 1,
-            state="BACKED_UP",
-            rpo_seconds=observed.rpo_seconds,
-            rto_seconds=observed.rto_seconds,
-            backup_verified=True,
-            restore_verified=False,
-            completed_at=self._now(),
-        )
-        return self.repo.save(
-            updated,
-            expected,
-            idempotency_key=idempotency_key,
-            operation="complete-backup" if idempotency_key is not None else None,
-            request_sha256=request_hash if idempotency_key is not None else None,
-        )
+        with self._transition_lock(tenant, backup):
+            request_hash = _transition_hash("backup", tenant, backup, expected)
+            replay = self.repo.replay(
+                tenant_id=tenant,
+                idempotency_key=idempotency_key,
+                operation="complete-backup",
+                request_sha256=request_hash,
+            )
+            if replay is not None:
+                return replay
+            item = self.repo.get(tenant, backup)
+            if item.state != "PLANNED" or item.version != expected:
+                raise BackupConflict("backup precondition failed")
+            observed = self._execute_backup(item)
+            if not _matches_manifest(item, observed):
+                raise BackupConflict("backup content failed manifest verification")
+            updated = replace(
+                item,
+                version=item.version + 1,
+                state="BACKED_UP",
+                rpo_seconds=observed.rpo_seconds,
+                rto_seconds=observed.rto_seconds,
+                backup_verified=True,
+                restore_verified=False,
+                completed_at=self._now(),
+            )
+            return self.repo.save(
+                updated,
+                expected,
+                idempotency_key=idempotency_key,
+                operation="complete-backup" if idempotency_key is not None else None,
+                request_sha256=request_hash if idempotency_key is not None else None,
+            )
 
     def complete_restore(
         self,
@@ -142,37 +161,38 @@ class BackupService:
         *,
         idempotency_key: str | None = None,
     ) -> BackupRecord:
-        request_hash = _transition_hash("restore", tenant, backup, expected)
-        replay = self.repo.replay(
-            tenant_id=tenant,
-            idempotency_key=idempotency_key,
-            operation="complete-restore",
-            request_sha256=request_hash,
-        )
-        if replay is not None:
-            return replay
-        item = self.repo.get(tenant, backup)
-        if item.state != "BACKED_UP" or item.version != expected or not item.backup_verified:
-            raise BackupConflict("restore precondition failed")
-        observed = self._execute_restore(item)
-        if not _matches_manifest(item, observed):
-            raise BackupConflict("restored content failed manifest verification")
-        updated = replace(
-            item,
-            version=item.version + 1,
-            state="RESTORED",
-            rpo_seconds=observed.rpo_seconds,
-            rto_seconds=observed.rto_seconds,
-            restore_verified=True,
-            completed_at=self._now(),
-        )
-        return self.repo.save(
-            updated,
-            expected,
-            idempotency_key=idempotency_key,
-            operation="complete-restore" if idempotency_key is not None else None,
-            request_sha256=request_hash if idempotency_key is not None else None,
-        )
+        with self._transition_lock(tenant, backup):
+            request_hash = _transition_hash("restore", tenant, backup, expected)
+            replay = self.repo.replay(
+                tenant_id=tenant,
+                idempotency_key=idempotency_key,
+                operation="complete-restore",
+                request_sha256=request_hash,
+            )
+            if replay is not None:
+                return replay
+            item = self.repo.get(tenant, backup)
+            if item.state != "BACKED_UP" or item.version != expected or not item.backup_verified:
+                raise BackupConflict("restore precondition failed")
+            observed = self._execute_restore(item)
+            if not _matches_manifest(item, observed):
+                raise BackupConflict("restored content failed manifest verification")
+            updated = replace(
+                item,
+                version=item.version + 1,
+                state="RESTORED",
+                rpo_seconds=observed.rpo_seconds,
+                rto_seconds=observed.rto_seconds,
+                restore_verified=True,
+                completed_at=self._now(),
+            )
+            return self.repo.save(
+                updated,
+                expected,
+                idempotency_key=idempotency_key,
+                operation="complete-restore" if idempotency_key is not None else None,
+                request_sha256=request_hash if idempotency_key is not None else None,
+            )
 
     def receipt(self, *, tenant_id: str, backup_id: str) -> BackupReceipt:
         item = self.repo.get(tenant_id, backup_id)
@@ -211,6 +231,30 @@ class BackupService:
         if type(value) is not int or value < 0:
             raise BackupConflict("clock returned an invalid timestamp")
         return value
+
+    @contextmanager
+    def _transition_lock(self, tenant: str, backup: str) -> Iterator[None]:
+        key = (tenant, backup)
+        with self._transition_locks_guard:
+            entry = self._transition_locks.get(key)
+            if entry is None:
+                lock = RLock()
+                count = 0
+            else:
+                lock, count = entry
+            self._transition_locks[key] = (lock, count + 1)
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
+            with self._transition_locks_guard:
+                current = self._transition_locks.get(key)
+                if current is not None and current[0] is lock:
+                    if current[1] == 1:
+                        del self._transition_locks[key]
+                    else:
+                        self._transition_locks[key] = (lock, current[1] - 1)
 
 
 def manifest_sha256(record: BackupRecord) -> str:
@@ -286,8 +330,9 @@ def _request_hash(operation: str, record: BackupRecord) -> str:
         "encryption_key_ref": record.encryption_key_ref,
         "version": record.version,
         "state": record.state,
-        "manifest_sha256": record.manifest_sha256,
     }
+    if operation != "plan":
+        document["manifest_sha256"] = record.manifest_sha256
     payload = json.dumps(
         document,
         ensure_ascii=True,

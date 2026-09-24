@@ -1,4 +1,4 @@
-"""Persist source-free advisory policy decisions in a run's event stream."""
+"""Persist source-free SCM policy decisions in a run's event stream."""
 
 from __future__ import annotations
 
@@ -9,17 +9,23 @@ import sqlite3
 from typing import Final
 
 from securecode_ai.contracts import AuditRun, AuditRunOutcome
-from securecode_ai.core.baseline_fingerprints import BaselineFingerprintComparison
+from securecode_ai.core.baseline_fingerprints import (
+    BaselineChangedScope,
+    BaselineFingerprintComparison,
+)
 from securecode_ai.core.scm_policy import (
     ScmPolicyDecision,
     ScmPolicyDocument,
     ScmPolicyEnforcement,
     ScmPolicyErrorCode,
+    ScmPolicyFinding,
     ScmPolicyInputHashes,
     ScmPolicyMode,
     ScmPolicyRequest,
     evaluate_scm_policy,
 )
+
+from .worker_findings import WorkerFindingRecord
 
 _IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 
@@ -33,6 +39,8 @@ def record_run_advisory_policy(
     *,
     audit_run: AuditRun,
     baseline_comparison: BaselineFingerprintComparison | None = None,
+    verified_findings: tuple[WorkerFindingRecord | ScmPolicyFinding, ...] = (),
+    changed_scope: BaselineChangedScope | None = None,
 ) -> int:
     """Evaluate the immutable identity policy pin in advisory mode and persist it."""
 
@@ -44,20 +52,102 @@ def record_run_advisory_policy(
         policy_version=pin.component_version,
         content_sha256=pin.content_sha256,
     )
-    decision = evaluate_scm_policy(
-        ScmPolicyRequest(
-            policy=policy,
-            mode=ScmPolicyMode.ADVISORY,
-            audit_run=audit_run,
-            baseline_comparison=baseline_comparison,
-        )
+    return record_run_scm_policy(
+        cursor,
+        audit_run=audit_run,
+        policy=policy,
+        baseline_comparison=baseline_comparison,
+        verified_findings=verified_findings,
+        changed_scope=changed_scope,
     )
-    return record_advisory_policy_decision(
+
+
+def record_run_scm_policy(
+    cursor: sqlite3.Cursor,
+    *,
+    audit_run: AuditRun,
+    policy: ScmPolicyDocument,
+    baseline_comparison: BaselineFingerprintComparison | None = None,
+    verified_findings: tuple[WorkerFindingRecord | ScmPolicyFinding, ...] = (),
+    changed_scope: BaselineChangedScope | None = None,
+) -> int:
+    """Evaluate one pinned policy document against verified terminal findings."""
+
+    if type(audit_run) is not AuditRun or type(policy) is not ScmPolicyDocument:
+        raise ScmPolicyReceiptConflict("SCM policy input is invalid")
+    pin = audit_run.execution_identity.policy
+    if (
+        policy.policy_id != pin.component_id
+        or policy.policy_version != pin.component_version
+        or policy.content_sha256 != pin.content_sha256
+    ):
+        raise ScmPolicyReceiptConflict("SCM policy is not bound to the run identity")
+    try:
+        findings = _to_policy_findings(
+            verified_findings,
+            tenant_id=audit_run.execution_identity.repository_revision.tenant_id,
+        )
+        decision = evaluate_scm_policy(
+            ScmPolicyRequest(
+                policy=policy,
+                mode=policy.effective_mode,
+                audit_run=audit_run,
+                baseline_comparison=baseline_comparison,
+                verified_findings=findings,
+                changed_scope=changed_scope,
+            )
+        )
+    except (TypeError, ValueError):
+        raise ScmPolicyReceiptConflict("SCM policy input is invalid") from None
+    return record_scm_policy_decision(
         cursor,
         tenant_id=audit_run.execution_identity.repository_revision.tenant_id,
         run_id=audit_run.run_id,
         decision=decision,
     )
+
+
+def _to_policy_findings(
+    findings: tuple[WorkerFindingRecord | ScmPolicyFinding, ...],
+    *,
+    tenant_id: str,
+) -> tuple[ScmPolicyFinding, ...]:
+    if type(findings) is not tuple:
+        raise TypeError("verified findings are invalid")
+    converted: list[ScmPolicyFinding] = []
+    for item in findings:
+        if type(item) is ScmPolicyFinding:
+            if item.tenant_id not in {None, tenant_id}:
+                raise ValueError("verified finding tenant is invalid")
+            converted.append(
+                ScmPolicyFinding(
+                    finding_id=item.finding_id,
+                    revision_sha=item.revision_sha,
+                    root_cause_fingerprint=item.root_cause_fingerprint,
+                    severity=item.severity,
+                    verdict=item.verdict,
+                    blocking=item.blocking,
+                    risk_labels=item.risk_labels,
+                    tenant_id=tenant_id,
+                    confidence=item.confidence,
+                )
+            )
+            continue
+        if type(item) is not WorkerFindingRecord:
+            raise TypeError("verified finding is invalid")
+        converted.append(
+            ScmPolicyFinding(
+                finding_id=item.finding_id,
+                revision_sha=item.revision_sha,
+                root_cause_fingerprint=item.root_cause_fingerprint,
+                severity=item.severity,
+                verdict=item.verdict,
+                blocking=item.blocking,
+                tenant_id=tenant_id,
+                confidence=item.confidence,
+            )
+        )
+    return tuple(converted)
 
 
 def record_advisory_policy_decision(
@@ -202,6 +292,7 @@ def load_run_scm_policy_decision(
         if type(hashes_raw) is not dict or set(hashes_raw) != {
             "audit_run_sha256",
             "baseline_comparison_sha256",
+            "changed_scope_sha256",
             "execution_identity_sha256",
             "policy_document_sha256",
         }:
@@ -255,5 +346,6 @@ __all__ = [
     "load_run_scm_policy_decision",
     "record_advisory_policy_decision",
     "record_run_advisory_policy",
+    "record_run_scm_policy",
     "record_scm_policy_decision",
 ]

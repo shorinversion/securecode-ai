@@ -38,7 +38,10 @@ from securecode_ai.contracts import (
     RepositoryRevision,
     RunExecutionIdentity,
 )
-from securecode_ai.core.scm_run_state import SCMRunAdmissionReceipt
+from securecode_ai.core.scm_run_state import (
+    SCMRunAdmissionReceipt,
+    SCMRunPublicationReceipt,
+)
 
 from .scm_github_payload import GithubPayloadError, parse_github_payload
 from .scm_payload import (
@@ -287,6 +290,11 @@ class GithubWebhookAdapter:
             admission=receipt.admission,
             contribution_trust=metadata.contribution_trust,
         )
+
+    def authorize_publication(self, run_id: str) -> SCMRunPublicationReceipt:
+        """Refresh HEAD and authorize annotations for one admitted run."""
+
+        return self._adapter.authorize_publication(run_id)
 
 
 class GitlabWebhookAdapter:

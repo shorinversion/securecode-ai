@@ -27,6 +27,11 @@ from .gitlab_api_responses import (
 )
 from .gitlab_ci import GitlabExternalStatus, GitlabExternalStatusProjection
 from .gitlab_discussions import GitlabDiscussionProjection
+from .scm_diff import (
+    MAX_SCM_CHANGED_LINES,
+    SCMDiffError,
+    parse_unified_diff_changed_lines,
+)
 
 MAX_GITLAB_REQUEST_BYTES: Final = 16_384
 MAX_GITLAB_RESPONSE_BYTES: Final = 65_536
@@ -207,7 +212,70 @@ class GitlabRestAPI:
     ) -> tuple[str, ...]:
         """Return a verified first-parent chain for an exact straight comparison."""
 
-        _validate_identifiers(project_id, "lineage-read", "lineage-read")
+        response = self._compare_commit_document(
+            project_id=project_id,
+            base_sha=base_sha,
+            head_sha=head_sha,
+            operation="lineage",
+        )
+        return _verified_gitlab_commit_lineage(response, base_sha=base_sha, head_sha=head_sha)
+
+    def compare_commit_changed_lines(
+        self, *, project_id: str, base_sha: str, head_sha: str
+    ) -> tuple[tuple[str, int], ...]:
+        """Return complete changed HEAD locations for an exact straight comparison."""
+
+        response = self._compare_commit_document(
+            project_id=project_id,
+            base_sha=base_sha,
+            head_sha=head_sha,
+            operation="changed-lines",
+        )
+        _verified_gitlab_commit_lineage(response, base_sha=base_sha, head_sha=head_sha)
+        diffs = response.get("diffs")
+        if type(diffs) is not list or len(diffs) >= MAX_GITLAB_JSON_ITEMS:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        if base_sha == head_sha:
+            if diffs:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            return ()
+        if not diffs:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        changed: set[tuple[str, int]] = set()
+        seen_paths: set[str] = set()
+        for item in diffs:
+            if type(item) is not dict:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            new_path = item.get("new_path")
+            old_path = item.get("old_path")
+            if type(new_path) is not str or type(old_path) is not str:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            flags = ("new_file", "deleted_file", "renamed_file", "too_large", "collapsed")
+            if any(key in item and type(item[key]) is not bool for key in flags):
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            if item.get("too_large") is True or item.get("collapsed") is True:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            path = (
+                old_path
+                if new_path == "/dev/null" or item.get("deleted_file") is True
+                else new_path
+            )
+            if path in seen_paths:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+            seen_paths.add(path)
+            try:
+                parsed = parse_unified_diff_changed_lines(item.get("diff"), expected_path=path)
+            except (SCMDiffError, TypeError, ValueError):
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID) from None
+            changed.update(parsed)
+            if len(changed) > MAX_SCM_CHANGED_LINES:
+                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        return tuple(sorted(changed))
+
+    def _compare_commit_document(
+        self, *, project_id: str, base_sha: str, head_sha: str, operation: str
+    ) -> dict[str, object]:
+        _validate_identifiers(project_id, operation + "-read", operation + "-read")
         if any(
             type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None
             for value in (base_sha, head_sha)
@@ -221,39 +289,13 @@ class GitlabRestAPI:
             "GET",
             path,
             None,
-            "lineage-"
+            operation + "-"
             + hashlib.sha256(f"{project_id}\x00{base_sha}\x00{head_sha}".encode()).hexdigest(),
             expected_statuses=frozenset({200}),
         )
         if type(response) is not dict or response.get("compare_timeout") is not False:
             raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-        commits = response.get("commits")
-        latest = response.get("commit")
-        if type(commits) is not list or len(commits) > 250 or type(latest) is not dict:
-            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-        if base_sha == head_sha:
-            if commits or latest.get("id") != head_sha:
-                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-            return (base_sha,)
-        lineage = [base_sha]
-        for item in commits:
-            if type(item) is not dict:
-                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-            commit_sha = item.get("id")
-            parents = item.get("parent_ids")
-            if (
-                type(commit_sha) is not str
-                or re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None
-                or type(parents) is not list
-                or not parents
-                or parents[0] != lineage[-1]
-                or commit_sha in lineage
-            ):
-                raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-            lineage.append(commit_sha)
-        if lineage[-1] != head_sha or latest.get("id") != head_sha:
-            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-        return tuple(lineage)
+        return response
 
     def create_merge_request_discussion(
         self,
@@ -599,6 +641,38 @@ def _response_id(value: object) -> str:
     if identifier is None:
         raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
     return identifier
+
+
+def _verified_gitlab_commit_lineage(
+    response: dict[str, object], *, base_sha: str, head_sha: str
+) -> tuple[str, ...]:
+    commits = response.get("commits")
+    latest = response.get("commit")
+    if type(commits) is not list or len(commits) > 250 or type(latest) is not dict:
+        raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+    if base_sha == head_sha:
+        if commits or latest.get("id") != head_sha:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        return (base_sha,)
+    lineage = [base_sha]
+    for item in commits:
+        if type(item) is not dict:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        commit_sha = item.get("id")
+        parents = item.get("parent_ids")
+        if (
+            type(commit_sha) is not str
+            or re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None
+            or type(parents) is not list
+            or not parents
+            or parents[0] != lineage[-1]
+            or commit_sha in lineage
+        ):
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        lineage.append(commit_sha)
+    if lineage[-1] != head_sha or latest.get("id") != head_sha:
+        raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+    return tuple(lineage)
 
 
 def _status_id(

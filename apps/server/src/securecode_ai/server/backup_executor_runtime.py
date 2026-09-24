@@ -50,7 +50,12 @@ class SubprocessBackupExecutor:
         }
         if set(response) != expected:
             raise SubprocessProtocolError("BACKUP_RESPONSE_INVALID")
-        if response.get("schema_version") != 1 or response.get("status") != "ok":
+        if (
+            type(response.get("schema_version")) is not int
+            or response.get("schema_version") != 1
+            or type(response.get("status")) is not str
+            or response.get("status") != "ok"
+        ):
             raise SubprocessProtocolError("BACKUP_RESPONSE_INVALID")
         components = response.get("component_hashes")
         manifest = response.get("manifest_sha256")
@@ -60,6 +65,7 @@ class SubprocessBackupExecutor:
             type(components) is not list
             or not all(type(value) is str for value in components)
             or tuple(components) != record.component_hashes
+            or type(manifest) is not str
             or manifest != record.manifest_sha256
             or type(rpo) is not int
             or type(rto) is not int

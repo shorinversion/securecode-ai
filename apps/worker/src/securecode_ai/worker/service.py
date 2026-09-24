@@ -212,11 +212,36 @@ class WorkerService:
                 with suppress(Exception):
                     execution.cancel()
                 return await self._finish_command(active, requested_command)
-            for artifact in execution.artifacts:
-                artifact_job = active.job
+            for artifact_index, artifact in enumerate(execution.artifacts):
+                if artifact_index:
+                    active.heartbeat_attempt += 1
+                    artifact_heartbeat = await self._retry_call(
+                        active,
+                        lambda: self._client.heartbeat(
+                            active.job,
+                            attempt=active.heartbeat_attempt,
+                        ),
+                    )
+                    active.apply(
+                        version=artifact_heartbeat.version,
+                        command=artifact_heartbeat.command,
+                        renewed=True,
+                    )
+                    if artifact_heartbeat.command is not WorkerCommand.CONTINUE:
+                        with suppress(Exception):
+                            execution.cancel()
+                        return await self._finish_command(active, artifact_heartbeat.command)
+                artifact_deadline = lambda: (
+                    active.last_heartbeat + active.job.lease_seconds - 0.5
+                )
                 update = await self._retry_call(
                     active,
-                    partial(self._client.publish_artifact, artifact_job, artifact),
+                    lambda: self._client.publish_artifact(
+                        active.job,
+                        artifact,
+                        deadline=artifact_deadline,
+                    ),
+                    deadline=artifact_deadline,
                 )
                 active.apply(version=update.version, command=update.command)
                 if update.command is not WorkerCommand.CONTINUE:
@@ -258,15 +283,21 @@ class WorkerService:
             )
             return True
         except RetryableControlPlaneError:
-            return await self._finish_failure(
+            if await self._finish_failure(
                 active,
                 ProductExecutionError("result publication failed"),
                 resource_usage,
-            )
-        except (LeaseLost, ControlPlaneRejected):
+            ):
+                return True
+            return await self._finish_remote_command_if_requested(active)
+        except LeaseLost:
             with suppress(Exception):
                 execution.cancel()
-            return False
+            return await self._finish_remote_command_if_requested(active)
+        except ControlPlaneRejected:
+            with suppress(Exception):
+                execution.cancel()
+            return await self._finish_remote_command_if_requested(active)
 
     async def _monitor(
         self,
@@ -332,6 +363,22 @@ class WorkerService:
             if active.job.command is not WorkerCommand.CONTINUE
             else WorkerCommand.CANCEL
         )
+
+    async def _finish_remote_command_if_requested(self, active: _ActiveSession) -> bool:
+        if active.job.command is WorkerCommand.CONTINUE:
+            active.heartbeat_attempt += 1
+            try:
+                update = await asyncio.to_thread(
+                    self._client.heartbeat,
+                    active.job,
+                    attempt=active.heartbeat_attempt,
+                )
+            except (LeaseLost, ControlPlaneRejected, RetryableControlPlaneError):
+                return False
+            active.apply(version=update.version, command=update.command, renewed=True)
+        if active.job.command is WorkerCommand.CONTINUE:
+            return False
+        return await self._finish_command(active, active.job.command)
 
     async def _append_event(self, active: _ActiveSession, kind: str) -> WorkerCommand:
         active.sequence += 1
@@ -404,6 +451,8 @@ class WorkerService:
         self,
         active: _ActiveSession,
         operation: Callable[[], _T],
+        *,
+        deadline: Callable[[], float] | None = None,
     ) -> _T:
         backoff = _Backoff(0.25, min(5.0, active.job.lease_seconds / 4))
         while True:
@@ -411,6 +460,8 @@ class WorkerService:
                 return await asyncio.to_thread(operation)
             except RetryableControlPlaneError:
                 remaining = active.job.lease_seconds - (time.monotonic() - active.last_heartbeat)
+                if deadline is not None:
+                    remaining = min(remaining, deadline() - time.monotonic())
                 delay = backoff.next_delay()
                 if self._stopping.is_set() or remaining <= delay + 0.25:
                     raise
@@ -471,7 +522,14 @@ async def serve(
 
 async def _liveness_loop(data_dir: Path, stopping: asyncio.Event) -> None:
     while not stopping.is_set():
-        await asyncio.to_thread(touch_liveness, data_dir)
+        try:
+            await asyncio.to_thread(touch_liveness, data_dir)
+        except Exception:
+            # A dead heartbeat must stop the worker.  Letting this task fail
+            # independently would leave the worker processing jobs while the
+            # container health check can no longer observe it.
+            stopping.set()
+            return
         try:
             await asyncio.wait_for(stopping.wait(), timeout=5.0)
         except TimeoutError:

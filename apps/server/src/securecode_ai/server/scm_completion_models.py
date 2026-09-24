@@ -15,6 +15,7 @@ from securecode_ai.adapters.gitlab_ci import (
     GitlabExternalStatusProjection,
 )
 from securecode_ai.adapters.gitlab_writer import GitlabWriteTarget
+from securecode_ai.adapters.github_annotations import GithubAnnotationReceipt
 from securecode_ai.contracts import AuditRunOutcome
 from securecode_ai.core.scm_policy import (
     ScmPolicyDecision,
@@ -95,6 +96,21 @@ class GitHubCheckWriterPort(Protocol):
     ) -> object: ...
 
 
+class GitHubCommentWriterPort(Protocol):
+    def publish(
+        self,
+        *,
+        installation_id: str,
+        repository_id: str,
+        change_id: str,
+        expected_head: str,
+        external_id: str,
+        summary: str,
+        delivery_key: str,
+        annotation_receipt: GithubAnnotationReceipt | None = None,
+    ) -> object: ...
+
+
 class GitlabStatusWriterPort(Protocol):
     def publish_external_status(
         self,
@@ -106,6 +122,9 @@ class GitlabStatusWriterPort(Protocol):
 GithubHeadResolver = Callable[[str, str, str], str]
 GitlabHeadResolver = Callable[[str, str], str]
 PolicyDecisionResolver = Callable[[str, str, str], ScmPolicyDecision | None]
+GithubAnnotationReceiptResolver = Callable[
+    [SCMPublicationTarget, AuditRunOutcome], GithubAnnotationReceipt | None
+]
 
 
 def audit_outcome(worker_outcome: object) -> AuditRunOutcome:
@@ -147,11 +166,22 @@ def scm_publication_outcome(
         raise SCMCompletionError("SCM policy decision conflicts with the run")
     if decision.error_code is not None or not decision.publication_permitted:
         return AuditRunOutcome.INDETERMINATE
+    if audit is AuditRunOutcome.INDETERMINATE:
+        return AuditRunOutcome.INDETERMINATE
     if decision.mode is ScmPolicyMode.ADVISORY:
-        return audit
+        if (
+            decision.enforcement is not ScmPolicyEnforcement.ADVISORY
+            or decision.blocks_merge
+        ):
+            raise SCMCompletionError("SCM advisory policy decision is invalid")
+        return AuditRunOutcome.PASS if audit is AuditRunOutcome.FAIL else audit
     if decision.enforcement is ScmPolicyEnforcement.BLOCK:
+        if audit is not AuditRunOutcome.FAIL or not decision.blocks_merge:
+            raise SCMCompletionError("SCM blocking policy decision is invalid")
         return AuditRunOutcome.FAIL
     if decision.enforcement is ScmPolicyEnforcement.ALLOW:
+        if decision.blocks_merge:
+            raise SCMCompletionError("SCM allowing policy decision is invalid")
         return AuditRunOutcome.PASS
     return AuditRunOutcome.INDETERMINATE
 
@@ -232,7 +262,7 @@ def validate_head(value: object) -> str:
 
 def _summary(outcome: AuditRunOutcome) -> str:
     return {
-        AuditRunOutcome.PASS: "SecureCode AI policy passed for this revision.",
+        AuditRunOutcome.PASS: "SecureCode AI check completed for this revision.",
         AuditRunOutcome.FAIL: "SecureCode AI policy blocked this revision.",
         AuditRunOutcome.INDETERMINATE: "SecureCode AI policy could not reach a safe decision.",
         AuditRunOutcome.CANCELLED: "SecureCode AI analysis was cancelled.",
@@ -252,6 +282,7 @@ def _digest(value: dict[str, str]) -> str:
 
 __all__ = [
     "GitHubCheckWriterPort",
+    "GitHubCommentWriterPort",
     "GithubHeadResolver",
     "GitlabHeadResolver",
     "GitlabStatusWriterPort",

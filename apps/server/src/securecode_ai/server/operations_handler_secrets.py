@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import asdict
 from threading import RLock
@@ -33,6 +34,7 @@ SECRET_GRANT_SCOPE_SCHEMA_STATEMENTS: Final = (
         PRIMARY KEY (tenant_id, grant_id)
     )""",
 )
+_SCOPE_IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}\Z")
 
 
 class SecretGrantScopeRepository:
@@ -48,7 +50,17 @@ class SecretGrantScopeRepository:
         self._db.commit()
 
     def bind(self, *, tenant_id: str, grant_id: str, repository_id: str) -> None:
+        _validate_scope_identity(tenant_id, "tenant_id")
+        _validate_scope_identity(grant_id, "grant_id")
+        _validate_scope_identity(repository_id, "repository_id")
         with self._lock:
+            grant = self._db.execute(
+                """SELECT 1 FROM secret_grants
+                   WHERE tenant_id=? AND grant_id=?""",
+                (tenant_id, grant_id),
+            ).fetchone()
+            if grant is None:
+                raise SecretDenied("GRANT_UNKNOWN")
             row = self._db.execute(
                 """SELECT repository_id FROM secret_grant_repository_scopes
                    WHERE tenant_id=? AND grant_id=?""",
@@ -71,13 +83,20 @@ class SecretGrantScopeRepository:
                 raise SecretDenied("GRANT_SCOPE_CONFLICT") from failure
 
     def repository(self, *, tenant_id: str, grant_id: str) -> str | None:
+        _validate_scope_identity(tenant_id, "tenant_id")
+        _validate_scope_identity(grant_id, "grant_id")
         with self._lock:
             row = self._db.execute(
                 """SELECT repository_id FROM secret_grant_repository_scopes
                    WHERE tenant_id=? AND grant_id=?""",
                 (tenant_id, grant_id),
             ).fetchone()
-        return None if row is None else str(row[0])
+        if row is None:
+            return None
+        repository_id = row[0]
+        if type(repository_id) is not str or _SCOPE_IDENTIFIER.fullmatch(repository_id) is None:
+            raise SecretDenied("GRANT_SCOPE_INVALID")
+        return repository_id
 
 
 class SecretOperationsHandler:
@@ -103,6 +122,17 @@ class SecretOperationsHandler:
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if "admin" not in request.identity.roles:
             return FORBIDDEN
+        if (
+            not self._provider_available
+            and request.action in {"secrets.grant", "secrets.rotate", "secrets.revoke"}
+        ):
+            return _provider_unavailable()
+        if self._provider_available and request.action.startswith("secrets."):
+            try:
+                self._service.expire(tenant_id=request.identity.tenant_id)
+            except SecretDenied:
+                if request.action != "secrets.read":
+                    return _provider_unavailable()
         handlers = {
             "secrets.grant": self._grant,
             "secrets.read": self._read,
@@ -141,6 +171,8 @@ class SecretOperationsHandler:
             )
         except SecretDenied as failure:
             return _secret_failure(failure)
+        if receipt.state != "ACTIVE":
+            return CONFLICT
         try:
             self._scopes.bind(
                 tenant_id=request.identity.tenant_id,
@@ -213,6 +245,8 @@ class SecretOperationsHandler:
             )
         except SecretDenied as failure:
             return _secret_failure(failure)
+        if receipt.state != "ACTIVE":
+            return CONFLICT
         try:
             self._scopes.bind(
                 tenant_id=request.identity.tenant_id,
@@ -283,7 +317,11 @@ def _receipt_document(receipt: SecretReceipt, repository_id: str) -> dict[str, o
 
 
 def _secret_failure(failure: SecretDenied) -> ServiceResponse:
-    if failure.code in {"PROVIDER_UNAVAILABLE", "INVALID_PROVIDER_LEASE"}:
+    if failure.code in {
+        "PROVIDER_UNAVAILABLE",
+        "INVALID_PROVIDER_LEASE",
+        "EXPIRED_PROVIDER_LEASE",
+    }:
         return _provider_unavailable()
     if failure.code in {"VERSION_CONFLICT", "ROTATION_PRECONDITION_FAILED"}:
         return PRECONDITION_FAILED
@@ -298,6 +336,11 @@ def _provider_unavailable() -> ServiceResponse:
         "SECRET_PROVIDER_UNAVAILABLE",
         "secret provider is unavailable",
     )
+
+
+def _validate_scope_identity(value: object, field: str) -> None:
+    if type(value) is not str or _SCOPE_IDENTIFIER.fullmatch(value) is None:
+        raise SecretDenied(f"INVALID_{field.upper()}")
 
 
 __all__ = [

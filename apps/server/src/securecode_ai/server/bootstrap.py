@@ -77,6 +77,8 @@ from .scm_completion import (
     SCMCompletionPublicationHandler,
     SCMCompletionPublicationService,
 )
+from .scm_annotations import GithubAnnotationReceiptResolver
+from .scm_policy_registry import load_scm_policy_registry
 from .scm_publication_store import SqliteSCMPublicationStore
 from .scm_resolution import SCMRunResolutionHandler
 from .scm_runtime import build_scm_handlers
@@ -195,13 +197,25 @@ class RoleAuthorization:
         action: str,
         repository_id: str | None,
     ) -> bool:
-        if type(identity) is not VerifiedIdentity or type(action) is not str:
+        if (
+            type(identity) is not VerifiedIdentity
+            or type(action) is not str
+            or not action
+            or type(identity.roles) is not frozenset
+            or not identity.roles
+            or not all(type(role) is str and role in self._ROLE_ACTIONS for role in identity.roles)
+            or type(identity.repository_ids) is not frozenset
+            or not all(type(value) is str and value for value in identity.repository_ids)
+            or (repository_id is not None and (type(repository_id) is not str or not repository_id))
+        ):
+            return False
+        if identity.workload and not identity.roles.issubset(
+            {"worker", "scm", "artifact_uploader"}
+        ):
             return False
         allowed: set[str] = set()
         for role in identity.roles:
             allowed.update(self._ROLE_ACTIONS.get(role, ()))
-        if identity.workload and identity.roles.isdisjoint({"worker", "scm", "artifact_uploader"}):
-            return False
         if "*" in allowed:
             return True
         if repository_id is not None and repository_id not in identity.repository_ids:
@@ -258,6 +272,12 @@ def build_local_app(
     if _ID.fullmatch(scm_tenant) is None:
         raise ValueError("SCM tenant is invalid")
     scm = build_scm_handlers(values, tenant_id=scm_tenant, connection=connection)
+    policy_registry_path = values.get("SECURECODE_SCM_POLICY_REGISTRY_FILE")
+    policy_registry = (
+        None
+        if policy_registry_path is None
+        else load_scm_policy_registry(Path(policy_registry_path))
+    )
     webhook_identity = VerifiedIdentity(
         subject_id="scm-webhook",
         tenant_id=scm_tenant,
@@ -348,15 +368,36 @@ def build_local_app(
             uploaded_artifacts=LocalArtifactUploadVerifier(data_dir / "artifacts"),
             baseline_store=DurableBaselineStore(connection),
             lineage_resolver=scm.lineage_resolver,
+            changed_lines_resolver=scm.changed_lines_resolver,
+            policy_resolver=policy_registry,
         ),
     )
     if scm.run_state is not None:
+        github_annotation_receipt = (
+            GithubAnnotationReceiptResolver(
+                connection=connection,
+                artifact_root=data_dir / "artifacts",
+                baseline_store=DurableBaselineStore(connection),
+                lineage_resolver=scm.lineage_resolver,
+                changed_lines_resolver=scm.changed_lines_resolver,
+                authorizer=scm.github,
+            )
+            if (
+                scm.github is not None
+                and scm.github_comments is not None
+                and scm.lineage_resolver is not None
+                and scm.changed_lines_resolver is not None
+            )
+            else None
+        )
         worker_handler = SCMCompletionPublicationHandler(
             publisher=SCMCompletionPublicationService(
                 publications=scm_publications,
                 run_state=scm.run_state,
                 github_head=scm.github_head,
                 github_writer=scm.github_writer,
+                github_comment_writer=scm.github_comments,
+                github_annotation_receipt=github_annotation_receipt,
                 gitlab_head=scm.gitlab_head,
                 gitlab_writer=scm.gitlab_writer,
                 policy_decisions=lambda tenant_id, run_id, identity_hash: (
@@ -436,9 +477,14 @@ def build_local_app(
         )
         if not available
     }
-    available_capabilities = (
-        (*CAPABILITIES, "oidc-login") if oidc_login is not None else CAPABILITIES
+    scm_webhooks_available = scm.github is not None or scm.gitlab is not None
+    available_capabilities = tuple(
+        capability
+        for capability in CAPABILITIES
+        if capability != "scm-webhooks" or scm_webhooks_available
     )
+    if oidc_login is not None:
+        available_capabilities += ("oidc-login",)
     return create_app(
         identities=identity_verifier,
         oidc_login=oidc_login,

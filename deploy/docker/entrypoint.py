@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import os
+import signal
 import stat
+import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Callable, MutableMapping
+from contextlib import suppress
 from pathlib import Path
 from typing import cast
 
@@ -24,6 +28,75 @@ def prepare() -> None:
         _materialize_tls_private_key(directories["SECURECODE_DATA_DIR"])
     except (OSError, ValueError):
         raise SystemExit(64) from None
+
+
+_GATEWAY_SECRET_ENV = frozenset(
+    {
+        "SECURECODE_WORKER_TOKEN",
+        "SECURECODE_WORKER_TOKEN_FILE",
+        "SECURECODE_BOOTSTRAP_ADMIN_TOKEN",
+        "SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE",
+        "SECURECODE_CONTROL_PLANE_TOKEN",
+        "SECURECODE_TLS_KEY_FILE",
+    }
+)
+
+
+def _gateway_wait_seconds() -> int:
+    timeout_text = os.environ.get("SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS", "300")
+    if (
+        not timeout_text.isascii()
+        or not timeout_text.isdecimal()
+        or len(timeout_text) > 3
+        or not 1 <= int(timeout_text) <= 600
+    ):
+        raise ValueError("local provider readiness configuration is invalid")
+    return int(timeout_text)
+
+
+def _gateway_environment() -> dict[str, str]:
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key not in _GATEWAY_SECRET_ENV
+        and not key.endswith(("_TOKEN", "_TOKEN_FILE"))
+        and "SECRET" not in key.upper()
+    }
+
+
+def _start_gateway() -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        [sys.executable, "-m", "securecode_ai.worker.provider_gateway"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=None,
+        env=_gateway_environment(),
+    )
+
+
+def _wait_for_gateway(provider: subprocess.Popen[bytes], timeout_seconds: int) -> None:
+    """Keep the worker from claiming runs before its approved model is ready."""
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if provider.poll() is not None:
+            raise OSError
+        remaining = deadline - time.monotonic()
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "securecode_ai.worker.provider_gateway", "--ready"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                env=_gateway_environment(),
+                timeout=min(35.0, remaining),
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout == b"ready\n":
+                return
+        except (OSError, subprocess.SubprocessError):
+            pass
+        time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+    raise OSError("approved local provider readiness timed out")
 
 
 def _prepare_private_directory(name: str) -> Path:
@@ -141,8 +214,90 @@ def _chmod_private(descriptor: int, path: Path) -> None:
     path.chmod(0o600)
 
 
+def _worker_mode(command: tuple[str, ...]) -> bool:
+    return (
+        len(command) == 3
+        and Path(command[0]).name.lower().startswith("python")
+        and command[1:] == ("-m", "securecode_ai.worker.service")
+    )
+
+
+def _forward_signal(processes: tuple[subprocess.Popen[bytes], ...], signum: int) -> None:
+    for process in processes:
+        if process.poll() is None:
+            try:
+                process.send_signal(signum)
+            except OSError:
+                pass
+
+
+def _stop_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.terminate()
+        process.wait(timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        with suppress(OSError):
+            process.kill()
+        with suppress(OSError, subprocess.TimeoutExpired):
+            process.wait(timeout=2)
+
+
+def _returncode(value: int | None) -> int:
+    if value is None:
+        return 1
+    if value < 0:
+        return min(255, 128 - value)
+    return min(255, value)
+
+
+def _run_worker(command: tuple[str, ...]) -> int:
+    provider = _start_gateway()
+    worker: subprocess.Popen[bytes] | None = None
+    processes: tuple[subprocess.Popen[bytes], ...] = (provider,)
+    previous_handlers = {
+        signal_number: signal.getsignal(signal_number)
+        for signal_number in (signal.SIGTERM, signal.SIGINT)
+    }
+
+    def handle_signal(signum: int, frame: object) -> None:
+        del frame
+        _forward_signal(processes, signum)
+
+    try:
+        for signal_number in previous_handlers:
+            signal.signal(signal_number, handle_signal)
+        _wait_for_gateway(provider, _gateway_wait_seconds())
+        worker = subprocess.Popen(command, stdin=None, stdout=None, stderr=None)
+        processes = (provider, worker)
+        try:
+            while True:
+                worker_code = worker.poll()
+                provider_code = provider.poll()
+                if worker_code is not None:
+                    return _returncode(worker_code)
+                if provider_code is not None:
+                    _stop_process(worker)
+                    return _returncode(provider_code) or 1
+                time.sleep(0.1)
+        finally:
+            for signal_number, handler in previous_handlers.items():
+                signal.signal(signal_number, handler)
+    finally:
+        if worker is not None:
+            _stop_process(worker)
+        _stop_process(provider)
+
+
 if __name__ == "__main__":
     prepare()
     if len(sys.argv) < 2:
         raise SystemExit(64)
-    os.execvp(sys.argv[1], sys.argv[1:])
+    command = tuple(sys.argv[1:])
+    if _worker_mode(command):
+        try:
+            raise SystemExit(_run_worker(command))
+        except (OSError, ValueError):
+            raise SystemExit(75) from None
+    os.execvp(command[0], command)

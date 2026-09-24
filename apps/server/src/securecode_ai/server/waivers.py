@@ -392,7 +392,12 @@ def _require_relative_path(value: str) -> str:
     if not isinstance(value, str) or not 1 <= len(value) <= 1024:
         raise ValueError("waiver path is invalid")
     normalized = value.replace("\\", "/")
-    if normalized.startswith("/") or ".." in normalized.split("/") or "\x00" in value:
+    if (
+        normalized.startswith("/")
+        or re.match(r"^[A-Za-z]:", normalized) is not None
+        or ".." in normalized.split("/")
+        or "\x00" in value
+    ):
         raise ValueError("waiver path must be repository-relative")
     return value
 

@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import re
 import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -19,6 +20,9 @@ from securecode_ai.contracts import ArtifactRef
 from .ports import ServiceRequest, ServiceResponse
 
 _PURPOSES: Final = frozenset({"audit-report", "audit-run", "evidence-graph", "sarif-report"})
+_IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}\Z")
+_IDEMPOTENCY_KEY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
+_SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class ArtifactAuthorizationDenied(Exception):
@@ -201,6 +205,7 @@ class SqliteArtifactAuthorizationStore:
         *,
         tenant_id: str,
         worker_id: str,
+        session_id: str,
         repository_id: str,
         run_id: str,
         execution_identity_hash: str,
@@ -211,16 +216,47 @@ class SqliteArtifactAuthorizationStore:
         request_sha256: str,
     ) -> ArtifactUploadAuthorization:
         if (
-            artifact_ref.tenant_id != tenant_id
+            not _valid_identifier(tenant_id)
+            or not _valid_identifier(worker_id)
+            or not _valid_identifier(session_id)
+            or not _valid_identifier(repository_id)
+            or not _valid_identifier(run_id)
+            or not _valid_digest(execution_identity_hash)
+            or not isinstance(artifact_ref, ArtifactRef)
+            or artifact_ref.tenant_id != tenant_id
+            or type(purpose) is not str
             or purpose not in _PURPOSES
+            or type(method) is not str
             or method != "PUT"
+            or type(artifact_ref.size_bytes) is not int
             or artifact_ref.size_bytes < 1
-            or len(request_sha256) != 64
+            or type(idempotency_key) is not str
+            or _IDEMPOTENCY_KEY.fullmatch(idempotency_key) is None
+            or not _valid_digest(request_sha256)
         ):
             raise ArtifactAuthorizationDenied()
         cursor = self._connection.cursor()
         try:
             cursor.execute("BEGIN IMMEDIATE")
+            now = _utc(self._now())
+            queue = cursor.execute(
+                """SELECT r.repository_id, r.execution_identity_hash, r.state,
+                          q.lease_owner, q.lease_expires_at, q.session_id, q.terminal
+                   FROM audit_runs AS r
+                   JOIN worker_run_queue AS q
+                     ON q.tenant_id=r.tenant_id AND q.run_id=r.run_id
+                   WHERE r.tenant_id=? AND r.run_id=?""",
+                (tenant_id, run_id),
+            ).fetchone()
+            if not _active_session_matches(
+                queue,
+                worker_id=worker_id,
+                session_id=session_id,
+                repository_id=repository_id,
+                execution_identity_hash=execution_identity_hash,
+                now=now,
+            ):
+                raise ArtifactAuthorizationDenied()
             replay = cursor.execute(
                 """SELECT * FROM artifact_upload_authorizations
                    WHERE tenant_id=? AND idempotency_key=?""",
@@ -233,29 +269,17 @@ class SqliteArtifactAuthorizationStore:
                 self._verify(authorization)
                 if authorization.expires_at <= _utc(self._now()):
                     raise ArtifactAuthorizationDenied()
+                if replay["idempotency_key"] != _session_authorization_key(
+                    session_id, artifact_ref.content_sha256, purpose
+                ):
+                    raise ArtifactAuthorizationDenied()
                 self._connection.commit()
                 return authorization
 
-            now = _utc(self._now())
             if artifact_ref.expires_at is not None and artifact_ref.expires_at <= now:
                 raise ArtifactAuthorizationDenied()
-            queue = cursor.execute(
-                """SELECT r.repository_id, r.execution_identity_hash, r.state,
-                          q.lease_owner, q.lease_expires_at, q.terminal
-                   FROM audit_runs AS r
-                   JOIN worker_run_queue AS q
-                     ON q.tenant_id=r.tenant_id AND q.run_id=r.run_id
-                   WHERE r.tenant_id=? AND r.run_id=?""",
-                (tenant_id, run_id),
-            ).fetchone()
-            if (
-                queue is None
-                or queue["repository_id"] != repository_id
-                or queue["execution_identity_hash"] != execution_identity_hash
-                or queue["state"] != "RUNNING"
-                or queue["lease_owner"] != worker_id
-                or bool(queue["terminal"])
-                or _timestamp(queue["lease_expires_at"]) <= now
+            if idempotency_key != _session_authorization_key(
+                session_id, artifact_ref.content_sha256, purpose
             ):
                 raise ArtifactAuthorizationDenied()
             authorization_id = (
@@ -301,21 +325,13 @@ class SqliteArtifactAuthorizationStore:
                 receipt_signature="",
             )
             signature = self._signer.sign(_signing_bytes(unsigned))
-            headers = {
-                "content-length": str(artifact_ref.size_bytes),
-                "x-securecode-authorization-id": authorization_id,
-                "x-securecode-content-sha256": artifact_ref.content_sha256,
-                "x-securecode-execution-identity-hash": execution_identity_hash,
-                "x-securecode-purpose": purpose,
-                "x-securecode-receipt-signature": signature,
-                "x-securecode-run-id": run_id,
-                "x-securecode-tenant-id": tenant_id,
-                "x-securecode-worker-id": worker_id,
-            }
             authorization = replace(
                 unsigned,
-                headers=headers,
                 receipt_signature=signature,
+            )
+            authorization = replace(
+                authorization,
+                headers=_authorization_headers(authorization),
             )
             cursor.execute(
                 """INSERT INTO artifact_upload_authorizations
@@ -341,7 +357,7 @@ class SqliteArtifactAuthorizationStore:
                     purpose,
                     method,
                     upload_url,
-                    _canonical(headers),
+                    _canonical(dict(authorization.headers)),
                     now.isoformat(),
                     expires.isoformat(),
                     self._signer.key_id,
@@ -368,8 +384,12 @@ class SqliteArtifactAuthorizationStore:
         purpose: str,
     ) -> ArtifactUploadAuthorization:
         row = self._connection.execute(
-            """SELECT * FROM artifact_upload_authorizations
-               WHERE tenant_id=? AND authorization_id=?""",
+            """SELECT a.*, r.state, q.lease_owner, q.lease_expires_at,
+                      q.session_id AS active_session_id, q.terminal
+               FROM artifact_upload_authorizations AS a
+               JOIN audit_runs AS r ON r.tenant_id=a.tenant_id AND r.run_id=a.run_id
+               JOIN worker_run_queue AS q ON q.tenant_id=a.tenant_id AND q.run_id=a.run_id
+               WHERE a.tenant_id=? AND a.authorization_id=?""",
             (tenant_id, authorization_id),
         ).fetchone()
         if row is None:
@@ -384,7 +404,20 @@ class SqliteArtifactAuthorizationStore:
         ) != (run_id, execution_identity_hash, content_sha256, size_bytes, purpose):
             raise ArtifactAuthorizationDenied()
         self._verify(authorization)
-        if authorization.expires_at <= _utc(self._now()):
+        now = _utc(self._now())
+        if (
+            authorization.expires_at <= now
+            or row["state"] != "RUNNING"
+            or bool(row["terminal"])
+            or row["lease_owner"] != authorization.worker_id
+            or not isinstance(row["active_session_id"], str)
+            or row["lease_expires_at"] is None
+            or _timestamp(row["lease_expires_at"]) <= now
+            or row["idempotency_key"]
+            != _session_authorization_key(
+                row["active_session_id"], authorization.content_sha256, authorization.purpose
+            )
+        ):
             raise ArtifactAuthorizationDenied()
         return authorization
 
@@ -416,6 +449,7 @@ class SignedArtifactAuthorizationHandler:
                 document.get(name)
                 for name in (
                     "worker_id",
+                    "session_id",
                     "repository_id",
                     "run_id",
                     "execution_identity_hash",
@@ -428,12 +462,13 @@ class SignedArtifactAuthorizationHandler:
             authorization = self._store.issue(
                 tenant_id=request.identity.tenant_id,
                 worker_id=str(values[0]),
-                repository_id=str(values[1]),
-                run_id=str(values[2]),
-                execution_identity_hash=str(values[3]),
+                session_id=str(values[1]),
+                repository_id=str(values[2]),
+                run_id=str(values[3]),
+                execution_identity_hash=str(values[4]),
                 artifact_ref=artifact,
-                purpose=str(values[4]),
-                method=str(values[5]),
+                purpose=str(values[5]),
+                method=str(values[6]),
                 idempotency_key=request.idempotency_key,
                 request_sha256=hashlib.sha256(request.raw_body).hexdigest(),
             )
@@ -449,7 +484,7 @@ def _row_authorization(row: sqlite3.Row) -> ArtifactUploadAuthorization:
             isinstance(name, str) and isinstance(value, str) for name, value in headers.items()
         ):
             raise ArtifactAuthorizationDenied()
-        return ArtifactUploadAuthorization(
+        authorization = ArtifactUploadAuthorization(
             authorization_id=row["authorization_id"],
             tenant_id=row["tenant_id"],
             worker_id=row["worker_id"],
@@ -469,12 +504,31 @@ def _row_authorization(row: sqlite3.Row) -> ArtifactUploadAuthorization:
             signer_key_id=row["signer_key_id"],
             receipt_signature=row["receipt_signature"],
         )
+        if dict(authorization.headers) != _authorization_headers(authorization):
+            raise ArtifactAuthorizationDenied()
+        return authorization
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         raise ArtifactAuthorizationDenied() from None
 
 
 def _signing_bytes(authorization: ArtifactUploadAuthorization) -> bytes:
     return _canonical(authorization.signing_document()).encode("ascii")
+
+
+def _authorization_headers(
+    authorization: ArtifactUploadAuthorization,
+) -> dict[str, str]:
+    return {
+        "content-length": str(authorization.size_bytes),
+        "x-securecode-authorization-id": authorization.authorization_id,
+        "x-securecode-content-sha256": authorization.content_sha256,
+        "x-securecode-execution-identity-hash": authorization.execution_identity_hash,
+        "x-securecode-purpose": authorization.purpose,
+        "x-securecode-receipt-signature": authorization.receipt_signature,
+        "x-securecode-run-id": authorization.run_id,
+        "x-securecode-tenant-id": authorization.tenant_id,
+        "x-securecode-worker-id": authorization.worker_id,
+    }
 
 
 def _upload_url(value: str) -> None:
@@ -535,6 +589,46 @@ def _denied_response() -> ServiceResponse:
             }
         },
     )
+
+
+def _valid_identifier(value: object) -> bool:
+    return type(value) is str and _IDENTIFIER.fullmatch(value) is not None
+
+
+def _valid_digest(value: object) -> bool:
+    return type(value) is str and _SHA256.fullmatch(value) is not None
+
+
+def _active_session_matches(
+    queue: sqlite3.Row | None,
+    *,
+    worker_id: str,
+    session_id: str,
+    repository_id: str,
+    execution_identity_hash: str,
+    now: datetime,
+) -> bool:
+    if queue is None:
+        return False
+    try:
+        return (
+            queue["repository_id"] == repository_id
+            and queue["execution_identity_hash"] == execution_identity_hash
+            and queue["state"] == "RUNNING"
+            and queue["lease_owner"] == worker_id
+            and queue["session_id"] == session_id
+            and not bool(queue["terminal"])
+            and _timestamp(queue["lease_expires_at"]) > now
+        )
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _session_authorization_key(session_id: str, content_sha256: str, purpose: str) -> str:
+    material = "\x00".join(
+        ("authorize", session_id, content_sha256, purpose)
+    ).encode("utf-8")
+    return "worker-" + hashlib.sha256(material).hexdigest()
 
 
 __all__ = [

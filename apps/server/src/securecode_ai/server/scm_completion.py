@@ -22,6 +22,8 @@ from .ports import (
 )
 from .scm_completion_models import (
     GitHubCheckWriterPort,
+    GitHubCommentWriterPort,
+    GithubAnnotationReceiptResolver,
     GithubHeadResolver,
     GitlabHeadResolver,
     GitlabStatusWriterPort,
@@ -46,6 +48,8 @@ class SCMCompletionPublicationService:
     """Publish one policy-evaluated provider status for an exact durable run binding."""
 
     __slots__ = (
+        "_github_comment_writer",
+        "_github_annotation_receipt",
         "_github_head",
         "_github_writer",
         "_gitlab_head",
@@ -62,6 +66,8 @@ class SCMCompletionPublicationService:
         run_state: SCMRunStateCompletionPort,
         github_head: GithubHeadResolver | None = None,
         github_writer: GitHubCheckWriterPort | None = None,
+        github_comment_writer: GitHubCommentWriterPort | None = None,
+        github_annotation_receipt: GithubAnnotationReceiptResolver | None = None,
         gitlab_head: GitlabHeadResolver | None = None,
         gitlab_writer: GitlabStatusWriterPort | None = None,
         policy_decisions: PolicyDecisionResolver | None = None,
@@ -71,14 +77,22 @@ class SCMCompletionPublicationService:
             or run_state is None
             or (github_head is None) is not (github_writer is None)
             or (gitlab_head is None) is not (gitlab_writer is None)
+            or (github_comment_writer is not None and github_writer is None)
+            or (github_annotation_receipt is not None and github_comment_writer is None)
             or (github_head is not None and not callable(github_head))
             or (gitlab_head is not None and not callable(gitlab_head))
             or (policy_decisions is not None and not callable(policy_decisions))
+            or (
+                github_annotation_receipt is not None
+                and not callable(github_annotation_receipt)
+            )
         ):
             raise TypeError("SCM completion dependency is missing")
         self._publications = publications
         self._run_state = run_state
         self._policy_decisions = policy_decisions
+        self._github_comment_writer = github_comment_writer
+        self._github_annotation_receipt = github_annotation_receipt
         self._github_head = github_head
         self._github_writer = github_writer
         self._gitlab_head = gitlab_head
@@ -309,6 +323,32 @@ class SCMCompletionPublicationService:
                 status = _attribute_value(receipt, "status")
                 if status == "WRITTEN":
                     _github_remote_check_id(receipt)
+                    if self._github_comment_writer is not None:
+                        projection = github_projection(target, outcome)
+                        output = projection.get("output")
+                        summary = output.get("summary") if type(output) is dict else None
+                        if type(summary) is not str:
+                            raise SCMCompletionError("SCM comment projection is invalid")
+                        annotation_receipt = (
+                            None
+                            if self._github_annotation_receipt is None
+                            else self._github_annotation_receipt(target, outcome)
+                        )
+                        comment = self._github_comment_writer.publish(
+                            installation_id=target.installation_id,
+                            repository_id=target.repository_id,
+                            change_id=target.change_id,
+                            expected_head=target.head_sha,
+                            external_id=identifier,
+                            summary=summary,
+                            delivery_key=identifier + ":summary",
+                            annotation_receipt=annotation_receipt,
+                        )
+                        comment_status = _attribute_value(comment, "status")
+                        if comment_status == "STALE_SUPPRESSED":
+                            return "STALE", validate_head(self._current_head(target))
+                        if comment_status != "WRITTEN":
+                            return "FAILED", None
                     return "WRITTEN", None
                 if status == "STALE_SUPPRESSED":
                     return "STALE", None

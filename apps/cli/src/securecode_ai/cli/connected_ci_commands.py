@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import time
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import TextIO
 
 from securecode_ai.contracts import CliCommand, CliErrorCode, CliExitCode
@@ -33,10 +36,17 @@ def run_connect_command(
     """Submit one exact revision to the control plane and print its reference."""
 
     try:
-        _target, wait, fresh = parse_connected_arguments(tokens[1:])
+        target, wait, fresh = parse_connected_arguments(tokens[1:])
         settings = settings_from_environment(environment, fresh=fresh)
+        if target is not None:
+            _require_target_head(target, settings.head_sha)
         execute = run_connected if run_executor is None else run_executor
-        receipt = execute(settings, poll_status=wait, sleeper=time.sleep)
+        receipt = execute(
+            settings,
+            poll_status=wait,
+            attempts=40 if wait else 1,
+            sleeper=time.sleep,
+        )
     except ConnectedCliError as error:
         stderr.write("connected run was rejected (" + error.code.value + ")" + chr(10))
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
@@ -45,6 +55,42 @@ def run_connect_command(
         return int(CliExitCode.OPERATIONAL_ERROR)
     render_connected_receipt(receipt, stdout)
     return int(CliExitCode.COMPLETED)
+
+
+def _require_target_head(target: Path, expected_head: str) -> None:
+    """Ensure an optional local checkout is exactly the submitted revision."""
+
+    try:
+        path = target.resolve(strict=True)
+        if not path.is_dir():
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        environment = {
+            name: os.environ[name]
+            for name in ("PATH", "PATHEXT", "SYSTEMROOT", "WINDIR")
+            if name in os.environ
+        }
+        environment["GIT_CONFIG_GLOBAL"] = os.devnull
+        environment["GIT_CONFIG_NOSYSTEM"] = "1"
+        environment["GIT_OPTIONAL_LOCKS"] = "0"
+        environment["GIT_TERMINAL_PROMPT"] = "0"
+        result = subprocess.run(
+            ("git", "rev-parse", "--verify", "HEAD"),
+            cwd=path,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=environment,
+            shell=False,
+            check=False,
+            timeout=5,
+        )
+        actual_head = result.stdout.decode("ascii", "strict").strip()
+    except ConnectedCliError:
+        raise
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION) from None
+    if result.returncode != 0 or actual_head != expected_head:
+        raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
 
 
 def run_ci_command(

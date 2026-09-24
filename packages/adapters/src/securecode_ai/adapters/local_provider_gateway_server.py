@@ -60,6 +60,34 @@ def create_gateway_server(
         def log_message(self, format: str, *args: object) -> None:
             return
 
+        def do_GET(self) -> None:
+            self.connection.settimeout(policy.timeout_seconds)
+            if (
+                self.path != "/health/ready"
+                or self.headers.get_all("Transfer-Encoding")
+                or self.headers.get_all("Content-Length")
+            ):
+                self._health_reply(404, b'{"ready":false}')
+                return
+            ready = getattr(dispatcher, "ready", None)
+            try:
+                result = ready(timeout_seconds=policy.timeout_seconds) if callable(ready) else False
+            except Exception:
+                result = False
+            self._health_reply(
+                200 if result is True else 503,
+                b'{"ready":true}' if result is True else b'{"ready":false}',
+            )
+
+        def _health_reply(self, status: int, body: bytes) -> None:
+            self.close_connection = True
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_POST(self) -> None:
             self.connection.settimeout(policy.timeout_seconds)
             if self.path != "/v1/chat/completions" or self.headers.get_all("Transfer-Encoding"):

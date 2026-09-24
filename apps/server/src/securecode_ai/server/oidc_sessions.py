@@ -7,13 +7,13 @@ import heapq
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Protocol
 
 from .identity import Principal
 from .oidc import OidcDenied, OidcReceipt
-from .sessions import SessionStore
+from .sessions import SessionReceipt, SessionStore
 
 _DEFAULT_MAX_ENTRIES = 100_000
 _MAX_NONCE_LENGTH = 1_024
@@ -112,6 +112,46 @@ class SqliteOidcLoginState:
                 _rollback_savepoint(self._connection, "oidc_state_consume")
                 raise OidcDenied() from None
 
+    def purge_expired(self, *, now: int, max_items: int = 100) -> int:
+        """Delete a bounded batch of expired state and nonce hashes."""
+
+        if (
+            type(now) is not int
+            or now < 0
+            or type(max_items) is not int
+            or not 1 <= max_items <= 10_000
+        ):
+            raise OidcDenied()
+        with self._lock:
+            try:
+                self._connection.execute("SAVEPOINT oidc_state_purge")
+                changed = self._connection.execute(
+                    """DELETE FROM oidc_login_states
+                       WHERE state_hash IN (
+                           SELECT state_hash FROM oidc_login_states
+                           WHERE expires_at<=? ORDER BY expires_at, state_hash LIMIT ?
+                       )""",
+                    (now, max_items),
+                ).rowcount
+                self._connection.execute("RELEASE oidc_state_purge")
+                return changed
+            except Exception:
+                _rollback_savepoint(self._connection, "oidc_state_purge")
+                raise OidcDenied() from None
+
+    def has_expired(self, *, now: int) -> bool:
+        if type(now) is not int or now < 0:
+            raise OidcDenied()
+        with self._lock:
+            try:
+                row = self._connection.execute(
+                    "SELECT 1 FROM oidc_login_states WHERE expires_at<=? LIMIT 1",
+                    (now,),
+                ).fetchone()
+                return row is not None
+            except Exception:
+                raise OidcDenied() from None
+
     def charge_attempt(self, *, bucket: str, now: int, limit: int, window_seconds: int) -> None:
         if (
             type(bucket) is not str
@@ -182,13 +222,43 @@ class OpaqueSessionIssuer:
     def issue(self, principal: Principal, *, token_expires_at: int) -> IssuedOidcSession:
         if type(principal) is not Principal or type(token_expires_at) is not int:
             raise OidcDenied()
-        remaining = token_expires_at - int(datetime.now(UTC).timestamp()) - 1
+        now = datetime.now(UTC)
+        remaining = token_expires_at - int(now.timestamp()) - 1
         if not 1 <= remaining <= 86_400:
             raise OidcDenied()
-        token, session = self._store.issue_session(
-            principal,
-            lifetime_seconds=min(3600, remaining),
-        )
+        try:
+            token, session = self._store.issue_session(
+                principal,
+                lifetime_seconds=min(3600, remaining),
+            )
+        except Exception:
+            raise OidcDenied() from None
+        token_expiry = datetime.fromtimestamp(token_expires_at, UTC)
+        session_expiry = session.expires_at if type(session) is SessionReceipt else None
+        expiry_is_valid = False
+        if isinstance(session_expiry, datetime):
+            try:
+                expiry_is_valid = session_expiry.utcoffset() is not None
+            except Exception:
+                expiry_is_valid = False
+        if (
+            type(token) is not str
+            or not 32 <= len(token) <= 8192
+            or not token.isascii()
+            or type(session) is not SessionReceipt
+            or session.subject_id != principal.subject_id
+            or session.tenant_id != principal.tenant_id
+            or not expiry_is_valid
+            or session_expiry is None
+            or not now < session_expiry <= token_expiry
+            or session_expiry > now + timedelta(seconds=3600)
+        ):
+            if type(token) is str and token.isascii() and 1 <= len(token) <= 8192:
+                try:
+                    self._store.revoke_session(token)
+                except Exception:
+                    pass
+            raise OidcDenied()
         receipt = OidcReceipt(
             subject_id=session.subject_id,
             tenant_id=session.tenant_id,
@@ -257,6 +327,69 @@ class NonceReplayLedger:
                 self._expiry_heap,
                 (receipt.expires_at, receipt.subject_id, nonce),
             )
+
+    def purge_expired(self, *, now: int | None = None, max_items: int = 100) -> int:
+        """Delete a bounded batch of consumed nonce replay hashes."""
+
+        if type(max_items) is not int or not 1 <= max_items <= 10_000:
+            raise OidcDenied()
+        try:
+            effective_now = self._now() if now is None else now
+        except Exception:
+            raise OidcDenied() from None
+        if type(effective_now) is not int or effective_now < 0:
+            raise OidcDenied()
+        with self._lock:
+            if self._connection is None:
+                removed = 0
+                inspected = 0
+                while (
+                    self._expiry_heap
+                    and self._expiry_heap[0][0] <= effective_now
+                    and inspected < max_items
+                ):
+                    expires_at, subject_id, nonce = heapq.heappop(self._expiry_heap)
+                    inspected += 1
+                    key = (subject_id, nonce)
+                    if self._values.get(key) == expires_at:
+                        del self._values[key]
+                        removed += 1
+                return removed
+            connection = self._connection
+            try:
+                connection.execute("SAVEPOINT oidc_nonce_purge")
+                changed = connection.execute(
+                    """DELETE FROM oidc_nonce_replays
+                       WHERE rowid IN (
+                           SELECT rowid FROM oidc_nonce_replays
+                           WHERE expires_at<=? ORDER BY expires_at LIMIT ?
+                       )""",
+                    (effective_now, max_items),
+                ).rowcount
+                connection.execute("RELEASE oidc_nonce_purge")
+                return changed
+            except Exception:
+                _rollback_savepoint(connection, "oidc_nonce_purge")
+                raise OidcDenied() from None
+
+    def has_expired(self, *, now: int | None = None) -> bool:
+        try:
+            effective_now = self._now() if now is None else now
+        except Exception:
+            raise OidcDenied() from None
+        if type(effective_now) is not int or effective_now < 0:
+            raise OidcDenied()
+        with self._lock:
+            if self._connection is None:
+                return bool(self._expiry_heap and self._expiry_heap[0][0] <= effective_now)
+            try:
+                row = self._connection.execute(
+                    "SELECT 1 FROM oidc_nonce_replays WHERE expires_at<=? LIMIT 1",
+                    (effective_now,),
+                ).fetchone()
+                return row is not None
+            except Exception:
+                raise OidcDenied() from None
 
     def _consume_persisted(self, subject: str, nonce: str, expires_at: int, now: int) -> None:
         connection = self._connection

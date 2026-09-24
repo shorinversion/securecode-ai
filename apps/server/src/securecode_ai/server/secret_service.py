@@ -9,13 +9,15 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from .secret_provider import OpaqueSecretLease, SecretProvider
 
 _IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}\Z")
+_SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _PURPOSES: Final = frozenset({"github_installation", "provider_api", "artifact_store"})
+_GRANT_STATES: Final = frozenset({"ACTIVE", "REVOKED", "EXPIRED"})
 
 
 class SecretDenied(RuntimeError):
@@ -58,6 +60,27 @@ class SecretReceipt:
     version: int = 1
     issued_at: int = 0
 
+    def __post_init__(self) -> None:
+        if (
+            any(
+                type(value) is not str or _IDENTIFIER.fullmatch(value) is None
+                for value in (self.tenant_id, self.workload_id, self.grant_id)
+            )
+            or type(self.purpose) is not str
+            or self.purpose not in _PURPOSES
+            or type(self.handle_sha256) is not str
+            or _SHA256.fullmatch(self.handle_sha256) is None
+            or type(self.expires_at) is not int
+            or type(self.issued_at) is not int
+            or self.issued_at < 0
+            or self.expires_at <= self.issued_at
+            or type(self.state) is not str
+            or self.state not in _GRANT_STATES
+            or type(self.version) is not int
+            or self.version < 1
+        ):
+            raise SecretDenied("INVALID_RECEIPT")
+
 
 SECRET_SCHEMA_STATEMENTS: Final = (
     """CREATE TABLE IF NOT EXISTS secret_grants (
@@ -88,6 +111,17 @@ SECRET_SCHEMA_STATEMENTS: Final = (
         FOREIGN KEY (tenant_id, grant_id)
             REFERENCES secret_grants (tenant_id, grant_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS secret_provider_revocations (
+        tenant_id TEXT NOT NULL,
+        grant_id TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        next_attempt_at INTEGER NOT NULL,
+        last_error_code TEXT,
+        completed_at INTEGER,
+        PRIMARY KEY (tenant_id, grant_id)
+    )""",
+    """CREATE INDEX IF NOT EXISTS secret_provider_revocations_due_idx
+       ON secret_provider_revocations (tenant_id, completed_at, next_attempt_at)""",
 )
 
 
@@ -112,6 +146,12 @@ class SecretService:
         try:
             for statement in SECRET_SCHEMA_STATEMENTS:
                 self._connection.execute(statement)
+            self._connection.execute(
+                """INSERT OR IGNORE INTO secret_provider_revocations (
+                       tenant_id, grant_id, attempts, next_attempt_at
+                   ) SELECT tenant_id, grant_id, 0, issued_at
+                     FROM secret_grants WHERE state IN ('REVOKED', 'EXPIRED')"""
+            )
             self._connection.commit()
         except Exception:
             self._connection.rollback()
@@ -129,6 +169,21 @@ class SecretService:
             raise
         finally:
             cursor.close()
+
+    @staticmethod
+    def _queue_provider_revocation(
+        cursor: sqlite3.Cursor,
+        *,
+        tenant_id: str,
+        grant_id: str,
+        now: int,
+    ) -> None:
+        cursor.execute(
+            """INSERT OR IGNORE INTO secret_provider_revocations (
+                   tenant_id, grant_id, attempts, next_attempt_at
+               ) VALUES (?, ?, 0, ?)""",
+            (tenant_id, grant_id, now),
+        )
 
     def grant(
         self,
@@ -155,7 +210,9 @@ class SecretService:
                     request_hash,
                 ):
                     raise SecretDenied("IDEMPOTENCY_CONFLICT")
-                return None, _receipt(self._load(cursor, tenant_id, replay["grant_id"]))
+                return None, self._receipt_at_now(
+                    self._load(cursor, tenant_id, replay["grant_id"])
+                )
 
             grant_id = (
                 "grant-"
@@ -218,6 +275,8 @@ class SecretService:
         idempotency_key: str | None = None,
     ) -> SecretReceipt:
         _require_identifier(grant_id, "grant_id")
+        result: SecretReceipt | None = None
+        resolved_tenant = tenant_id
         with self._transaction() as cursor:
             row = self._find_grant(cursor, grant_id, tenant_id)
             resolved_tenant = row["tenant_id"]
@@ -230,34 +289,51 @@ class SecretService:
                 request_sha256=fingerprint,
             )
             if replay is not None:
-                return replay
-            if row["state"] == "REVOKED":
-                return _receipt(row)
-            if row["state"] != "ACTIVE":
-                raise SecretDenied("GRANT_NOT_ACTIVE")
-            if expected_version is not None and row["version"] != expected_version:
-                raise SecretDenied("VERSION_CONFLICT")
-            self._revoke_provider(row["grant_id"])
-            now = self._now()
-            cursor.execute(
-                """UPDATE secret_grants
-                   SET state='REVOKED', version=version+1, revoked_at=?
-                   WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
-                     AND version=?""",
-                (now, resolved_tenant, row["grant_id"], row["version"]),
-            )
-            if cursor.rowcount != 1:
-                raise SecretDenied("VERSION_CONFLICT")
-            updated = self._load(cursor, resolved_tenant, row["grant_id"])
-            self._remember_operation(
-                cursor,
-                tenant_id=resolved_tenant,
-                idempotency_key=idempotency_key,
-                operation="revoke",
-                request_sha256=fingerprint,
-                grant_id=row["grant_id"],
-            )
-            return _receipt(updated)
+                result = replay
+            else:
+                if expected_version is not None and row["version"] != expected_version:
+                    raise SecretDenied("VERSION_CONFLICT")
+                if row["state"] == "REVOKED":
+                    self._queue_provider_revocation(
+                        cursor,
+                        tenant_id=resolved_tenant,
+                        grant_id=row["grant_id"],
+                        now=self._now(),
+                    )
+                    result = self._receipt_at_now(row)
+                elif row["state"] != "ACTIVE":
+                    raise SecretDenied("GRANT_NOT_ACTIVE")
+                else:
+                    now = self._now()
+                    cursor.execute(
+                        """UPDATE secret_grants
+                           SET state='REVOKED', version=version+1, revoked_at=?
+                           WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
+                             AND version=?""",
+                        (now, resolved_tenant, row["grant_id"], row["version"]),
+                    )
+                    if cursor.rowcount != 1:
+                        raise SecretDenied("VERSION_CONFLICT")
+                    self._queue_provider_revocation(
+                        cursor,
+                        tenant_id=resolved_tenant,
+                        grant_id=row["grant_id"],
+                        now=now,
+                    )
+                    updated = self._load(cursor, resolved_tenant, row["grant_id"])
+                    self._remember_operation(
+                        cursor,
+                        tenant_id=resolved_tenant,
+                        idempotency_key=idempotency_key,
+                        operation="revoke",
+                        request_sha256=fingerprint,
+                        grant_id=row["grant_id"],
+                    )
+                    result = self._receipt_at_now(updated)
+        self.retry_provider_revocations(tenant_id=resolved_tenant, grant_id=grant_id)
+        if result is None:
+            raise SecretDenied("REVOCATION_FAILED")
+        return result
 
     def rotate(
         self,
@@ -281,6 +357,9 @@ class SecretService:
             previous_grant_id,
             expected_version,
         )
+        rotated_grant: SecretGrant | None = None
+        rotated_receipt: SecretReceipt | None = None
+        replayed_receipt: SecretReceipt | None = None
         with self._transaction() as cursor:
             replay = self._operation_replay(
                 cursor,
@@ -290,81 +369,104 @@ class SecretService:
                 request_sha256=fingerprint,
             )
             if replay is not None:
-                return None, replay
-            old = self._find_grant(cursor, previous_grant_id, tenant_id)
-            if (
-                old["workload_id"] != workload_id
-                or old["purpose"] != purpose
-                or old["state"] != "ACTIVE"
-                or old["version"] != expected_version
-            ):
-                raise SecretDenied("ROTATION_PRECONDITION_FAILED")
-            issued_at = self._now()
-            grant_id = (
-                "grant-"
-                + hashlib.sha256(
-                    f"{tenant_id}\0{idempotency_key}\0{fingerprint}".encode()
-                ).hexdigest()[:40]
-            )
-            lease = self._rotate_provider(
-                reference,
-                purpose,
-                previous_grant_id,
-                grant_id,
-            )
-            handle_hash = _hash_text(lease.handle)
-            self._require_live_lease(lease, issued_at, grant_id)
-            try:
-                cursor.execute(
-                    """INSERT INTO secret_grants (
-                        tenant_id, grant_id, workload_id, purpose,
-                        reference_sha256, handle_sha256, expires_at, issued_at,
-                        state, version, rotated_from_grant_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?)""",
-                    (
-                        tenant_id,
-                        grant_id,
-                        workload_id,
-                        purpose,
-                        _hash_text(reference),
-                        handle_hash,
-                        lease.expires_at,
-                        issued_at,
-                        old["grant_id"],
-                    ),
-                )
-                cursor.execute(
-                    """UPDATE secret_grants
-                       SET state='REVOKED', version=version+1, revoked_at=?
-                       WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
-                         AND version=?""",
-                    (issued_at, tenant_id, old["grant_id"], expected_version),
-                )
-                if cursor.rowcount != 1:
-                    raise SecretDenied("VERSION_CONFLICT")
-                self._remember_operation(
+                replayed_receipt = replay
+                self._queue_provider_revocation(
                     cursor,
                     tenant_id=tenant_id,
-                    idempotency_key=idempotency_key,
-                    operation="rotate",
-                    request_sha256=fingerprint,
-                    grant_id=grant_id,
+                    grant_id=previous_grant_id,
+                    now=self._now(),
                 )
-            except Exception:
-                self._best_effort_revoke(grant_id)
-                raise
-            receipt = SecretReceipt(
-                tenant_id,
-                workload_id,
-                purpose,
-                handle_hash,
-                lease.expires_at,
-                grant_id,
-                "ACTIVE",
-                1,
-                issued_at,
-            )
-            return SecretGrant(lease.handle, grant_id, 1), receipt
+            else:
+                old = self._find_grant(cursor, previous_grant_id, tenant_id)
+                issued_at = self._now()
+                if (
+                    old["workload_id"] != workload_id
+                    or old["purpose"] != purpose
+                    or old["state"] != "ACTIVE"
+                    or old["version"] != expected_version
+                    or old["expires_at"] <= issued_at
+                ):
+                    raise SecretDenied("ROTATION_PRECONDITION_FAILED")
+                grant_id = (
+                    "grant-"
+                    + hashlib.sha256(
+                        f"{tenant_id}\0{idempotency_key}\0{fingerprint}".encode()
+                    ).hexdigest()[:40]
+                )
+                lease = self._rotate_provider(
+                    reference,
+                    purpose,
+                    previous_grant_id,
+                    grant_id,
+                )
+                handle_hash = _hash_text(lease.handle)
+                self._require_live_lease(lease, issued_at, grant_id)
+                try:
+                    cursor.execute(
+                        """INSERT INTO secret_grants (
+                            tenant_id, grant_id, workload_id, purpose,
+                            reference_sha256, handle_sha256, expires_at, issued_at,
+                            state, version, rotated_from_grant_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 1, ?)""",
+                        (
+                            tenant_id,
+                            grant_id,
+                            workload_id,
+                            purpose,
+                            _hash_text(reference),
+                            handle_hash,
+                            lease.expires_at,
+                            issued_at,
+                            old["grant_id"],
+                        ),
+                    )
+                    cursor.execute(
+                        """UPDATE secret_grants
+                           SET state='REVOKED', version=version+1, revoked_at=?
+                           WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
+                             AND version=?""",
+                        (issued_at, tenant_id, old["grant_id"], expected_version),
+                    )
+                    if cursor.rowcount != 1:
+                        raise SecretDenied("VERSION_CONFLICT")
+                    self._queue_provider_revocation(
+                        cursor,
+                        tenant_id=tenant_id,
+                        grant_id=old["grant_id"],
+                        now=issued_at,
+                    )
+                    self._remember_operation(
+                        cursor,
+                        tenant_id=tenant_id,
+                        idempotency_key=idempotency_key,
+                        operation="rotate",
+                        request_sha256=fingerprint,
+                        grant_id=grant_id,
+                    )
+                except Exception:
+                    self._best_effort_revoke(grant_id)
+                    raise
+                rotated_grant = SecretGrant(lease.handle, grant_id, 1)
+                rotated_receipt = SecretReceipt(
+                    tenant_id,
+                    workload_id,
+                    purpose,
+                    handle_hash,
+                    lease.expires_at,
+                    grant_id,
+                    "ACTIVE",
+                    1,
+                    issued_at,
+                )
+        self.retry_provider_revocations(
+            tenant_id=tenant_id,
+            grant_id=previous_grant_id,
+        )
+        if replayed_receipt is not None:
+            return None, replayed_receipt
+        if rotated_grant is None or rotated_receipt is None:
+            raise SecretDenied("ROTATION_FAILED")
+        return rotated_grant, rotated_receipt
 
     def receipt(self, *, tenant_id: str, grant_id: str) -> SecretReceipt:
         _require_identifier(tenant_id, "tenant_id")
@@ -376,21 +478,221 @@ class SecretService:
         ).fetchone()
         if row is None:
             raise SecretDenied("GRANT_UNKNOWN")
-        return _receipt(row)
+        return self._receipt_at_now(row)
 
     def expire(self, *, tenant_id: str, now: int | None = None) -> int:
+        expired = self.expire_due_grants(tenant_id=tenant_id, now=now)
+        self.retry_provider_revocations(tenant_id=tenant_id)
+        return expired
+
+    def expire_due_grants(
+        self,
+        *,
+        tenant_id: str,
+        now: int | None = None,
+        max_items: int | None = None,
+    ) -> int:
+        """Persist grant expiry without coupling it to provider availability."""
+
+        _require_identifier(tenant_id, "tenant_id")
+        if max_items is not None and (
+            type(max_items) is not int or not 1 <= max_items <= 10_000
+        ):
+            raise SecretDenied("INVALID_LIMIT")
+        effective_now = self._now() if now is None else now
+        if type(effective_now) is not int or effective_now < 0:
+            raise SecretDenied("INVALID_TIME")
+        expired = 0
+        while True:
+            if max_items is not None and expired >= max_items:
+                return expired
+            batch_size = 100 if max_items is None else min(100, max_items - expired)
+            with self._transaction() as cursor:
+                rows = cursor.execute(
+                    """SELECT grant_id, version FROM secret_grants
+                       WHERE tenant_id=? AND state='ACTIVE' AND expires_at<=?
+                       ORDER BY expires_at, grant_id LIMIT ?""",
+                    (tenant_id, effective_now, batch_size),
+                ).fetchall()
+            if not rows:
+                return expired
+            for row in rows:
+                grant_id = row["grant_id"]
+                version = row["version"]
+                _require_identifier(grant_id, "grant_id")
+                if type(version) is not int or version < 1:
+                    raise SecretDenied("INVALID_VERSION")
+                with self._transaction() as cursor:
+                    cursor.execute(
+                        """UPDATE secret_grants
+                           SET state='EXPIRED', version=version+1
+                           WHERE tenant_id=? AND grant_id=? AND state='ACTIVE'
+                             AND version=? AND expires_at<=?""",
+                        (tenant_id, grant_id, version, effective_now),
+                    )
+                    if cursor.rowcount == 1:
+                        self._queue_provider_revocation(
+                            cursor,
+                            tenant_id=tenant_id,
+                            grant_id=grant_id,
+                            now=effective_now,
+                        )
+                        expired += 1
+                    else:
+                        current = cursor.execute(
+                            """SELECT state, version, expires_at FROM secret_grants
+                               WHERE tenant_id=? AND grant_id=?""",
+                            (tenant_id, grant_id),
+                        ).fetchone()
+                        if (
+                            current is not None
+                            and current["state"] == "ACTIVE"
+                            and current["version"] == version
+                            and current["expires_at"] <= effective_now
+                        ):
+                            raise SecretDenied("VERSION_CONFLICT")
+
+    def has_due_grants(self, *, tenant_id: str, now: int | None = None) -> bool:
+        """Report whether more grants await expiration, without exposing IDs."""
+
         _require_identifier(tenant_id, "tenant_id")
         effective_now = self._now() if now is None else now
         if type(effective_now) is not int or effective_now < 0:
             raise SecretDenied("INVALID_TIME")
+        row = self._connection.execute(
+            """SELECT 1 FROM secret_grants
+               WHERE tenant_id=? AND state='ACTIVE' AND expires_at<=? LIMIT 1""",
+            (tenant_id, effective_now),
+        ).fetchone()
+        return row is not None
+
+    def has_pending_provider_revocations(self, *, tenant_id: str) -> bool:
+        """Report pending provider cleanup without exposing grant identifiers."""
+
+        _require_identifier(tenant_id, "tenant_id")
+        row = self._connection.execute(
+            """SELECT 1 FROM secret_provider_revocations
+               WHERE tenant_id=? AND completed_at IS NULL LIMIT 1""",
+            (tenant_id,),
+        ).fetchone()
+        return row is not None
+
+    def retry_provider_revocations(
+        self,
+        *,
+        tenant_id: str,
+        grant_id: str | None = None,
+        limit: int = 100,
+    ) -> int:
+        """Retry durable provider revocations with leases and bounded backoff."""
+
+        _require_identifier(tenant_id, "tenant_id")
+        if grant_id is not None:
+            _require_identifier(grant_id, "grant_id")
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise SecretDenied("INVALID_LIMIT")
+        now = self._now()
+        query = (
+            """SELECT grant_id, attempts, next_attempt_at
+               FROM secret_provider_revocations
+               WHERE tenant_id=? AND completed_at IS NULL AND next_attempt_at<=?"""
+        )
+        parameters: tuple[object, ...] = (tenant_id, now)
+        if grant_id is not None:
+            query += " AND grant_id=?"
+            parameters += (grant_id,)
+        query += " ORDER BY next_attempt_at, grant_id LIMIT ?"
+        parameters += (limit,)
+        claimed: list[tuple[str, int, int]] = []
         with self._transaction() as cursor:
-            cursor.execute(
-                """UPDATE secret_grants
-                   SET state='EXPIRED', version=version+1
-                   WHERE tenant_id=? AND state='ACTIVE' AND expires_at<=?""",
-                (tenant_id, effective_now),
+            rows = cursor.execute(query, parameters).fetchall()
+            for row in rows:
+                pending_grant_id = row["grant_id"]
+                attempts = row["attempts"]
+                due_at = row["next_attempt_at"]
+                if (
+                    type(pending_grant_id) is not str
+                    or _IDENTIFIER.fullmatch(pending_grant_id) is None
+                    or type(attempts) is not int
+                    or attempts < 0
+                    or type(due_at) is not int
+                    or due_at < 0
+                ):
+                    raise SecretDenied("REVOCATION_STATE_INVALID")
+                claimed_at = now + 30
+                next_attempt = attempts + 1
+                cursor.execute(
+                    """UPDATE secret_provider_revocations
+                       SET attempts=?, next_attempt_at=?
+                       WHERE tenant_id=? AND grant_id=? AND attempts=?
+                         AND next_attempt_at=? AND completed_at IS NULL
+                         AND next_attempt_at<=?""",
+                    (
+                        next_attempt,
+                        claimed_at,
+                        tenant_id,
+                        pending_grant_id,
+                        attempts,
+                        due_at,
+                        now,
+                    ),
+                )
+                if cursor.rowcount == 1:
+                    claimed.append((pending_grant_id, next_attempt, claimed_at))
+
+        completed = 0
+        failed = False
+        for pending_grant_id, attempts, claimed_at in claimed:
+            try:
+                self._revoke_provider(pending_grant_id)
+            except SecretDenied:
+                failed = True
+                delay = min(3600, 2 ** min(attempts, 12))
+                retry_at = self._now() + delay
+                with self._transaction() as cursor:
+                    cursor.execute(
+                        """UPDATE secret_provider_revocations
+                           SET last_error_code='PROVIDER_UNAVAILABLE', next_attempt_at=?
+                           WHERE tenant_id=? AND grant_id=? AND attempts=?
+                             AND next_attempt_at=? AND completed_at IS NULL""",
+                        (
+                            retry_at,
+                            tenant_id,
+                            pending_grant_id,
+                            attempts,
+                            claimed_at,
+                        ),
+                    )
+                continue
+            completed_at = self._now()
+            with self._transaction() as cursor:
+                cursor.execute(
+                    """UPDATE secret_provider_revocations
+                       SET last_error_code=NULL, completed_at=?, next_attempt_at=?
+                       WHERE tenant_id=? AND grant_id=? AND completed_at IS NULL""",
+                    (completed_at, completed_at, tenant_id, pending_grant_id),
+                )
+                if cursor.rowcount == 1:
+                    completed += 1
+
+        pending_query = (
+            """SELECT 1 FROM secret_provider_revocations
+               WHERE tenant_id=? AND completed_at IS NULL LIMIT 1"""
+        )
+        pending_parameters: tuple[object, ...] = (tenant_id,)
+        if grant_id is not None:
+            pending_query = pending_query.replace(
+                "completed_at IS NULL LIMIT 1",
+                "completed_at IS NULL AND grant_id=? LIMIT 1",
             )
-            return cursor.rowcount
+            pending_parameters += (grant_id,)
+        pending = self._connection.execute(
+            pending_query,
+            pending_parameters,
+        ).fetchone()
+        if failed or pending is not None:
+            raise SecretDenied("PROVIDER_UNAVAILABLE")
+        return completed
 
     def _issue(self, reference: str, purpose: str, grant_id: str) -> OpaqueSecretLease:
         try:
@@ -444,6 +746,12 @@ class SecretService:
             raise SecretDenied("INVALID_TIME")
         return value
 
+    def _receipt_at_now(self, row: sqlite3.Row) -> SecretReceipt:
+        receipt = _receipt(row)
+        if receipt.state == "ACTIVE" and receipt.expires_at <= self._now():
+            return replace(receipt, state="EXPIRED")
+        return receipt
+
     @staticmethod
     def _find_grant(cursor: sqlite3.Cursor, grant_id: str, tenant_id: str) -> sqlite3.Row:
         _require_identifier(tenant_id, "tenant_id")
@@ -467,9 +775,8 @@ class SecretService:
             raise SecretDenied("GRANT_UNKNOWN")
         return row
 
-    @classmethod
     def _operation_replay(
-        cls,
+        self,
         cursor: sqlite3.Cursor,
         *,
         tenant_id: str,
@@ -493,7 +800,7 @@ class SecretService:
             request_sha256,
         ):
             raise SecretDenied("IDEMPOTENCY_CONFLICT")
-        return _receipt(cls._load(cursor, tenant_id, row["grant_id"]))
+        return self._receipt_at_now(self._load(cursor, tenant_id, row["grant_id"]))
 
     @staticmethod
     def _remember_operation(

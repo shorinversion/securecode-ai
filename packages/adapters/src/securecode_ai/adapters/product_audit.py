@@ -126,7 +126,7 @@ def compose_product_audit(
 
     try:
         _require_scan_operation(host)
-        _validate_host(flow, review, host)
+        repair_requested_candidate_ids = _validate_host(flow, review, host)
         state = _probe_current_state(host) if host.deterministic_execution is not None else None
         mismatch = _model_candidate_mismatch(flow)
         if mismatch is not None:
@@ -135,7 +135,9 @@ def compose_product_audit(
         interpretations = _interpretations(flow, host)
         units = _coverage_units(flow, review, host, interpretations)
         scenario = (
-            CoverageScenario.CLEAN_NO_CANDIDATE
+            CoverageScenario.REPAIR_REQUESTED
+            if repair_requested_candidate_ids
+            else CoverageScenario.CLEAN_NO_CANDIDATE
             if not flow.graph.candidates
             else CoverageScenario.CONFIRMED_FINDING_WITHOUT_REPAIR
         )
@@ -149,6 +151,7 @@ def compose_product_audit(
             discovery_candidates=flow.graph.candidates,
             model_discovery_receipts=(flow.discovery.receipt,),
             candidate_interpretation_receipts=interpretations,
+            repair_requested_candidate_ids=repair_requested_candidate_ids,
             coverage_complete=False,
         )
         findings = _findings(flow, review, host, interpretations)

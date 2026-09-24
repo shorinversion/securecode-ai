@@ -131,7 +131,7 @@ def _retain_evidence_graph(
                 content_id=graph.graph_id,
                 content_sha256=graph.graph_sha256,
                 size_bytes=len(graph_bytes),
-                data_class=DataClass.INTERNAL_METADATA,
+                data_class=DataClass.CONFIDENTIAL_SECURITY,
             ),
         )
     except (TypeError, ValueError):

@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from securecode_ai.contracts import ArtifactRef
 
-from .worker_findings import WorkerFindingRecord
+from .worker_findings import WorkerFindingRecord, parse_worker_findings
 from .worker_queue_models import (
     OUTCOME_STATES,
     WorkerQueueConflict,
@@ -367,4 +367,39 @@ def _lease(row: sqlite3.Row, lease_seconds: int) -> WorkerQueueLease:
     )
 
 
-__all__ = ["complete_worker_run"]
+def load_worker_findings_for_run(
+    connection: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    run_id: str,
+) -> tuple[WorkerFindingRecord, ...]:
+    """Load durable finding metadata for a previously completed run."""
+
+    if not isinstance(connection, sqlite3.Connection):
+        raise WorkerQueueConflict()
+    try:
+        rows = connection.execute(
+            """SELECT finding_id, revision_sha, metadata_json
+               FROM finding_occurrences
+               WHERE tenant_id=? AND run_id=?
+               ORDER BY finding_id""",
+            (tenant_id, run_id),
+        ).fetchall()
+        documents: list[dict[str, object]] = []
+        for row in rows:
+            metadata = json.loads(row["metadata_json"])
+            if type(metadata) is not dict:
+                raise ValueError
+            documents.append(
+                {
+                    **metadata,
+                    "finding_id": row["finding_id"],
+                    "revision_sha": row["revision_sha"],
+                }
+            )
+        return parse_worker_findings(documents, required=True, supplied=True)
+    except (KeyError, sqlite3.Error, TypeError, ValueError):
+        raise WorkerQueueConflict() from None
+
+
+__all__ = ["complete_worker_run", "load_worker_findings_for_run"]

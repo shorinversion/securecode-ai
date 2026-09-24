@@ -48,9 +48,11 @@ class GitHubWriter:
             repository_path(owner, repo) + "/git/ref/heads/main",
             installation_id=installation_id,
         )
-        value = response.document or {}
+        value = response.document
+        if response.status != 200 or type(value) is not dict:
+            raise GitHubError("HEAD_INVALID")
         reference = value.get("object")
-        if response.status != 200 or not isinstance(reference, dict):
+        if not isinstance(reference, dict):
             raise GitHubError("HEAD_INVALID")
         sha = reference.get("sha")
         if not isinstance(sha, str) or _COMMIT_SHA.fullmatch(sha) is None:
@@ -95,12 +97,13 @@ class GitHubWriter:
         resolver = self._pull_request_head
         if resolver is None:
             raise GitHubError("HEAD_RESOLVER_UNAVAILABLE")
+        repository = self._api.repository_path_for_id(installation_id, repository_id)
         observed_head = resolver(installation_id, repository_id, change_id)
         if observed_head != expected_head:
             return GitHubWriteReceipt(external_id, "STALE_SUPPRESSED")
         return self._write_reconciled(
             installation_id=installation_id,
-            repository=f"/repositories/{repository_id}",
+            repository=repository,
             expected_head=expected_head,
             external_id=external_id,
             projection=projection,
