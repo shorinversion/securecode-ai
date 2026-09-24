@@ -69,6 +69,7 @@ from . import (
     ecmascript_cwe532,
     ecmascript_cwe776,
     ecmascript_cwe209,
+    ecmascript_cwe613,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -149,6 +150,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe532.py",
     "ecmascript_cwe776.py",
     "ecmascript_cwe209.py",
+    "ecmascript_cwe613.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -767,6 +769,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            session_expiration = ecmascript_cwe613.scan_ecmascript_cwe613(index)
+            for ordinal, signal in enumerate(session_expiration.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=session_expiration.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             error_disclosure = ecmascript_cwe209.scan_ecmascript_cwe209(index)
             for ordinal, signal in enumerate(error_disclosure.signals):
                 signals.append(
