@@ -317,6 +317,8 @@ class LifecycleLedger:
         require_identifier(actor_id, "actor_id")
         require_sha256(identity_hash, "identity_hash")
         require_version(expected_version)
+        if self._storage is None:
+            raise LifecycleConflict("storage executor is unavailable")
         fingerprint = _operation_hash(
             "execute",
             tenant_id,
@@ -342,11 +344,10 @@ class LifecycleLedger:
                 or value.version != expected_version
             ):
                 raise LifecycleConflict("deletion cannot be executed")
-            if self._storage is not None:
-                self._storage.execute_tombstone(
-                    tenant_id=tenant_id,
-                    content_sha256=value.content_sha256,
-                )
+            self._storage.execute_tombstone(
+                tenant_id=tenant_id,
+                content_sha256=value.content_sha256,
+            )
             now = _utc_text(self._clock())
             cursor.execute(
                 """UPDATE lifecycle_deletions

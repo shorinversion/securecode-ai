@@ -117,10 +117,9 @@ class OidcAdmission:
         if (
             not _bounded_text(issuer, _MAX_CLAIM_LENGTH)
             or not _bounded_text(subject, _MAX_CLAIM_LENGTH)
-            or not _bounded_text(audience, _MAX_CLAIM_LENGTH)
+            or not _audience_matches(audience, self._policy.audience)
             or not _bounded_text(azp, _MAX_CLAIM_LENGTH)
             or not _bounded_text(claim_nonce, _MAX_NONCE_LENGTH)
-            or audience != self._policy.audience
             or issuer != self._policy.issuer
             or azp not in self._policy.allowed_azp
             or claim_nonce != nonce
@@ -223,3 +222,13 @@ def _validated_bindings(
 
 def _bounded_text(value: object, maximum: int) -> TypeGuard[str]:
     return type(value) is str and 0 < len(value) <= maximum
+
+
+def _audience_matches(value: object, expected: str) -> bool:
+    if type(value) is str:
+        return value == expected
+    if type(value) is not list or not 1 <= len(value) <= 16:
+        return False
+    if not all(_bounded_text(item, _MAX_CLAIM_LENGTH) for item in value):
+        return False
+    return expected in value
