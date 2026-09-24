@@ -55,6 +55,7 @@ from . import (
     cwe89,
     cwe89_multilanguage,
     cwe_portfolio,
+    ecmascript_cwe352,
     ecmascript_cwe1321,
     ecmascript_cwe22,
     ecmascript_cwe295,
@@ -105,6 +106,8 @@ from . import (
     go_cwe_crypto,
     go_cwe639,
     go_cwe306,
+    go_cwe352,
+    go_cwe476,
     python_ast,
     python_cwe502,
     python_cwe295,
@@ -130,6 +133,8 @@ from . import (
     python_cwe94,
     python_cwe639,
     python_cwe306,
+    python_cwe352,
+    python_cwe476,
 )
 from .native_sources import NativeSourceCatalogue
 from .repository_view import SealedRepositoryView
@@ -151,6 +156,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio.py",
     "cwe_portfolio_helpers.py",
     "cwe_portfolio_models.py",
+    "ecmascript_cwe352.py",
     "ecmascript_cwe1321.py",
     "ecmascript_cwe22.py",
     "ecmascript_cwe295.py",
@@ -201,6 +207,8 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe_crypto.py",
     "go_cwe639.py",
     "go_cwe306.py",
+    "go_cwe352.py",
+    "go_cwe476.py",
     "python_ast.py",
     "python_cwe502.py",
     "python_cwe295.py",
@@ -228,6 +236,8 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe94.py",
     "python_cwe639.py",
     "python_cwe306.py",
+    "python_cwe352.py",
+    "python_cwe476.py",
     "scanner_plugin.py",
 )
 
@@ -600,6 +610,34 @@ class FirstPartyStaticWorker:
                         ordinal=ordinal,
                     )
                 )
+            csrf = python_cwe352.scan_python_cwe352(index, python_analysis)
+            for ordinal, signal in enumerate(csrf.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.endpoint,
+                        scan_sha256=csrf.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
+            nil_pointer = python_cwe476.scan_python_cwe476(index, python_analysis)
+            for ordinal, signal in enumerate(nil_pointer.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=nil_pointer.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
         elif index.language == "go":
             credentials = go_cwe798.scan_go_cwe798(index)
             for ordinal, signal in enumerate(credentials.signals):
@@ -876,6 +914,34 @@ class FirstPartyStaticWorker:
                         scan_sha256=ssrf.scan_sha256,
                         ordinal=ordinal,
                         rule_id="portfolio-cwe-918",
+                    )
+                )
+            csrf = go_cwe352.scan_go_cwe352(index)
+            for ordinal, signal in enumerate(csrf.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=csrf.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
+            nil_pointer = go_cwe476.scan_go_cwe476(index)
+            for ordinal, signal in enumerate(nil_pointer.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=nil_pointer.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
@@ -1206,6 +1272,25 @@ class FirstPartyStaticWorker:
                         location=signal.sink,
                         scan_sha256=dynamic_code.scan_sha256,
                         ordinal=ordinal,
+                    )
+                )
+            csrf_scanner = (
+                ecmascript_cwe352.scan_javascript_cwe352
+                if index.language == "javascript"
+                else ecmascript_cwe352.scan_typescript_cwe352
+            )
+            csrf = csrf_scanner(index)
+            for ordinal, signal in enumerate(csrf.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=csrf.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="cwe-352-missing-csrf-protection",
                     )
                 )
         if index.language == "python":
