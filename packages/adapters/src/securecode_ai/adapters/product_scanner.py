@@ -72,6 +72,7 @@ from . import (
     ecmascript_cwe613,
     ecmascript_cwe338,
     ecmascript_cwe521,
+    ecmascript_cwe798,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -91,6 +92,7 @@ from . import (
     go_cwe613,
     go_cwe338,
     go_cwe521,
+    go_cwe798,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -115,6 +117,7 @@ from . import (
     python_cwe613,
     python_cwe338,
     python_cwe521,
+    python_cwe798,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -159,6 +162,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe613.py",
     "ecmascript_cwe338.py",
     "ecmascript_cwe521.py",
+    "ecmascript_cwe798.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -178,6 +182,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe613.py",
     "go_cwe338.py",
     "go_cwe521.py",
+    "go_cwe798.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -202,6 +207,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe613.py",
     "python_cwe338.py",
     "python_cwe521.py",
+    "python_cwe798.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -267,6 +273,20 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            credentials = python_cwe798.scan_python_cwe798(index, python_analysis)
+            for ordinal, signal in enumerate(credentials.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=credentials.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
             password_policy = python_cwe521.scan_python_cwe521(index, python_analysis)
             for ordinal, signal in enumerate(password_policy.signals):
                 signals.append(
@@ -569,6 +589,20 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            credentials = go_cwe798.scan_go_cwe798(index)
+            for ordinal, signal in enumerate(credentials.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=credentials.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
             password_policy = go_cwe521.scan_go_cwe521(index)
             for ordinal, signal in enumerate(password_policy.signals):
                 signals.append(
@@ -833,6 +867,20 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            credentials = ecmascript_cwe798.scan_ecmascript_cwe798(index)
+            for ordinal, signal in enumerate(credentials.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=credentials.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
             password_policy = ecmascript_cwe521.scan_ecmascript_cwe521(index)
             for ordinal, signal in enumerate(password_policy.signals):
                 signals.append(
