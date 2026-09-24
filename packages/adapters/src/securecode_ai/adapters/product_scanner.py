@@ -58,6 +58,7 @@ from . import (
     ecmascript_cwe1321,
     ecmascript_cwe22,
     ecmascript_cwe601,
+    ecmascript_cwe78,
     ecmascript_cwe90,
     ecmascript_cwe94,
     go_cwe22,
@@ -93,6 +94,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe1321.py",
     "ecmascript_cwe22.py",
     "ecmascript_cwe601.py",
+    "ecmascript_cwe78.py",
     "ecmascript_cwe90.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
@@ -269,6 +271,20 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            commands = ecmascript_cwe78.scan_ecmascript_cwe78(index)
+            for ordinal, signal in enumerate(commands.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=commands.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="portfolio-cwe-78",
+                    )
+                )
             ldap = ecmascript_cwe90.scan_ecmascript_cwe90(index)
             for ordinal, signal in enumerate(ldap.signals):
                 signals.append(
