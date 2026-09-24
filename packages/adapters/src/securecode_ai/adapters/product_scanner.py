@@ -67,6 +67,7 @@ from . import (
     ecmascript_cwe94,
     go_cwe22,
     go_cwe295,
+    go_cwe1333,
     go_cwe601,
     go_cwe78,
     go_cwe79,
@@ -114,6 +115,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe94.py",
     "go_cwe22.py",
     "go_cwe295.py",
+    "go_cwe1333.py",
     "go_cwe601.py",
     "go_cwe78.py",
     "go_cwe79.py",
@@ -293,6 +295,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            regex_dos = go_cwe1333.scan_go_cwe1333(index)
+            for ordinal, signal in enumerate(regex_dos.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=regex_dos.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             tls_validation = go_cwe295.scan_go_cwe295(index)
             for ordinal, signal in enumerate(tls_validation.signals):
                 signals.append(
