@@ -66,6 +66,7 @@ from . import (
     ecmascript_cwe117,
     ecmascript_cwe400,
     ecmascript_cwe307,
+    ecmascript_cwe532,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -137,6 +138,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe117.py",
     "ecmascript_cwe400.py",
     "ecmascript_cwe307.py",
+    "ecmascript_cwe532.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -671,6 +673,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            sensitive_logging = ecmascript_cwe532.scan_ecmascript_cwe532(index)
+            for ordinal, signal in enumerate(sensitive_logging.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=sensitive_logging.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             rate_limit = ecmascript_cwe307.scan_ecmascript_cwe307(index)
             for ordinal, signal in enumerate(rate_limit.signals):
                 signals.append(
