@@ -82,6 +82,7 @@ from . import (
     go_cwe307,
     go_cwe327,
     go_cwe532,
+    go_cwe776,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -156,6 +157,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe307.py",
     "go_cwe327.py",
     "go_cwe532.py",
+    "go_cwe776.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -491,6 +493,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            xml_expansion = go_cwe776.scan_go_cwe776(index)
+            for ordinal, signal in enumerate(xml_expansion.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xml_expansion.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             sensitive_logging = go_cwe532.scan_go_cwe532(index)
             for ordinal, signal in enumerate(sensitive_logging.signals):
                 signals.append(
