@@ -61,6 +61,7 @@ from . import (
     ecmascript_cwe90,
     ecmascript_cwe94,
     go_cwe22,
+    go_cwe78,
     go_cwe918,
     go_cwe_crypto,
     python_ast,
@@ -95,6 +96,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe90.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
+    "go_cwe78.py",
     "go_cwe918.py",
     "go_cwe_crypto.py",
     "python_ast.py",
@@ -212,6 +214,20 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            commands = go_cwe78.scan_go_cwe78(index)
+            for ordinal, signal in enumerate(commands.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=commands.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id="portfolio-cwe-78",
+                    )
+                )
             crypto = go_cwe_crypto.scan_go_cwe_crypto(index)
             for ordinal, signal in enumerate(crypto.signals):
                 signals.append(
