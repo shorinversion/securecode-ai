@@ -74,6 +74,7 @@ from . import (
     go_cwe22,
     go_cwe295,
     go_cwe367,
+    go_cwe400,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -135,6 +136,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe22.py",
     "go_cwe295.py",
     "go_cwe367.py",
+    "go_cwe400.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -400,6 +402,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            resource_consumption = go_cwe400.scan_go_cwe400(index)
+            for ordinal, signal in enumerate(resource_consumption.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=resource_consumption.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             toctou = go_cwe367.scan_go_cwe367(index)
             for ordinal, signal in enumerate(toctou.signals):
                 signals.append(
