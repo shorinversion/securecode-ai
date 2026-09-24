@@ -64,6 +64,7 @@ from . import (
     ecmascript_cwe377,
     ecmascript_cwe732,
     ecmascript_cwe117,
+    ecmascript_cwe400,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -126,6 +127,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe611.py",
     "ecmascript_cwe732.py",
     "ecmascript_cwe117.py",
+    "ecmascript_cwe400.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -562,6 +564,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            resource_consumption = ecmascript_cwe400.scan_ecmascript_cwe400(index)
+            for ordinal, signal in enumerate(resource_consumption.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=resource_consumption.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             log_injection = ecmascript_cwe117.scan_ecmascript_cwe117(index)
             for ordinal, signal in enumerate(log_injection.signals):
                 signals.append(
