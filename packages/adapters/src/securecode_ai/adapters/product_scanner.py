@@ -95,6 +95,8 @@ from . import (
     python_cwe384,
     python_cwe117,
     python_cwe307,
+    python_cwe327,
+    python_cwe400,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -162,6 +164,8 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe384.py",
     "python_cwe117.py",
     "python_cwe307.py",
+    "python_cwe327.py",
+    "python_cwe400.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -227,6 +231,32 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            weak_crypto = python_cwe327.scan_python_cwe327(index, python_analysis)
+            for ordinal, signal in enumerate(weak_crypto.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=weak_crypto.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            resource_consumption = python_cwe400.scan_python_cwe400(index, python_analysis)
+            for ordinal, signal in enumerate(resource_consumption.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=resource_consumption.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             rate_limit = python_cwe307.scan_python_cwe307(index, python_analysis)
             for ordinal, signal in enumerate(rate_limit.signals):
                 signals.append(
