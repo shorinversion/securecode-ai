@@ -71,6 +71,7 @@ from . import (
     ecmascript_cwe776,
     ecmascript_cwe209,
     ecmascript_cwe613,
+    ecmascript_cwe614,
     ecmascript_cwe338,
     ecmascript_cwe521,
     ecmascript_cwe798,
@@ -93,6 +94,7 @@ from . import (
     go_cwe776,
     go_cwe209,
     go_cwe613,
+    go_cwe614,
     go_cwe338,
     go_cwe521,
     go_cwe798,
@@ -172,6 +174,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe776.py",
     "ecmascript_cwe209.py",
     "ecmascript_cwe613.py",
+    "ecmascript_cwe614.py",
     "ecmascript_cwe338.py",
     "ecmascript_cwe521.py",
     "ecmascript_cwe798.py",
@@ -194,6 +197,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe776.py",
     "go_cwe209.py",
     "go_cwe613.py",
+    "go_cwe614.py",
     "go_cwe338.py",
     "go_cwe521.py",
     "go_cwe798.py",
@@ -744,6 +748,20 @@ class FirstPartyStaticWorker:
                         ordinal=ordinal,
                     )
                 )
+            cookie_security = go_cwe614.scan_go_cwe614(index)
+            for ordinal, signal in enumerate(cookie_security.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=cookie_security.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
             weak_crypto = go_cwe327.scan_go_cwe327(index)
             for ordinal, signal in enumerate(weak_crypto.signals):
                 signals.append(
@@ -996,6 +1014,20 @@ class FirstPartyStaticWorker:
                         location=signal.sink,
                         scan_sha256=session_expiration.scan_sha256,
                         ordinal=ordinal,
+                    )
+                )
+            cookie_security = ecmascript_cwe614.scan_ecmascript_cwe614(index)
+            for ordinal, signal in enumerate(cookie_security.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=cookie_security.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
                     )
                 )
             error_disclosure = ecmascript_cwe209.scan_ecmascript_cwe209(index)
