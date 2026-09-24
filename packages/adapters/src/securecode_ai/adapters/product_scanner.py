@@ -110,6 +110,7 @@ from . import (
     go_cwe306,
     go_cwe352,
     go_cwe476,
+    go_cwe117,
     python_ast,
     python_cwe502,
     python_cwe295,
@@ -137,6 +138,7 @@ from . import (
     python_cwe306,
     python_cwe352,
     python_cwe476,
+    python_cwe598,
 )
 from .native_sources import NativeSourceCatalogue
 from .repository_view import SealedRepositoryView
@@ -213,6 +215,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe306.py",
     "go_cwe352.py",
     "go_cwe476.py",
+    "go_cwe117.py",
     "python_ast.py",
     "python_cwe502.py",
     "python_cwe295.py",
@@ -242,6 +245,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe306.py",
     "python_cwe352.py",
     "python_cwe476.py",
+    "python_cwe598.py",
     "scanner_plugin.py",
 )
 
@@ -642,6 +646,20 @@ class FirstPartyStaticWorker:
                         rule_id=signal.rule_id,
                     )
                 )
+            sensitive_query_data = python_cwe598.scan_python_cwe598(index, python_analysis)
+            for ordinal, signal in enumerate(sensitive_query_data.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=sensitive_query_data.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
         elif index.language == "go":
             credentials = go_cwe798.scan_go_cwe798(index)
             for ordinal, signal in enumerate(credentials.signals):
@@ -758,6 +776,20 @@ class FirstPartyStaticWorker:
                         detector=signal.detector,
                         location=signal.sink,
                         scan_sha256=cookie_security.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
+            log_injection = go_cwe117.scan_go_cwe117(index)
+            for ordinal, signal in enumerate(log_injection.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=log_injection.scan_sha256,
                         ordinal=ordinal,
                         rule_id=signal.rule_id,
                     )
