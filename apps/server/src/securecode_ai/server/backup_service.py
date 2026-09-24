@@ -119,6 +119,7 @@ class BackupService:
         *,
         idempotency_key: str | None = None,
     ) -> BackupRecord:
+        _validate_transition_inputs(tenant, backup, expected)
         with self._transition_lock(tenant, backup):
             request_hash = _transition_hash("backup", tenant, backup, expected)
             replay = self.repo.replay(
@@ -161,6 +162,7 @@ class BackupService:
         *,
         idempotency_key: str | None = None,
     ) -> BackupRecord:
+        _validate_transition_inputs(tenant, backup, expected)
         with self._transition_lock(tenant, backup):
             request_hash = _transition_hash("restore", tenant, backup, expected)
             replay = self.repo.replay(
@@ -318,6 +320,18 @@ def _matches_manifest(item: BackupRecord, result: BackupExecutionResult) -> bool
 
 def _transition_hash(operation: str, tenant: str, backup: str, expected: int) -> str:
     return hashlib.sha256(f"{operation}\0{tenant}\0{backup}\0{expected}".encode()).hexdigest()
+
+
+def _validate_transition_inputs(tenant: object, backup: object, expected: object) -> None:
+    if (
+        type(tenant) is not str
+        or type(backup) is not str
+        or not tenant
+        or not backup
+        or type(expected) is not int
+        or expected < 1
+    ):
+        raise BackupConflict("backup precondition is invalid")
 
 
 def _request_hash(operation: str, record: BackupRecord) -> str:

@@ -45,6 +45,10 @@ Run the connected worker service using SECURECODE_WORKER_* environment values.
 """
 
 
+def _lease_deadline(active: _ActiveSession) -> Callable[[], float]:
+    return lambda: active.last_heartbeat + active.job.lease_seconds - 0.5
+
+
 class WorkerCompletionUnconfirmed(RuntimeError):
     """A requested one-shot run did not confirm a terminal control-plane state."""
 
@@ -272,6 +276,7 @@ class WorkerService:
                     event_already_recorded=True,
                 )
             completion_job = active.job
+            completion_deadline = _lease_deadline(active)
             await self._retry_call(
                 active,
                 lambda: self._client.complete(
@@ -279,7 +284,9 @@ class WorkerService:
                     outcome=execution.outcome,
                     resource_usage=resource_usage,
                     findings=execution.findings,
+                    deadline=completion_deadline,
                 ),
+                deadline=completion_deadline,
             )
             return True
         except RetryableControlPlaneError:
@@ -410,9 +417,15 @@ class WorkerService:
                 await self._append_event(active, kind)
         try:
             completion_job = active.job
+            completion_deadline = _lease_deadline(active)
             await self._retry_call(
                 active,
-                lambda: self._client.complete(completion_job, outcome=outcome),
+                lambda: self._client.complete(
+                    completion_job,
+                    outcome=outcome,
+                    deadline=completion_deadline,
+                ),
+                deadline=completion_deadline,
             )
             return True
         except (LeaseLost, ControlPlaneRejected, RetryableControlPlaneError):
@@ -434,6 +447,7 @@ class WorkerService:
             await self._append_event(active, kind)
         try:
             completion_job = active.job
+            completion_deadline = _lease_deadline(active)
             await self._retry_call(
                 active,
                 lambda: self._client.complete(
@@ -441,7 +455,9 @@ class WorkerService:
                     outcome=outcome,
                     resource_usage=resource_usage if outcome == "INDETERMINATE" else None,
                     findings=(),
+                    deadline=completion_deadline,
                 ),
+                deadline=completion_deadline,
             )
             return True
         except (LeaseLost, ControlPlaneRejected, RetryableControlPlaneError):

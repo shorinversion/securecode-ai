@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .backup_repository import BackupRecord
+from .backup_repository import BackupConflict, BackupRecord, validate_backup_record
 from .backup_service import BackupExecutionResult, BackupExecutor
 from .subprocess_protocol import (
     PinnedJsonProcess,
@@ -26,6 +26,18 @@ class SubprocessBackupExecutor:
         return self._execute("restore", record)
 
     def _execute(self, operation: str, record: BackupRecord) -> BackupExecutionResult:
+        if operation not in {"backup", "restore"} or not isinstance(record, BackupRecord):
+            raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
+        try:
+            validate_backup_record(record)
+        except (BackupConflict, TypeError, ValueError):
+            raise SubprocessProtocolError("BACKUP_REQUEST_INVALID") from None
+        if operation == "backup" and record.state != "PLANNED":
+            raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
+        if operation == "restore" and (
+            record.state != "BACKED_UP" or not record.backup_verified
+        ):
+            raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
         if record.manifest_sha256 is None:
             raise SubprocessProtocolError("BACKUP_MANIFEST_MISSING")
         response = self._process.request(

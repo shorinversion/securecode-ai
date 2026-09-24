@@ -250,7 +250,12 @@ class ControlPlaneClient:
         self._upload(
             upload_url,
             artifact.content,
+            # The PUT is a mutating control-plane route too. Reusing this key
+            # lets a lost response replay the stored receipt safely.
             upload_headers,
+            idempotency_key=_idempotency_key(
+                "upload", job.session_id, artifact.reference.content_sha256, artifact.purpose
+            ),
             timeout_seconds=self._request_timeout(deadline),
         )
 
@@ -285,6 +290,7 @@ class ControlPlaneClient:
         outcome: str,
         resource_usage: WorkerResourceUsage | None = None,
         findings: tuple[WorkerFinding, ...] = (),
+        deadline: Callable[[], float] | None = None,
     ) -> SessionUpdate:
         if outcome not in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}:
             raise ValueError("worker outcome is invalid")
@@ -355,6 +361,7 @@ class ControlPlaneClient:
                 "complete", job.session_id, outcome, usage_key, findings_key
             ),
             version=job.version,
+            timeout_seconds=self._request_timeout(deadline),
         )
         if status in {HTTPStatus.CONFLICT, HTTPStatus.PRECONDITION_FAILED, HTTPStatus.GONE}:
             raise LeaseLost("worker completion lost its lease")
@@ -450,6 +457,7 @@ class ControlPlaneClient:
         content: bytes,
         headers: Mapping[object, object],
         *,
+        idempotency_key: str,
         timeout_seconds: float | None = None,
     ) -> None:
         try:
@@ -458,7 +466,12 @@ class ControlPlaneClient:
             raise ControlPlaneRejected("artifact upload destination is invalid") from None
         if parsed.hostname not in self._artifact_hosts:
             raise ControlPlaneRejected("artifact upload destination is not allowed")
-        upload_headers = {"Content-Length": str(len(content))}
+        if type(idempotency_key) is not str or not idempotency_key:
+            raise ControlPlaneRejected("artifact upload idempotency key is invalid")
+        upload_headers = {
+            "Content-Length": str(len(content)),
+            "Idempotency-Key": idempotency_key,
+        }
         for name, value in headers.items():
             if type(name) is not str or type(value) is not str:
                 raise ControlPlaneRejected("artifact upload headers are invalid")
