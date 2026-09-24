@@ -153,6 +153,21 @@ def parse_dependency_manifest(
             limits=limits,
         )
     if manifest.ecosystem is DependencyEcosystem.JAVASCRIPT:
+        if manifest.kind in {
+            DependencyManifestKind.YARN_LOCK,
+            DependencyManifestKind.PNPM_LOCK,
+            DependencyManifestKind.BUN_LOCK,
+        }:
+            from .dependency_scanning_javascript_locks import parse_javascript_lock_manifest
+
+            return parse_javascript_lock_manifest(
+                repository_id=repository_id,
+                revision=revision,
+                manifest=manifest,
+                file=file,
+                source=source,
+                limits=limits,
+            )
         from .dependency_scanning_javascript import parse_javascript_dependency_manifest
 
         return parse_javascript_dependency_manifest(

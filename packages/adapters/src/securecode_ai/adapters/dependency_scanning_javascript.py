@@ -32,8 +32,11 @@ _VERSION = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9.!+_-]{0,126}[A-Za-z0-9])?\Z")
 _NPM_PART = re.compile(r"[a-z0-9](?:[a-z0-9._~-]{0,212}[a-z0-9])?\Z")
 _NPM_SCOPE = re.compile(r"@[a-z0-9](?:[a-z0-9._~-]{0,212}[a-z0-9])?\Z")
 _REGISTRY_TARBALL = re.compile(
-    r"/(?:@(?P<scope>[a-z0-9._~-]+)/)?(?P<package>[a-z0-9._~-]+)/-/"
-    r"(?P<filename>[A-Za-z0-9][A-Za-z0-9._+-]*\.tgz)\Z"
+    r"/(?:"
+    r"@(?P<raw_scope>[a-z0-9._~-]+)/(?P<raw_package>[a-z0-9._~-]+)"
+    r"|@(?P<encoded_scope>[a-z0-9._~-]+)%2f(?P<encoded_package>[a-z0-9._~-]+)"
+    r"|(?P<plain_package>[a-z0-9._~-]+)"
+    r")/-/(?P<filename>[A-Za-z0-9][A-Za-z0-9._+-]*\.tgz)\Z"
 )
 
 
@@ -45,7 +48,7 @@ def parse_javascript_dependency_manifest(
     source: bytes,
     limits: DependencyScanLimits = DEFAULT_DEPENDENCY_SCAN_LIMITS,
 ) -> ParsedDependencyManifest:
-    """Parse exact, pinned packages from npm package lock v2 or v3."""
+    """Parse exact, pinned packages from npm package lock v1, v2, or v3."""
 
     _validate_input(repository_id, revision, manifest, file, source, limits)
     try:
@@ -60,40 +63,13 @@ def parse_javascript_dependency_manifest(
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID) from None
     if type(document) is not dict or type(document.get("lockfileVersion")) is not int:
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-    if document["lockfileVersion"] not in {2, 3}:
+    lockfile_version = document["lockfileVersion"]
+    if lockfile_version == 1:
+        pins = _v1_pins(document, limits.max_dependencies)
+    elif lockfile_version in {2, 3}:
+        pins = _flat_pins(document, limits.max_dependencies)
+    else:
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-    packages = document.get("packages")
-    if type(packages) is not dict:
-        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-
-    package_count = 0
-    pins: set[tuple[str, str]] = set()
-    for path, value in packages.items():
-        if type(path) is not str or type(value) is not dict:
-            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-        if path == "":
-            if "link" in value and value["link"] is not False:
-                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-            continue
-        name = _package_name_from_path(path)
-        package_count += 1
-        if package_count > limits.max_dependencies:
-            raise DependencyScanError(DependencyScanErrorCode.DEPENDENCY_LIMIT)
-        if value.get("link") is True or (
-            "link" in value and type(value["link"]) is not bool
-        ):
-            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-        recorded_name = value.get("name")
-        if recorded_name is not None and recorded_name != name:
-            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-        version = value.get("version")
-        if type(version) is not str or _VERSION.fullmatch(version) is None:
-            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-        if "resolved" in value and not _standard_registry_source(
-            value["resolved"], name, version
-        ):
-            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-        pins.add((name, version))
 
     unique: dict[str, tuple[str, str]] = {}
     for name, version in pins:
@@ -133,6 +109,80 @@ def parse_javascript_dependency_manifest(
             repository_id, revision, file.path, content_sha256, dependencies
         ),
     )
+
+
+def _flat_pins(document: dict[str, object], max_dependencies: int) -> set[tuple[str, str]]:
+    packages = document.get("packages")
+    if type(packages) is not dict:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    package_count = 0
+    pins: set[tuple[str, str]] = set()
+    for path, value in packages.items():
+        if type(path) is not str or type(value) is not dict:
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        if path == "":
+            if "link" in value and value["link"] is not False:
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+            continue
+        name = _package_name_from_path(path)
+        package_count += 1
+        if package_count > max_dependencies:
+            raise DependencyScanError(DependencyScanErrorCode.DEPENDENCY_LIMIT)
+        pins.add((name, _pinned_version(value, name)))
+    return pins
+
+
+def _v1_pins(document: dict[str, object], max_dependencies: int) -> set[tuple[str, str]]:
+    if "packages" in document:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    root_dependencies = document.get("dependencies")
+    if type(root_dependencies) is not dict:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    pending: list[tuple[dict[str, object], str]] = [(root_dependencies, "")]
+    pins: set[tuple[str, str]] = set()
+    seen_paths: set[str] = set()
+    package_count = 0
+    while pending:
+        dependencies, parent_path = pending.pop()
+        for name, value in dependencies.items():
+            if (
+                type(name) is not str
+                or type(value) is not dict
+                or _package_name_from_path(f"node_modules/{name}") != name
+            ):
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+            package_path = (
+                f"{parent_path}/node_modules/{name}"
+                if parent_path
+                else f"node_modules/{name}"
+            )
+            if package_path in seen_paths:
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+            seen_paths.add(package_path)
+            package_count += 1
+            if package_count > max_dependencies:
+                raise DependencyScanError(DependencyScanErrorCode.DEPENDENCY_LIMIT)
+            version = _pinned_version(value, name)
+            pins.add((name, version))
+            nested = value.get("dependencies", {})
+            if type(nested) is not dict:
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+            pending.append((nested, package_path))
+    return pins
+
+
+def _pinned_version(value: dict[str, object], name: str) -> str:
+    if value.get("link") is True or ("link" in value and type(value["link"]) is not bool):
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    recorded_name = value.get("name")
+    if recorded_name is not None and recorded_name != name:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    version = value.get("version")
+    if type(version) is not str or _VERSION.fullmatch(version) is None:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    if "resolved" in value and not _standard_registry_source(value["resolved"], name, version):
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    return version
 
 
 def _validate_input(
@@ -238,9 +288,16 @@ def _standard_registry_source(value: object, name: str, version: str) -> bool:
     if match is None:
         return False
     expected = name.split("/", 1)
+    raw_scope = match.group("raw_scope")
+    encoded_scope = match.group("encoded_scope")
+    if raw_scope is not None:
+        actual_name = f"@{raw_scope}/{match.group('raw_package')}"
+    elif encoded_scope is not None:
+        actual_name = f"@{encoded_scope}/{match.group('encoded_package')}"
+    else:
+        actual_name = match.group("plain_package")
     return (
-        match.group("package") == expected[-1]
-        and match.group("scope") == (expected[0][1:] if len(expected) == 2 else None)
+        actual_name == name
         and match.group("filename") == f"{expected[-1]}-{version}.tgz"
     )
 

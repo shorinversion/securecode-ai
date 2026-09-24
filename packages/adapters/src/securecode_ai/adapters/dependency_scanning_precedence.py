@@ -22,7 +22,10 @@ _LOCK_KINDS = frozenset(
         DependencyManifestKind.UV_LOCK,
         DependencyManifestKind.PDM_LOCK,
         DependencyManifestKind.PACKAGE_LOCK,
+        DependencyManifestKind.YARN_LOCK,
+        DependencyManifestKind.PNPM_LOCK,
         DependencyManifestKind.NPM_SHRINKWRAP,
+        DependencyManifestKind.BUN_LOCK,
         DependencyManifestKind.GO_MOD,
     }
 )
@@ -86,12 +89,19 @@ def _covered_paths(
     directory = lock.path.rsplit("/", 1)[0] if "/" in lock.path else ""
     if lock.kind in {
         DependencyManifestKind.PACKAGE_LOCK,
+        DependencyManifestKind.YARN_LOCK,
+        DependencyManifestKind.PNPM_LOCK,
         DependencyManifestKind.NPM_SHRINKWRAP,
+        DependencyManifestKind.BUN_LOCK,
     }:
-        document = _closed_json_document(source)
-        version = document.get("lockfileVersion")
-        if type(version) is not int or version not in {2, 3}:
-            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        if lock.kind in {
+            DependencyManifestKind.PACKAGE_LOCK,
+            DependencyManifestKind.NPM_SHRINKWRAP,
+        }:
+            document = _closed_json_document(source)
+            version = document.get("lockfileVersion")
+            if type(version) is not int or version not in {1, 2, 3}:
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
         path = _join(directory, "package.json")
         return (path,) if path in contents else ()
     if lock.kind is DependencyManifestKind.GO_MOD:
@@ -240,7 +250,10 @@ def _paired(lock: DependencyManifestKind, declaration: DependencyManifestKind) -
         return declaration is DependencyManifestKind.PIPFILE
     if lock in {
         DependencyManifestKind.PACKAGE_LOCK,
+        DependencyManifestKind.YARN_LOCK,
+        DependencyManifestKind.PNPM_LOCK,
         DependencyManifestKind.NPM_SHRINKWRAP,
+        DependencyManifestKind.BUN_LOCK,
     }:
         return declaration is DependencyManifestKind.PACKAGE_JSON
     if lock is DependencyManifestKind.GO_MOD:
