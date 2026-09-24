@@ -59,6 +59,7 @@ from . import (
     ecmascript_cwe22,
     ecmascript_cwe295,
     ecmascript_cwe1333,
+    ecmascript_cwe377,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -109,6 +110,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe22.py",
     "ecmascript_cwe295.py",
     "ecmascript_cwe1333.py",
+    "ecmascript_cwe377.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -447,6 +449,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            temporary_files = ecmascript_cwe377.scan_ecmascript_cwe377(index)
+            for ordinal, signal in enumerate(temporary_files.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=temporary_files.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             regex_dos = ecmascript_cwe1333.scan_ecmascript_cwe1333(index)
             for ordinal, signal in enumerate(regex_dos.signals):
                 signals.append(
