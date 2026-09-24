@@ -10,12 +10,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from securecode_ai.core import RepositoryFile
-from securecode_ai.core.discovery import (
-    DependencyEcosystem,
-    IgnorePolicy,
-    LanguageId,
-    discover_repository,
-)
+from securecode_ai.core.discovery import IgnorePolicy, LanguageId, discover_repository
 from securecode_ai.core.evidence_graph import (
     EvidenceGraph,
 )
@@ -63,7 +58,7 @@ def execute_deterministic_children(
     """Execute inherited scan obligations selected from immutable discovery.
 
     Host-installed accepted catalogue semantics select Python parse/CWE89,
-    any-language secrets and Python-manifest dependencies. Portfolio scanning
+    any-language secrets and supported ecosystem dependency manifests. Portfolio scanning
     executes additionally, never substitutes for selected children. Failures
     retain successful facts for subsequent independent review.
     """
@@ -83,9 +78,7 @@ def execute_deterministic_children(
     discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
     has_python = any(entry.language is LanguageId.PYTHON for entry in discovery.languages)
     has_source = bool(discovery.languages)
-    has_manifest = any(
-        entry.ecosystem is DependencyEcosystem.PYTHON for entry in discovery.dependency_manifests
-    )
+    has_manifest = bool(discovery.dependency_manifests)
     selected = tuple(
         stage
         for stage, applicable in (

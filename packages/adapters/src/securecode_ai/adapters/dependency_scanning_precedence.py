@@ -1,4 +1,4 @@
-"""Deterministic lock authority over paired Python declaration manifests."""
+"""Deterministic lock authority over paired dependency declaration manifests."""
 
 from __future__ import annotations
 
@@ -21,6 +21,9 @@ _LOCK_KINDS = frozenset(
         DependencyManifestKind.POETRY_LOCK,
         DependencyManifestKind.UV_LOCK,
         DependencyManifestKind.PDM_LOCK,
+        DependencyManifestKind.PACKAGE_LOCK,
+        DependencyManifestKind.NPM_SHRINKWRAP,
+        DependencyManifestKind.GO_MOD,
     }
 )
 
@@ -81,6 +84,19 @@ def _covered_paths(
     contents: Mapping[str, bytes],
 ) -> tuple[str, ...]:
     directory = lock.path.rsplit("/", 1)[0] if "/" in lock.path else ""
+    if lock.kind in {
+        DependencyManifestKind.PACKAGE_LOCK,
+        DependencyManifestKind.NPM_SHRINKWRAP,
+    }:
+        document = _closed_json_document(source)
+        version = document.get("lockfileVersion")
+        if type(version) is not int or version not in {2, 3}:
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        path = _join(directory, "package.json")
+        return (path,) if path in contents else ()
+    if lock.kind is DependencyManifestKind.GO_MOD:
+        path = _join(directory, "go.sum")
+        return (path,) if path in contents else ()
     if lock.kind is DependencyManifestKind.PIPFILE_LOCK:
         _closed_json(source)
         path = _join(directory, "Pipfile")
@@ -222,6 +238,13 @@ def _require_pypi_source(value: object) -> None:
 def _paired(lock: DependencyManifestKind, declaration: DependencyManifestKind) -> bool:
     if lock is DependencyManifestKind.PIPFILE_LOCK:
         return declaration is DependencyManifestKind.PIPFILE
+    if lock in {
+        DependencyManifestKind.PACKAGE_LOCK,
+        DependencyManifestKind.NPM_SHRINKWRAP,
+    }:
+        return declaration is DependencyManifestKind.PACKAGE_JSON
+    if lock is DependencyManifestKind.GO_MOD:
+        return declaration is DependencyManifestKind.GO_SUM
     return declaration is DependencyManifestKind.PYPROJECT
 
 
@@ -240,12 +263,26 @@ def _toml(source: bytes) -> dict[str, object]:
 
 
 def _closed_json(source: bytes) -> None:
+    _closed_json_document(source)
+
+
+def _closed_json_document(source: bytes) -> dict[str, object]:
     try:
-        value = json.loads(source.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        value = json.loads(source.decode("utf-8"), object_pairs_hook=_closed_object)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID) from None
     if not isinstance(value, dict):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    return value
+
+
+def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if type(key) is not str or key in result:
+            raise ValueError
+        result[key] = value
+    return result
 
 
 def _canonical_name(value: object) -> str:

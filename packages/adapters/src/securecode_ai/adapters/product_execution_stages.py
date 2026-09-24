@@ -12,7 +12,6 @@ from dataclasses import dataclass
 
 from securecode_ai.core import RepositoryFile
 from securecode_ai.core.discovery import (
-    DependencyEcosystem,
     IgnorePolicy,
     LanguageId,
     discover_repository,
@@ -26,7 +25,7 @@ from .dependency_scanning import (
     DependencyScanResult,
     scan_dependency_advisories,
 )
-from .dependency_scanning_manifests import parse_python_dependency_manifest
+from .dependency_scanning_manifests import parse_dependency_manifest
 from .dependency_scanning_precedence import (
     DependencyManifestBinding,
     dependency_manifest_plan,
@@ -105,7 +104,7 @@ def execute_dependency_stage(
     repository_id: str,
     scanner: ApprovedOsvScanner | None,
 ) -> ProductDependencyStageResult:
-    """Discover Python manifests independently and execute their approved port.
+    """Discover supported manifests independently and execute their approved port.
 
     Unsupported selected formats and port failures cannot become empty results.
     No repository-provided ignore policy or scanner identity is consumed.
@@ -116,9 +115,7 @@ def execute_dependency_stage(
         files, sum(f.size_bytes for f in files), repository_tree_sha256(files)
     )
     discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
-    selected = tuple(
-        m for m in discovery.dependency_manifests if m.ecosystem is DependencyEcosystem.PYTHON
-    )
+    selected = discovery.dependency_manifests
     if selected and scanner is None:
         raise ValueError("PRODUCT_DEPENDENCY_PORT_UNAVAILABLE")
     contents = {f.path: f for f in snapshot.files}
@@ -129,7 +126,7 @@ def execute_dependency_stage(
     for manifest in scanned:
         assert scanner is not None
         try:
-            parsed = parse_python_dependency_manifest(
+            parsed = parse_dependency_manifest(
                 repository_id=repository_id,
                 revision=snapshot.head_sha,
                 manifest=manifest,
@@ -235,11 +232,7 @@ class ProductDeterministicExecution:
             )
             discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
             python = any(entry.language is LanguageId.PYTHON for entry in discovery.languages)
-            manifests = tuple(
-                entry
-                for entry in discovery.dependency_manifests
-                if entry.ecosystem is DependencyEcosystem.PYTHON
-            )
+            manifests = discovery.dependency_manifests
             expected_ids = tuple(
                 stage
                 for stage, applicable in (
@@ -318,7 +311,7 @@ class ProductDeterministicExecution:
                     return False
                 metadata = {f.path: f for f in files}
                 for manifest, result in zip(scanned, dependencies.results, strict=True):
-                    parsed = parse_python_dependency_manifest(
+                    parsed = parse_dependency_manifest(
                         repository_id=self.repository_id,
                         revision=snapshot.head_sha,
                         manifest=manifest,

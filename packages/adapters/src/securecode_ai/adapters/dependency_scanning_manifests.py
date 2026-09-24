@@ -1,4 +1,4 @@
-"""Deterministic parsing of static Python dependency manifests."""
+"""Deterministic parsing of static dependency manifests across supported ecosystems."""
 
 from __future__ import annotations
 
@@ -28,6 +28,7 @@ from .dependency_scanning import (
     DependencyScanLimits,
     ParsedDependencyManifest,
     _canonical_name,
+    _dependency_purl,
     _manifest_hash,
     parse_python_requirements,
 )
@@ -128,6 +129,52 @@ def parse_python_dependency_manifest(
             repository_id, revision, file.path, file.content_sha256, dependencies
         ),
     )
+
+
+def parse_dependency_manifest(
+    *,
+    repository_id: str,
+    revision: str,
+    manifest: DependencyManifestEntry,
+    file: RepositoryFile,
+    source: bytes,
+    limits: DependencyScanLimits = DEFAULT_DEPENDENCY_SCAN_LIMITS,
+) -> ParsedDependencyManifest:
+    """Parse one supported ecosystem manifest without converting gaps to empty inventory."""
+    if type(manifest) is not DependencyManifestEntry:
+        raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
+    if manifest.ecosystem is DependencyEcosystem.PYTHON:
+        return parse_python_dependency_manifest(
+            repository_id=repository_id,
+            revision=revision,
+            manifest=manifest,
+            file=file,
+            source=source,
+            limits=limits,
+        )
+    if manifest.ecosystem is DependencyEcosystem.JAVASCRIPT:
+        from .dependency_scanning_javascript import parse_javascript_dependency_manifest
+
+        return parse_javascript_dependency_manifest(
+            repository_id=repository_id,
+            revision=revision,
+            manifest=manifest,
+            file=file,
+            source=source,
+            limits=limits,
+        )
+    if manifest.ecosystem is DependencyEcosystem.GO:
+        from .dependency_scanning_go import parse_go_dependency_manifest
+
+        return parse_go_dependency_manifest(
+            repository_id=repository_id,
+            revision=revision,
+            manifest=manifest,
+            file=file,
+            source=source,
+            limits=limits,
+        )
+    raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
 
 
 TOMLDecodeError = tomllib.TOMLDecodeError
@@ -560,7 +607,7 @@ def _coordinates(
                     start_point=_point(source, start),
                     end_point=_point(source, end),
                 ),
-                purl=f"pkg:pypi/{pin.name}@{pin.version}",
+                purl=_dependency_purl(manifest.ecosystem, pin.name, pin.version) or "",
             )
         )
     return tuple(output)

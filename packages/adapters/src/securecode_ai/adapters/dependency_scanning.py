@@ -1,4 +1,4 @@
-"""Bounded Python dependency parsing and value-safe OSV advisory normalization."""
+"""Bounded multi-ecosystem dependency parsing and OSV advisory normalization."""
 
 from __future__ import annotations
 
@@ -28,6 +28,9 @@ _PIN = re.compile(
     rb"(?P<hashes>(?:[ \t]+--hash=sha256:[0-9a-fA-F]{64})*)[ \t]*(?:#.*)?"
 )
 _OSV_ID = re.compile(r"[A-Z0-9][A-Z0-9._:+-]{0,127}\Z")
+_PURL = re.compile(
+    r"pkg:(?:pypi|npm|golang)/[A-Za-z0-9%._!~+/-]+@[A-Za-z0-9.!+_-]{1,128}\Z"
+)
 _MAX_LIMITS = (1_048_576, 10_000, 10_000, 64)
 
 
@@ -93,7 +96,7 @@ class DependencyCoordinate:
     purl: str
 
     def __post_init__(self) -> None:
-        expected_purl = f"pkg:pypi/{self.name}@{self.version}"
+        expected_purl = _dependency_purl(self.ecosystem, self.name, self.version)
         if (
             type(self.repository_id) is not str
             or not self.repository_id
@@ -103,10 +106,9 @@ class DependencyCoordinate:
             or type(self.manifest_path) is not str
             or type(self.manifest_sha256) is not str
             or _SHA256.fullmatch(self.manifest_sha256) is None
-            or self.ecosystem is not DependencyEcosystem.PYTHON
+            or type(self.ecosystem) is not DependencyEcosystem
             or type(self.name) is not str
-            or _NAME.fullmatch(self.name.encode("ascii", errors="ignore")) is None
-            or self.name != _canonical_name(self.name)
+            or not _valid_dependency_name(self.ecosystem, self.name)
             or type(self.version) is not str
             or _VERSION.fullmatch(self.version.encode("ascii", errors="ignore")) is None
             or type(self.location) is not SourceRange
@@ -137,9 +139,9 @@ class ParsedDependencyManifest:
             or _SHA256.fullmatch(self.content_sha256) is None
             or type(self.dependencies) is not tuple
             or any(type(item) is not DependencyCoordinate for item in self.dependencies)
-            or tuple((item.name, item.version) for item in self.dependencies)
-            != tuple(sorted((item.name, item.version) for item in self.dependencies))
-            or len({item.name for item in self.dependencies}) != len(self.dependencies)
+            or tuple((item.purl, item.name, item.version) for item in self.dependencies)
+            != tuple(sorted((item.purl, item.name, item.version) for item in self.dependencies))
+            or len({item.purl for item in self.dependencies}) != len(self.dependencies)
             or any(
                 item.repository_id != self.repository_id
                 or item.revision != self.revision
@@ -186,7 +188,7 @@ class OsvPackageResult:
     def __post_init__(self) -> None:
         if (
             type(self.purl) is not str
-            or not self.purl.startswith("pkg:pypi/")
+            or _PURL.fullmatch(self.purl) is None
             or type(self.advisories) is not tuple
             or any(type(item) is not OsvAdvisoryRecord for item in self.advisories)
             or tuple(item.advisory_id for item in self.advisories)
@@ -204,7 +206,7 @@ class OsvBatchRequest:
         if (
             type(self.purls) is not tuple
             or not self.purls
-            or any(type(item) is not str or not item.startswith("pkg:pypi/") for item in self.purls)
+            or any(type(item) is not str or _PURL.fullmatch(item) is None for item in self.purls)
             or self.purls != tuple(sorted(set(self.purls)))
         ):
             raise ValueError("OSV batch request is invalid")
@@ -344,13 +346,13 @@ def parse_python_requirements(
                     start_point=SourcePoint(row, start_in_line),
                     end_point=SourcePoint(row, end_in_line),
                 ),
-                purl=f"pkg:pypi/{name}@{version}",
+                purl=_dependency_purl(DependencyEcosystem.PYTHON, name, version) or "",
             )
         )
         if len(dependencies) > limits.max_dependencies:
             raise DependencyScanError(DependencyScanErrorCode.DEPENDENCY_LIMIT)
         offset += len(line_with_ending)
-    ordered = tuple(sorted(dependencies, key=lambda item: (item.name, item.version)))
+    ordered = tuple(sorted(dependencies, key=lambda item: (item.purl, item.name, item.version)))
     return ParsedDependencyManifest(
         repository_id=repository_id,
         revision=revision,
@@ -447,6 +449,54 @@ def scan_dependency_advisories(
 
 def _canonical_name(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).lower()
+
+
+def _dependency_purl(
+    ecosystem: DependencyEcosystem, name: str, version: str
+) -> str | None:
+    if type(ecosystem) is not DependencyEcosystem or type(name) is not str or type(version) is not str:
+        return None
+    if ecosystem is DependencyEcosystem.PYTHON:
+        return f"pkg:pypi/{name}@{version}"
+    if ecosystem is DependencyEcosystem.JAVASCRIPT:
+        if name.startswith("@") and "/" in name:
+            namespace, package = name[1:].split("/", 1)
+            return f"pkg:npm/%40{namespace}/{package}@{version}"
+        return f"pkg:npm/{name}@{version}"
+    if ecosystem is DependencyEcosystem.GO:
+        escaped = "/".join(
+            "".join(f"!{character.lower()}" if character.isupper() else character for character in part)
+            for part in name.split("/")
+        )
+        return f"pkg:golang/{escaped}@{version}"
+    return None
+
+
+def _valid_dependency_name(ecosystem: DependencyEcosystem, name: str) -> bool:
+    if ecosystem is DependencyEcosystem.PYTHON:
+        return (
+            _NAME.fullmatch(name.encode("ascii", errors="ignore")) is not None
+            and name == _canonical_name(name)
+        )
+    if ecosystem is DependencyEcosystem.JAVASCRIPT:
+        raw = name[1:] if name.startswith("@") else name
+        parts = raw.split("/")
+        return bool(
+            name == name.lower()
+            and len(parts) in {1, 2}
+            and all(re.fullmatch(r"[a-z0-9._~-]{1,214}", part) for part in parts)
+            and (not name.startswith("@") or len(parts) == 2)
+        )
+    if ecosystem is DependencyEcosystem.GO:
+        return bool(
+            len(name.encode("utf-8")) <= 1024
+            and "/" in name
+            and all(
+                re.fullmatch(r"[A-Za-z0-9._~+-]{1,255}", part)
+                for part in name.split("/")
+            )
+        )
+    return False
 
 
 def _canonical_hash(value: object) -> str:

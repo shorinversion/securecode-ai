@@ -206,9 +206,22 @@ def _child_producer_sha256() -> str:
     from pathlib import Path
 
     root = Path(__file__).resolve().parent
+    producer_modules = (
+        "product_execution.py",
+        "product_execution_stages.py",
+        "product_execution_orchestration.py",
+        "secret_detection.py",
+        "dependency_scanning.py",
+        "dependency_scanning_manifests.py",
+        "dependency_scanning_precedence.py",
+        "dependency_scanning_go.py",
+        "dependency_scanning_javascript.py",
+        "dependency_scanning_javascript_locks.py",
+    )
     manifest = [
         (name, hashlib.sha256((root / name).read_bytes()).hexdigest())
-        for name in ("product_execution.py", "secret_detection.py", "dependency_scanning.py")
+        for name in producer_modules
+        if (root / name).is_file()
     ]
     return hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
 

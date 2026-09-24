@@ -90,7 +90,6 @@ def _child_execution_units(host: ProductAuditHostInputs) -> list[CoverageUnit]:
     if execution is None:
         return []
     from securecode_ai.core.discovery import (
-        DependencyEcosystem,
         IgnorePolicy,
         LanguageId,
         discover_repository,
@@ -110,9 +109,7 @@ def _child_execution_units(host: ProductAuditHostInputs) -> list[CoverageUnit]:
     )
     discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
     python = any(entry.language is LanguageId.PYTHON for entry in discovery.languages)
-    manifests = any(
-        entry.ecosystem is DependencyEcosystem.PYTHON for entry in discovery.dependency_manifests
-    )
+    manifests = bool(discovery.dependency_manifests)
     selected = tuple(
         stage
         for stage, applies in (
