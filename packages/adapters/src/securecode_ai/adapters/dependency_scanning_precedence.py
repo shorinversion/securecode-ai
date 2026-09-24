@@ -15,6 +15,13 @@ from .dependency_scanning import DependencyScanError, DependencyScanErrorCode
 
 _NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?\Z")
 _PYPI_URLS = frozenset({"https://pypi.org/simple", "https://pypi.org/simple/"})
+_GO_WORK_VERSION = re.compile(r"go[ \t]+[0-9]+\.[0-9]+(?:\.[0-9]+)?\Z")
+_GO_WORK_TOOLCHAIN = re.compile(r"toolchain[ \t]+go[0-9]+\.[0-9]+(?:\.[0-9]+)?\Z")
+_GO_WORK_USE = re.compile(r"(?:\./)?[A-Za-z0-9._/-]+\Z")
+_GO_WORK_SUM = re.compile(
+    r"[A-Za-z0-9.!~+/_-]+[ \t]+v[0-9A-Za-z.+-]+(?:/go\.mod)?"
+    r"[ \t]+h1:[A-Za-z0-9+/]{43}=\Z"
+)
 _LOCK_KINDS = frozenset(
     {
         DependencyManifestKind.PIPFILE_LOCK,
@@ -27,6 +34,7 @@ _LOCK_KINDS = frozenset(
         DependencyManifestKind.NPM_SHRINKWRAP,
         DependencyManifestKind.BUN_LOCK,
         DependencyManifestKind.GO_MOD,
+        DependencyManifestKind.GO_WORK,
     }
 )
 
@@ -55,7 +63,39 @@ def dependency_manifest_plan(
     if len(by_path) != len(manifests) or set(by_path) != set(contents):
         raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
     covered: dict[str, DependencyManifestEntry] = {}
+    workspaces = tuple(
+        item for item in manifests if item.kind is DependencyManifestKind.GO_WORK
+    )
+    workspace_sums = tuple(
+        item for item in manifests if item.kind is DependencyManifestKind.GO_WORK_SUM
+    )
+    if len(workspaces) > 1 or len(workspace_sums) > 1 or (workspace_sums and not workspaces):
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    if workspaces:
+        workspace = workspaces[0]
+        source = contents.get(workspace.path)
+        if type(source) is not bytes:
+            raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
+        module_paths = _go_workspace_modules(source, workspace.path)
+        go_mod_paths = {
+            item.path for item in manifests if item.kind is DependencyManifestKind.GO_MOD
+        }
+        if not module_paths or not module_paths.issubset(go_mod_paths):
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        covered[workspace.path] = workspace
+        if workspace_sums:
+            workspace_sum = workspace_sums[0]
+            expected_sum = _join(
+                workspace.path.rsplit("/", 1)[0] if "/" in workspace.path else "",
+                "go.work.sum",
+            )
+            if workspace_sum.path != expected_sum:
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+            _validate_go_workspace_sum(contents.get(workspace_sum.path))
+            covered[workspace_sum.path] = workspace
     for lock in manifests:
+        if lock.kind in {DependencyManifestKind.GO_WORK, DependencyManifestKind.GO_WORK_SUM}:
+            continue
         if lock.kind not in _LOCK_KINDS:
             continue
         source = contents.get(lock.path)
@@ -106,7 +146,10 @@ def _covered_paths(
         return (path,) if path in contents else ()
     if lock.kind is DependencyManifestKind.GO_MOD:
         path = _join(directory, "go.sum")
-        return (path,) if path in contents else ()
+        if path in contents:
+            _validate_go_workspace_sum(contents.get(path))
+            return (path,)
+        return ()
     if lock.kind is DependencyManifestKind.PIPFILE_LOCK:
         _closed_json(source)
         path = _join(directory, "Pipfile")
@@ -139,6 +182,71 @@ def _covered_paths(
     if pdm.get("source") not in (None, [], {}):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
     return (path,)
+
+
+def _go_workspace_modules(source: bytes, path: str) -> set[str]:
+    if len(source) > 1_048_576 or source.startswith(b"\xef\xbb\xbf"):
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    try:
+        text = source.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID) from None
+    directory = path.rsplit("/", 1)[0] if "/" in path else ""
+    modules: set[str] = set()
+    in_use_block = False
+    has_go_version = False
+    for raw_line in text.splitlines():
+        line = raw_line.split("//", 1)[0].strip()
+        if not line:
+            continue
+        if in_use_block:
+            if line == ")":
+                in_use_block = False
+                continue
+            use_path = line
+        elif line == "use (":
+            in_use_block = True
+            continue
+        elif line.startswith("use "):
+            use_path = line[4:].strip()
+        elif _GO_WORK_VERSION.fullmatch(line):
+            if has_go_version:
+                raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+            has_go_version = True
+            continue
+        elif _GO_WORK_TOOLCHAIN.fullmatch(line):
+            continue
+        elif line.startswith("replace "):
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        else:
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        if (
+            not _GO_WORK_USE.fullmatch(use_path)
+            or "\\" in use_path
+            or any(part in {"", ".."} for part in use_path.removeprefix("./").split("/"))
+        ):
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        relative = use_path.removeprefix("./")
+        module_dir = "" if relative == "." else relative
+        module_path = _join(directory, f"{module_dir}/go.mod" if module_dir else "go.mod")
+        if module_path in modules:
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+        modules.add(module_path)
+    if in_use_block or not has_go_version:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    return modules
+
+
+def _validate_go_workspace_sum(source: object) -> None:
+    if type(source) is not bytes or len(source) > 1_048_576:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
+    try:
+        text = source.decode("ascii", errors="strict")
+    except UnicodeDecodeError:
+        raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID) from None
+    for line in text.splitlines():
+        if not _GO_WORK_SUM.fullmatch(line):
+            raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
 
 
 def _uv_declarations(
