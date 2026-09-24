@@ -84,6 +84,7 @@ from . import (
     ecmascript_cwe94,
     ecmascript_cwe639,
     ecmascript_cwe306,
+    ecmascript_cwe476,
     go_cwe22,
     go_cwe295,
     go_cwe367,
@@ -111,6 +112,7 @@ from . import (
     go_cwe352,
     go_cwe476,
     go_cwe117,
+    go_cwe598,
     python_ast,
     python_cwe502,
     python_cwe295,
@@ -161,6 +163,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio_helpers.py",
     "cwe_portfolio_models.py",
     "ecmascript_cwe352.py",
+    "ecmascript_cwe476.py",
     "ecmascript_cwe1321.py",
     "ecmascript_cwe22.py",
     "ecmascript_cwe295.py",
@@ -216,6 +219,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe352.py",
     "go_cwe476.py",
     "go_cwe117.py",
+    "go_cwe598.py",
     "python_ast.py",
     "python_cwe502.py",
     "python_cwe295.py",
@@ -794,6 +798,20 @@ class FirstPartyStaticWorker:
                         rule_id=signal.rule_id,
                     )
                 )
+            sensitive_query_data = go_cwe598.scan_go_cwe598(index)
+            for ordinal, signal in enumerate(sensitive_query_data.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=sensitive_query_data.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
+                    )
+                )
             weak_crypto = go_cwe327.scan_go_cwe327(index)
             for ordinal, signal in enumerate(weak_crypto.signals):
                 signals.append(
@@ -1336,6 +1354,20 @@ class FirstPartyStaticWorker:
                         location=signal.sink,
                         scan_sha256=dynamic_code.scan_sha256,
                         ordinal=ordinal,
+                    )
+                )
+            nil_pointer = ecmascript_cwe476.scan_ecmascript_cwe476(index)
+            for ordinal, signal in enumerate(nil_pointer.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=nil_pointer.scan_sha256,
+                        ordinal=ordinal,
+                        rule_id=signal.rule_id,
                     )
                 )
             csrf_scanner = (
