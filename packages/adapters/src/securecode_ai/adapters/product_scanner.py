@@ -66,6 +66,7 @@ from . import (
     ecmascript_cwe918,
     ecmascript_cwe94,
     go_cwe22,
+    go_cwe295,
     go_cwe601,
     go_cwe78,
     go_cwe79,
@@ -112,6 +113,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe918.py",
     "ecmascript_cwe94.py",
     "go_cwe22.py",
+    "go_cwe295.py",
     "go_cwe601.py",
     "go_cwe78.py",
     "go_cwe79.py",
@@ -120,6 +122,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe_crypto.py",
     "python_ast.py",
     "python_cwe502.py",
+    "python_cwe611.py",
     "python_cwe601.py",
     "python_cwe78.py",
     "python_cwe79.py",
@@ -236,6 +239,19 @@ class FirstPartyStaticWorker:
                         ordinal=ordinal,
                     )
                 )
+            xml = python_cwe611.scan_python_cwe611(index, python_analysis)
+            for ordinal, signal in enumerate(xml.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=xml.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             ldap = python_cwe90.scan_python_cwe90(index, python_analysis)
             for ordinal, signal in enumerate(ldap.signals):
                 signals.append(
@@ -277,6 +293,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            tls_validation = go_cwe295.scan_go_cwe295(index)
+            for ordinal, signal in enumerate(tls_validation.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=tls_validation.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             xss = go_cwe79.scan_go_cwe79(index)
             for ordinal, signal in enumerate(xss.signals):
                 signals.append(
