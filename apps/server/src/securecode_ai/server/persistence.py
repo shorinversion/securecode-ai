@@ -149,6 +149,23 @@ class DevelopmentRepository:
             raise NotFoundError()
         return _run_projection(*row)
 
+    def get_run_by_identity(
+        self, tenant_id: str, repository_id: str, execution_identity_hash: str
+    ) -> dict[str, object]:
+        """Resolve the unique admitted run for an execution identity."""
+
+        _validate_hash(execution_identity_hash)
+        row = self._connection.execute(
+            """SELECT tenant_id, run_id, repository_id, execution_identity_hash,
+                      base_sha, head_sha, state, version
+               FROM audit_runs
+               WHERE tenant_id=? AND repository_id=? AND execution_identity_hash=?""",
+            (tenant_id, repository_id, execution_identity_hash),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError()
+        return _run_projection(*row)
+
     def list_runs(
         self,
         tenant_id: str,

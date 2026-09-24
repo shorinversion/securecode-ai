@@ -20,7 +20,30 @@ _AUDITED_ACTIONS = frozenset(
         "findings.decide",
         "approvals.create",
         "approvals.decide",
+        "artifacts.authorize",
+        "artifacts.upload",
+        "feedback.submit",
+        "assurance.append",
+        "webhooks.github",
+        "webhooks.gitlab",
+        "worker_sessions.create",
+        "worker_sessions.heartbeat",
+        "worker_sessions.events.append",
+        "worker_sessions.artifacts.commit",
         "worker_sessions.complete",
+    }
+)
+_AUDIT_OUTCOMES = frozenset(
+    {
+        "success",
+        "error",
+        "cancelled",
+        "superseded",
+        "pass",
+        "fail",
+        "indeterminate",
+        "approved",
+        "rejected",
     }
 )
 
@@ -122,6 +145,14 @@ class AuditTelemetryControlPlane:
             return
         run_id = _action_run_id(request, response)
         if run_id is None:
+            run_id = self._identity_bound_run_id(request)
+        if run_id is None:
+            # A successful mutating route must identify the exact run whose
+            # durable state it changed.  A worker claim returning 204 is an
+            # explicit no-op and has no run to record; malformed success
+            # responses fail closed instead of silently losing the audit event.
+            if 200 <= response.status < 300 and response.status != 204:
+                raise ServiceUnavailableError()
             return
         try:
             run = self._runs.get_run(request.identity.tenant_id, run_id)
@@ -129,6 +160,8 @@ class AuditTelemetryControlPlane:
             if response.status < 400:
                 raise ServiceUnavailableError() from None
             return
+        except Exception as error:
+            raise ServiceUnavailableError() from error
         repository_id = run.get("repository_id")
         identity_hash = run.get("execution_identity_hash")
         if type(repository_id) is not str or type(identity_hash) is not str:
@@ -137,6 +170,8 @@ class AuditTelemetryControlPlane:
             (
                 request.identity.tenant_id,
                 run_id,
+                identity_hash,
+                request.identity.subject_id,
                 request.action,
                 request.idempotency_key or "",
             )
@@ -158,19 +193,78 @@ class AuditTelemetryControlPlane:
                 attributes={"outcome": outcome},
                 idempotency_key=idempotency_key,
             )
-        except AuditConflict as error:
+        except Exception as error:
             raise ServiceUnavailableError() from error
+
+    def _identity_bound_run_id(self, request: ServiceRequest) -> str | None:
+        """Resolve evidence writes through their already admitted identity hash."""
+
+        if request.action != "assurance.append" or not isinstance(request.document, Mapping):
+            return None
+        repository_id = request.document.get("repository_id")
+        identity_hash = request.document.get("execution_identity_hash")
+        if (
+            not _safe_identifier(repository_id)
+            or not _sha256(identity_hash)
+        ):
+            return None
+        lookup = getattr(self._runs, "get_run_by_identity", None)
+        if not callable(lookup):
+            return None
+        try:
+            run = lookup(request.identity.tenant_id, repository_id, identity_hash)
+        except NotFoundError:
+            return None
+        except Exception as error:
+            raise ServiceUnavailableError() from error
+        if not isinstance(run, Mapping):
+            return None
+        run_id = run.get("run_id")
+        return run_id if _safe_identifier(run_id) else None
 
 
 def _action_run_id(request: ServiceRequest, response: ServiceResponse) -> str | None:
-    run_id = request.path_params.get("run_id") or response.document.get("run_id")
-    if run_id is None and isinstance(request.document, Mapping):
-        run_id = request.document.get("run_id")
-    return run_id if type(run_id) is str and run_id else None
+    candidates: list[object] = [request.path_params.get("run_id")]
+    if request.action == "artifacts.upload":
+        candidates.append(request.headers.get("x-securecode-run-id"))
+    candidates.extend(
+        (
+            response.document.get("run_id"),
+            request.document.get("run_id") if isinstance(request.document, Mapping) else None,
+        )
+    )
+    for document in (response.document, request.document):
+        if not isinstance(document, Mapping):
+            continue
+        for name in ("run", "admission"):
+            nested = document.get(name)
+            if isinstance(nested, Mapping):
+                candidates.append(nested.get("run_id"))
+    for run_id in candidates:
+        if type(run_id) is str and _safe_identifier(run_id):
+            return run_id
+    return None
+
+
+def _safe_identifier(value: object) -> bool:
+    return (
+        type(value) is str
+        and 1 <= len(value) <= 256
+        and "\x00" not in value
+        and all(ord(character) >= 0x20 for character in value)
+    )
+
+
+def _sha256(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def _operation_for(action: str) -> str | None:
-    if action.startswith("runs."):
+    if action.startswith(("runs.", "findings.", "feedback.", "assurance.", "webhooks.")):
         return "run"
     if action.startswith("worker_sessions."):
         return "worker"
@@ -205,7 +299,8 @@ def _audit_outcome(request: ServiceRequest, response: ServiceResponse) -> str:
             state = decision.get("state")
             if type(state) is str and state in {"APPROVED", "REJECTED"}:
                 return state.lower()
-    return _outcome(response)
+    outcome = _outcome(response)
+    return outcome if outcome in _AUDIT_OUTCOMES else "error"
 
 
 def _audit_range(query: Mapping[str, tuple[str, ...]], head: int) -> tuple[int, int | None]:

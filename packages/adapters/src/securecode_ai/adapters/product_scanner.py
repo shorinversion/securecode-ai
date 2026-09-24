@@ -23,6 +23,7 @@ from securecode_ai.contracts import (
     SourcePosition,
     TrustLabel,
 )
+from securecode_ai.core import SourceRange
 from securecode_ai.core.evidence_graph import (
     EvidenceEdgeKind,
     EvidenceGraph,
@@ -49,7 +50,15 @@ from securecode_ai.core.tool_policy import (
     RepositoryToolScope,
 )
 
-from . import cst, cwe89, cwe89_multilanguage, cwe_portfolio, python_ast
+from . import (
+    cst,
+    cwe89,
+    cwe89_multilanguage,
+    cwe_portfolio,
+    go_cwe_crypto,
+    python_ast,
+    python_cwe94,
+)
 from .native_sources import NativeSourceCatalogue
 from .repository_view import SealedRepositoryView
 from .scanner_plugin import ScannerPluginBinding, register_scanner_worker, run_scanner_plugin
@@ -70,7 +79,9 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio.py",
     "cwe_portfolio_helpers.py",
     "cwe_portfolio_models.py",
+    "go_cwe_crypto.py",
     "python_ast.py",
+    "python_cwe94.py",
     "scanner_plugin.py",
 )
 
@@ -125,9 +136,41 @@ class FirstPartyStaticWorker:
                 producer=producer,
             )
         )
+        python_analysis: python_ast.PythonAstAnalysis | None = None
+        if index.language == "python":
+            python_analysis = python_ast.analyze_python_ast(index)
+            python_scan = python_cwe94.scan_python_cwe94(index, python_analysis)
+            for ordinal, signal in enumerate(python_scan.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=python_scan.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+        elif index.language == "go":
+            crypto = go_cwe_crypto.scan_go_cwe_crypto(index)
+            for ordinal, signal in enumerate(crypto.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=crypto.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
         sql: cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult
         if index.language == "python":
-            sql = cwe89.scan_python_cwe89(index, python_ast.analyze_python_ast(index))
+            if python_analysis is None:
+                raise ValueError("Python AST analysis is unavailable")
+            sql = cwe89.scan_python_cwe89(index, python_analysis)
         else:
             scanners = {
                 "javascript": cwe89_multilanguage.scan_javascript_cwe89,
@@ -178,6 +221,49 @@ class FirstPartyStaticWorker:
                 )
             )
         return ScannerPluginOutput(tuple(sorted(signals, key=lambda item: item.raw_signal_id)))
+
+
+def _fact_to_raw_signal(
+    *,
+    request: ScannerRequest,
+    producer: ProducerRef,
+    cwe: str,
+    detector: str,
+    location: SourceRange,
+    scan_sha256: str,
+    ordinal: int,
+) -> RawSignal:
+    """Bind one rule-specific source range to the normal scanner contract."""
+
+    start = location.start_point
+    end = location.end_point
+    source_location = SourceLocation(
+        schema_version="0.2.0",
+        path=request.file.path,
+        start=SourcePosition(
+            schema_version="0.2.0", line=start.row + 1, column=start.column + 1
+        ),
+        end=SourcePosition(
+            schema_version="0.2.0", line=end.row + 1, column=end.column + 1
+        ),
+        content_sha256=request.file.content_sha256,
+    )
+    digest = hashlib.sha256(
+        f"{request.tenant_id}:{request.repository_id}:{request.head_sha}:"
+        f"{request.file.path}:{cwe}:{detector}:{scan_sha256}:{ordinal}".encode("utf-8")
+    ).hexdigest()
+    stable_rule = f"{detector.split('@', maxsplit=1)[0]}:{cwe.lower()}"
+    return RawSignal(
+        schema_version="0.2.0",
+        raw_signal_id=f"product-{cwe.lower()}-{digest}",
+        tenant_id=request.tenant_id,
+        head_sha=request.head_sha,
+        producer=producer,
+        rule_id=stable_rule,
+        location=source_location,
+        payload_classification=DataClass.INTERNAL_METADATA,
+        signal_sha256=digest,
+    )
 
 
 def create_first_party_static_worker() -> FirstPartyStaticWorker:
