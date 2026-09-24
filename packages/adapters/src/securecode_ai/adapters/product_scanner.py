@@ -57,6 +57,7 @@ from . import (
     cwe_portfolio,
     ecmascript_cwe1321,
     ecmascript_cwe22,
+    ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
     ecmascript_cwe79,
@@ -101,6 +102,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "cwe_portfolio_models.py",
     "ecmascript_cwe1321.py",
     "ecmascript_cwe22.py",
+    "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
     "ecmascript_cwe79.py",
@@ -368,6 +370,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            deserialization = ecmascript_cwe502.scan_ecmascript_cwe502(index)
+            for ordinal, signal in enumerate(deserialization.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=deserialization.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             commands = ecmascript_cwe78.scan_ecmascript_cwe78(index)
             for ordinal, signal in enumerate(commands.signals):
                 signals.append(
