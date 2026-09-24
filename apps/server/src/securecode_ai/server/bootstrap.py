@@ -53,6 +53,7 @@ from .ports import (
     VerifiedIdentity,
 )
 from .reloading_identity import ReloadingIdentityVerifier
+from .residency_registry import load_residency_registry
 from .resource_configuration import (
     TenantProvisioningResourceService,
     load_resource_configuration,
@@ -73,11 +74,11 @@ from .scm_admission import (
     SCMAdmissionHandler,
     SqliteWorkerSupersession,
 )
+from .scm_annotations import GithubAnnotationReceiptResolver
 from .scm_completion import (
     SCMCompletionPublicationHandler,
     SCMCompletionPublicationService,
 )
-from .scm_annotations import GithubAnnotationReceiptResolver
 from .scm_policy_registry import load_scm_policy_registry
 from .scm_publication_store import SqliteSCMPublicationStore
 from .scm_resolution import SCMRunResolutionHandler
@@ -271,6 +272,7 @@ def build_local_app(
         scm_tenant = identities[0].identity.tenant_id if identities else "local"
     if _ID.fullmatch(scm_tenant) is None:
         raise ValueError("SCM tenant is invalid")
+    residency = load_residency_registry(connection, values)
     scm = build_scm_handlers(values, tenant_id=scm_tenant, connection=connection)
     policy_registry_path = values.get("SECURECODE_SCM_POLICY_REGISTRY_FILE")
     policy_registry = (
@@ -422,7 +424,7 @@ def build_local_app(
         AssuranceService(AssuranceRepository(connection)),
         load_assurance_verifier_registry(values),
     )
-    operations = build_operational_handlers(values, connection)
+    operations = build_operational_handlers(values, connection, residency=residency)
     service: ControlPlaneService = CompositeService(
         core=RunAdmissionRoutingService(
             admission=admission,

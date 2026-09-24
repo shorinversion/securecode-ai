@@ -13,6 +13,7 @@ from .operations_handler_secrets import (
     SecretGrantScopeRepository,
     SecretOperationsHandler,
 )
+from .residency_registry import ResidencyGuard
 from .secret_provider_runtime import build_secret_provider
 from .secret_service import SecretService
 
@@ -28,6 +29,8 @@ class OperationalServiceHandlers:
 def build_operational_handlers(
     values: object,
     connection: sqlite3.Connection,
+    *,
+    residency: ResidencyGuard | None = None,
 ) -> OperationalServiceHandlers:
     if not isinstance(connection, sqlite3.Connection):
         raise TypeError("connection must be a sqlite3 connection")
@@ -40,7 +43,11 @@ def build_operational_handlers(
             provider_available=secret_provider_available,
         ),
         backups=BackupOperationsHandler(
-            BackupService(BackupRepository(connection), backup_executor),
+            BackupService(
+                BackupRepository(connection),
+                backup_executor,
+                residency=residency,
+            ),
             BackupScopeRepository(connection),
             executor_available=backup_executor_available,
         ),

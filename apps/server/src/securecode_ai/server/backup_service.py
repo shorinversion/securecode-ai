@@ -17,6 +17,7 @@ from .backup_repository import (
     BackupRepository,
     validate_backup_record,
 )
+from .residency_registry import ResidencyConflict, ResidencyGuard
 
 
 class BackupExecutorUnavailable(BackupConflict):
@@ -71,15 +72,20 @@ class BackupService:
         executor: BackupExecutor,
         *,
         clock: Callable[[], int] | None = None,
+        residency: ResidencyGuard | None = None,
     ) -> None:
         self.repo = repo
         self.executor = executor
         self._clock = clock or (lambda: int(time.time()))
+        if residency is not None and not callable(getattr(residency, "require_region", None)):
+            raise TypeError("residency guard is invalid")
+        self._residency = residency
         self._transition_locks_guard = Lock()
         self._transition_locks: dict[tuple[str, str], tuple[_TransitionLock, int]] = {}
 
     def plan(self, record: BackupRecord, *, idempotency_key: str | None = None) -> BackupRecord:
         validate_backup_record(record)
+        self._require_residency(record)
         if (
             record.state != "PLANNED"
             or record.version != 1
@@ -133,6 +139,7 @@ class BackupService:
             item = self.repo.get(tenant, backup)
             if item.state != "PLANNED" or item.version != expected:
                 raise BackupConflict("backup precondition failed")
+            self._require_residency(item)
             observed = self._execute_backup(item)
             if not _matches_manifest(item, observed):
                 raise BackupConflict("backup content failed manifest verification")
@@ -176,6 +183,7 @@ class BackupService:
             item = self.repo.get(tenant, backup)
             if item.state != "BACKED_UP" or item.version != expected or not item.backup_verified:
                 raise BackupConflict("restore precondition failed")
+            self._require_residency(item)
             observed = self._execute_restore(item)
             if not _matches_manifest(item, observed):
                 raise BackupConflict("restored content failed manifest verification")
@@ -234,11 +242,28 @@ class BackupService:
             raise BackupConflict("clock returned an invalid timestamp")
         return value
 
+    def _require_residency(self, item: BackupRecord) -> None:
+        guard = self._residency
+        if guard is None:
+            return
+        try:
+            decision = guard.require_region(tenant_id=item.tenant_id, region=item.region)
+        except ResidencyConflict as error:
+            raise BackupConflict("backup region is not permitted by residency policy") from error
+        if (
+            decision.tenant_id != item.tenant_id
+            or decision.source_region != item.region
+            or decision.destination_region != item.region
+            or not decision.same_region
+        ):
+            raise BackupConflict("residency guard returned an invalid decision")
+
     @contextmanager
     def _transition_lock(self, tenant: str, backup: str) -> Iterator[None]:
         key = (tenant, backup)
         with self._transition_locks_guard:
             entry = self._transition_locks.get(key)
+            lock: _TransitionLock
             if entry is None:
                 lock = RLock()
                 count = 0

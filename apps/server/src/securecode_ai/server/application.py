@@ -46,6 +46,7 @@ from .ports import (
 from .request_quota import QuotaError, RequestQuota
 from .request_scope import repository_id as _repository_id
 from .sessions import SessionError, SessionStore
+from .tenant_rate_limiter import TenantTokenBucketRateLimiter
 from .telemetry import TelemetryRecorder
 
 
@@ -64,6 +65,7 @@ class ServerApp:
         oidc_login: OidcLoginService | None = None,
         sessions: SessionStore | None = None,
         quota: RequestQuota | None = None,
+        rate_limiter: TenantTokenBucketRateLimiter | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -76,12 +78,19 @@ class ServerApp:
             or (oidc_login is not None and type(oidc_login) is not OidcLoginService)
             or (sessions is not None and type(sessions) is not SessionStore)
             or (oidc_login is not None and type(sessions) is not SessionStore)
+            or (
+                rate_limiter is not None
+                and type(rate_limiter) is not TenantTokenBucketRateLimiter
+            )
         ):
             raise ValueError("server application settings are invalid")
         self._telemetry = telemetry if telemetry is not None else TelemetryRecorder()
         self._oidc_login = oidc_login
         self._sessions = sessions
         self._quota = quota
+        self._rate_limiter = (
+            rate_limiter if rate_limiter is not None else TenantTokenBucketRateLimiter()
+        )
         self._identities = identities or DenyIdentityVerifier()
         self._authorization = authorization or DenyAuthorization()
         self._service = service or UnavailableControlPlaneService()
@@ -168,10 +177,6 @@ class ServerApp:
         if route is None:
             await self._send_error(send, 404, "NOT_FOUND", correlation_id)
             return
-        body = await _read_body(receive, self._max_body_bytes)
-        if body is None:
-            await self._send_error(send, 413, "BODY_TOO_LARGE", correlation_id)
-            return
         identity = (
             self._self_authenticated_identity(route)
             if route.self_authenticated
@@ -179,6 +184,21 @@ class ServerApp:
         )
         if identity is None:
             await self._send_error(send, 401, "UNAUTHENTICATED", correlation_id)
+            return
+        try:
+            rate_decision = self._rate_limiter.allow(
+                tenant_id=identity.tenant_id,
+            )
+        except Exception:
+            await self._send_error(send, 503, "SERVICE_UNAVAILABLE", correlation_id)
+            return
+        if not rate_decision.allowed:
+            await self._send_json(
+                send,
+                429,
+                {"error": {"code": "RATE_LIMIT_EXCEEDED", "correlation_id": correlation_id}},
+                {"Retry-After": str(rate_decision.retry_after_seconds)},
+            )
             return
         # Scope note: the quota charges routed API work, after the tenant is
         # known. Early unauthenticated routes (login, health, capabilities)
@@ -201,6 +221,10 @@ class ServerApp:
                     {"Retry-After": str(decision.retry_after_seconds)},
                 )
                 return
+        body = await _read_body(receive, self._max_body_bytes)
+        if body is None:
+            await self._send_error(send, 413, "BODY_TOO_LARGE", correlation_id)
+            return
         if route.workload_only and not identity.workload:
             await self._send_error(send, 403, "FORBIDDEN", correlation_id)
             return
