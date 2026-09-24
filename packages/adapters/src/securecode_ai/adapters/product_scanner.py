@@ -65,6 +65,7 @@ from . import (
     ecmascript_cwe732,
     ecmascript_cwe117,
     ecmascript_cwe400,
+    ecmascript_cwe307,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -76,6 +77,7 @@ from . import (
     go_cwe295,
     go_cwe367,
     go_cwe400,
+    go_cwe307,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -91,6 +93,7 @@ from . import (
     python_cwe732,
     python_cwe384,
     python_cwe117,
+    python_cwe307,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -128,6 +131,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe732.py",
     "ecmascript_cwe117.py",
     "ecmascript_cwe400.py",
+    "ecmascript_cwe307.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -139,6 +143,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe295.py",
     "go_cwe367.py",
     "go_cwe400.py",
+    "go_cwe307.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -154,6 +159,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe732.py",
     "python_cwe384.py",
     "python_cwe117.py",
+    "python_cwe307.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -219,6 +225,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            rate_limit = python_cwe307.scan_python_cwe307(index, python_analysis)
+            for ordinal, signal in enumerate(rate_limit.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=rate_limit.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             log_injection = python_cwe117.scan_python_cwe117(index, python_analysis)
             for ordinal, signal in enumerate(log_injection.signals):
                 signals.append(
@@ -404,6 +423,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            rate_limit = go_cwe307.scan_go_cwe307(index)
+            for ordinal, signal in enumerate(rate_limit.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=rate_limit.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             resource_consumption = go_cwe400.scan_go_cwe400(index)
             for ordinal, signal in enumerate(resource_consumption.signals):
                 signals.append(
@@ -564,6 +596,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            rate_limit = ecmascript_cwe307.scan_ecmascript_cwe307(index)
+            for ordinal, signal in enumerate(rate_limit.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=rate_limit.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             resource_consumption = ecmascript_cwe400.scan_ecmascript_cwe400(index)
             for ordinal, signal in enumerate(resource_consumption.signals):
                 signals.append(
