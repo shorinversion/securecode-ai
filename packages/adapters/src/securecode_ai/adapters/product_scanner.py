@@ -70,6 +70,7 @@ from . import (
     ecmascript_cwe776,
     ecmascript_cwe209,
     ecmascript_cwe613,
+    ecmascript_cwe338,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -87,6 +88,7 @@ from . import (
     go_cwe776,
     go_cwe209,
     go_cwe613,
+    go_cwe338,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -109,6 +111,7 @@ from . import (
     python_cwe776,
     python_cwe209,
     python_cwe613,
+    python_cwe338,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -151,6 +154,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe776.py",
     "ecmascript_cwe209.py",
     "ecmascript_cwe613.py",
+    "ecmascript_cwe338.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -168,6 +172,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe776.py",
     "go_cwe209.py",
     "go_cwe613.py",
+    "go_cwe338.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -190,6 +195,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe776.py",
     "python_cwe209.py",
     "python_cwe613.py",
+    "python_cwe338.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -255,6 +261,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            weak_randomness = python_cwe338.scan_python_cwe338(index, python_analysis)
+            for ordinal, signal in enumerate(weak_randomness.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=weak_randomness.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             session_expiration = python_cwe613.scan_python_cwe613(index, python_analysis)
             for ordinal, signal in enumerate(session_expiration.signals):
                 signals.append(
@@ -531,6 +550,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            weak_randomness = go_cwe338.scan_go_cwe338(index)
+            for ordinal, signal in enumerate(weak_randomness.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=weak_randomness.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             session_expiration = go_cwe613.scan_go_cwe613(index)
             for ordinal, signal in enumerate(session_expiration.signals):
                 signals.append(
@@ -769,6 +801,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            weak_randomness = ecmascript_cwe338.scan_ecmascript_cwe338(index)
+            for ordinal, signal in enumerate(weak_randomness.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=weak_randomness.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             session_expiration = ecmascript_cwe613.scan_ecmascript_cwe613(index)
             for ordinal, signal in enumerate(session_expiration.signals):
                 signals.append(
