@@ -63,6 +63,7 @@ from . import (
     ecmascript_cwe611,
     ecmascript_cwe377,
     ecmascript_cwe732,
+    ecmascript_cwe117,
     ecmascript_cwe502,
     ecmascript_cwe601,
     ecmascript_cwe78,
@@ -87,6 +88,7 @@ from . import (
     python_cwe614,
     python_cwe732,
     python_cwe384,
+    python_cwe117,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -122,6 +124,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "ecmascript_cwe367.py",
     "ecmascript_cwe611.py",
     "ecmascript_cwe732.py",
+    "ecmascript_cwe117.py",
     "ecmascript_cwe502.py",
     "ecmascript_cwe601.py",
     "ecmascript_cwe78.py",
@@ -146,6 +149,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe614.py",
     "python_cwe732.py",
     "python_cwe384.py",
+    "python_cwe117.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -211,6 +215,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            log_injection = python_cwe117.scan_python_cwe117(index, python_analysis)
+            for ordinal, signal in enumerate(log_injection.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=log_injection.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             session_fixation = python_cwe384.scan_python_cwe384(index, python_analysis)
             for ordinal, signal in enumerate(session_fixation.signals):
                 signals.append(
@@ -530,6 +547,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language in {"javascript", "typescript"}:
+            log_injection = ecmascript_cwe117.scan_ecmascript_cwe117(index)
+            for ordinal, signal in enumerate(log_injection.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=log_injection.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             file_permissions = ecmascript_cwe732.scan_ecmascript_cwe732(index)
             for ordinal, signal in enumerate(file_permissions.signals):
                 signals.append(
