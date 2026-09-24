@@ -78,6 +78,7 @@ from . import (
     go_cwe367,
     go_cwe400,
     go_cwe307,
+    go_cwe327,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -144,6 +145,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe367.py",
     "go_cwe400.py",
     "go_cwe307.py",
+    "go_cwe327.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -433,6 +435,19 @@ class FirstPartyStaticWorker:
                         detector=signal.detector,
                         location=signal.sink,
                         scan_sha256=rate_limit.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
+            weak_crypto = go_cwe327.scan_go_cwe327(index)
+            for ordinal, signal in enumerate(weak_crypto.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=weak_crypto.scan_sha256,
                         ordinal=ordinal,
                     )
                 )
