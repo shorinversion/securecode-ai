@@ -85,6 +85,7 @@ from . import (
     go_cwe532,
     go_cwe776,
     go_cwe209,
+    go_cwe613,
     go_cwe502,
     go_cwe1333,
     go_cwe601,
@@ -106,6 +107,7 @@ from . import (
     python_cwe532,
     python_cwe776,
     python_cwe209,
+    python_cwe613,
     python_cwe601,
     python_cwe78,
     python_cwe79,
@@ -163,6 +165,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "go_cwe532.py",
     "go_cwe776.py",
     "go_cwe209.py",
+    "go_cwe613.py",
     "go_cwe502.py",
     "go_cwe1333.py",
     "go_cwe601.py",
@@ -184,6 +187,7 @@ _FIRST_PARTY_SCANNER_SOURCES = (
     "python_cwe532.py",
     "python_cwe776.py",
     "python_cwe209.py",
+    "python_cwe613.py",
     "python_cwe611.py",
     "python_cwe1333.py",
     "python_cwe601.py",
@@ -249,6 +253,19 @@ class FirstPartyStaticWorker:
         python_analysis: python_ast.PythonAstAnalysis | None = None
         if index.language == "python":
             python_analysis = python_ast.analyze_python_ast(index)
+            session_expiration = python_cwe613.scan_python_cwe613(index, python_analysis)
+            for ordinal, signal in enumerate(session_expiration.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=session_expiration.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             error_disclosure = python_cwe209.scan_python_cwe209(index, python_analysis)
             for ordinal, signal in enumerate(error_disclosure.signals):
                 signals.append(
@@ -512,6 +529,19 @@ class FirstPartyStaticWorker:
                     )
                 )
         elif index.language == "go":
+            session_expiration = go_cwe613.scan_go_cwe613(index)
+            for ordinal, signal in enumerate(session_expiration.signals):
+                signals.append(
+                    _fact_to_raw_signal(
+                        request=request,
+                        producer=producer,
+                        cwe=signal.cwe,
+                        detector=signal.detector,
+                        location=signal.sink,
+                        scan_sha256=session_expiration.scan_sha256,
+                        ordinal=ordinal,
+                    )
+                )
             error_disclosure = go_cwe209.scan_go_cwe209(index)
             for ordinal, signal in enumerate(error_disclosure.signals):
                 signals.append(
