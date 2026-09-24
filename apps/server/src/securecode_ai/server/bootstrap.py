@@ -91,6 +91,7 @@ from .sqlite_database import (
     open_private_sqlite,
     prepare_private_data_directory,
 )
+from .sqlite_rate_limiter import SqliteTenantTokenBucketRateLimiter
 from .sqlite_request_quota import SqliteQuotaLedger
 from .storage_executor import LocalArtifactStorageExecutor
 from .worker_artifact_authorization import (
@@ -498,6 +499,23 @@ def build_local_app(
             *identity_readiness,
         ),
         replay_store=SqliteRequestReplayStore(connection),
+        rate_limiter=SqliteTenantTokenBucketRateLimiter(
+            connection,
+            capacity=_quota_integer(
+                values,
+                "SECURECODE_API_RATE_LIMIT_CAPACITY",
+                default=120,
+                minimum=1,
+                maximum=10_000,
+            ),
+            refill_per_second=_quota_integer(
+                values,
+                "SECURECODE_API_RATE_LIMIT_REFILL_PER_SECOND",
+                default=2,
+                minimum=1,
+                maximum=10_000,
+            ),
+        ),
         webhook_identity=webhook_identity,
         quota=SqliteQuotaLedger(
             connection,

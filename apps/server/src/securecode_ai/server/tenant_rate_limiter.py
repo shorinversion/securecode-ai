@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import Lock
-from typing import Final, TypeGuard
+from typing import Final, Protocol, TypeGuard
 
 _TOKEN_UNIT: Final = 1_000_000_000
 _MAX_TENANTS: Final = 100_000
@@ -20,6 +20,7 @@ class RateLimitErrorCode(StrEnum):
     INVALID_INPUT = "INVALID_INPUT"
     STATE_FULL = "STATE_FULL"
     CLOCK_INVALID = "CLOCK_INVALID"
+    STORE_UNAVAILABLE = "STORE_UNAVAILABLE"
 
 
 class RateLimitError(RuntimeError):
@@ -40,6 +41,12 @@ class RateLimitError(RuntimeError):
 class RateLimitDecision:
     allowed: bool
     retry_after_seconds: int
+
+
+class TenantRateLimiter(Protocol):
+    """Admission port shared by process-local and durable implementations."""
+
+    def allow(self, *, tenant_id: object, now_ns: object = None) -> RateLimitDecision: ...
 
 
 @dataclass(slots=True)
@@ -176,5 +183,6 @@ __all__ = [
     "RateLimitDecision",
     "RateLimitError",
     "RateLimitErrorCode",
+    "TenantRateLimiter",
     "TenantTokenBucketRateLimiter",
 ]

@@ -46,7 +46,7 @@ from .ports import (
 from .request_quota import QuotaError, RequestQuota
 from .request_scope import repository_id as _repository_id
 from .sessions import SessionError, SessionStore
-from .tenant_rate_limiter import TenantTokenBucketRateLimiter
+from .tenant_rate_limiter import TenantRateLimiter, TenantTokenBucketRateLimiter
 from .telemetry import TelemetryRecorder
 
 
@@ -65,7 +65,7 @@ class ServerApp:
         oidc_login: OidcLoginService | None = None,
         sessions: SessionStore | None = None,
         quota: RequestQuota | None = None,
-        rate_limiter: TenantTokenBucketRateLimiter | None = None,
+        rate_limiter: TenantRateLimiter | None = None,
         capabilities: tuple[str, ...] = CAPABILITIES,
         max_body_bytes: int = _MAX_BODY_BYTES,
     ) -> None:
@@ -78,10 +78,7 @@ class ServerApp:
             or (oidc_login is not None and type(oidc_login) is not OidcLoginService)
             or (sessions is not None and type(sessions) is not SessionStore)
             or (oidc_login is not None and type(sessions) is not SessionStore)
-            or (
-                rate_limiter is not None
-                and type(rate_limiter) is not TenantTokenBucketRateLimiter
-            )
+            or (rate_limiter is not None and not callable(getattr(rate_limiter, "allow", None)))
         ):
             raise ValueError("server application settings are invalid")
         self._telemetry = telemetry if telemetry is not None else TelemetryRecorder()
