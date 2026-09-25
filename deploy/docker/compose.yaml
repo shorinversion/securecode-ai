@@ -5,6 +5,7 @@ services:
       dockerfile: deploy/docker/server.Dockerfile
     image: securecode-ai/server:local
     init: true
+    user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -52,6 +53,7 @@ services:
       dockerfile: deploy/docker/worker.Dockerfile
     image: securecode-ai/worker:local
     init: true
+    user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

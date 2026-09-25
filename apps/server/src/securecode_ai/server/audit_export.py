@@ -27,6 +27,8 @@ def export_audit(
         raise AuditConflict("audit export range is invalid")
     log.require_valid(tenant_id=tenant_id, run_id=run_id)
     head = log.head_sequence(tenant_id=tenant_id, run_id=run_id)
+    if start > head:
+        raise AuditConflict("audit export range exceeds the audit head")
     if end is not None and end > head:
         raise AuditConflict("audit export range exceeds the audit head")
     upper_bound = head if end is None else min(end, head)

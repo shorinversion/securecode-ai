@@ -311,7 +311,7 @@ def _audit_range(query: Mapping[str, tuple[str, ...]], head: int) -> tuple[int, 
     if start_value is None:
         raise AuditConflict("audit range start is invalid")
     start = start_value
-    if start < 1 or (end is not None and (end < start or end > head)):
+    if start < 1 or start > head or (end is not None and (end < start or end > head)):
         raise AuditConflict("audit range is invalid")
     effective_end = head if end is None else end
     if effective_end >= start and effective_end - start + 1 > _MAX_EXPORT_EVENTS:

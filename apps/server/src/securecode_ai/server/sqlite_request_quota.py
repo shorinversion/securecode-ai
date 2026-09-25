@@ -81,7 +81,7 @@ class SqliteQuotaLedger:
         if (
             not _valid_tenant_id(tenant_id)
             or type(now_ms) is not int
-            or now_ms < 0
+            or not 0 <= now_ms <= _SQLITE_INTEGER_MAX
             or type(cost_microunits) is not int
             or not 0 <= cost_microunits <= MAX_SPEND_MICROUNITS
         ):

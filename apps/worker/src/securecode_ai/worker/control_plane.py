@@ -529,15 +529,15 @@ class ControlPlaneClient:
 
 
 def _session_update(document: Mapping[str, object], current_version: int) -> SessionUpdate:
-    version = document.get("version", current_version)
-    command_value = document.get("command", WorkerCommand.CONTINUE.value)
+    version = document.get("version")
+    command_value = document.get("command")
     try:
         if type(command_value) is not str:
             raise ValueError("worker command is invalid")
         command = WorkerCommand(command_value)
     except (TypeError, ValueError):
         raise ControlPlaneRejected("worker session response is invalid") from None
-    if type(version) is not int or version < current_version:
+    if type(version) is not int or version <= current_version:
         raise ControlPlaneRejected("worker session response is invalid")
     return SessionUpdate(version, command)
 
