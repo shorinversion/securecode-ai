@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
-from typing import Final
+from typing import Callable, Final
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
@@ -302,6 +302,20 @@ class TenantResourceGovernor:
             record.state_version += 1
             return _receipt(reservation_id, record, idempotent=False)
 
+    def create_run_enforcer(
+        self,
+        reservation_id: str,
+        terminate: Callable[[], object],
+        *,
+        expected_version: int,
+        now_ms: int,
+    ) -> PerRunResourceEnforcer:
+        """Bind live enforcement to an active, versioned reservation."""
+        with self._lock:
+            record = self._record(reservation_id)
+            self._require_active(record, expected_version, now_ms)
+            return PerRunResourceEnforcer(record.reserved, terminate)
+
     def _record(self, reservation_id: str) -> _Reservation:
         if not _identifier(reservation_id):
             raise ResourceGovernorError(ResourceGovernorErrorCode.INVALID_REQUEST)
@@ -320,6 +334,7 @@ class TenantResourceGovernor:
             raise ResourceGovernorError(ResourceGovernorErrorCode.CONFLICT)
         if (
             record.state is not ReservationState.RESERVED
+            or now_ms < record.request.now_ms
             or now_ms >= record.request.lease_expires_at_ms
         ):
             raise ResourceGovernorError(ResourceGovernorErrorCode.RESERVATION_TERMINAL)
@@ -343,6 +358,59 @@ class TenantResourceGovernor:
         events = [item for item in self._admissions.get(tenant_id, []) if item[0] > lower]
         self._admissions[tenant_id] = events
         return events
+
+
+class PerRunResourceEnforcer:
+    """Enforce a reservation's ceilings while a run is still executing.
+
+    The execution owner supplies cumulative usage snapshots and a callback that
+    terminates the active work. The callback is invoked exactly once, on the
+    first snapshot that crosses any reserved per-run ceiling.
+    """
+
+    __slots__ = ("_lock", "_reserved", "_terminate", "_stopped")
+
+    def __init__(
+        self,
+        reserved: ResourceUsage,
+        terminate: Callable[[], object],
+    ) -> None:
+        if type(reserved) is not ResourceUsage or not callable(terminate):
+            raise ResourceGovernorError(ResourceGovernorErrorCode.INVALID_REQUEST)
+        self._lock = RLock()
+        self._reserved = reserved
+        self._terminate = terminate
+        self._stopped = False
+
+    @property
+    def stopped(self) -> bool:
+        with self._lock:
+            return self._stopped
+
+    def observe(self, usage: ResourceUsage) -> None:
+        """Accept a cumulative snapshot or terminate and reject the run."""
+        if type(usage) is not ResourceUsage:
+            raise ResourceGovernorError(ResourceGovernorErrorCode.INVALID_REQUEST)
+        with self._lock:
+            if self._stopped:
+                raise ResourceGovernorError(ResourceGovernorErrorCode.QUOTA_EXCEEDED)
+            exceeded = (
+                usage.tokens > self._reserved.tokens
+                or usage.cost_microunits > self._reserved.cost_microunits
+                or usage.cpu_ms > self._reserved.cpu_ms
+                or usage.peak_memory_bytes > self._reserved.peak_memory_bytes
+                or usage.wall_ms > self._reserved.wall_ms
+            )
+            if not exceeded:
+                return
+            self._stopped = True
+        try:
+            self._terminate()
+        except Exception:
+            # A failed cancellation request must not turn a limit breach into
+            # an accepted snapshot or leak the callback's error to callers.
+            pass
+        raise ResourceGovernorError(ResourceGovernorErrorCode.QUOTA_EXCEEDED)
 
 
 def _request_hash(request: ResourceReservationRequest) -> str:
@@ -413,6 +481,7 @@ __all__ = [
     "ResourceReservationReceipt",
     "ResourceReservationRequest",
     "ResourceUsage",
+    "PerRunResourceEnforcer",
     "TenantResourceGovernor",
     "TenantResourceLimits",
 ]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from .secure_files import read_ascii_secret
 
@@ -53,7 +54,7 @@ class RuntimeSettings:
             timeout = float(environment.get("SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS", "15"))
             poll = float(environment.get("SECURECODE_WORKER_POLL_SECONDS", "2"))
             maximum = float(environment.get("SECURECODE_WORKER_MAX_BACKOFF_SECONDS", "30"))
-            parsed = urlsplit(url)
+            parsed = _validated_endpoint(url)
             default_host = parsed.hostname
             configured_hosts = environment.get("SECURECODE_WORKER_ARTIFACT_HOSTS")
             artifact_hosts = (
@@ -70,7 +71,7 @@ class RuntimeSettings:
         if (
             type(url) is not str
             or type(token) is not str
-            or len(token) < 32
+            or not _valid_token(token)
             or type(worker_id) is not str
             or _OPAQUE_ID.fullmatch(worker_id) is None
             or not target.is_absolute()
@@ -124,6 +125,44 @@ def _worker_token(environment: Mapping[str, str]) -> str:
     except ValueError:
         raise ValueError("worker token source is invalid") from None
     return token
+
+
+def _valid_token(value: object) -> bool:
+    return (
+        type(value) is str
+        and 32 <= len(value) <= 8192
+        and all(33 <= ord(character) <= 126 for character in value)
+    )
+
+
+def _validated_endpoint(url: str) -> SplitResult:
+    if type(url) is not str or not url or len(url) > 4096 or url != url.strip():
+        raise ValueError
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in url):
+        raise ValueError
+    parsed = urlsplit(url)
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or parsed.username is not None
+        or parsed.password is not None
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise ValueError
+    if parsed.scheme == "http":
+        try:
+            if not ipaddress.ip_address(parsed.hostname).is_loopback:
+                raise ValueError
+        except ValueError:
+            raise ValueError from None
+    return parsed
 
 
 __all__ = ["RuntimeSettings"]

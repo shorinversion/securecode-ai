@@ -19,6 +19,7 @@ from securecode_ai.contracts import AuditRunOutcome, RunExecutionIdentity
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _COMMIT_SHA: Final = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _HASH_DOMAIN: Final = b"securecode-ai/scm-run-state/v1\x00"
 
 
@@ -76,6 +77,7 @@ class SCMRunAdmissionRequest:
     installation_id: str
     execution_identity: RunExecutionIdentity
     authorized_head_sha: str
+    delivery_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -87,6 +89,13 @@ class SCMRunAdmissionRequest:
             or type(self.authorized_head_sha) is not str
             or _COMMIT_SHA.fullmatch(self.authorized_head_sha) is None
             or self.authorized_head_sha != self.execution_identity.repository_revision.head_sha
+            or (
+                self.delivery_sha256 is not None
+                and (
+                    type(self.delivery_sha256) is not str
+                    or _SHA256.fullmatch(self.delivery_sha256) is None
+                )
+            )
         ):
             raise SCMRunStateError(SCMRunStateErrorCode.INVALID_REQUEST)
 
@@ -349,13 +358,14 @@ def _semantic_key(request: SCMRunAdmissionRequest) -> tuple[str, str, str, str]:
 
 
 def _admission_hash(request: SCMRunAdmissionRequest) -> str:
-    return _hash(
-        {
-            "authorized_head_sha": request.authorized_head_sha,
-            "execution_identity": request.execution_identity.model_dump(mode="json"),
-            "installation_id": request.installation_id,
-        }
-    )
+    material: dict[str, object] = {
+        "authorized_head_sha": request.authorized_head_sha,
+        "execution_identity": request.execution_identity.model_dump(mode="json"),
+        "installation_id": request.installation_id,
+    }
+    if request.delivery_sha256 is not None:
+        material["delivery_sha256"] = request.delivery_sha256
+    return _hash(material)
 
 
 def _run_id(semantic_key: tuple[str, str, str, str]) -> str:

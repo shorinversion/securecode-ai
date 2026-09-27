@@ -146,7 +146,7 @@ class OfflineCiWorker:
     def run(self, request: object) -> CiWorkerResult:
         try:
             admitted = _admit(request)
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, OverflowError, RecursionError, TypeError, ValueError):
             return CiWorkerResult(
                 exit_code=CliExitCode.INVALID_USAGE_OR_CONFIG,
                 receipt=None,
@@ -202,7 +202,10 @@ def canonical_ci_worker_result_json(result: CiWorkerResult) -> str:
 def _admit(request: object) -> AuditRun:
     if type(request) is not CiWorkerRequest:
         raise TypeError("request must be a CiWorkerRequest")
-    return AuditRun.model_validate_json(request.audit_run.model_dump_json())
+    try:
+        return AuditRun.model_validate_json(request.audit_run.model_dump_json())
+    except (OverflowError, RecursionError, TypeError, ValueError):
+        raise TypeError("request audit run is invalid") from None
 
 
 def _receipt_sha256(

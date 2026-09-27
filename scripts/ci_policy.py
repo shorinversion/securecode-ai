@@ -146,6 +146,7 @@ WORKSPACE_CONSOLE_SCRIPTS: Final = {
     "apps/cli/pyproject.toml": {"securecode": "securecode_ai.cli:main"},
     "apps/server/pyproject.toml": {
         "securecode-maintenance": "securecode_ai.server.maintenance_cli:main",
+        "securecode-capacity": "securecode_ai.server.capacity_cli:main",
         "securecode-server": "securecode_ai.server.main:main",
     },
     "apps/worker/pyproject.toml": {
@@ -271,6 +272,7 @@ EXPECTED_SERVER_PROJECT: Final = {
     "scripts": {
         "securecode-server": "securecode_ai.server.main:main",
         "securecode-maintenance": "securecode_ai.server.maintenance_cli:main",
+        "securecode-capacity": "securecode_ai.server.capacity_cli:main",
     },
 }
 EXPECTED_WORKER_PROJECT: Final = {
@@ -398,9 +400,9 @@ EXPECTED_VULNERABLE_HASHES: Final = [
     ),
 ]
 EXPECTED_BASELINE_DIGEST: Final = "".join(
-    ("3c4e25c7", "84e0434c", "eda41fa3", "9dccbe66", "3400a62c", "af858a8f", "eda03c59", "d08db53b")
+    ("cb00ce76", "789e8d7f", "d365c7e8", "d62906d2", "bcfe003c", "c8ee323a", "9951a427", "42b82fee")
 )
-EXPECTED_BASELINE_FINDINGS: Final = 134
+EXPECTED_BASELINE_FINDINGS: Final = 2927
 UV_LINUX_SHA256: Final = "".join(
     ("eaf84226", "2aa1c418", "d8ecc560", "5f02ee1e", "bfd36912", "4fa48548", "e85f9481", "a47831a9")
 )

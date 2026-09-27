@@ -6,6 +6,7 @@ import hashlib
 import ipaddress
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -18,17 +19,21 @@ from securecode_ai.contracts import (
     EvidenceInputRef,
     ExecutionBoundary,
     ModelCallBudget,
+    ModelCallResult,
     ModelCallStatus,
     ModelPreflightRequest,
     ModelPurpose,
     ModelRequest,
     ModelRole,
+    ModelSchemaStatus,
+    ModelUsage,
     ProducerRef,
     RepositoryRevision,
     RunExecutionIdentity,
 )
 from securecode_ai.core import EgressPolicyRegistry, ModelAuthorizationIssuer, PayloadValidation
 from securecode_ai.core.architect import ArchitectPatchResult, TouchedSymbol, emit_patch_candidate
+from securecode_ai.core.repair_loop import AttemptUsage, RetryFeedback
 
 from .endpoint import EndpointAuthorizationIssuer
 from .git_snapshot import GitRevisionSnapshot, OfflineGitObjectReader, materialize_git_snapshot
@@ -49,6 +54,8 @@ from .model import HmacContentIdentifier, PreparedModelContext
 from .model_harness import AuthorizedProviderHarness
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_runtime import AuthorizedLocalModelExecutor
+from .product_provider_runtime import ProductProviderRuntime
+from .remote_provider_budget import RemoteProviderCostReceipt
 
 _MAX_CONTEXT_BYTES: Final = 65_536
 _MAX_SOURCE_BYTES: Final = 40_000
@@ -68,6 +75,10 @@ class LocalArchitectProposal:
     patch_bytes: bytes
     author: ProducerRef
     model_result_sha256: str
+    usage: AttemptUsage
+    model_call_status: ModelCallStatus
+    schema_valid_result: bool
+    model_receipt_id: str
 
 
 class _LiteralLoopbackResolver:
@@ -136,9 +147,23 @@ def generate_local_patch(
     scan_result: LocalProductScanResult,
     binding: LocalRepairBinding,
     evidence: tuple[Evidence, ...],
+    attempt: int = 1,
+    retry_feedback: RetryFeedback | None = None,
+    cancelled: Callable[[], bool] | None = None,
+    usage_observer: Callable[[ModelUsage], None] | None = None,
+    cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
+    provider_runtime: ProductProviderRuntime | None = None,
 ) -> LocalArchitectProposal:
+    if (
+        type(attempt) is not int
+        or attempt < 1
+        or attempt > 3
+        or (attempt == 1 and retry_feedback is not None)
+        or (attempt > 1 and type(retry_feedback) is not RetryFeedback)
+    ):
+        raise LocalRepairModelError("REPAIR_ATTEMPT_INVALID")
     identity = scan_result.composition.run.execution_identity
-    _validate_host_identity(host, identity)
+    _validate_host_identity(host, identity, provider_runtime=provider_runtime)
     _validate_binding_revision(binding, identity.repository_revision)
     snapshot = _snapshot(target, host, identity.repository_revision.head_sha)
     allowed_paths = tuple(sorted({item.path for item in binding.finding.locations}))
@@ -151,7 +176,10 @@ def generate_local_patch(
         file = source_files.get(location.path)
         if file is None or file.content_sha256 != location.content_sha256:
             raise LocalRepairModelError("REPAIR_SOURCE_IDENTITY_MISMATCH")
-    profile, policy = host.profile, host.policy
+    operation = provider_runtime.repair() if provider_runtime is not None else None
+    profile = host.profile if operation is None else operation.profile
+    policy = host.policy if operation is None else operation.policy
+    registry = host.registry if operation is None else operation.registry
     max_output = min(
         4096, profile.capabilities.max_output_tokens, profile.budgets.max_total_tokens // 2
     )
@@ -162,8 +190,17 @@ def generate_local_patch(
     )
     if max_input < max_output:
         raise LocalRepairModelError("REPAIR_MODEL_BUDGET_INVALID")
+    feedback_hash = retry_feedback.feedback_sha256 if retry_feedback is not None else "initial"
     token = hashlib.sha256(
-        (binding.finding.finding_id + "\x00" + identity.execution_identity_hash).encode("ascii")
+        (
+            binding.finding.finding_id
+            + "\x00"
+            + identity.execution_identity_hash
+            + "\x00"
+            + str(attempt)
+            + "\x00"
+            + feedback_hash
+        ).encode("ascii")
     ).hexdigest()
     evidence_inputs = _evidence_inputs(evidence, binding)
     request = ModelRequest(
@@ -172,7 +209,7 @@ def generate_local_patch(
         run_id=scan_result.composition.run.run_id,
         tenant_id=identity.repository_revision.tenant_id,
         idempotency_key="architect-" + token,
-        attempt=1,
+        attempt=attempt,
         execution_identity=identity,
         head_sha=identity.repository_revision.head_sha,
         role=ModelRole.ARCHITECT,
@@ -209,7 +246,7 @@ def generate_local_patch(
         ),
     )
     issuer = ModelAuthorizationIssuer(
-        provider_registry=host.registry,
+        provider_registry=registry,
         policy_registry=EgressPolicyRegistry((policy,)),
     )
 
@@ -217,7 +254,7 @@ def generate_local_patch(
         return ModelPreflightRequest(
             schema_version="0.2.0",
             model_request=selected,
-            required_execution_boundary=ExecutionBoundary.LOCAL_RUNNER,
+            required_execution_boundary=profile.execution_boundary,
             required_data_class=DataClass.CONFIDENTIAL_SOURCE,
             required_purpose=ModelPurpose.PATCH_GENERATION,
             planned_transforms=("bounded_repository_view",),
@@ -227,14 +264,21 @@ def generate_local_patch(
     executor = AuthorizedLocalModelExecutor(
         harness=AuthorizedProviderHarness(
             model_issuer=issuer,
-            endpoint_issuer=EndpointAuthorizationIssuer(provider_registry=host.registry),
+            endpoint_issuer=EndpointAuthorizationIssuer(provider_registry=registry),
         ),
-        registry=host.registry,
+        registry=registry,
         profile=profile,
         policy=policy,
-        resolver=_LiteralLoopbackResolver(),
-        connector=OpenAICompatibleLocalHttpConnector(profile=profile),
+        resolver=_LiteralLoopbackResolver() if operation is None else operation.resolver,
+        connector=(
+            OpenAICompatibleLocalHttpConnector(profile=profile, cancelled=cancelled)
+            if operation is None
+            else operation.connector
+        ),
         preflight=preflight,
+        credential_supplier=None if operation is None else operation.credential_supplier,
+        usage_observer=usage_observer,
+        cost_observer=cost_observer,
     )
     content_key = os.urandom(32)
     identifier = HmacContentIdentifier(content_key)
@@ -253,6 +297,7 @@ def generate_local_patch(
             snapshot=snapshot,
             allowed_paths=allowed_paths,
             content_identifier=identifier,
+            retry_feedback=retry_feedback,
         ),
     )
     if (
@@ -261,6 +306,18 @@ def generate_local_patch(
         or execution.payload is None
     ):
         raise LocalRepairModelError("ARCHITECT_MODEL_NON_SUCCESS")
+    model_result = execution.result
+    if (
+        type(model_result) is not ModelCallResult
+        or model_result.request_id != request.request_id
+        or model_result.run_id != request.run_id
+        or model_result.tenant_id != request.tenant_id
+        or model_result.attempt != request.attempt
+        or model_result.provider_profile != request.provider_profile
+        or model_result.model_call_status is not ModelCallStatus.SUCCEEDED
+        or model_result.schema_result.status is not ModelSchemaStatus.VALID
+    ):
+        raise LocalRepairModelError("ARCHITECT_MODEL_RECEIPT_INVALID")
     try:
         document = validated_retained_architect_document(
             execution.payload.reveal_for(request.request_id),
@@ -273,7 +330,11 @@ def generate_local_patch(
     symbols = tuple(TouchedSymbol(**item) for item in document["touched_symbols"])
     author = ProducerRef(
         schema_version="0.2.0",
-        producer_id="installed-local-architect",
+        producer_id=(
+            "installed-local-architect"
+            if operation is None
+            else "installed-remote-architect"
+        ),
         producer_version="1.0.0",
         producer_sha256=ARCHITECT_PROMPT_PIN.content_sha256,
     )
@@ -293,14 +354,29 @@ def generate_local_patch(
         patch_bytes,
         author,
         hashlib.sha256(execution.result.model_dump_json().encode("utf-8")).hexdigest(),
+        AttemptUsage(
+            tokens_used=model_result.usage.input_tokens + model_result.usage.output_tokens,
+            tool_calls=model_result.usage.repository_calls,
+            elapsed_ms=model_result.usage.elapsed_ms,
+        ),
+        model_result.model_call_status,
+        model_result.schema_result.status is ModelSchemaStatus.VALID,
+        model_result.request_id,
     )
 
 
-def _validate_host_identity(host: LocalProductHost, identity: RunExecutionIdentity) -> None:
+def _validate_host_identity(
+    host: LocalProductHost,
+    identity: RunExecutionIdentity,
+    *,
+    provider_runtime: ProductProviderRuntime | None = None,
+) -> None:
+    profile = host.profile if provider_runtime is None else provider_runtime.profile
+    policy = host.policy if provider_runtime is None else provider_runtime.policy
     if (
-        host.profile.canonical_content_hash() != identity.provider_profile.content_sha256
-        or host.policy.canonical_content_hash() != identity.policy.content_sha256
-        or host.policy.tenant_scope != identity.repository_revision.tenant_id
+        profile.canonical_content_hash() != identity.provider_profile.content_sha256
+        or policy.canonical_content_hash() != identity.policy.content_sha256
+        or policy.tenant_scope != identity.repository_revision.tenant_id
     ):
         raise LocalRepairModelError("REPAIR_HOST_IDENTITY_MISMATCH")
 
@@ -393,6 +469,7 @@ def _context(
     snapshot: GitRevisionSnapshot,
     allowed_paths: tuple[str, ...],
     content_identifier: HmacContentIdentifier,
+    retry_feedback: RetryFeedback | None = None,
 ) -> PreparedModelContext:
     windows = _source_windows(binding, snapshot, allowed_paths)
     content_by_id: dict[str, EgressContentRef] = {}
@@ -422,10 +499,25 @@ def _context(
                 "invariant_id": binding.invariant.invariant_id,
                 "regression_descriptor_id": binding.regression.descriptor_id,
                 "head_sha": request.head_sha,
+                "command_operation_evidence": [
+                    item.model_dump(mode="json")
+                    for item in binding.invariant.command_operation_evidence
+                ],
             },
         },
         "untrusted_repository_source": windows,
     }
+    if retry_feedback is not None:
+        material["trusted_controls"]["repair_retry_feedback"] = {
+            "instruction": "Address each listed failed validation gate while preserving the original finding and allowed path scope.",
+            "attempt": request.attempt,
+            "failed_gates": [
+                {"ordinal": ordinal, "gate_id": gate_id, "reason_code": reason_code}
+                for ordinal, gate_id, reason_code in retry_feedback.failed_gates
+            ],
+            "retryable": retry_feedback.retryable,
+            "feedback_sha256": retry_feedback.feedback_sha256,
+        }
     payload = json.dumps(
         material, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")

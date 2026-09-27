@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import ssl
 from contextlib import suppress
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ class HttpServerLimits:
     max_connections: int = 128
     header_timeout_seconds: float = 10.0
     body_timeout_seconds: float = 30.0
+    response_timeout_seconds: float = 30.0
+    shutdown_timeout_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         if (
@@ -28,12 +31,24 @@ class HttpServerLimits:
             or not 0.1 <= self.header_timeout_seconds <= 60.0
             or type(self.body_timeout_seconds) is not float
             or not 0.1 <= self.body_timeout_seconds <= 300.0
+            or type(self.response_timeout_seconds) is not float
+            or not 0.1 <= self.response_timeout_seconds <= 300.0
+            or type(self.shutdown_timeout_seconds) is not float
+            or not 0.1 <= self.shutdown_timeout_seconds <= 300.0
         ):
             raise ValueError("HTTP server limits are invalid")
 
 
 class AsgiHttpServer:
-    __slots__ = ("_app", "_limits", "_scheme", "_semaphore", "_server")
+    __slots__ = (
+        "_app",
+        "_limits",
+        "_scheme",
+        "_semaphore",
+        "_server",
+        "_connections",
+        "_lifecycle_lock",
+    )
 
     def __init__(self, app: object, limits: HttpServerLimits | None = None) -> None:
         if not callable(app):
@@ -43,6 +58,8 @@ class AsgiHttpServer:
         self._scheme = "http"
         self._semaphore = asyncio.Semaphore(self._limits.max_connections)
         self._server: asyncio.AbstractServer | None = None
+        self._connections: set[asyncio.Task[None]] = set()
+        self._lifecycle_lock = asyncio.Lock()
 
     async def start(
         self,
@@ -51,69 +68,164 @@ class AsgiHttpServer:
         *,
         ssl_context: ssl.SSLContext | None = None,
     ) -> None:
-        if self._server is not None:
-            raise RuntimeError("HTTP server is already started")
-        self._scheme = "https" if ssl_context is not None else "http"
-        self._server = await asyncio.start_server(
-            self._handle,
-            host,
-            port,
-            ssl=ssl_context,
-        )
+        async with self._lifecycle_lock:
+            if self._server is not None:
+                raise RuntimeError("HTTP server is already started")
+            startup = getattr(self._app, "startup", None)
+            try:
+                if callable(startup):
+                    result = startup()
+                    if inspect.isawaitable(result):
+                        await result
+                self._scheme = "https" if ssl_context is not None else "http"
+                server = await asyncio.start_server(
+                    self._handle,
+                    host,
+                    port,
+                    ssl=ssl_context,
+                )
+            except BaseException:
+                shutdown = getattr(self._app, "shutdown", None)
+                if callable(shutdown):
+                    try:
+                        result = shutdown()
+                        if inspect.isawaitable(result):
+                            await result
+                    except BaseException:
+                        pass
+                raise
+            self._server = server
 
     async def stop(self) -> None:
-        server = self._server
-        self._server = None
-        if server is not None:
-            server.close()
-            await server.wait_closed()
+        async with self._lifecycle_lock:
+            server = self._server
+            self._server = None
+            if server is not None:
+                server.close()
+                await server.wait_closed()
+            try:
+                current = asyncio.current_task()
+                deadline = (
+                    asyncio.get_running_loop().time()
+                    + self._limits.shutdown_timeout_seconds
+                )
+                while True:
+                    pending = tuple(
+                        task
+                        for task in self._connections
+                        if task is not current and not task.done()
+                    )
+                    if not pending:
+                        break
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        for task in pending:
+                            task.cancel()
+                        await asyncio.gather(*pending, return_exceptions=True)
+                        break
+                    _, pending_set = await asyncio.wait(pending, timeout=remaining)
+                    if pending_set:
+                        for task in pending_set:
+                            task.cancel()
+                        await asyncio.gather(*pending_set, return_exceptions=True)
+                        break
+            finally:
+                shutdown = getattr(self._app, "shutdown", None)
+                if callable(shutdown):
+                    result = shutdown()
+                    if inspect.isawaitable(result):
+                        await result
 
     async def _handle(
         self,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
-        async with self._semaphore:
-            try:
-                request = await self._read_request(reader)
-                if request is None:
-                    await _write_plain_error(writer, 400, "Bad Request")
-                    return
-                method, path, query, headers, body = request
-                response = _ResponseCollector()
-                delivered = False
-
-                async def receive() -> dict[str, object]:
-                    nonlocal delivered
-                    if delivered:
-                        return {"type": "http.disconnect"}
-                    delivered = True
-                    return {"type": "http.request", "body": body, "more_body": False}
-
-                await self._app(
-                    {
-                        "type": "http",
-                        "http_version": "1.1",
-                        "method": method,
-                        "path": path,
-                        "query_string": query,
-                        "headers": headers,
-                        "scheme": self._scheme,
-                    },
-                    receive,
-                    response.send,
-                )
-                await response.write(writer)
-            except (TimeoutError, ValueError):
-                await _write_plain_error(writer, 400, "Bad Request")
-            except (ConnectionError, BrokenPipeError):
+        task = asyncio.current_task()
+        over_capacity = False
+        if task is not None:
+            self._connections.add(task)
+            over_capacity = len(self._connections) > self._limits.max_connections
+        try:
+            if over_capacity:
+                try:
+                    await asyncio.wait_for(
+                        _write_plain_error(writer, 503, "Service Unavailable"),
+                        timeout=self._limits.response_timeout_seconds,
+                    )
+                except (ConnectionError, BrokenPipeError, TimeoutError):
+                    pass
+                finally:
+                    writer.close()
+                    with suppress(ConnectionError, BrokenPipeError):
+                        await writer.wait_closed()
                 return
-            except Exception:
-                await _write_plain_error(writer, 500, "Internal Server Error")
-            finally:
-                writer.close()
-                with suppress(ConnectionError, BrokenPipeError):
-                    await writer.wait_closed()
+            async with self._semaphore:
+                await self._serve_connection(reader, writer)
+        finally:
+            if task is not None:
+                self._connections.discard(task)
+
+    async def _serve_connection(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        try:
+            request = await self._read_request(reader)
+            if request is None:
+                await _write_plain_error(writer, 400, "Bad Request")
+                return
+            method, path, query, headers, body = request
+            response = _ResponseCollector()
+            delivered = False
+            scope: dict[str, object] = {
+                "type": "http",
+                "http_version": "1.1",
+                "method": method,
+                "path": path,
+                "query_string": query,
+                "headers": headers,
+                "scheme": self._scheme,
+            }
+            peername = writer.get_extra_info("peername")
+            if (
+                isinstance(peername, tuple)
+                and len(peername) >= 2
+                and type(peername[0]) is str
+                and type(peername[1]) is int
+            ):
+                scope["client"] = (peername[0], peername[1])
+
+            async def receive() -> dict[str, object]:
+                nonlocal delivered
+                if delivered:
+                    return {"type": "http.disconnect"}
+                delivered = True
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            await self._app(scope, receive, response.send)
+            try:
+                await asyncio.wait_for(
+                    response.write(writer),
+                    timeout=self._limits.response_timeout_seconds,
+                )
+            except TimeoutError:
+                return
+        except TimeoutError:
+            await _write_plain_error(writer, 408, "Request Timeout")
+        except (ValueError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+            await _write_plain_error(writer, 400, "Bad Request")
+        except (ConnectionError, BrokenPipeError):
+            return
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await _write_plain_error(writer, 500, "Internal Server Error")
+        finally:
+            writer.close()
+            with suppress(ConnectionError, BrokenPipeError):
+                await writer.wait_closed()
 
     async def _read_request(
         self,
@@ -161,9 +273,17 @@ class AsgiHttpServer:
             headers.append((name, value))
             if name == b"content-length":
                 try:
-                    content_length = int(value.decode("ascii"))
+                    raw_length = value.decode("ascii")
                 except (ValueError, UnicodeDecodeError):
                     return None
+                if (
+                    not raw_length
+                    or len(raw_length) > 10
+                    or not raw_length.isascii()
+                    or not raw_length.isdecimal()
+                ):
+                    return None
+                content_length = int(raw_length)
             if name == b"transfer-encoding":
                 return None
         if not 0 <= content_length <= _MAX_BODY_BYTES:
@@ -198,10 +318,14 @@ class _ResponseCollector:
                 raise ValueError("response already started")
             status = event.get("status")
             headers = event.get("headers", [])
-            if type(status) is not int or not 100 <= status <= 599 or not isinstance(headers, list):
+            if (
+                type(status) is not int
+                or not 200 <= status <= 599
+                or type(headers) is not list
+            ):
                 raise ValueError("invalid response start")
             self.status = status
-            self.headers = list(headers)
+            self.headers = _validated_response_headers(headers)
             self.started = True
             return
         if event_type == "http.response.body" and self.started:
@@ -223,6 +347,7 @@ class _ResponseCollector:
             401: "Unauthorized",
             403: "Forbidden",
             404: "Not Found",
+            408: "Request Timeout",
             409: "Conflict",
             412: "Precondition Failed",
             413: "Content Too Large",
@@ -231,10 +356,26 @@ class _ResponseCollector:
             503: "Service Unavailable",
         }.get(self.status, "Response")
         header_lines = [f"HTTP/1.1 {self.status} {reason}\r\n".encode("ascii")]
-        seen = {name.lower() for name, _ in self.headers}
+        seen: set[bytes] = set()
         for name, value in self.headers:
-            if b"\r" in name + value or b"\n" in name + value:
-                raise ValueError("unsafe response header")
+            lowered = name.lower()
+            if lowered == b"content-length":
+                try:
+                    raw_length = value.decode("ascii")
+                except (ValueError, UnicodeDecodeError):
+                    raise ValueError("invalid content length") from None
+                if (
+                    lowered in seen
+                    or not raw_length
+                    or len(raw_length) > 10
+                    or not raw_length.isascii()
+                    or not raw_length.isdecimal()
+                ):
+                    raise ValueError("invalid content length")
+                declared_length = int(raw_length)
+                if declared_length != len(self.body):
+                    raise ValueError("content length does not match response body")
+            seen.add(lowered)
             header_lines.append(name + b": " + value + b"\r\n")
         if b"content-length" not in seen:
             header_lines.append(b"content-length: " + str(len(self.body)).encode("ascii") + b"\r\n")
@@ -242,6 +383,56 @@ class _ResponseCollector:
         writer.writelines(header_lines)
         writer.write(bytes(self.body))
         await writer.drain()
+
+
+def _validated_response_headers(value: list[object]) -> list[tuple[bytes, bytes]]:
+    if len(value) > _MAX_HEADERS:
+        raise ValueError("too many response headers")
+    result: list[tuple[bytes, bytes]] = []
+    names: set[bytes] = set()
+    total_size = 0
+    forbidden = {
+        b"connection",
+        b"keep-alive",
+        b"proxy-connection",
+        b"transfer-encoding",
+        b"upgrade",
+    }
+    token_bytes = frozenset(b"!#$%&'*+-.^_`|~")
+    for header in value:
+        if type(header) is not tuple or len(header) != 2:
+            raise ValueError("invalid response header")
+        name, content = header
+        if (
+            type(name) is not bytes
+            or type(content) is not bytes
+            or not name
+            or any(
+                not (
+                    48 <= byte <= 57
+                    or 65 <= byte <= 90
+                    or 97 <= byte <= 122
+                    or byte in token_bytes
+                )
+                for byte in name
+            )
+            or any(
+                (byte < 32 and byte != 9) or byte == 127
+                for byte in content
+            )
+        ):
+            raise ValueError("invalid response header")
+        normalized = name.lower()
+        if normalized in forbidden or (
+            normalized == b"content-length" and normalized in names
+        ):
+            raise ValueError("duplicate or hop-by-hop response header")
+        total_size += len(name) + len(content) + 4
+        if total_size > _MAX_HEADER_BYTES:
+            raise ValueError("response headers are too large")
+        names.add(normalized)
+        result.append((normalized, content))
+    return result
 
 
 async def _write_plain_error(

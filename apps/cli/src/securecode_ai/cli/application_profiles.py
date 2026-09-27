@@ -31,7 +31,7 @@ from .diagnostic import (
 
 CLI_VERSION: Final = "1.0.0rc1"
 FOUNDATION_PROFILE_SELECTOR: Final = "securecode-foundation-fake@0.2.0"
-FOUNDATION_PROFILE_CONTENT_SHA256: Final = "\x62\x37\x30\x34\x38\x33\x62\x64\x64\x64\x66\x37\x34\x32\x62\x36\x36\x31\x30\x66\x39\x61\x65\x64\x37\x37\x33\x30\x35\x32\x39\x34\x62\x36\x39\x38\x61\x35\x31\x64\x61\x38\x63\x38\x65\x36\x30\x66\x30\x39\x30\x31\x63\x31\x62\x32\x38\x36\x35\x65\x39\x38\x36\x32"
+FOUNDATION_PROFILE_CONTENT_SHA256: Final = "\x31\x33\x61\x35\x65\x65\x32\x32\x64\x37\x31\x62\x39\x63\x63\x66\x33\x33\x64\x34\x30\x35\x37\x30\x35\x30\x65\x62\x66\x31\x39\x65\x31\x33\x38\x62\x33\x37\x32\x37\x66\x35\x61\x63\x34\x30\x30\x31\x35\x38\x31\x37\x38\x62\x31\x38\x33\x66\x32\x37\x33\x39\x34\x39"
 FOUNDATION_DEFAULTS: Final = {
     "provider_profile": FOUNDATION_PROFILE_SELECTOR,
     "policy_profile": "foundation-advisory",
@@ -87,6 +87,7 @@ def build_foundation_profile() -> ProviderProfile:
             "execution_boundary": "local_runner",
             "model_id": "securecode-foundation-fake",
             "model_snapshot": "0.2.0",
+            "protocol_framing_token_upper_bound": None,
             "capabilities": {
                 "structured_output": True,
                 "native_refusal_signal": True,

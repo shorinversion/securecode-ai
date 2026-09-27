@@ -221,7 +221,6 @@ class ProductAuditorInvoker:
         finally:
             if execution.payload is not None:
                 execution.payload.close()
-        elapsed_ms = result.usage.elapsed_ms
         # Emit only after the source-bearing payload is closed. The sink is a
         # trusted host dependency and cannot grant provider/profile authority.
         if self._observer is not None:
@@ -243,9 +242,9 @@ class ProductAuditorInvoker:
             except Exception:
                 # Preserve measured work while failing required trace collection.
                 response = AuditorResponse(ModelCallStatus.GUARDRAIL_BLOCKED, False, None)
-            elapsed_ms = self._executor.elapsed_since(started)
-            if elapsed_ms >= request.budget.timeout_ms:
-                response = AuditorResponse(ModelCallStatus.BUDGET_EXHAUSTED, False, None)
+        elapsed_ms = self._executor.elapsed_since(started)
+        if elapsed_ms >= request.budget.timeout_ms:
+            response = AuditorResponse(ModelCallStatus.BUDGET_EXHAUSTED, False, None)
         return AuditorInvocation(
             response=response,
             tokens_used=usage.input_tokens + usage.output_tokens,

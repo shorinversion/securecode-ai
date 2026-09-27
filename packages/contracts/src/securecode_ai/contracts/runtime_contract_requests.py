@@ -73,6 +73,17 @@ class WorkflowSignalRequest(WorkflowCasMutationRequest):
     operation: Literal[WorkflowOperation.SIGNAL]
     receipt: WorkflowNodeReceiptEnvelope
 
+    @model_validator(mode="after")
+    def _validate_receipt_scope(self) -> Self:
+        if (
+            self.receipt.tenant_id != self.tenant_id
+            or self.receipt.run_id != self.run_id
+            or self.receipt.execution_identity_hash
+            != self.execution_identity.execution_identity_hash
+        ):
+            raise ValueError("receipt scope must match the signal request")
+        return self
+
 
 class WorkflowCancelRequest(WorkflowCasMutationRequest):
     operation: Literal[WorkflowOperation.CANCEL]
@@ -137,6 +148,11 @@ class WorkflowRuntimeResult(WireModel):
                 raise ValueError("result snapshot must equal the transition snapshot")
             if self.transition_event.operation is not self.operation:
                 raise ValueError("result operation must match the transition operation")
+            if (
+                self.tenant_id != self.transition_event.tenant_id
+                or self.run_id != self.transition_event.run_id
+            ):
+                raise ValueError("result scope must match its transition event")
         elif self.operation_status in {
             WorkflowOperationStatus.SNAPSHOT,
             WorkflowOperationStatus.RESUMED,

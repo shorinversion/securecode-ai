@@ -8,6 +8,7 @@ transport remains SIMULATED; this module never qualifies or admits a provider.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 
 from securecode_ai.adapters.endpoint import Resolver
 from securecode_ai.adapters.model import CredentialSupplier
@@ -30,7 +31,10 @@ from securecode_ai.adapters.product_scanner import (
 from securecode_ai.adapters.public_discovery_observation import (
     PublicDiscoveryObservationRecorder,
 )
-from securecode_ai.adapters.remote_provider_budget import RemoteProviderBudgetPort
+from securecode_ai.adapters.remote_provider_budget import (
+    RemoteProviderBudgetPort,
+    RemoteProviderCostReceipt,
+)
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ComponentPin,
@@ -70,6 +74,7 @@ def run_public_core_case(
     resolver: Resolver | None = None,
     credential_supplier: CredentialSupplier | None = None,
     remote_provider_budget: RemoteProviderBudgetPort | None = None,
+    cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
 ) -> PublicCoreRunResult:
     """Compose the real Core ports.  An injected transport remains explicitly simulated."""
     if type(inputs) is not PublicCoreHostInputs:
@@ -93,6 +98,7 @@ def run_public_core_case(
             resolver=selected_resolver,
             credential_supplier=credential_supplier,
             spend_budget=remote_provider_budget,
+            cost_observer=cost_observer,
         )
         auditor_executor = _executor(
             inputs=inputs,
@@ -101,6 +107,7 @@ def run_public_core_case(
             resolver=selected_resolver,
             credential_supplier=credential_supplier,
             spend_budget=remote_provider_budget,
+            cost_observer=cost_observer,
         )
         catalogue = prepared.fixture.catalogue
         plan = ModelNativeDiscoveryPlan(
@@ -140,7 +147,10 @@ def run_public_core_case(
             nonlocal deterministic
             if selected is not catalogue:
                 _fail()
-            deterministic = scan_product_sources(catalogue, tenant_id=prepared.request.tenant_id)
+            deterministic = scan_product_sources(
+                catalogue,
+                tenant_id=prepared.request.tenant_id,
+            )
             return deterministic
 
         def auditor_factory(graph: EvidenceGraph) -> ProductAuditorInvoker:

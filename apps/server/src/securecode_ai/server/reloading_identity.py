@@ -25,12 +25,15 @@ class ReloadingIdentityVerifier:
         self._lock = Lock()
 
     def verify_bearer(self, token: str) -> VerifiedIdentity | None:
+        if type(token) is not str or not 1 <= len(token) <= 8192 or not token.isascii():
+            return None
         try:
             with self._lock:
                 verifier = self._load()
                 if verifier is None:
                     return None
-                return verifier.verify_bearer(token)
+                identity = verifier.verify_bearer(token)
+                return identity if type(identity) is VerifiedIdentity else None
         except Exception:
             return None
 

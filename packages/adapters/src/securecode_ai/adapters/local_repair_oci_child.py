@@ -19,6 +19,13 @@ from securecode_ai.core.regression import (
     RegressionObservationStatus,
 )
 
+from .local_repair_command_oracle import (
+    Cwe78RepairSignalComparison,
+    compare_cwe78_repair_signals,
+    evaluate_cwe78_root_cause,
+    scan_cwe78_repository,
+    validate_cwe78_manifest_contract,
+)
 from .local_repair_oci_commands import compile_plan, test_plan
 from .local_repair_oci_protocol import (
     build_preparation_document,
@@ -155,8 +162,8 @@ def stage_main(arguments: list[str]) -> int:
 def _prepare_document(manifest: dict[str, Any], fixed_head: str) -> bytes:
     cases = manifest["regression"]["cases"]
     try:
-        parent_state = evaluate_cwe89_root_cause(_INPUT / "source", manifest)
-        fixed_state = evaluate_cwe89_root_cause(_WORKSPACE, manifest)
+        parent_state = _evaluate_root_cause(_INPUT / "source", manifest)
+        fixed_state = _evaluate_root_cause(_WORKSPACE, manifest)
         if parent_state != "VULNERABLE" or fixed_state != "SAFE":
             raise ChildProtocolError
         observations = tuple(
@@ -228,6 +235,8 @@ def _manifest(path: Path) -> dict[str, Any]:
     document["bundle_sha256"] = bundle
     if bundle != expected:
         raise ChildProtocolError
+    if document["finding"].get("cwe_id") == "CWE-78":
+        validate_cwe78_manifest_contract(document)
     return document
 
 
@@ -293,14 +302,20 @@ def _materialize_and_patch(manifest: dict[str, Any]) -> str:
     _command((git, "init", "--quiet", str(_WORKSPACE)), cwd=_WORKSPACE, timeout=10)
     _git(git, "apply", "--check", "--whitespace=nowarn", str(patch))
     _git(git, "apply", "--whitespace=nowarn", str(patch))
-    actual_files = {
-        item.relative_to(_WORKSPACE).as_posix(): (
+    workspace_items = tuple(_WORKSPACE.rglob("*"))
+    if any(item.is_symlink() for item in workspace_items):
+        raise ChildProtocolError
+    actual_files: dict[str, tuple[str, str]] = {}
+    for item in workspace_items:
+        if not item.is_file() or ".git" in item.parts:
+            continue
+        mode = item.stat().st_mode & 0o777
+        if mode not in {0o644, 0o755}:
+            raise ChildProtocolError
+        actual_files[item.relative_to(_WORKSPACE).as_posix()] = (
             hashlib.sha256(item.read_bytes()).hexdigest(),
-            "100755" if item.stat().st_mode & 0o111 else "100644",
+            "100755" if mode == 0o755 else "100644",
         )
-        for item in _WORKSPACE.rglob("*")
-        if item.is_file() and ".git" not in item.parts
-    }
     if set(actual_files) != expected_paths:
         raise ChildProtocolError
     changed_paths = {
@@ -334,7 +349,7 @@ def _run_stage(stage: str, manifest: dict[str, Any]) -> tuple[int, dict[str, obj
         return (0 if _isolation_canaries() else 1), {"control": stage}
     fixed = _current_fixed_head(manifest)
     if stage == "validation-language-policy":
-        scan_hash, _ = scan_cwe89_repository(_WORKSPACE, manifest, fixed)
+        scan_hash, _ = _scan_repository(_WORKSPACE, manifest, fixed)
         return 0, {"scan_sha256": scan_hash}
     if stage == "validation-compile-types":
         plan = compile_plan(_WORKSPACE)
@@ -361,15 +376,15 @@ def _run_stage(stage: str, manifest: dict[str, Any]) -> tuple[int, dict[str, obj
         "validation-security-poc",
         "validation-security-poc-plus",
     }:
-        parent_state = evaluate_cwe89_root_cause(_INPUT / "source", manifest)
-        fixed_state = evaluate_cwe89_root_cause(_WORKSPACE, manifest)
+        parent_state = _evaluate_root_cause(_INPUT / "source", manifest)
+        fixed_state = _evaluate_root_cause(_WORKSPACE, manifest)
         return (0 if parent_state == "VULNERABLE" and fixed_state == "SAFE" else 1), {
             "fixed_root_cause_state": fixed_state,
             "parent_root_cause_state": parent_state,
         }
     if stage == "validation-post-patch-scan":
-        scan_hash, count = scan_cwe89_repository(_WORKSPACE, manifest, fixed)
-        fixed_state = evaluate_cwe89_root_cause(_WORKSPACE, manifest)
+        scan_hash, count = _scan_repository(_WORKSPACE, manifest, fixed)
+        fixed_state = _evaluate_root_cause(_WORKSPACE, manifest)
         comparison = _compare_repair_signals(manifest, fixed)
         return (0 if fixed_state == "SAFE" and comparison.passed else 1), {
             "fixed_root_cause_state": fixed_state,
@@ -379,12 +394,12 @@ def _run_stage(stage: str, manifest: dict[str, Any]) -> tuple[int, dict[str, obj
             "target_signal_removed": comparison.target_signal_removed,
         }
     if stage == "validation-regression-scan":
-        parent_state = evaluate_cwe89_root_cause(_INPUT / "source", manifest)
-        fixed_state = evaluate_cwe89_root_cause(_WORKSPACE, manifest)
-        original_hash, original_count = scan_cwe89_repository(
+        parent_state = _evaluate_root_cause(_INPUT / "source", manifest)
+        fixed_state = _evaluate_root_cause(_WORKSPACE, manifest)
+        original_hash, original_count = _scan_repository(
             _INPUT / "source", manifest, manifest["parent_head_sha"]
         )
-        fixed_hash, fixed_count = scan_cwe89_repository(_WORKSPACE, manifest, fixed)
+        fixed_hash, fixed_count = _scan_repository(_WORKSPACE, manifest, fixed)
         comparison = _compare_repair_signals(manifest, fixed)
         return (
             0 if parent_state == "VULNERABLE" and fixed_state == "SAFE" and comparison.passed else 1
@@ -401,14 +416,49 @@ def _run_stage(stage: str, manifest: dict[str, Any]) -> tuple[int, dict[str, obj
     raise ChildProtocolError
 
 
-def _compare_repair_signals(manifest: dict[str, Any], fixed: str) -> Cwe89RepairSignalComparison:
-    return compare_cwe89_repair_signals(
-        _INPUT / "source",
-        _WORKSPACE,
-        manifest,
-        parent_revision=manifest["parent_head_sha"],
-        fixed_revision=fixed,
-    )
+def _target_cwe(manifest: dict[str, Any]) -> str:
+    finding = manifest.get("finding")
+    if type(finding) is not dict or type(finding.get("cwe_id")) is not str:
+        raise ChildProtocolError
+    return finding["cwe_id"]
+
+
+def _evaluate_root_cause(root: Path, manifest: dict[str, Any]) -> str:
+    if _target_cwe(manifest) == "CWE-89":
+        return evaluate_cwe89_root_cause(root, manifest)
+    if _target_cwe(manifest) == "CWE-78":
+        return evaluate_cwe78_root_cause(root, manifest)
+    raise ChildProtocolError
+
+
+def _scan_repository(root: Path, manifest: dict[str, Any], revision: str) -> tuple[str, int]:
+    if _target_cwe(manifest) == "CWE-89":
+        return scan_cwe89_repository(root, manifest, revision)
+    if _target_cwe(manifest) == "CWE-78":
+        return scan_cwe78_repository(root, manifest, revision)
+    raise ChildProtocolError
+
+
+def _compare_repair_signals(
+    manifest: dict[str, Any], fixed: str
+) -> Cwe89RepairSignalComparison | Cwe78RepairSignalComparison:
+    if _target_cwe(manifest) == "CWE-89":
+        return compare_cwe89_repair_signals(
+            _INPUT / "source",
+            _WORKSPACE,
+            manifest,
+            parent_revision=manifest["parent_head_sha"],
+            fixed_revision=fixed,
+        )
+    if _target_cwe(manifest) == "CWE-78":
+        return compare_cwe78_repair_signals(
+            _INPUT / "source",
+            _WORKSPACE,
+            manifest,
+            parent_revision=manifest["parent_head_sha"],
+            fixed_revision=fixed,
+        )
+    raise ChildProtocolError
 
 
 def _run_commands(commands: tuple[tuple[str, ...], ...]) -> bool:
@@ -534,6 +584,8 @@ def _network_packets() -> int:
 
 
 def _isolation_canaries() -> bool:
+    if not _process_security_canaries():
+        return False
     if any(
         path.exists()
         for path in (
@@ -550,12 +602,62 @@ def _isolation_canaries() -> bool:
         for marker in ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "ACCESS_KEY")
     ):
         return False
+    try:
+        if {name for _index, name in socket.if_nameindex()} != {"lo"}:
+            return False
+    except OSError:
+        return False
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     probe.settimeout(0.2)
     try:
         return probe.connect_ex(("192.0.2.1", 9)) != 0
     finally:
         probe.close()
+
+
+def _process_security_canaries() -> bool:
+    get_uid = getattr(os, "geteuid", None)
+    get_gid = getattr(os, "getegid", None)
+    if not callable(get_uid) or not callable(get_gid):
+        return False
+    try:
+        if get_uid() != 65532 or get_gid() != 65532:
+            return False
+        status = Path("/proc/self/status").read_text(encoding="ascii")
+    except (OSError, UnicodeError):
+        return False
+    fields: dict[str, str] = {}
+    for line in status.splitlines():
+        key, separator, value = line.partition(":")
+        if key in {
+            "Uid",
+            "Gid",
+            "NoNewPrivs",
+            "Seccomp",
+            "CapInh",
+            "CapPrm",
+            "CapEff",
+            "CapAmb",
+        }:
+            if not separator or key in fields:
+                return False
+            fields[key] = value.strip()
+    if (
+        fields.get("Uid") != "65532 65532 65532 65532"
+        or fields.get("Gid") != "65532 65532 65532 65532"
+        or fields.get("NoNewPrivs") != "1"
+        or fields.get("Seccomp") != "2"
+    ):
+        return False
+    for name in ("CapInh", "CapPrm", "CapEff", "CapAmb"):
+        value = fields.get(name)
+        if value is None or not value or any(
+            character not in "0123456789abcdefABCDEF" for character in value
+        ):
+            return False
+        if int(value, 16) != 0:
+            return False
+    return True
 
 
 def _processes_peak() -> int:

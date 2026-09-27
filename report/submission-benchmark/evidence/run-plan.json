@@ -1,0 +1,229 @@
+{
+  "aborted_duplicate_remote_attempt": {
+    "attempts": 1304,
+    "counted_in_scores": false,
+    "ledger": "deepseek-final-spend-v4.sqlite",
+    "output_files_written": false,
+    "pending_attempts": 4,
+    "pending_reserved_usd": 0.007296,
+    "reason": "A duplicate model-native and one-shot rerun was interrupted before the runner wrote outputs; complete archived lane outputs are retained instead.",
+    "settled_attempts": 1300,
+    "settled_charged_usd": 2.2422
+  },
+  "aggregate_output_sha256": "922cb28273fbba4b277bb4379ab0ef96d81561e50b18576228346536e27e3f1a",
+  "analysis_boundary": "All configured diagnostic outputs were validated against the frozen manifest. The model-native and one-shot outputs are archived direct classifications; scanner_seeded and full_hybrid are derived paired compositions, not live SecureCode pipeline runs.",
+  "budget": {
+    "combined_hard_cap_micro_usd": 40000000,
+    "new_ledger": "deepseek-final-spend-v4.sqlite",
+    "new_ledger_cap_micro_usd": 31939148,
+    "prior_ledgers": {
+      "go776_attempts": 1472632,
+      "initial_aborted": 6293655,
+      "python521_attempts": 292565
+    },
+    "prior_run_reservations_and_charges_micro_usd": 8058852,
+    "rounding_headroom_micro_usd": 2000
+  },
+  "candidate": {
+    "head_commit": "88595ae7f50be5906defee9d06e6186ce66ee1f8",
+    "source_files": 603,
+    "source_manifest_file": "candidate-source-manifest.json",
+    "source_manifest_sha256": "c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0"
+  },
+  "completed_at_utc": "2026-09-27T08:02:56+00:00",
+  "corpus": {
+    "case_count": 600,
+    "dataset_content_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
+    "languages": {
+      "go": 200,
+      "javascript-typescript": 200,
+      "python": 200
+    },
+    "lineage_groups": 300,
+    "manifest_sha256": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+    "source_cache_sha256": "a14d86a2af27e885624a783e2be009bc6f94e524cb10737e239ea7ecdc8bc64a",
+    "source_hash_mismatches": 0,
+    "source_hashes_verified": 600,
+    "splits": {
+      "calibration": 120,
+      "development": 240,
+      "held-out": 240
+    }
+  },
+  "created_at_utc": "2026-09-27T06:24:00.344042+00:00",
+  "dataset_integrity": {
+    "case_count": 600,
+    "cases_per_language": {
+      "go": 200,
+      "javascript-typescript": 200,
+      "python": 200
+    },
+    "dataset_content_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
+    "license_spdx": "NOASSERTION",
+    "lineage_groups": 300,
+    "manifest_sha256": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+    "source_hash_mismatches": 0,
+    "source_hashes_verified": 600,
+    "split_counts": {
+      "calibration": 120,
+      "development": 240,
+      "held-out": 240
+    }
+  },
+  "deterministic_output_sha256": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
+  "lane_composition": {
+    "full_hybrid_new_remote_calls": 0,
+    "full_hybrid_reused_predictions": 1800,
+    "inputs_sha256": {
+      "cvefixes-manifest.json": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+      "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
+      "deterministic-600x1.json": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf"
+    },
+    "method": "paired post-hoc composition; no additional model request was made",
+    "output_sha256": {
+      "full_hybrid": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
+      "scanner_seeded": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8"
+    },
+    "scanner_failed_cases": 253,
+    "scanner_seeded_new_remote_calls": 0,
+    "scanner_seeded_reused_predictions": 120,
+    "schema_version": "securecode.submission-benchmark-lane-composition.v1"
+  },
+  "lanes": {
+    "deterministic_only": {
+      "output": "deterministic-600x1.json",
+      "provenance": "fresh local scan from the 600-case pinned manifest, merged from 12 validated shards",
+      "remote_calls_made": 0,
+      "repetitions": 1
+    },
+    "full_hybrid": {
+      "composition_record": "lane-composition.json",
+      "derived": true,
+      "output": "deepseek-full-hybrid-600x3.json",
+      "provenance": "paired post-hoc Boolean union of deterministic and same-case model-native outputs",
+      "remote_calls_made": 0,
+      "repetitions": 3
+    },
+    "model_native": {
+      "output": "deepseek-model-native-600x3.json",
+      "provenance": "complete archived raw model baseline reused from run-plan-direct-baselines.json",
+      "remote_calls_made": 1800,
+      "repetitions": 3,
+      "source_profile_sha256": "6d8e6f9bd1cad313caa9efc59324f80129190ff9b8353e42387c7b9d3b1e133c",
+      "source_run_plan": "run-plan-direct-baselines.json"
+    },
+    "one_shot": {
+      "output": "deepseek-one-shot-600x3.json",
+      "provenance": "complete archived raw model baseline reused from run-plan-direct-baselines.json",
+      "remote_calls_made": 1800,
+      "repetitions": 3,
+      "source_profile_sha256": "6d8e6f9bd1cad313caa9efc59324f80129190ff9b8353e42387c7b9d3b1e133c",
+      "source_run_plan": "run-plan-direct-baselines.json"
+    },
+    "scanner_seeded": {
+      "composition_record": "lane-composition.json",
+      "derived": true,
+      "output": "deepseek-scanner-seeded-600x1.json",
+      "provenance": "paired post-hoc ablation; reuses model-native repetition 1 only for positive deterministic cases",
+      "remote_calls_made": 0,
+      "repetitions": 1
+    },
+    "semgrep": {
+      "output": "semgrep-600x3.json",
+      "provenance": "pinned Semgrep output reused; three identical score rows are retained, only repetition 1 is scored",
+      "remote_calls_made": 0,
+      "requested_repetitions": 3,
+      "scored_repetitions": 1
+    }
+  },
+  "limitations": [
+    "Public CVEfixes benchmark only; no private-code generalization claim.",
+    "DeepSeek model lanes are raw benchmark predictions and do not represent the complete SecureCode verdict pipeline.",
+    "No full 600-case repair study is included unless separately run.",
+    "Semgrep uses any-finding-in-file policy and is not CWE-aligned.",
+    "RAM and VRAM are not measured."
+  ],
+  "model_profile": {
+    "base_url": "https://api.deepseek.com",
+    "candidate_commit": "88595ae7f50be5906defee9d06e6186ce66ee1f8",
+    "candidate_source_manifest_sha256": "c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0",
+    "dataset_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
+    "input_price_basis": "off-peak uncached input",
+    "input_token_reservation": "UTF-8 source bytes + 2048 tokens",
+    "input_usd_per_million": 0.15,
+    "max_output_tokens": 64,
+    "model_alias": "deepseek-flash",
+    "model_version": "DeepSeek-V4.1-Flash",
+    "output_usd_per_million": 0.6,
+    "price_period": "off-peak",
+    "pricing_retrieved_utc_date": "2026-09-27",
+    "pricing_source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+    "reasoning": "disabled",
+    "response_format": "json_object",
+    "runner_sha256": "2c3175be2ade121b0a5cac6ad5d2ad951ea3cd9e44ce3515be347b7ed8065829",
+    "semgrep_projection_sha256": "d87c1f85ff239faccf7dcdebdc0f929c581641c27d5a9d4b1ab54c4d70882aed",
+    "semgrep_rules_commit": "a84ff9cc2453ca91d581380de4b8b3f272f6f4be",
+    "semgrep_version": "1.177.0",
+    "temperature": 0
+  },
+  "model_profile_sha256": "dfcdd5a415ed6a336da47881f409b3b86349250d8fc46a158a6c5abc0c73f917",
+  "outputs_sha256": {
+    "README.md": "48f46dcb83fd7e3ac0ff8ca5516fe5588b2a4f7b7ebe0ab0f8f8c136febbb3a9",
+    "aggregate.json": "922cb28273fbba4b277bb4379ab0ef96d81561e50b18576228346536e27e3f1a",
+    "build_report_pdf.py": "ee6cf063109fc28aa442d9fa1abeae909078ba823d53494464b1a6580f31c876",
+    "deepseek-full-hybrid-600x3.json": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
+    "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
+    "deepseek-one-shot-600x3.json": "5b567b6493d2e20437acd6b5efde02c83c7b21ef34fc2b23c4bf84235ca8b467",
+    "deepseek-scanner-seeded-600x1.json": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8",
+    "deterministic-600x1.json": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
+    "deterministic-shards.json": "bb340c558d6ddb0aac789647abf9d103c2dd9e48f295a330c5a5ad4191c864d1",
+    "lane-composition.json": "b066ab6f67be41b624c59ff4bdfa8c20a64a257d4b5d1a527d377faa3e35b780",
+    "project-README.md": "ce31aa25af87b111ec7e6b9fc0b33cb8d593a33779d73dd109a580eaaa261572",
+    "report.html": "2bab28f15db480418b8350c20378155bc4d38d0bacf9ddd281007bf04d5568ad",
+    "securecode-ai-submission-benchmark.pdf": "f726ac6d0825f19b00f7c2559c637be0a69dcde0825985a0596d15307f1c5106",
+    "semgrep-600x3.json": "209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6",
+    "stratified-metrics.csv": "702be784a23c7a2ef398460c9ad62b958ebf10ca004c817eba9a6c686d40ac4c",
+    "style.html": "e8283ee0887c683bcacf7ffb210dd2dc018283f3993c3f83e985f6e24554d049"
+  },
+  "paired_comparison": {
+    "all": {
+      "bootstrap_iterations": 5000,
+      "cluster_bootstrap_95_percentile_interval": [
+        -0.0822222222222222,
+        0.03222222222222221
+      ],
+      "comparison": "full_hybrid minus semgrep recall",
+      "observed_difference": -0.023333333333333317,
+      "paired_lineage_groups": 300,
+      "seed": 20260927
+    },
+    "held-out": {
+      "bootstrap_iterations": 5000,
+      "cluster_bootstrap_95_percentile_interval": [
+        -0.13888888888888892,
+        0.04722222222222222
+      ],
+      "comparison": "full_hybrid minus semgrep recall",
+      "observed_difference": -0.04722222222222222,
+      "paired_lineage_groups": 120,
+      "seed": 20260927
+    }
+  },
+  "price_retrieved_utc_date": "2026-09-27",
+  "price_source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "schema_version": "securecode.submission-benchmark-plan.v2",
+  "started_at_utc": null,
+  "status": "ANALYSIS_COMPLETE_WITH_LIMITATIONS",
+  "stratified_metrics_sha256": "702be784a23c7a2ef398460c9ad62b958ebf10ca004c817eba9a6c686d40ac4c",
+  "submission_limitations": [
+    "DeepSeek direct lanes are raw source classifiers and are not the full SecureCode AI product pipeline.",
+    "The hybrid and scanner-seeded lanes are derived offline from paired deterministic and model-native cell predictions, with zero new API calls.",
+    "Deterministic scanner-failed cells remain in the 600-cell denominators.",
+    "Semgrep is scored using any-finding-in-file, not a CWE-aligned rule mapping.",
+    "No full 600-case repair study was run.",
+    "The dataset license is NOASSERTION; this bundle contains the metadata manifest, not source code.",
+    "RAM/VRAM and end-to-end scan latency were not measured."
+  ],
+  "validated_candidate_source_files": 603,
+  "validated_candidate_source_manifest_sha256": "d12e34b2623a0747c1800aab344fb72dd34ef9f68e95609dc5653c20621939b1"
+}

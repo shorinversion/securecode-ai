@@ -1,0 +1,86 @@
+{
+  "dataset_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
+  "manifest_sha256": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+  "merged_output_sha256": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
+  "schema_version": "securecode.submission-deterministic-shards.v1",
+  "shards": [
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-00.json",
+      "offset": 0,
+      "sha256": "e631d571e5b2a608ddc213fa7e5ec8b041307741fc9d6cd2c8a572fdaa9a035d"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-01.json",
+      "offset": 50,
+      "sha256": "15ebc3f1066f43b768dde55feeeaa8ba9baaad3332e20f9289a732d7ede64ce5"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-02.json",
+      "offset": 100,
+      "sha256": "927b7b2842befbdb545e1bcc2e61cb102f0332d8f6bfe6c90c1ffff84a9972d6"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-03.json",
+      "offset": 150,
+      "sha256": "8765fdabef8e7f561df4a868050e47d7e82200f42ecc2e9b267254e41d2851fc"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-04.json",
+      "offset": 200,
+      "sha256": "1886830af1d1a37d29d5a4a4b7dda70aa4ad6fb16cdbdd58070b20e63283ba2a"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-05.json",
+      "offset": 250,
+      "sha256": "1161db0b80494deba4d23e4ed76e0a2ab1b39f18c5b60aa0549d45bc6bb2610c"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-06.json",
+      "offset": 300,
+      "sha256": "543aede75f2c05c0daedca5063b31ae019dcc1bd5129f736879118c2e0ce25a4"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-07.json",
+      "offset": 350,
+      "sha256": "cd50b199f75d203d9335376a4e85d9405310b6f7fb1864235082f2d40ef94532"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-08.json",
+      "offset": 400,
+      "sha256": "dce45ed6de357244d7ba561fbbf5fb173f9be449782ba59eab26babfeadb85de"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-09.json",
+      "offset": 450,
+      "sha256": "b9d9f55dec9b25a7bfa4f3f38ce0c2ea2a04117e92b98d3a1dee697ae73fbf68"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-10.json",
+      "offset": 500,
+      "sha256": "95d7cf7c9d64555ec50649ca006bdb05546e61fe62544444d4000505a9f91ba4"
+    },
+    {
+      "cell_count": 50,
+      "file": "deterministic-shards/deterministic-shard-11.json",
+      "offset": 550,
+      "sha256": "2c4164492c9c3786ef3d4d3fe017bb908f973bccd0a9d512c399ee3f33bad82b"
+    }
+  ],
+  "status_counts": {
+    "completed": 347,
+    "scanner-failed": 253
+  },
+  "total_cases": 600,
+  "total_cells": 600
+}

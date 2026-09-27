@@ -13,13 +13,18 @@ from .gitlab_api import (
     GitlabHTTPResponse,
     GitlabRestAPI,
 )
+from .gitlab_writer import GitlabAuthenticatedAPI
 
 GitlabHttpAPI = GitlabRestAPI
+# Keep the acronym spelling available to callers that use the protocol name.
+GitlabHTTPAPI = GitlabRestAPI
 
 __all__ = [
     "GitlabAPIError",
     "GitlabAPIErrorCode",
     "GitlabHTTPRequest",
     "GitlabHTTPResponse",
+    "GitlabAuthenticatedAPI",
     "GitlabHttpAPI",
+    "GitlabHTTPAPI",
 ]

@@ -14,6 +14,14 @@ trusts the CA file given by `SECURECODE_TLS_CA_SOURCE`. The API remains bound to
 `127.0.0.1`; place an authenticated TLS reverse proxy in front of it if remote
 operators need access. Do not expose the container port directly.
 
+The commands below use the Compose v2 plugin (`docker compose`). If your host
+provides only the standalone `docker-compose` command, substitute that executable
+in each command. On the current Windows host, `docker compose` is unavailable and
+`docker-compose` v5.5.1 is installed. The documented file passed
+`docker-compose -f deploy/docker/compose.yaml config --quiet` with 54 generated
+non-secret placeholder values for its required environment variables. This checks interpolation and Compose syntax only;
+it does not build images or start services.
+
 Create five files outside the repository: a TLS certificate, its private key,
 the issuing CA certificate, an admin bearer token, and a separate worker bearer
 token. Tokens must contain at least 32 ASCII characters. The private-key source

@@ -325,6 +325,7 @@ class PublicCoreHostInputs:
                 profile.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE
                 and profile.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
                 and profile.credential_ref is not None
+                and type(profile.protocol_framing_token_upper_bound) is int
                 and endpoint.scheme == "https"
                 and (endpoint.port or 443) == self.gateway_port
                 and self.diagnostic_sampling is None

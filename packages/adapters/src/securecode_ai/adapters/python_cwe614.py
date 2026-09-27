@@ -334,6 +334,7 @@ _SENSITIVE_NAME = frozenset(
         "csrf",
         "oauth",
     }
+)
 
 
 def scan_python_cwe614(

@@ -25,6 +25,7 @@ from .oidc_login import (
     OidcAuthorizationClient,
     OidcLoginError,
     OidcLoginService,
+    OidcSourceRateLimitPort,
 )
 from .oidc_sessions import NonceReplayLedger, OpaqueSessionIssuer, SqliteOidcLoginState
 from .secure_files import read_json_object, read_secret_bytes
@@ -87,6 +88,13 @@ def build_oidc_verifier(
         ),
         authorized_party=_optional_string(document, "authorized_party"),
     )
+    tenant_map = _string_map(document, "tenant_map")
+    subject_map = _string_map(document, "subject_map")
+    # A canonical subject must have exactly one external source.  Otherwise a
+    # reloaded session binding could match an unrelated issuer subject after a
+    # configuration rotation, making revocation depend on map iteration order.
+    if len(subject_map) != len(set(subject_map.values())):
+        raise ValueError("OIDC subject mapping is ambiguous")
     mapping = IdentityClaimMapping(
         role_map=_string_map(document, "role_map"),
         tenant_claim=_string(document, "tenant_claim", "tenant_id"),
@@ -98,8 +106,13 @@ def build_oidc_verifier(
             "repository_ids_claim",
             "repository_ids",
         ),
-        tenant_map=_optional_string_map(document, "tenant_map"),
-        subject_map=_optional_string_map(document, "subject_map"),
+        # OIDC is an external trust boundary.  A signed issuer claim is not
+        # enough to establish the server's tenant or subject namespace: both
+        # must be explicitly admitted by the server-owned mapping.  Keeping
+        # these mappings mandatory here also makes unknown subjects and
+        # tenants fail closed before they can reach RoleAuthorization.
+        tenant_map=tenant_map,
+        subject_map=subject_map,
         repository_id_map=_optional_string_map(document, "repository_id_map"),
         allowed_roles=frozenset(_string_list(document, "allowed_roles", required=False)),
         workload_roles=frozenset(_string_list(document, "workload_roles", required=False)),
@@ -134,6 +147,7 @@ def build_oidc_login_service(
     *,
     verifier_loader: Callable[[], BearerJwtIdentityVerifier | None] | None = None,
     connection: sqlite3.Connection | None = None,
+    source_rate_limiter: OidcSourceRateLimitPort | None = None,
 ) -> OidcLoginService | None:
     """Enable interactive login only with explicit group and subject bindings."""
 
@@ -150,15 +164,52 @@ def build_oidc_login_service(
     ):
         raise ValueError("OIDC authorization client configuration is required")
     login_attempt_limit, login_attempt_window = _oidc_login_limits(config_path)
+
+    def authorization_client_loader() -> OidcAuthorizationClient:
+        current_verifier = loader()
+        current_client = _build_oidc_authorization_client(values)
+        if (
+            current_verifier is None
+            or current_client is None
+            or current_verifier.policy.authorized_party != current_client.client_id
+        ):
+            raise ValueError("OIDC authorization client configuration is invalid")
+        return current_client
+
     return OidcLoginService(
         admission=_ReloadingOidcAdmission(values, loader),
         ledger=NonceReplayLedger(connection=connection),
         issuer=OpaqueSessionIssuer(sessions),
         state_store=None if connection is None else SqliteOidcLoginState(connection),
-        authorization_client=authorization_client,
+        source_rate_limiter=source_rate_limiter,
+        authorization_client_loader=authorization_client_loader,
+        attempt_policy_loader=lambda: _oidc_login_limits(config_path),
         attempt_limit=login_attempt_limit,
         attempt_window_seconds=login_attempt_window,
     )
+
+
+def active_oidc_session_principal(
+    values: Mapping[str, str],
+    principal: Principal,
+) -> bool | None:
+    """Fail closed when a stored session's tenant binding was suspended or removed."""
+
+    if type(principal) is not Principal:
+        return False
+    try:
+        verifier = build_oidc_verifier(values)
+        if verifier is None:
+            return None
+        admission = _build_oidc_admission(values, verifier)
+        return admission is not None and admission.active_subject(
+            subject_id=principal.subject_id,
+            tenant_id=principal.tenant_id,
+            roles=principal.roles,
+            repository_grants=principal.repository_grants,
+        )
+    except Exception:
+        return None
 
 
 def _build_oidc_admission(
@@ -189,7 +240,11 @@ def _build_oidc_admission(
             role = Role(role_name)
         except ValueError:
             raise ValueError("OIDC login configuration is invalid") from None
-        if role is Role.WORKER or not 1 <= len(group) <= 128:
+        if (
+            role is Role.WORKER
+            or role.value not in verifier.allowed_roles
+            or not 1 <= len(group) <= 128
+        ):
             raise ValueError("OIDC login configuration is invalid")
         role_groups[group] = role
     subject_bindings: list[SubjectBinding] = []
@@ -230,6 +285,13 @@ def _build_oidc_admission(
                 grants=frozenset(grants),
             )
         )
+    configured_subjects = verifier.subject_map
+    if any(binding.subject not in configured_subjects for binding in subject_bindings):
+        raise ValueError("OIDC login subject binding is not mapped")
+    configured_tenants = verifier.tenant_map
+    configured_tenant_values = frozenset(configured_tenants.values())
+    if any(binding.tenant_id not in configured_tenant_values for binding in subject_bindings):
+        raise ValueError("OIDC login tenant binding is not mapped")
     authorized_party = verifier.policy.authorized_party
     if authorized_party is None:
         raise ValueError("OIDC login authorized party is missing")
@@ -240,6 +302,11 @@ def _build_oidc_admission(
             audience=verifier.policy.audience,
             allowed_azp=frozenset({authorized_party}),
             role_groups=role_groups,
+            subject_map=verifier.subject_map,
+            tenant_claim=verifier.tenant_claim,
+            tenant_map=verifier.tenant_map,
+            roles_claim=verifier.roles_claim,
+            subject_claim=verifier.subject_claim,
         ),
         tuple(subject_bindings),
     )
@@ -424,4 +491,8 @@ def _string_list(
     return tuple(value)
 
 
-__all__ = ["build_oidc_login_service", "build_oidc_verifier"]
+__all__ = [
+    "active_oidc_session_principal",
+    "build_oidc_login_service",
+    "build_oidc_verifier",
+]

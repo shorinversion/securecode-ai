@@ -181,16 +181,17 @@ class SqliteResidencyRegistry:
 
     def get(self, *, tenant_id: str) -> tuple[ResidencyProfile, int, str]:
         _require_identifier(tenant_id)
-        row = self._db.execute(
-            """SELECT version, regions_json, profile_sha256
-               FROM tenant_residency_profiles WHERE tenant_id=?""",
-            (tenant_id,),
-        ).fetchone()
-        if row is None:
-            raise ResidencyConflict("residency profile is unavailable")
-        version = _stored_version(row["version"])
-        profile = _profile_from_row(tenant_id, row["regions_json"], row["profile_sha256"])
-        return profile, version, str(row["profile_sha256"])
+        with self._lock:
+            row = self._db.execute(
+                """SELECT version, regions_json, profile_sha256
+                   FROM tenant_residency_profiles WHERE tenant_id=?""",
+                (tenant_id,),
+            ).fetchone()
+            if row is None:
+                raise ResidencyConflict("residency profile is unavailable")
+            version = _stored_version(row["version"])
+            profile = _profile_from_row(tenant_id, row["regions_json"], row["profile_sha256"])
+            return profile, version, str(row["profile_sha256"])
 
     def require_region(self, *, tenant_id: str, region: str) -> ResidencyDecision:
         if self._deployment_region is None:
@@ -209,7 +210,8 @@ class SqliteResidencyRegistry:
             raise ResidencyConflict("residency tenant set is invalid") from error
         for tenant_id in retained:
             _require_identifier(tenant_id)
-        self._configured_tenants = retained
+        with self._lock:
+            self._configured_tenants = retained
 
     def authorize_transfer(
         self,
@@ -218,26 +220,27 @@ class SqliteResidencyRegistry:
         source_region: str,
         destination_region: str,
     ) -> ResidencyDecision:
-        _require_identifier(tenant_id)
-        if self._configured_tenants is not None and tenant_id not in self._configured_tenants:
-            raise ResidencyConflict("residency profile is not configured")
-        profile, version, profile_hash = self.get(tenant_id=tenant_id)
-        try:
-            require_transfer(
-                profile,
+        with self._lock:
+            _require_identifier(tenant_id)
+            if self._configured_tenants is not None and tenant_id not in self._configured_tenants:
+                raise ResidencyConflict("residency profile is not configured")
+            profile, version, profile_hash = self.get(tenant_id=tenant_id)
+            try:
+                require_transfer(
+                    profile,
+                    source_region=source_region,
+                    destination_region=destination_region,
+                )
+            except (ResidencyDenied, TypeError, ValueError) as error:
+                raise ResidencyConflict("residency transfer is denied") from error
+            return ResidencyDecision(
+                tenant_id=tenant_id,
                 source_region=source_region,
                 destination_region=destination_region,
+                profile_sha256=profile_hash,
+                profile_version=version,
+                same_region=source_region == destination_region,
             )
-        except (ResidencyDenied, TypeError, ValueError) as error:
-            raise ResidencyConflict("residency transfer is denied") from error
-        return ResidencyDecision(
-            tenant_id=tenant_id,
-            source_region=source_region,
-            destination_region=destination_region,
-            profile_sha256=profile_hash,
-            profile_version=version,
-            same_region=source_region == destination_region,
-        )
 
     def _initialize_schema(self) -> None:
         try:
@@ -356,6 +359,8 @@ def load_residency_registry(
     if not raw:
         registry.restrict_to_configured_tenants(())
         return registry
+    if deployment_region is None:
+        raise ValueError("residency deployment region is required")
     if type(raw) is not str or not raw:
         raise ValueError("residency configuration is invalid")
     try:

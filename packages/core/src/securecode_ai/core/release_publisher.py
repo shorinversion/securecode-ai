@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
@@ -171,6 +172,8 @@ class ReleasePublisher:
         plan = request.plan
         if type(plan.candidate) is not ReleaseCandidate:
             raise ReleasePublisherError()
+        if not _authorization_live(request.authorization):
+            return _error(plan)
         try:
             existing = self._provider.get_tag(plan.tag, request.authorization)
         except Exception:
@@ -179,13 +182,32 @@ class ReleasePublisher:
             if _matches(existing, plan):
                 return _receipt(ReleasePublishDisposition.IDEMPOTENT, plan, existing)
             return _receipt(ReleasePublishDisposition.CONFLICT, plan, existing)
+        if not _authorization_live(request.authorization):
+            return _error(plan)
         try:
             remote = self._provider.create_release(request)
         except Exception:
+            # A concurrent publisher can win between the read and create.
+            # Reconcile once so a retry-safe duplicate is reported as such,
+            # while keeping transport failures source-free and fail-closed.
+            if not _authorization_live(request.authorization):
+                return _error(plan)
+            try:
+                existing = self._provider.get_tag(plan.tag, request.authorization)
+            except Exception:
+                return _error(plan)
+            if existing is not None:
+                if _matches(existing, plan):
+                    return _receipt(ReleasePublishDisposition.IDEMPOTENT, plan, existing)
+                return _receipt(ReleasePublishDisposition.CONFLICT, plan, existing)
             return _error(plan)
         if not _matches(remote, plan):
             return _receipt(ReleasePublishDisposition.ERROR, plan, remote)
         return _receipt(ReleasePublishDisposition.PUBLISHED, plan, remote)
+
+
+def _authorization_live(authorization: PublishAuthorization) -> bool:
+    return authorization.expires_at > int(time.time())
 
 
 def _matches(remote: RemoteRelease, plan: ReleaseDryRunPlan) -> bool:

@@ -151,17 +151,35 @@ def _canonicalize_ollama_envelope(response: bytes, *, expected_model_id: str) ->
         raise ValueError("response message control surface is invalid")
 
     usage = document["usage"]
-    if not isinstance(usage, dict) or set(usage) != {
-        "prompt_tokens",
-        "completion_tokens",
-        "total_tokens",
-    }:
+    if (
+        not isinstance(usage, dict)
+        or not {
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+        }.issubset(usage)
+        or set(usage)
+        - {
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "prompt_tokens_details",
+        }
+    ):
         raise ValueError("response usage control surface is invalid")
     prompt_tokens = _wire_int(usage["prompt_tokens"])
     completion_tokens = _wire_int(usage["completion_tokens"])
     total_tokens = _wire_int(usage["total_tokens"])
     if total_tokens != prompt_tokens + completion_tokens:
         raise ValueError("response usage is inconsistent")
+    if "prompt_tokens_details" in usage:
+        details = usage["prompt_tokens_details"]
+        if (
+            not isinstance(details, dict)
+            or set(details) != {"cached_tokens"}
+            or _wire_int(details["cached_tokens"]) > prompt_tokens
+        ):
+            raise ValueError("response prompt token details are invalid")
 
     return json.dumps(
         {

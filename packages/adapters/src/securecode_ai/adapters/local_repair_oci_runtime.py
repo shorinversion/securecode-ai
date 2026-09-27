@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -55,6 +56,19 @@ _SENSITIVE_ENV: Final = re.compile(
 )
 
 
+def _closed_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate JSON key")
+        value[key] = item
+    return value
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON constant: {value}")
+
+
 class LocalRepairOciRuntimeError(ValueError):
     def __init__(self, reason: str = "OCI_RUNTIME_UNAVAILABLE") -> None:
         self.reason = reason
@@ -68,9 +82,12 @@ class DockerCliOciRuntime:
 
     __slots__ = (
         "_active",
+        "_active_container_name",
+        "_active_process",
         "_attestation",
         "_bundle_root",
         "_bundle_sha256",
+        "_cancel_requested",
         "_closed",
         "_desktop_vm_isolation",
         "_docker",
@@ -84,6 +101,8 @@ class DockerCliOciRuntime:
         "_parent_head_sha",
         "_patch_sha256",
         "_profile",
+        "_process_lock",
+        "_cancelled_process",
     )
 
     def __init__(
@@ -141,6 +160,11 @@ class DockerCliOciRuntime:
         self._attestation: OciRuntimeAttestation | None = None
         self._fixed_head_sha: str | None = None
         self._active: dict[str, str] = {}
+        self._active_container_name: str | None = None
+        self._process_lock = threading.Lock()
+        self._active_process: subprocess.Popen[bytes] | None = None
+        self._cancelled_process: subprocess.Popen[bytes] | None = None
+        self._cancel_requested = threading.Event()
         self._closed = False
 
     @property
@@ -150,6 +174,20 @@ class DockerCliOciRuntime:
     @property
     def image_digest(self) -> str:
         return self._image_digest
+
+    def cancel(self) -> None:
+        """Request termination of the active child without widening access."""
+
+        self._cancel_requested.set()
+        with self._process_lock:
+            process = self._active_process
+            if process is not None:
+                self._cancelled_process = process
+            container = self._active_container_name
+        if process is not None:
+            self._terminate_process(process)
+        if container is not None:
+            self._interrupt_container(container)
 
     def attest(self) -> OciRuntimeAttestation:
         self._ensure_open()
@@ -259,15 +297,23 @@ class DockerCliOciRuntime:
     def prepare(self, *, expected_case_ids: tuple[str, ...]) -> OciPreparationReceipt:
         self.attest()
         name = self._container_name("prepare")
+        if "prepare" in self._active:
+            raise LocalRepairOciRuntimeError("OCI_WORKLOAD_COLLISION")
+        self._active["prepare"] = name
         argv = (*_CHILD_PREFIX, "prepare", "/securecode/input/manifest.json")
         try:
-            raw, state, timed_out, _ = self._execute_container(
+            raw, state, timed_out, cancelled, _ = self._execute_container(
                 name=name,
                 argv=argv,
                 elapsed_ms=self._profile.max_elapsed_ms,
                 output_bytes=self._profile.max_output_bytes,
             )
-            if timed_out or state.get("OOMKilled") is True or state.get("ExitCode") != 0:
+            if (
+                cancelled
+                or timed_out
+                or state.get("OOMKilled") is True
+                or state.get("ExitCode") != 0
+            ):
                 raise LocalRepairOciRuntimeError("OCI_PREPARATION_FAILED")
             receipt = parse_preparation_receipt(
                 raw.strip(),
@@ -282,7 +328,10 @@ class DockerCliOciRuntime:
         except LocalRepairOciProtocolError as error:
             raise LocalRepairOciRuntimeError(error.reason) from None
         finally:
-            self._remove(name)
+            if self._remove(name):
+                self._active.pop("prepare", None)
+            else:
+                raise LocalRepairOciRuntimeError("OCI_CLEANUP_FAILED")
 
     def run(self, spec: OciLaunchSpec) -> OciRuntimeResult:
         self.attest()
@@ -293,16 +342,16 @@ class DockerCliOciRuntime:
         if spec.workload_id in self._active:
             raise LocalRepairOciRuntimeError("OCI_WORKLOAD_COLLISION")
         self._active[spec.workload_id] = name
-        raw, state, timed_out, host_elapsed = self._execute_container(
+        raw, state, timed_out, cancelled, host_elapsed = self._execute_container(
             name=name,
             argv=spec.argv,
             elapsed_ms=spec.elapsed_ms,
             output_bytes=spec.output_bytes,
         )
         oom = state.get("OOMKilled") is True
-        if timed_out or oom:
+        if cancelled or timed_out or oom:
             return OciRuntimeResult(
-                exit_code=124 if timed_out else 137,
+                exit_code=130 if cancelled else 124 if timed_out else 137,
                 stdout=b"",
                 stderr=b"",
                 elapsed_ms=min(host_elapsed, spec.elapsed_ms + 1),
@@ -313,6 +362,7 @@ class DockerCliOciRuntime:
                 network_packets=0,
                 oom_killed=oom,
                 timed_out=timed_out,
+                cancelled=cancelled,
             )
         stage_id = spec.argv[-2]
         try:
@@ -341,6 +391,7 @@ class DockerCliOciRuntime:
             network_packets=receipt.network_packets,
             oom_killed=receipt.oom_killed,
             timed_out=receipt.timed_out,
+            cancelled=False,
         )
 
     def cleanup(self, workload_id: str) -> OciCleanupResult:
@@ -397,29 +448,64 @@ class DockerCliOciRuntime:
 
     def _execute_container(
         self, *, name: str, argv: tuple[str, ...], elapsed_ms: int, output_bytes: int
-    ) -> tuple[bytes, dict[str, object], bool, int]:
+    ) -> tuple[bytes, dict[str, object], bool, bool, int]:
+        with self._process_lock:
+            previous_container = self._active_container_name
+            self._active_container_name = name
+        try:
+            return self._execute_container_body(
+                name=name,
+                argv=argv,
+                elapsed_ms=elapsed_ms,
+                output_bytes=output_bytes,
+            )
+        finally:
+            with self._process_lock:
+                if self._active_container_name == name:
+                    self._active_container_name = previous_container
+
+    def _execute_container_body(
+        self, *, name: str, argv: tuple[str, ...], elapsed_ms: int, output_bytes: int
+    ) -> tuple[bytes, dict[str, object], bool, bool, int]:
         if argv[: len(_CHILD_PREFIX)] != _CHILD_PREFIX:
             raise LocalRepairOciRuntimeError("OCI_CHILD_COMMAND_INVALID")
+        if self._cancel_requested.is_set():
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_CANCELLED")
         self._create(name=name, argv=argv, output_bytes=output_bytes)
+        if self._cancel_requested.is_set():
+            with suppress(LocalRepairOciRuntimeError):
+                self._remove(name)
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_CANCELLED")
         started = time.monotonic()
         self._docker_bytes(("start", name), timeout=10)
         deadline = started + elapsed_ms / 1000
         state: dict[str, object] = {}
         timed_out = False
+        cancelled = False
         while True:
             state = self._state(name)
             if state.get("Running") is False:
                 break
-            if time.monotonic() >= deadline:
-                timed_out = True
+            if self._cancel_requested.is_set() or time.monotonic() >= deadline:
+                cancelled = self._cancel_requested.is_set()
+                timed_out = not cancelled
                 with suppress(LocalRepairOciRuntimeError):
                     self._docker_bytes(("kill", name), timeout=5)
+                if cancelled:
+                    return b"", {}, False, True, max(
+                        0, int((time.monotonic() - started) * 1000)
+                    )
                 state = self._state(name)
                 break
             time.sleep(0.05)
         host_elapsed = max(0, int((time.monotonic() - started) * 1000))
-        raw = self._docker_bytes(("logs", name), timeout=10, limit=output_bytes)
-        return raw, state, timed_out, host_elapsed
+        try:
+            raw = self._docker_bytes(("logs", name), timeout=10, limit=output_bytes)
+        except LocalRepairOciRuntimeError as error:
+            if error.reason != "OCI_RUNTIME_CANCELLED":
+                raise
+            return b"", {}, False, True, host_elapsed
+        return raw, state, timed_out, cancelled, host_elapsed
 
     def _create(self, *, name: str, argv: tuple[str, ...], output_bytes: int) -> None:
         mac_security_opt = self._mac_security_opt
@@ -497,7 +583,12 @@ class DockerCliOciRuntime:
 
     def _state(self, name: str) -> dict[str, object]:
         value = self._docker_json(("inspect", "--format", "{{json .State}}", name), timeout=5)
-        if type(value) is not dict:
+        if (
+            type(value) is not dict
+            or type(value.get("Running")) is not bool
+            or type(value.get("OOMKilled")) is not bool
+            or type(value.get("ExitCode")) is not int
+        ):
             raise LocalRepairOciRuntimeError("OCI_STATE_INVALID")
         return value
 
@@ -520,7 +611,11 @@ class DockerCliOciRuntime:
     def _docker_json(self, arguments: tuple[str, ...], *, timeout: int) -> object:
         raw = self._docker_bytes(arguments, timeout=timeout)
         try:
-            return json.loads(raw.decode("utf-8"))
+            return json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_closed_json_object,
+                parse_constant=_reject_json_constant,
+            )
         except Exception:
             raise LocalRepairOciRuntimeError("OCI_RUNTIME_RESPONSE_INVALID") from None
 
@@ -541,16 +636,24 @@ class DockerCliOciRuntime:
                     env=self._environment,
                     creationflags=flags,
                 )
+                with self._process_lock:
+                    self._active_process = process
+                    if self._cancel_requested.is_set() and self._active_container_name is not None:
+                        self._cancelled_process = process
                 try:
                     code = process.wait(timeout=timeout)
                 except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=2)
+                    self._terminate_process(process)
+                    if self._consume_cancelled_process(process):
+                        raise LocalRepairOciRuntimeError("OCI_RUNTIME_CANCELLED") from None
                     raise LocalRepairOciRuntimeError("OCI_RUNTIME_TIMEOUT") from None
+                interrupted = self._consume_cancelled_process(process)
                 stdout.seek(0)
                 stderr.seek(0)
                 output = stdout.read(limit + 1)
                 errors = stderr.read(min(limit, 4096) + 1)
+            if interrupted:
+                raise LocalRepairOciRuntimeError("OCI_RUNTIME_CANCELLED") from None
             if code != 0:
                 if verified_container_not_found(arguments, errors):
                     raise LocalRepairOciRuntimeError("OCI_CONTAINER_NOT_FOUND")
@@ -562,6 +665,43 @@ class DockerCliOciRuntime:
             raise
         except (OSError, subprocess.SubprocessError):
             raise LocalRepairOciRuntimeError() from None
+
+    def _consume_cancelled_process(self, process: subprocess.Popen[bytes]) -> bool:
+        with self._process_lock:
+            if self._active_process is process:
+                self._active_process = None
+            if self._cancelled_process is not process:
+                return False
+            self._cancelled_process = None
+            return True
+
+    def _terminate_process(self, process: subprocess.Popen[bytes]) -> None:
+        try:
+            if process.poll() is None:
+                process.kill()
+        except (OSError, subprocess.SubprocessError):
+            return
+        try:
+            process.wait(timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            with suppress(OSError, subprocess.SubprocessError):
+                process.kill()
+
+    def _interrupt_container(self, name: str) -> None:
+        try:
+            self._verify_docker_executable()
+            flags = _CREATE_NO_WINDOW if os.name == "nt" else 0
+            process = subprocess.Popen(
+                (str(self._docker), "kill", name),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=self._environment,
+                creationflags=flags,
+            )
+            self._terminate_process(process)
+        except (OSError, subprocess.SubprocessError, LocalRepairOciRuntimeError):
+            return
 
     def _container_name(self, purpose: str) -> str:
         digest = hashlib.sha256(

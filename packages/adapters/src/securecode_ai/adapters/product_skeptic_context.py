@@ -7,6 +7,7 @@ import json
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ArtifactRef,
+    DataClass,
     EgressContentRef,
     ModelRequest,
 )
@@ -18,6 +19,14 @@ from .product_skeptic_contracts import (
     _SKEPTIC_INSTRUCTIONS,
     SKEPTIC_WIRE_SCHEMA_JSON,
 )
+
+_DATA_CLASS_RANK = {
+    DataClass.PUBLIC: 0,
+    DataClass.INTERNAL_METADATA: 1,
+    DataClass.CONFIDENTIAL_SECURITY: 2,
+    DataClass.CONFIDENTIAL_SOURCE: 3,
+    DataClass.RESTRICTED: 4,
+}
 
 
 def _package_matches_snapshot(
@@ -92,13 +101,17 @@ def _skeptic_context(
     payload = json.dumps(
         material, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
     ).encode()
+    egress_data_class = max(
+        (artifact.data_class for artifact, _, _ in unique.values()),
+        key=_DATA_CLASS_RANK.__getitem__,
+    )
     return PreparedModelContext(
         payload=payload,
         content=tuple(
             EgressContentRef(
                 schema_version=CONTRACT_SCHEMA_VERSION,
                 content_id=artifact.content_id,
-                data_class=artifact.data_class,
+                data_class=egress_data_class,
             )
             for artifact, _, _ in unique.values()
         ),

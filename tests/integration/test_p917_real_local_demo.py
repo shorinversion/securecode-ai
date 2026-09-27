@@ -100,6 +100,69 @@ def test_vulnerable_repo_runs_both_lanes_and_validates_model_patch(
     assert hashlib.sha256((repository / "app.py").read_bytes()).hexdigest() == original_hash
 
 
+def test_single_safe_execute_line_can_be_recovered_from_full_file_patch(
+    tmp_path: Path, demo_module: ModuleType
+) -> None:
+    repository, original_hash = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM users WHERE name = ' + value)\n",
+    )
+    model = FakeModel(
+        [
+            {
+                "status": "SUCCEEDED",
+                "candidates": [{"path": "app.py", "line": 2, "cwe_id": "CWE-89"}],
+            },
+            {
+                "status": "SUCCEEDED",
+                "patch": (
+                    "def find(conn, value):\n"
+                    "    return conn.execute('SELECT * FROM users WHERE name = ?', (value,))\n"
+                ),
+            },
+        ]
+    )
+
+    manifest = _run(demo_module, repository, tmp_path / "out", model)
+
+    assert manifest["outcome"] == "COMPLETED"
+    assert manifest["patch"]["present"] is True
+    assert manifest["ephemeral_validation"]["status"] == "PASSED"
+    assert hashlib.sha256((repository / "app.py").read_bytes()).hexdigest() == original_hash
+
+
+def test_ambiguous_full_file_patch_is_rejected_fail_closed(
+    tmp_path: Path, demo_module: ModuleType
+) -> None:
+    repository, original_hash = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM users WHERE name = ' + value)\n",
+    )
+    model = FakeModel(
+        [
+            {
+                "status": "SUCCEEDED",
+                "candidates": [{"path": "app.py", "line": 2, "cwe_id": "CWE-89"}],
+            },
+            {
+                "status": "SUCCEEDED",
+                "patch": (
+                    "def find(conn, value):\n"
+                    "    first = conn.execute('SELECT * FROM users WHERE name = ?', (value,))\n"
+                    "    return conn.execute('SELECT * FROM users WHERE id = ?', (value,))\n"
+                ),
+            },
+        ]
+    )
+
+    manifest = _run(demo_module, repository, tmp_path / "out", model)
+
+    assert manifest["outcome"] == "INDETERMINATE"
+    assert manifest["patch"]["present"] is False
+    assert manifest["ephemeral_validation"]["status"] == "NOT_PROPOSED"
+    assert hashlib.sha256((repository / "app.py").read_bytes()).hexdigest() == original_hash
+
+
 def test_safe_repo_still_calls_model_and_has_no_patch(
     tmp_path: Path, demo_module: ModuleType
 ) -> None:
@@ -472,6 +535,7 @@ def _runtime_metadata(module: ModuleType) -> dict[str, Any]:
                     "modified_at": "2026-09-15T12:00:00Z",
                     "size": 4_680_000_000,
                     "digest": module._MODEL_DIGEST,
+                    "capabilities": ["completion", "tools"],
                     "details": {
                         "parent_model": "",
                         "format": "gguf",
@@ -479,6 +543,8 @@ def _runtime_metadata(module: ModuleType) -> dict[str, Any]:
                         "families": ["qwen2"],
                         "parameter_size": "7.6B",
                         "quantization_level": module._MODEL_QUANTIZATION,
+                        "context_length": 32_768,
+                        "embedding_length": 4_096,
                     },
                 }
             ]
@@ -533,6 +599,8 @@ def test_observed_identity_is_bound_to_real_default_execution(
         "tags-extra",
         "model-extra",
         "details-extra",
+        "capabilities-invalid",
+        "context-length-invalid",
         "size",
         "families",
     ],
@@ -553,6 +621,10 @@ def test_runtime_identity_drift_fails_before_model_or_output(
         model[fault] = "drift"
     elif fault == "quantization":
         model["details"]["quantization_level"] = "Q8_0"
+    elif fault == "capabilities-invalid":
+        model["capabilities"] = [False]
+    elif fault == "context-length-invalid":
+        model["details"]["context_length"] = True
     elif fault.endswith("extra"):
         target = {
             "version-extra": metadata["/api/version"],
@@ -654,13 +726,13 @@ def test_metadata_http_boundary_is_bounded_literal_loopback(
     demo_module: ModuleType, monkeypatch: pytest.MonkeyPatch, fault: str
 ) -> None:
     calls: list[object] = []
-    body = b'{"version":"0.16.2"}'
+    body = b'{"version":"0.34.4"}'
     if fault == "oversized":
         body = b" " * (demo_module._METADATA_BYTES + 1)
     elif fault == "malformed":
         body = b'{"version":'
     elif fault == "duplicate":
-        body = b'{"version":"0.16.2","version":"0.16.2"}'
+        body = b'{"version":"0.34.4","version":"0.34.4"}'
     elif fault == "array":
         body = b"[]"
 
@@ -700,7 +772,7 @@ def test_metadata_http_boundary_is_bounded_literal_loopback(
     monkeypatch.setenv("ALL_PROXY", "http://example.invalid:9999")
     monkeypatch.setattr(demo_module.http.client, "HTTPConnection", Connection)
     if fault == "none":
-        assert demo_module._read_runtime_metadata("/api/version") == {"version": "0.16.2"}
+        assert demo_module._read_runtime_metadata("/api/version") == {"version": "0.34.4"}
     else:
         with pytest.raises(demo_module.DemoError) as caught:
             demo_module._read_runtime_metadata("/api/version")

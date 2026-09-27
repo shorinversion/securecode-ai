@@ -153,9 +153,7 @@ class PythonCwe521Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe521Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe521Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -373,7 +371,9 @@ _PASSWORD_WORDS = frozenset(
         "loginpassword",
     }
 )
-_POLICY_WORDS = frozenset({"policy", "policies", "validator", "validators", "requirements", "rules"})
+_POLICY_WORDS = frozenset(
+    {"policy", "policies", "validator", "validators", "requirements", "rules"}
+)
 _SUPPRESSED_PATH_PARTS = frozenset(
     {"test", "tests", "fixture", "fixtures", "example", "examples", "docs", "documentation"}
 )
@@ -536,20 +536,24 @@ def _assignment_facts(
         values = (node.value,)
     if not values:
         return ()
-    target_names = tuple(name for target in _assignment_targets(node) for name in _target_names(target))
+    target_names = tuple(
+        name for target in _assignment_targets(node) for name in _target_names(target)
+    )
     context = _name_has_password_context(target_names)
     policy_context = context or _name_has_policy_context(target_names)
     if not policy_context:
         return ()
     value = values[0]
     facts: list[_WeakFact] = []
-    if isinstance(value, ast.Constant) and type(value.value) is int and not isinstance(value.value, bool):
+    if (
+        isinstance(value, ast.Constant)
+        and type(value.value) is int
+        and not isinstance(value.value, bool)
+    ):
         key = _normalise_name(" ".join(target_names))
         operation = _length_operation(key, value.value)
         if operation is not None:
-            facts.append(
-                _fact_from_nodes(value, node, operation, source, line_starts)
-            )
+            facts.append(_fact_from_nodes(value, node, operation, source, line_starts))
     if isinstance(value, ast.Dict):
         facts.extend(
             _dict_facts(
@@ -690,7 +694,11 @@ def _complexity_is_disabled(
         for keyword in node.keywords:
             if keyword.arg is None:
                 continue
-            if _normalise_name(keyword.arg) in {"complexity", "passwordcomplexity", "requirecomplexity"}:
+            if _normalise_name(keyword.arg) in {
+                "complexity",
+                "passwordcomplexity",
+                "requirecomplexity",
+            }:
                 direct = _resolve_bool(keyword.value, assignments, max_depth) is False
     if direct:
         return True
@@ -793,11 +801,17 @@ def _call_has_password_context(node: ast.Call, parents: dict[int, ast.AST], max_
     current: ast.AST | None = node
     depth = 0
     while current is not None and depth <= max_depth:
-        name = _normalise_name(_dotted_name(current.func)) if isinstance(current, ast.Call) else ""
+        name = (
+            _normalise_name(_dotted_name(current.func) or "")
+            if isinstance(current, ast.Call)
+            else ""
+        )
         if name in _PASSWORD_POLICY_CALLS or _name_has_password_context((name,)):
             return True
         if isinstance(current, (ast.Assign, ast.AnnAssign)):
-            names = tuple(name for target in _assignment_targets(current) for name in _target_names(target))
+            names = tuple(
+                name for target in _assignment_targets(current) for name in _target_names(target)
+            )
             if _name_has_password_context(names) or _name_has_policy_context(names):
                 return True
         current = parents.get(id(current))
@@ -810,11 +824,13 @@ def _dict_has_password_context(node: ast.Dict, parents: dict[int, ast.AST], max_
     depth = 0
     while current is not None and depth <= max_depth:
         if isinstance(current, ast.Call):
-            name = _normalise_name(_dotted_name(current.func))
+            name = _normalise_name(_dotted_name(current.func) or "")
             if name in _PASSWORD_POLICY_CALLS or _name_has_password_context((name,)):
                 return True
         elif isinstance(current, (ast.Assign, ast.AnnAssign)):
-            names = tuple(name for target in _assignment_targets(current) for name in _target_names(target))
+            names = tuple(
+                name for target in _assignment_targets(current) for name in _target_names(target)
+            )
             if _name_has_password_context(names) or _name_has_policy_context(names):
                 return True
         current = parents.get(id(current))
@@ -824,8 +840,7 @@ def _dict_has_password_context(node: ast.Dict, parents: dict[int, ast.AST], max_
 
 def _name_has_password_context(names: tuple[str, ...]) -> bool:
     return any(
-        token in _PASSWORD_WORDS
-        or any(word in _normalise_name(name) for word in _PASSWORD_WORDS)
+        token in _PASSWORD_WORDS or any(word in _normalise_name(name) for word in _PASSWORD_WORDS)
         for name in names
         for token in re.split(r"[^a-z0-9]+", name.lower())
         if token
@@ -855,7 +870,11 @@ def _resolve_int(
 ) -> int | None:
     if depth > max_depth:
         raise PythonCwe521ScanError(PythonCwe521ScanErrorCode.SIGNAL_LIMIT)
-    if isinstance(node, ast.Constant) and type(node.value) is int and not isinstance(node.value, bool):
+    if (
+        isinstance(node, ast.Constant)
+        and type(node.value) is int
+        and not isinstance(node.value, bool)
+    ):
         return node.value
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
         value = _resolve_int(node.operand, assignments, max_depth, depth + 1)
@@ -946,7 +965,12 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe521ScanError(PythonCwe521ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe521ScanError(PythonCwe521ScanErrorCode.INTEGRITY_FAILURE)
     return SourceRange(
         start,

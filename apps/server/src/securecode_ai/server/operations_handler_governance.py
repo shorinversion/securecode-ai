@@ -12,7 +12,7 @@ from .approvals import (
     ApprovalRequest,
 )
 from .data_lifecycle import LifecycleLedger
-from .data_lifecycle_models import DeletionRequest, LifecycleConflict
+from .data_lifecycle_models import DATA_CLASSES, DeletionRequest, LifecycleConflict
 from .operations_handler_common import (
     CONFLICT,
     FORBIDDEN,
@@ -32,6 +32,9 @@ from .operations_handler_common import (
     utc_datetime,
 )
 from .ports import ServiceRequest, ServiceResponse
+from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
+from .worker_findings_store import load_worker_findings_for_run
+from .worker_queue_models import WorkerQueueConflict
 
 LIFECYCLE_SCOPE_SCHEMA_STATEMENTS: Final = (
     """CREATE TABLE IF NOT EXISTS lifecycle_repository_scopes (
@@ -44,6 +47,7 @@ LIFECYCLE_SCOPE_SCHEMA_STATEMENTS: Final = (
             REFERENCES lifecycle_deletions (tenant_id, deletion_id)
     )""",
 )
+_APPROVAL_RUN_STATES: Final = frozenset({"SUCCEEDED", "FAILED"})
 
 
 class LifecycleScopeRepository:
@@ -93,10 +97,16 @@ class LifecycleScopeRepository:
 
 
 class ApprovalOperationsHandler:
-    def __init__(self, ledger: ApprovalLedger) -> None:
-        if type(ledger) is not ApprovalLedger:
-            raise TypeError("ledger must be an ApprovalLedger")
+    def __init__(
+        self,
+        ledger: ApprovalLedger,
+        *,
+        connection: sqlite3.Connection,
+    ) -> None:
+        if type(ledger) is not ApprovalLedger or type(connection) is not sqlite3.Connection:
+            raise TypeError("approval handler configuration is invalid")
         self._ledger = ledger
+        self._connection = connection
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if request.action == "approvals.create":
@@ -120,7 +130,15 @@ class ApprovalOperationsHandler:
                     "expires_at",
                 }
             ),
-            optional=frozenset({"tenant_id"}),
+            optional=frozenset(
+                {
+                    "tenant_id",
+                    "patch_sha256",
+                    "validation_result_sha256",
+                    "manifest_sha256",
+                    "patch_status_sha256",
+                }
+            ),
         )
         if value is None or not matches_tenant(value, request.identity):
             return INVALID_REQUEST
@@ -132,6 +150,19 @@ class ApprovalOperationsHandler:
             string(value, "execution_identity_hash"),
         )
         expires_at = utc_datetime(value, "expires_at")
+        patch_binding = tuple(
+            value.get(name)
+            for name in (
+                "patch_sha256",
+                "validation_result_sha256",
+                "manifest_sha256",
+                "patch_status_sha256",
+            )
+        )
+        if any(item is not None for item in patch_binding) and any(
+            type(item) is not str for item in patch_binding
+        ):
+            return INVALID_REQUEST
         if any(item is None for item in fields) or expires_at is None:
             return INVALID_REQUEST
         approval_id, repository_id, run_id, finding_id, identity_hash = (
@@ -139,6 +170,35 @@ class ApprovalOperationsHandler:
         )
         if not repository_allowed(request.identity, repository_id):
             return FORBIDDEN
+        try:
+            run = self._connection.execute(
+                """SELECT repository_id, execution_identity_hash, head_sha, state
+                   FROM audit_runs WHERE tenant_id=? AND run_id=?""",
+                (request.identity.tenant_id, run_id),
+            ).fetchone()
+            if (
+                run is None
+                or run[0] != repository_id
+                or run[1] != identity_hash
+                or type(run[2]) is not str
+                or type(run[3]) is not str
+                or run[3] not in _APPROVAL_RUN_STATES
+            ):
+                return CONFLICT
+            findings = load_worker_findings_for_run(
+                self._connection,
+                tenant_id=request.identity.tenant_id,
+                run_id=run_id,
+            )
+            matches = tuple(
+                item
+                for item in findings
+                if item.finding_id == finding_id and item.revision_sha == run[2]
+            )
+            if len(matches) != 1 or type(matches[0].root_cause_fingerprint) is not str:
+                return CONFLICT
+        except (sqlite3.Error, WorkerQueueConflict, TypeError, ValueError):
+            return CONFLICT
         try:
             stored = self._ledger.request(
                 ApprovalRequest(
@@ -151,6 +211,12 @@ class ApprovalOperationsHandler:
                     requester_id=request.identity.subject_id,
                     expires_at=expires_at,
                     version=1,
+                    finding_fingerprint=matches[0].root_cause_fingerprint,
+                    revision_sha=run[2],
+                    patch_sha256=cast(str | None, patch_binding[0]),
+                    validation_result_sha256=cast(str | None, patch_binding[1]),
+                    manifest_sha256=cast(str | None, patch_binding[2]),
+                    patch_status_sha256=cast(str | None, patch_binding[3]),
                 ),
                 idempotency_key=request.idempotency_key or "",
             )
@@ -225,12 +291,8 @@ class ApprovalOperationsHandler:
             )
         except (ApprovalConflict, TypeError, ValueError):
             return CONFLICT
-        projection["decision"] = {
-            "state": decision.state.value,
-            "reason_code": decision.reason_code,
-            "rationale_sha256": decision.rationale_sha256,
-            "created_at": decision.created_at.isoformat(),
-        }
+        if projection.get("state") != decision.state.value:
+            return CONFLICT
         return response(200, projection, version=decision.version)
 
 
@@ -241,12 +303,22 @@ class LifecycleOperationsHandler:
         scopes: LifecycleScopeRepository,
         *,
         execute_available: bool = False,
+        residency_guard: ResidencyGuard | None = None,
+        residency_region: str | None = None,
     ) -> None:
         if type(ledger) is not LifecycleLedger or type(scopes) is not LifecycleScopeRepository:
             raise TypeError("lifecycle dependencies are invalid")
         self._ledger = ledger
         self._scopes = scopes
         self._execute_available = execute_available
+        if (residency_guard is None) != (residency_region is None):
+            raise TypeError("lifecycle residency configuration is incomplete")
+        if residency_guard is not None and not callable(
+            getattr(residency_guard, "require_region", None)
+        ):
+            raise TypeError("lifecycle residency guard is invalid")
+        self._residency_guard = residency_guard
+        self._residency_region = residency_region
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         actions = {
@@ -289,9 +361,11 @@ class LifecycleOperationsHandler:
         deletion_id, repository_id, content_hash, data_class, identity_hash = (
             cast(str, item) for item in fields
         )
-        if data_class != "artifact":
+        if data_class not in DATA_CLASSES:
             return INVALID_REQUEST
         if not repository_allowed(request.identity, repository_id):
+            return FORBIDDEN
+        if not self._residency_allowed(request.identity.tenant_id):
             return FORBIDDEN
         try:
             deletion = DeletionRequest(
@@ -336,6 +410,8 @@ class LifecycleOperationsHandler:
     def _approve(self, request: ServiceRequest) -> ServiceResponse:
         if document(request, required=frozenset()) is None:
             return INVALID_REQUEST
+        if not self._residency_allowed(request.identity.tenant_id):
+            return FORBIDDEN
         current, version = self._current_for_transition(request)
         if isinstance(current, ServiceResponse):
             return current
@@ -363,6 +439,8 @@ class LifecycleOperationsHandler:
         reason = None if value is None else string(value, "reason", maximum=1024)
         if value is None or enabled is None or identity_hash is None or reason is None:
             return INVALID_REQUEST
+        if not self._residency_allowed(request.identity.tenant_id):
+            return FORBIDDEN
         current, version = self._current_for_transition(request)
         if isinstance(current, ServiceResponse):
             return current
@@ -394,6 +472,8 @@ class LifecycleOperationsHandler:
         identity_hash = None if value is None else string(value, "identity_hash")
         if value is None or identity_hash is None:
             return INVALID_REQUEST
+        if not self._residency_allowed(request.identity.tenant_id):
+            return FORBIDDEN
         current, version = self._current_for_transition(request)
         if isinstance(current, ServiceResponse):
             return current
@@ -444,6 +524,27 @@ class LifecycleOperationsHandler:
         if repository_id is None:
             raise LifecycleConflict("deletion scope is unavailable")
         return repository_id
+
+    def _residency_allowed(self, tenant_id: str) -> bool:
+        guard = self._residency_guard
+        if guard is None:
+            return True
+        region = self._residency_region
+        if region is None:
+            return False
+        try:
+            decision = guard.require_region(tenant_id=tenant_id, region=region)
+        except (ResidencyConflict, TypeError, ValueError):
+            return False
+        except Exception:
+            return False
+        return (
+            type(decision) is ResidencyDecision
+            and decision.tenant_id == tenant_id
+            and decision.source_region == region
+            and decision.destination_region == region
+            and decision.same_region
+        )
 
     @staticmethod
     def _view(value: DeletionRequest, repository_id: str) -> dict[str, object]:

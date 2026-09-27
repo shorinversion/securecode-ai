@@ -14,6 +14,8 @@ from securecode_ai.adapters.gitlab_ci import (
     GitlabExternalStatus,
     GitlabExternalStatusProjection,
 )
+from securecode_ai.adapters.gitlab_discussions import GitlabDiscussionProjection
+from securecode_ai.adapters.gitlab_summary import GitlabSummaryProjection
 from securecode_ai.adapters.gitlab_writer import GitlabWriteTarget
 from securecode_ai.adapters.github_annotations import GithubAnnotationReceipt
 from securecode_ai.contracts import AuditRunOutcome
@@ -31,9 +33,10 @@ _HASH_DOMAIN: Final = b"securecode-ai/scm-completion/v1\x00"
 
 
 class SCMCompletionDisposition(StrEnum):
-    """Safe terminal state visible to the worker-completion wrapper."""
+    """Safe publication state visible to the worker-completion wrapper."""
 
     NOT_BOUND = "NOT_BOUND"
+    PENDING = "PENDING"
     PUBLISHED = "PUBLISHED"
     STALE = "STALE"
     REPLAYED = "REPLAYED"
@@ -56,6 +59,14 @@ class SCMPublicationStorePort(Protocol):
 
     def load(self, *, tenant_id: str, run_id: str) -> SCMPublicationTarget | None: ...
 
+    def pending(
+        self, *, tenant_id: str, limit: int = 32
+    ) -> tuple[SCMPublicationTarget, ...]: ...
+
+    def mark_pending(
+        self, *, target: SCMPublicationTarget, outcome: str
+    ) -> SCMPublicationTarget: ...
+
     def record(
         self,
         *,
@@ -63,10 +74,14 @@ class SCMPublicationStorePort(Protocol):
         outcome: str,
         stale: bool,
         receipt_id: str,
+        allow_policy_update: bool = False,
     ) -> SCMPublicationTarget: ...
 
 
 class SCMRunStateCompletionPort(Protocol):
+    @property
+    def tenant_id(self) -> str: ...
+
     def provider_target(self, run_id: str) -> object: ...
 
     def authorize_publication(
@@ -111,12 +126,57 @@ class GitHubCommentWriterPort(Protocol):
     ) -> object: ...
 
 
+class GithubSarifWriterPort(Protocol):
+    def publish(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        installation_id: str,
+        repository_id: str,
+        change_id: str,
+        expected_head: str,
+        artifact_sha256: str,
+        content: bytes,
+        delivery_key: str,
+    ) -> object: ...
+
+
 class GitlabStatusWriterPort(Protocol):
     def publish_external_status(
         self,
         target: GitlabWriteTarget,
         projection: GitlabExternalStatusProjection,
     ) -> object: ...
+
+    def publish_summary(
+        self, target: GitlabWriteTarget, projection: GitlabSummaryProjection
+    ) -> object: ...
+
+    def publish_discussion(
+        self, target: GitlabWriteTarget, projection: GitlabDiscussionProjection
+    ) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class GitlabTerminalPublication:
+    summary: GitlabSummaryProjection
+    discussions: tuple[GitlabDiscussionProjection, ...]
+    authorized_run_id: str
+    authorized_identity_hash: str
+    authorized_head_sha: str
+
+
+class GitlabTerminalPublicationResolver(Protocol):
+    def __call__(
+        self,
+        target: SCMPublicationTarget,
+        outcome: AuditRunOutcome,
+        publication: SCMRunPublicationReceipt,
+        *,
+        publication_outcome: AuditRunOutcome,
+    ) -> GitlabTerminalPublication | None: ...
 
 
 GithubHeadResolver = Callable[[str, str, str], str]
@@ -125,6 +185,7 @@ PolicyDecisionResolver = Callable[[str, str, str], ScmPolicyDecision | None]
 GithubAnnotationReceiptResolver = Callable[
     [SCMPublicationTarget, AuditRunOutcome], GithubAnnotationReceipt | None
 ]
+GithubSarifArtifactResolver = Callable[[SCMPublicationTarget], tuple[str, bytes] | None]
 
 
 def audit_outcome(worker_outcome: object) -> AuditRunOutcome:
@@ -203,7 +264,11 @@ def receipt_id(target: SCMPublicationTarget) -> str:
 def github_projection(
     target: SCMPublicationTarget,
     outcome: AuditRunOutcome,
+    *,
+    waiver_applied: bool = False,
 ) -> dict[str, object]:
+    if type(waiver_applied) is not bool:
+        raise SCMCompletionError("SCM completion outcome is invalid")
     conclusion = {
         AuditRunOutcome.PASS: "success",
         AuditRunOutcome.FAIL: "failure",
@@ -216,7 +281,7 @@ def github_projection(
         "conclusion": conclusion,
         "output": {
             "title": "SecureCode AI",
-            "summary": _summary(outcome),
+            "summary": _summary(outcome, waiver_applied=waiver_applied),
         },
     }
 
@@ -224,8 +289,15 @@ def github_projection(
 def gitlab_projection(
     target: SCMPublicationTarget,
     outcome: AuditRunOutcome,
+    *,
+    waiver_applied: bool = False,
+    waiver_revision: str = "",
 ) -> GitlabExternalStatusProjection:
-    if outcome is AuditRunOutcome.SUPERSEDED:
+    if (
+        outcome is AuditRunOutcome.SUPERSEDED
+        or type(waiver_applied) is not bool
+        or type(waiver_revision) is not str
+    ):
         raise SCMCompletionError("SCM completion outcome is invalid")
     passed = outcome is AuditRunOutcome.PASS
     return GitlabExternalStatusProjection(
@@ -234,6 +306,9 @@ def gitlab_projection(
             {
                 "execution_identity_hash": target.execution_identity_hash,
                 "head_sha": target.head_sha,
+                "outcome": outcome.value,
+                "waiver_applied": waiver_applied,
+                "waiver_revision": waiver_revision,
                 "run_id": target.run_id,
             }
         )[:40],
@@ -242,7 +317,7 @@ def gitlab_projection(
         status=(GitlabExternalStatus.PASSED if passed else GitlabExternalStatus.FAILED),
         publish=True,
         merge_authority=False,
-        safe_summary=_summary(outcome),
+        safe_summary=_summary(outcome, waiver_applied=waiver_applied),
     )
 
 
@@ -260,7 +335,11 @@ def validate_head(value: object) -> str:
     return value
 
 
-def _summary(outcome: AuditRunOutcome) -> str:
+def _summary(outcome: AuditRunOutcome, *, waiver_applied: bool = False) -> str:
+    if waiver_applied:
+        if outcome is not AuditRunOutcome.PASS:
+            raise SCMCompletionError("SCM waiver outcome is invalid")
+        return "Approved waiver permits this merge; the audit outcome remains FAIL."
     return {
         AuditRunOutcome.PASS: "SecureCode AI check completed for this revision.",
         AuditRunOutcome.FAIL: "SecureCode AI policy blocked this revision.",
@@ -269,7 +348,7 @@ def _summary(outcome: AuditRunOutcome) -> str:
     }[outcome]
 
 
-def _digest(value: dict[str, str]) -> str:
+def _digest(value: dict[str, object]) -> str:
     encoded = json.dumps(
         value,
         ensure_ascii=True,
@@ -283,9 +362,13 @@ def _digest(value: dict[str, str]) -> str:
 __all__ = [
     "GitHubCheckWriterPort",
     "GitHubCommentWriterPort",
+    "GithubSarifArtifactResolver",
+    "GithubSarifWriterPort",
     "GithubHeadResolver",
     "GitlabHeadResolver",
     "GitlabStatusWriterPort",
+    "GitlabTerminalPublication",
+    "GitlabTerminalPublicationResolver",
     "PolicyDecisionResolver",
     "SCMCompletionDisposition",
     "SCMCompletionError",

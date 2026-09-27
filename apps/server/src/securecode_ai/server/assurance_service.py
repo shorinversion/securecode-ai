@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, cast
 
+from .assurance_reports import AssurancePinsProvider, AssuranceReport, AssuranceReportError, generate
 from .assurance_repository import AssuranceRecord, AssuranceRepository
 
 _SUCCESS_OUTCOMES: Final = frozenset({"CONFIRMED", "EXECUTED", "PASS"})
@@ -61,6 +62,51 @@ class AssuranceService:
             "complete": bool(values) and failures == 0,
             "authority": "SUPPORTING_EVIDENCE_ONLY",
         }
+
+    def report(
+        self,
+        *,
+        tenant_id: str,
+        repository_id: str,
+        execution_identity_hash: str,
+        pins_provider: AssurancePinsProvider,
+    ) -> AssuranceReport:
+        """Build a report only from server-owned ledger and pin sources."""
+
+        if not callable(getattr(pins_provider, "resolve", None)):
+            raise AssuranceReportError()
+        inputs = self.report_inputs(
+            tenant_id=tenant_id,
+            repository_id=repository_id,
+            execution_identity_hash=execution_identity_hash,
+        )
+        records = inputs.get("records")
+        if type(records) is not tuple:
+            raise AssuranceReportError()
+        ledger_hashes = tuple(
+            cast(str, record["record_hash"])
+            for record in records
+            if type(record) is dict and type(record.get("record_hash")) is str
+        )
+        if len(ledger_hashes) != len(records):
+            raise AssuranceReportError()
+        resolved = pins_provider.resolve(
+            tenant_id=tenant_id,
+            repository_id=repository_id,
+            execution_identity_hash=execution_identity_hash,
+        )
+        if resolved is None:
+            raise AssuranceReportError()
+        if type(resolved) is not tuple or len(resolved) != 2:
+            raise AssuranceReportError()
+        recorded, current = resolved
+        return generate(
+            tenant_id=tenant_id,
+            repository_id=repository_id,
+            ledger_hashes=ledger_hashes,
+            recorded=recorded,
+            current=current,
+        )
 
 
 __all__ = ["AssuranceService"]

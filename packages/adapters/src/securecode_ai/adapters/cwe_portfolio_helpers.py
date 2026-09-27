@@ -20,6 +20,7 @@ from securecode_ai.core import (
     SourceRange,
     SymbolIndex,
 )
+from securecode_ai.core.symbols import SymbolKind
 from tree_sitter import Language, Node, Parser
 
 from .cst import (
@@ -35,8 +36,148 @@ from .cwe_portfolio_models import (
     CwePortfolioScanError,
     CwePortfolioScanErrorCode,
     CwePortfolioScanLimits,
+    CwePortfolioScanResult,
     CwePortfolioSignal,
+    _detector_name,
 )
+
+
+def _with_cwe862_detector_signals(
+    result: CwePortfolioScanResult,
+    index: SymbolIndex,
+    *,
+    limits: CwePortfolioScanLimits,
+) -> CwePortfolioScanResult:
+    """Replace legacy CWE-862 portfolio facts with the language detectors."""
+    from .ecmascript_cwe862 import (
+        EcmaScriptCwe862ScanError,
+        EcmaScriptCwe862ScanLimits,
+        scan_ecmascript_cwe862,
+    )
+    from .go_cwe862 import GoCwe862ScanError, GoCwe862ScanLimits, scan_go_cwe862
+    from .python_ast import PythonAstError, analyze_python_ast
+    from .python_cwe862 import (
+        PythonCwe862ScanError,
+        PythonCwe862ScanLimits,
+        scan_python_cwe862,
+    )
+
+    try:
+        if index.language == "python":
+            detected = scan_python_cwe862(
+                index,
+                analyze_python_ast(index),
+                limits=PythonCwe862ScanLimits(
+                    max_source_bytes=limits.max_source_bytes,
+                    max_signals=limits.max_signals,
+                ),
+            ).signals
+            facts = (("CWE-862", signal.endpoint, signal.sink) for signal in detected)
+        elif index.language in {"javascript", "typescript"}:
+            detected = scan_ecmascript_cwe862(
+                index,
+                limits=EcmaScriptCwe862ScanLimits(
+                    max_source_bytes=limits.max_source_bytes,
+                    max_signals=limits.max_signals,
+                ),
+            ).signals
+            facts = (("CWE-862", signal.source, signal.sink) for signal in detected)
+        elif index.language == "go":
+            detected = scan_go_cwe862(
+                index,
+                limits=GoCwe862ScanLimits(
+                    max_source_bytes=limits.max_source_bytes,
+                    max_signals=limits.max_signals,
+                ),
+            ).signals
+            facts = (("CWE-862", signal.source, signal.sink) for signal in detected)
+        else:
+            raise CwePortfolioScanError(CwePortfolioScanErrorCode.REQUEST_INVALID)
+    except (
+        PythonAstError,
+        PythonCwe862ScanError,
+        EcmaScriptCwe862ScanError,
+        GoCwe862ScanError,
+    ) as error:
+        code = getattr(getattr(error, "code", None), "value", None)
+        try:
+            normalized = CwePortfolioScanErrorCode(code)
+        except (TypeError, ValueError):
+            raise CwePortfolioScanError(
+                CwePortfolioScanErrorCode.ANALYSIS_UNAVAILABLE
+            ) from None
+        raise CwePortfolioScanError(normalized) from None
+
+    facts = tuple(facts)
+    # The dedicated detectors own CWE-862 semantics.  Do not retain a legacy
+    # portfolio fact when a detector returns no matching sink: that would let
+    # the broad fallback bypass the language-specific authorization analysis.
+    signals = [
+        signal
+        for signal in result.signals
+        if signal.cwe != "CWE-862"
+    ]
+    for cwe, source, sink in facts:
+        signals.append(
+            CwePortfolioSignal(
+                repository_id=result.repository_id,
+                revision=result.revision,
+                path=result.path,
+                content_sha256=result.content_sha256,
+                source_size_bytes=result.source_size_bytes,
+                language=result.language,
+                cwe=cwe,
+                source=source,
+                sink=sink,
+                detector=_detector_name(result.language, cwe),
+                receiver_qualified_method_id=(
+                    _go_receiver_qualified_method_id(index, sink)
+                    if index.language == "go"
+                    else None
+                ),
+            )
+        )
+
+    unique = sorted(
+        {
+            (
+                signal.cwe,
+                signal.sink.start_byte,
+                signal.sink.end_byte,
+                signal.source.start_byte,
+                signal.source.end_byte,
+            ): signal
+            for signal in signals
+        }.values(),
+        key=lambda signal: (
+            signal.cwe,
+            signal.sink.start_byte,
+            signal.sink.end_byte,
+            signal.source.start_byte,
+            signal.source.end_byte,
+        ),
+    )
+    if len(unique) > limits.max_signals:
+        raise CwePortfolioScanError(CwePortfolioScanErrorCode.SIGNAL_LIMIT)
+    normalized_signals = tuple(unique)
+    return CwePortfolioScanResult(
+        repository_id=result.repository_id,
+        revision=result.revision,
+        path=result.path,
+        content_sha256=result.content_sha256,
+        source_size_bytes=result.source_size_bytes,
+        language=result.language,
+        signals=normalized_signals,
+        scan_sha256=_scan_sha256(
+            result.repository_id,
+            result.revision,
+            result.path,
+            result.content_sha256,
+            result.source_size_bytes,
+            result.language,
+            normalized_signals,
+        ),
+    )
 
 
 def _validate_index(index: SymbolIndex, limits: CwePortfolioScanLimits) -> None:
@@ -66,6 +207,31 @@ def _validate_index(index: SymbolIndex, limits: CwePortfolioScanLimits) -> None:
         raise CwePortfolioScanError(CwePortfolioScanErrorCode.INTEGRITY_FAILURE) from None
     if reconstructed != index:
         raise CwePortfolioScanError(CwePortfolioScanErrorCode.INTEGRITY_FAILURE)
+
+
+def _go_receiver_qualified_method_id(
+    symbol_index: SymbolIndex, location: SourceRange
+) -> str | None:
+    if symbol_index.language != "go":
+        return None
+    methods = tuple(
+        symbol
+        for symbol in symbol_index.symbols
+        if symbol.kind is SymbolKind.METHOD
+        and symbol.receiver_name is not None
+        and symbol.declaration.contains(location)
+    )
+    if not methods:
+        return None
+    method = min(
+        methods,
+        key=lambda symbol: (
+            symbol.declaration.end_byte - symbol.declaration.start_byte,
+            symbol.qualified_name,
+            symbol.symbol_id,
+        ),
+    )
+    return method.symbol_id
 
 
 def _python_facts(source: bytes) -> tuple[tuple[str, SourceRange, SourceRange], ...]:
@@ -696,6 +862,11 @@ def _scan_sha256(
                 "detector": item.detector,
                 "sink": _range_value(item.sink),
                 "source": _range_value(item.source),
+                **(
+                    {"receiver_qualified_method_id": item.receiver_qualified_method_id}
+                    if item.receiver_qualified_method_id is not None
+                    else {}
+                ),
             }
             for item in signals
         ],

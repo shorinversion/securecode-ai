@@ -244,42 +244,10 @@ def route_finding(value: FindingGateInput) -> FindingGateDecision:
     except FindingGateContractError:
         return _integrity_failure_decision(value)
 
-    if not _citations_are_bound(value):
+    route, reason = _policy_decision(value)
+    if reason is FindingGateReason.EVIDENCE_INTEGRITY_FAILURE:
         return _integrity_failure_decision(value)
-    if value.investigation_terminal_status is not InvestigationTerminalStatus.COMPLETED:
-        return _decision(
-            value,
-            FindingRoute.INDETERMINATE,
-            _terminal_reason(value.investigation_terminal_status),
-        )
-    if value.auditor_model_call_status is not ModelCallStatus.SUCCEEDED:
-        return _decision(value, FindingRoute.INDETERMINATE, FindingGateReason.AUDITOR_NON_SUCCESS)
-    if value.skeptic_model_call_status is not ModelCallStatus.SUCCEEDED:
-        return _decision(value, FindingRoute.INDETERMINATE, FindingGateReason.SKEPTIC_NON_SUCCESS)
-    if not _has_valid_evidence(value):
-        return _integrity_failure_decision(value)
-    if _has_conflict(value):
-        reason = (
-            FindingGateReason.HIGH_CRITICAL_CONFLICT
-            if value.severity in {FindingSeverity.HIGH, FindingSeverity.CRITICAL}
-            else FindingGateReason.AUDITOR_SKEPTIC_CONFLICT
-        )
-        return _decision(value, FindingRoute.HUMAN_ESCALATION, reason)
-    if value.auditor_verdict is FindingVerdict.CONFIRMED:
-        return _decision(value, FindingRoute.CONFIRMED, FindingGateReason.CONFIRMED)
-    if value.auditor_verdict is FindingVerdict.REJECTED_WITH_EVIDENCE:
-        return _decision(
-            value,
-            FindingRoute.REJECTED_WITH_EVIDENCE,
-            FindingGateReason.REJECTED_WITH_EVIDENCE,
-        )
-    if value.auditor_verdict is FindingVerdict.NEEDS_MORE_EVIDENCE:
-        return _decision(
-            value,
-            FindingRoute.NEEDS_MORE_EVIDENCE,
-            FindingGateReason.NEEDS_MORE_EVIDENCE,
-        )
-    return _integrity_failure_decision(value)
+    return _decision(value, route, reason)
 
 
 def _revalidated_input(value: FindingGateInput) -> FindingGateInput:
@@ -375,6 +343,44 @@ def _validate_decision_shape(value: FindingGateDecision) -> None:
         raise FindingGateContractError(FindingGateErrorCode.INTEGRITY_FAILURE)
     if value.finding_gate_state is FindingGateState.CLEAN and not _has_valid_evidence(input_value):
         raise FindingGateContractError(FindingGateErrorCode.INTEGRITY_FAILURE)
+    expected_route, expected_reason = _policy_decision(input_value)
+    if (value.route, value.reason) != (expected_route, expected_reason) and not (
+        value.route is FindingRoute.INDETERMINATE
+        and value.reason is FindingGateReason.EVIDENCE_INTEGRITY_FAILURE
+    ):
+        raise FindingGateContractError(FindingGateErrorCode.INTEGRITY_FAILURE)
+
+
+def _policy_decision(value: FindingGateInput) -> tuple[FindingRoute, FindingGateReason]:
+    """Return the one policy result derivable from a validated gate input."""
+
+    if not _citations_are_bound(value):
+        return FindingRoute.INDETERMINATE, FindingGateReason.EVIDENCE_INTEGRITY_FAILURE
+    if value.investigation_terminal_status is not InvestigationTerminalStatus.COMPLETED:
+        return (
+            FindingRoute.INDETERMINATE,
+            _terminal_reason(value.investigation_terminal_status),
+        )
+    if value.auditor_model_call_status is not ModelCallStatus.SUCCEEDED:
+        return FindingRoute.INDETERMINATE, FindingGateReason.AUDITOR_NON_SUCCESS
+    if value.skeptic_model_call_status is not ModelCallStatus.SUCCEEDED:
+        return FindingRoute.INDETERMINATE, FindingGateReason.SKEPTIC_NON_SUCCESS
+    if not _has_valid_evidence(value):
+        return FindingRoute.INDETERMINATE, FindingGateReason.EVIDENCE_INTEGRITY_FAILURE
+    if _has_conflict(value):
+        reason = (
+            FindingGateReason.HIGH_CRITICAL_CONFLICT
+            if value.severity in {FindingSeverity.HIGH, FindingSeverity.CRITICAL}
+            else FindingGateReason.AUDITOR_SKEPTIC_CONFLICT
+        )
+        return FindingRoute.HUMAN_ESCALATION, reason
+    if value.auditor_verdict is FindingVerdict.CONFIRMED:
+        return FindingRoute.CONFIRMED, FindingGateReason.CONFIRMED
+    if value.auditor_verdict is FindingVerdict.REJECTED_WITH_EVIDENCE:
+        return FindingRoute.REJECTED_WITH_EVIDENCE, FindingGateReason.REJECTED_WITH_EVIDENCE
+    if value.auditor_verdict is FindingVerdict.NEEDS_MORE_EVIDENCE:
+        return FindingRoute.NEEDS_MORE_EVIDENCE, FindingGateReason.NEEDS_MORE_EVIDENCE
+    return FindingRoute.INDETERMINATE, FindingGateReason.EVIDENCE_INTEGRITY_FAILURE
 
 
 def _valid_ids(values: object) -> bool:

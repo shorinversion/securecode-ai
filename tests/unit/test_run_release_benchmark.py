@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sqlite3
 import sys
@@ -25,6 +26,29 @@ def _case() -> object:
     return MODULE.Case(
         "cvefixes:repo:1:before", "sha256:" + "0" * 64, "CWE-89", "vulnerable", "python", "lineage"
     )
+
+
+def test_case_offset_selects_a_stable_benchmark_shard(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    cases = [
+        {
+            "case_id": f"cvefixes:CVE-2024-000{index}:1:before",
+            "content_sha256": "sha256:" + "0" * 64,
+            "cwe_id": "CWE-89",
+            "expected_label": "vulnerable",
+            "language": "python",
+            "lineage_groups": [f"lineage-{index}"],
+        }
+        for index in range(3)
+    ]
+    manifest.write_text(json.dumps({"datasets": [{"cases": cases}]}), encoding="utf-8")
+
+    selected = MODULE._load_cases(manifest, 1, offset=1)
+
+    assert len(selected) == 1
+    assert selected[0].case_id == cases[1]["case_id"]
+    with pytest.raises(ValueError, match="case offset is invalid"):
+        MODULE._load_cases(manifest, 1, offset=-1)
 
 
 def test_semgrep_prediction_uses_argument_vector_and_detects_results(
@@ -51,6 +75,42 @@ def test_semgrep_prediction_uses_argument_vector_and_detects_results(
         "text": True,
         "timeout": 90,
     }
+
+
+def test_remote_prediction_bounds_output_and_records_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request: object, *, timeout: int) -> io.BytesIO:
+        assert isinstance(request, MODULE.urllib.request.Request)
+        captured["payload"] = json.loads(request.data)
+        captured["timeout"] = timeout
+        return io.BytesIO(
+            json.dumps(
+                {
+                    "choices": [{"message": {"content": '{"vulnerable":true}'}}],
+                    "usage": {"prompt_tokens": 7, "completion_tokens": 2, "total_tokens": 9},
+                }
+            ).encode()
+        )
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "unit-test-only")
+    monkeypatch.setattr(MODULE.urllib.request, "urlopen", fake_urlopen)
+
+    assert MODULE._remote_prediction(_case(), "print(1)", one_shot=False, max_output_tokens=32) == (
+        True,
+        9,
+        7,
+        2,
+    )
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["max_tokens"] == 32
+    assert payload["reasoning_effort"] == "none"
+    assert payload["thinking"] == {"type": "disabled"}
+    assert payload["response_format"] == {"type": "json_object"}
+    assert captured["timeout"] == 90
 
 
 def test_semgrep_rule_checkout_selects_language_directory(
@@ -182,6 +242,7 @@ def test_budget_rejection_prevents_remote_request(
     budget = MODULE.RemoteBudget(
         tmp_path / "budget.sqlite",
         "development",
+        10_000_000,
         "a" * 40,
         "b" * 64,
         11,
@@ -230,6 +291,48 @@ def test_remote_cli_requires_explicit_budget(
     assert not output.exists()
 
 
+def test_remote_budget_uses_configured_total_cap_before_provider_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "corpus.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE file_change (file_change_id INTEGER, code_before TEXT, code_after TEXT)"
+        )
+        connection.execute("INSERT INTO file_change VALUES (1, 'print(1)', 'print(2)')")
+    case = MODULE.Case(
+        "cvefixes:repo:1:before",
+        MODULE._sha256("print(1)"),
+        "CWE-89",
+        "vulnerable",
+        "python",
+        "lineage",
+    )
+    monkeypatch.setattr(MODULE, "_deterministic", lambda *_args: False)
+    monkeypatch.setattr(
+        MODULE,
+        "_remote_prediction",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("remote invoked")),
+    )
+    budget = MODULE.RemoteBudget(
+        tmp_path / "budget.sqlite",
+        "final",
+        1,
+        "a" * 40,
+        "b" * 64,
+        4096,
+        64,
+        1_000_000,
+        1_000_000,
+    )
+
+    cells = MODULE.run((case,), database, Configuration.MODEL, 1, True, remote_budget=budget)
+
+    assert cells[0].status == "budget-rejected"
+    with sqlite3.connect(budget.ledger) as connection:
+        assert connection.execute("SELECT total_cap FROM settings").fetchone() == (1,)
+
+
 @pytest.mark.parametrize(
     "lane", (Configuration.MODEL, Configuration.ONE_SHOT, Configuration.SEMGREP)
 )
@@ -257,7 +360,7 @@ def test_independent_lanes_do_not_require_scanner(
         "_deterministic",
         lambda *_args: (_ for _ in ()).throw(AssertionError("scanner invoked")),
     )
-    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3))
+    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3, 2, 1))
     monkeypatch.setattr(
         MODULE,
         "_semgrep_predictions",
@@ -271,9 +374,10 @@ def test_independent_lanes_do_not_require_scanner(
     assert len(cells) == 1
     assert cells[0].status == "completed"
     assert cells[0].tp == 1
+    assert cells[0].kloc == 0.001
 
 
-def test_hybrid_still_executes_model_when_scanner_fails(
+def test_hybrid_still_executes_model_when_scanner_raises_unexpected_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     database = tmp_path / "corpus.sqlite"
@@ -293,15 +397,58 @@ def test_hybrid_still_executes_model_when_scanner_fails(
     monkeypatch.setattr(
         MODULE,
         "_deterministic",
-        lambda *_args: (_ for _ in ()).throw(ValueError("scanner unavailable")),
+        lambda *_args: (_ for _ in ()).throw(AttributeError("scanner traversal failed")),
     )
-    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3))
+    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 3, 2, 1))
 
     cells = MODULE.run((case,), database, Configuration.HYBRID, 1, True)
 
     assert len(cells) == 1
     assert cells[0].status == "scanner-failed"
     assert cells[0].tp == 1
+
+
+def test_remote_budget_reserves_case_bound_and_settles_provider_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "corpus.sqlite"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE file_change (file_change_id INTEGER, code_before TEXT, code_after TEXT)"
+        )
+        connection.execute("INSERT INTO file_change VALUES (1, 'print(1)', 'print(2)')")
+    case = MODULE.Case(
+        "cvefixes:repo:1:before",
+        MODULE._sha256("print(1)"),
+        "CWE-89",
+        "vulnerable",
+        "python",
+        "lineage",
+    )
+    monkeypatch.setattr(MODULE, "_deterministic", lambda *_args: False)
+    monkeypatch.setattr(MODULE, "_remote_prediction", lambda *_args, **_kwargs: (True, 6, 5, 1))
+    budget = MODULE.RemoteBudget(
+        tmp_path / "budget.sqlite",
+        "development",
+        10_000_000,
+        "a" * 40,
+        "b" * 64,
+        4096,
+        64,
+        300_000,
+        1_200_000,
+    )
+
+    cells = MODULE.run((case,), database, Configuration.MODEL, 1, True, remote_budget=budget)
+
+    assert cells[0].status == "completed"
+    assert cells[0].cost_microunits == 4
+    assert (
+        MODULE.BenchmarkSpendGuard(
+            budget.ledger, total_cap_micro_usd=budget.total_cap_micro_usd
+        ).charged_micro_usd()
+        == 4
+    )
 
 
 def test_semgrep_failure_is_retained_as_a_cell(

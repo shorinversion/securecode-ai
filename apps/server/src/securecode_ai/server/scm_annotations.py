@@ -14,9 +14,16 @@ from securecode_ai.adapters.github_annotations import (
     GithubChangedLine,
 )
 from securecode_ai.contracts import AuditRun, AuditRunOutcome, FindingCase
-from securecode_ai.core.baseline_fingerprints import BaselineFingerprintComparison
-from securecode_ai.core.scm_run_state import SCMRunPublicationReceipt
+from securecode_ai.core.baseline_fingerprints import (
+    BaselineChangedScope,
+    BaselineFingerprintComparison,
+)
+from securecode_ai.core.scm_run_state import (
+    PublicationDisposition,
+    SCMRunPublicationReceipt,
+)
 
+from .artifact_read import LocalCommittedArtifactReader
 from .baseline_store import DurableBaselineStore
 from .scm_publication_store import SCMPublicationTarget
 from .worker_completion_evidence import load_verified_terminal_audit_run
@@ -55,6 +62,7 @@ class GithubAnnotationReceiptResolver:
 
     __slots__ = (
         "_artifact_root",
+        "_artifact_reader",
         "_authorizer",
         "_baseline_store",
         "_changed_lines",
@@ -71,6 +79,7 @@ class GithubAnnotationReceiptResolver:
         lineage_resolver: CommitLineageResolver,
         changed_lines_resolver: ChangedLinesResolver,
         authorizer: GithubAnnotationAuthorizer,
+        artifact_reader: LocalCommittedArtifactReader | None = None,
     ) -> None:
         if (
             not isinstance(connection, sqlite3.Connection)
@@ -79,10 +88,18 @@ class GithubAnnotationReceiptResolver:
             or not callable(lineage_resolver)
             or not callable(changed_lines_resolver)
             or not callable(getattr(authorizer, "authorize_publication", None))
+            or (
+                artifact_reader is not None
+                and type(artifact_reader) is not LocalCommittedArtifactReader
+            )
         ):
             raise TypeError("GitHub annotation dependencies are incomplete")
         self._connection = connection
         self._artifact_root = artifact_root
+        self._artifact_reader = artifact_reader or LocalCommittedArtifactReader(
+            connection,
+            artifact_root,
+        )
         self._baseline_store = baseline_store
         self._lineage = lineage_resolver
         self._changed_lines = changed_lines_resolver
@@ -99,23 +116,50 @@ class GithubAnnotationReceiptResolver:
             or outcome not in {AuditRunOutcome.PASS, AuditRunOutcome.FAIL}
         ):
             return None
-        try:
-            return self._project(target, outcome)
-        except (KeyboardInterrupt, SystemExit, GeneratorExit):
-            raise
-        except Exception:
+        return self._project(target, outcome)
+
+    def for_completed(
+        self,
+        target: SCMPublicationTarget,
+        outcome: AuditRunOutcome,
+        publication: SCMRunPublicationReceipt,
+    ) -> GithubAnnotationReceipt | None:
+        """Project verified findings from the receipt just persisted by completion."""
+
+        if type(publication) is not SCMRunPublicationReceipt:
+            raise ValueError
+        if (
+            publication.run_id != target.run_id
+            or publication.execution_identity_hash != target.execution_identity_hash
+            or publication.head_sha != target.head_sha
+            or publication.current_head_sha != target.head_sha
+            or publication.disposition
+            not in {
+                PublicationDisposition.COMPLETED,
+                PublicationDisposition.DUPLICATE,
+            }
+        ):
+            raise ValueError
+        if target.provider != "github" or outcome not in {
+            AuditRunOutcome.PASS,
+            AuditRunOutcome.FAIL,
+        }:
             return None
+        return self._project(target, outcome, publication=publication)
 
     def _project(
         self,
         target: SCMPublicationTarget,
         outcome: AuditRunOutcome,
+        *,
+        publication: SCMRunPublicationReceipt | None = None,
     ) -> GithubAnnotationReceipt:
         findings = load_worker_findings_for_run(
             self._connection,
             tenant_id=target.tenant_id,
             run_id=target.run_id,
         )
+        self._verify_committed_projection_artifacts(target)
         verified = load_verified_terminal_audit_run(
             connection=self._connection,
             artifact_root=self._artifact_root,
@@ -138,6 +182,7 @@ class GithubAnnotationReceiptResolver:
             audit_run.run_id != target.run_id
             or identity.execution_identity_hash != target.execution_identity_hash
             or revision.tenant_id != target.tenant_id
+            or revision.scm_provider != "github"
             or revision.repository_id != target.repository_id
             or revision.head_sha != target.head_sha
             or revision.base_sha is None
@@ -159,28 +204,53 @@ class GithubAnnotationReceiptResolver:
             base_sha=revision.base_sha,
             head_sha=revision.head_sha,
         )
-        comparison: BaselineFingerprintComparison = self._baseline_store.compare_for_audit(
-            audit_run,
-            commit_lineage=lineage,
-            verified_finding_fingerprints=confirmed_fingerprints,
-        )
         changed_pathlines = self._changed_lines(
             run_id=target.run_id,
             execution_identity_hash=target.execution_identity_hash,
             base_sha=revision.base_sha,
             head_sha=revision.head_sha,
         )
-        changed_set = set(changed_pathlines)
-        changed_by_pathline: dict[tuple[str, int], GithubChangedLine] = {}
         record_by_id = {item.finding_id: item for item in findings}
-        candidates: list[GithubAnnotationCandidate] = []
-        new_fingerprints = set(comparison.new_fingerprints)
+        locations_by_fingerprint: dict[str, set[tuple[str, int, int]]] = {}
         for finding in report_findings:
             if type(finding) is not FindingCase:
                 raise ValueError
             record = record_by_id.get(finding.finding_id)
             if record is None or record.root_cause_fingerprint != finding.root_cause_fingerprint:
                 raise ValueError
+            if record.verdict == "CONFIRMED":
+                spans = locations_by_fingerprint.setdefault(
+                    finding.root_cause_fingerprint,
+                    set(),
+                )
+                spans.update(
+                    (location.path, location.start.line, location.end.line)
+                    for location in finding.locations
+                )
+        changed_scope = BaselineChangedScope(
+            tenant_id=revision.tenant_id,
+            base_sha=revision.base_sha,
+            head_sha=revision.head_sha,
+            changed_lines=changed_pathlines,
+            finding_locations=tuple(
+                (fingerprint, tuple(sorted(spans)))
+                for fingerprint, spans in sorted(locations_by_fingerprint.items())
+                if spans
+            ),
+        )
+        comparison: BaselineFingerprintComparison = (
+            self._baseline_store.compare_for_new_code_audit(
+                audit_run,
+                commit_lineage=lineage,
+                verified_finding_fingerprints=confirmed_fingerprints,
+                changed_scope=changed_scope,
+            )
+        )
+        changed_set = set(changed_pathlines)
+        changed_by_pathline: dict[tuple[str, int], GithubChangedLine] = {}
+        candidates: list[GithubAnnotationCandidate] = []
+        new_fingerprints = set(comparison.new_code_fingerprints(changed_scope=changed_scope))
+        for finding in report_findings:
             candidates.append(
                 GithubAnnotationCandidate(
                     finding=finding,
@@ -211,8 +281,54 @@ class GithubAnnotationReceiptResolver:
                 changed_lines=tuple(
                     changed_by_pathline[key] for key in sorted(changed_by_pathline)
                 ),
-            )
+            ),
+            publication_receipt=publication,
         )
+
+    def _verify_committed_projection_artifacts(self, target: SCMPublicationTarget) -> None:
+        """Apply the authorized artifact read policy before projection.
+
+        The terminal evidence loader also verifies payload hashes, but it reads
+        the filesystem directly because it is shared with the worker path.  A
+        provider publication must additionally respect the server's committed
+        artifact lifecycle and source-free data-class policy.
+        """
+
+        try:
+            rows = self._connection.execute(
+                """SELECT a.content_sha256, a.purpose
+                   FROM run_artifacts AS a
+                   JOIN artifact_upload_authorizations AS z
+                     ON z.tenant_id=a.tenant_id
+                    AND z.authorization_id=a.authorization_id
+                    AND z.run_id=a.run_id
+                    AND z.content_sha256=a.content_sha256
+                    AND z.purpose=a.purpose
+                   WHERE a.tenant_id=? AND a.run_id=?
+                     AND a.purpose IN ('audit-report', 'audit-run', 'evidence-graph')
+                     AND a.rowid=(
+                         SELECT latest.rowid FROM run_artifacts AS latest
+                         WHERE latest.tenant_id=a.tenant_id
+                           AND latest.run_id=a.run_id
+                           AND latest.purpose=a.purpose
+                         ORDER BY latest.rowid DESC LIMIT 1
+                     )""",
+                (target.tenant_id, target.run_id),
+            ).fetchall()
+        except sqlite3.Error:
+            raise ValueError from None
+        for row in rows:
+            digest = row["content_sha256"]
+            purpose = row["purpose"]
+            if type(digest) is not str or type(purpose) is not str:
+                raise ValueError
+            content = self._artifact_reader.read_binary(
+                tenant_id=target.tenant_id,
+                run_id=target.run_id,
+                content_sha256=digest,
+            )
+            if content.purpose != purpose:
+                raise ValueError
 
 
 __all__ = ["GithubAnnotationReceiptResolver"]

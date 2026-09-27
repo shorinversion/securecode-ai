@@ -742,7 +742,7 @@ def _expr_nullability(
             "params.get",
         }:
             return _Nullability.MAYBE_NULL
-        if name.endswith(".pop") and len(node.args) < 2:
+        if name is not None and name.endswith(".pop") and len(node.args) < 2:
             return _Nullability.MAYBE_NULL
         if name in {"getattr", "builtins.getattr"} and len(node.args) >= 3 and _is_none_literal(node.args[2]):
             return _Nullability.MAYBE_NULL
@@ -768,23 +768,18 @@ def _is_nullable(status: _Nullability, node: ast.expr, flow: _Flow) -> bool:
     )
 
 
-def _join_nullability(
-    left: _Nullability,
-    right: _Nullability,
-    *rest: _Nullability,
-) -> _Nullability:
-    if rest:
-        status = _join_nullability(left, right)
-        for item in rest:
-            status = _join_nullability(status, item)
-        return status
-    if left is right:
-        return left
-    if _Nullability.UNKNOWN in {left, right}:
-        return _Nullability.UNKNOWN
-    if _Nullability.NULL in {left, right} or _Nullability.MAYBE_NULL in {left, right}:
-        return _Nullability.MAYBE_NULL
-    return _Nullability.NONNULL
+def _join_nullability(first: _Nullability, *rest: _Nullability) -> _Nullability:
+    status = first
+    for item in rest:
+        if status is item:
+            continue
+        if _Nullability.UNKNOWN in {status, item}:
+            status = _Nullability.UNKNOWN
+        elif _Nullability.NULL in {status, item} or _Nullability.MAYBE_NULL in {status, item}:
+            status = _Nullability.MAYBE_NULL
+        else:
+            status = _Nullability.NONNULL
+    return status
 
 
 def _assign_target(

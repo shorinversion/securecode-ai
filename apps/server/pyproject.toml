@@ -18,6 +18,7 @@ classifiers = ["Private :: Do Not Upload"]
 [project.scripts]
 securecode-server = "securecode_ai.server.main:main"
 securecode-maintenance = "securecode_ai.server.maintenance_cli:main"
+securecode-capacity = "securecode_ai.server.capacity_cli:main"
 
 [tool.uv.sources]
 securecode-ai-adapters = { workspace = true }

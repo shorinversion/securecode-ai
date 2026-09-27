@@ -75,7 +75,15 @@ class DeletionReceipt:
 class StorageExecutor(Protocol):
     """Idempotent storage boundary used to apply an approved tombstone."""
 
-    def execute_tombstone(self, *, tenant_id: str, content_sha256: str) -> None: ...
+    def execute_tombstone(
+        self,
+        *,
+        tenant_id: str,
+        content_sha256: str,
+        deletion_id: str,
+        repository_id: str,
+        identity_hash: str,
+    ) -> None: ...
 
 
 LIFECYCLE_SCHEMA: Final = (

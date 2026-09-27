@@ -7,9 +7,11 @@ transport remains SIMULATED; this module never qualifies or admits a provider.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .endpoint import Resolver
 from .model import CredentialSupplier
-from .remote_provider_budget import RemoteProviderBudgetPort
+from .remote_provider_budget import RemoteProviderBudgetPort, RemoteProviderCostReceipt
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_runtime import AuthorizedLocalModelExecutor
 from .public_core_fixtures import build_public_core_fixture as build_public_core_fixture
@@ -50,6 +52,7 @@ def _executor(
     resolver: Resolver | None = None,
     credential_supplier: CredentialSupplier | None = None,
     spend_budget: RemoteProviderBudgetPort | None = None,
+    cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
 ) -> AuthorizedLocalModelExecutor:
     """Build an executor while retaining the historical patchable boundary."""
 
@@ -60,6 +63,7 @@ def _executor(
         resolver=resolver,
         credential_supplier=credential_supplier,
         spend_budget=spend_budget,
+        cost_observer=cost_observer,
         connector_factory=OpenAICompatibleLocalHttpConnector,
     )
 

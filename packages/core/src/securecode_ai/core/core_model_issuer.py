@@ -204,6 +204,22 @@ class ModelAuthorizationIssuer:
                 or (terms.retention_seconds == 0 and terms.zero_data_retention is True)
             )
         )
+        owner_authorized_terms = (
+            policy.profile.value == "managed_scan_opt_in"
+            and profile.profile_id == "deepseek-owner-authorized"
+            and profile.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE
+            and profile.execution_boundary is ExecutionBoundary.PUBLIC_EXTERNAL
+            and profile.endpoint.authority == "api.deepseek.com"
+            and profile.endpoint.base_url
+            in {"https://api.deepseek.com", "https://api.deepseek.com/v1"}
+            and terms.evidence_status is ProviderEvidenceStatus.UNVERIFIED
+            and terms.training_use is ProviderTrainingUse.UNKNOWN
+            and terms.retention_seconds is None
+            and terms.zero_data_retention is None
+            and terms.evidence_ref == "consent://project-owner/deepseek-private-source/2026-09-27"
+            and bool(matching_allow)
+            and all(rule.tenant_admin_approval for rule in matching_allow)
+        )
         eligible = all(
             (
                 model_request.provider_profile == provider_pin,
@@ -227,7 +243,7 @@ class ModelAuthorizationIssuer:
                 _CLASS_RANK[terms.maximum_input_data_class]
                 >= _CLASS_RANK[request.required_data_class],
                 request.required_purpose in terms.allowed_purposes,
-                local_terms or verified_terms,
+                local_terms or verified_terms or owner_authorized_terms,
                 profile.execution_boundary is request.required_execution_boundary,
                 policy.profile in profile.egress_profiles,
                 policy.tenant_scope == model_request.tenant_id,

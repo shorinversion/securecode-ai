@@ -1,0 +1,13 @@
+{
+  "schema_version": "securecode.owner-consent.v1",
+  "provider": "deepseek",
+  "endpoint": "https://api.deepseek.com",
+  "authorized_on": "2026-09-27",
+  "authority": "project owner, explicit instruction in this conversation",
+  "scope": "private source code the project owner has authority to disclose",
+  "purposes": ["model_native_discovery", "candidate_investigation", "skeptic_review", "patch_generation"],
+  "exclude": ["API keys", "passwords", "tokens", "restricted data", "third-party code without disclosure authority"],
+  "zero_data_retention_claim": false,
+  "provider_no_training_claim": false,
+  "runtime_activation": "pending explicit-consent admission integration and public-fixture verification"
+}

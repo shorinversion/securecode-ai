@@ -21,6 +21,13 @@ _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _COMMIT_SHA: Final = re.compile(r"[0-9a-f]{40}\Z")
 _MAX_EVIDENCE_IDS: Final = 4_096
 _MAX_OBJECTIONS: Final = 1_024
+_VALID_AUDITOR_VERDICTS: Final = frozenset(
+    {
+        FindingVerdict.CONFIRMED,
+        FindingVerdict.REJECTED_WITH_EVIDENCE,
+        FindingVerdict.NEEDS_MORE_EVIDENCE,
+    }
+)
 
 
 class SkepticErrorCode(StrEnum):
@@ -99,7 +106,7 @@ class AuditorSnapshot:
             raise SkepticContractError(SkepticErrorCode.INVALID_INPUT)
         if self.model_call_status is not ModelCallStatus.SUCCEEDED:
             raise SkepticContractError(SkepticErrorCode.INTEGRITY_FAILURE)
-        if self.finding_verdict is FindingVerdict.NOT_EVALUATED:
+        if self.finding_verdict not in _VALID_AUDITOR_VERDICTS:
             raise SkepticContractError(SkepticErrorCode.INTEGRITY_FAILURE)
         object.__setattr__(self, "evidence_ids", tuple(sorted(self.evidence_ids)))
 
@@ -222,6 +229,8 @@ class SkepticReview:
             or len(self.cited_evidence_ids) != len(set(self.cited_evidence_ids))
         ):
             raise SkepticContractError(SkepticErrorCode.INVALID_INPUT)
+        if self.auditor_verdict not in _VALID_AUDITOR_VERDICTS:
+            raise SkepticContractError(SkepticErrorCode.INTEGRITY_FAILURE)
         canonical_objections = tuple(
             sorted(self.objections, key=lambda item: (item.kind.value, item.evidence_ids))
         )

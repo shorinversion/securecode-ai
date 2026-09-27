@@ -15,10 +15,11 @@ from securecode_ai.core.normalization import normalize_signals
 
 def test_portfolio_facts_enter_the_existing_source_free_normalization_boundary() -> None:
     source = (
-        b"function check(req, repo) {\n"
+        b"const app = express();\n"
+        b"app.patch('/admin/users/:id', authenticate, (req, res) => {\n"
         b" exec(req.query.cmd); fs.readFile(path.join(root, req.query.file));\n"
-        b" fetch(req.query.url); repo.get(req.params.id);\n"
-        b"}\n"
+        b" fetch(req.query.url); repo.update(req.params.id);\n"
+        b"});\n"
     )
     index = build_javascript_symbol_index(
         repository_id="example/p7",

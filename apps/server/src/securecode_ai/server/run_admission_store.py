@@ -23,6 +23,7 @@ from .run_admission_models import (
     AdmissionState,
     canonical,
 )
+from .run_projection import run_receipt_fields
 
 RUN_ADMISSION_SCHEMA_STATEMENTS: Final = (
     """CREATE TABLE IF NOT EXISTS run_admissions (
@@ -240,6 +241,8 @@ class SqliteRunAdmissionStore:
             current = _load(cursor, record.tenant_id, record.idempotency_key)
             current_record = _record(current)
             _require_same(record, current_record)
+            if now_ms >= current_record.resource_request.lease_expires_at_ms:
+                _reject(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
             if current_record.state in {AdmissionState.RESERVED, AdmissionState.ADMITTED}:
                 if (
                     current_record.reservation_id,
@@ -274,6 +277,8 @@ class SqliteRunAdmissionStore:
                 return current_record
             if current_record.state is not AdmissionState.RESERVED:
                 _reject(_terminal_code(current_record), _terminal_status(current_record))
+            if now_ms >= current_record.resource_request.lease_expires_at_ms:
+                _reject(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
             cursor.execute(
                 """UPDATE audit_runs
                    SET state='REQUESTED', version=version+1, updated_at=?
@@ -293,6 +298,70 @@ class SqliteRunAdmissionStore:
                    SET state='ADMITTED', updated_at_ms=?
                    WHERE tenant_id=? AND idempotency_key=? AND state='RESERVED'""",
                 (now_ms, record.tenant_id, record.idempotency_key),
+            )
+            if cursor.rowcount != 1:
+                _reject(AdmissionErrorCode.RUN_CONFLICT, 409)
+            return _record(_load(cursor, record.tenant_id, record.idempotency_key))
+
+    def recover_admitted(
+        self,
+        record: AdmissionRecord,
+        *,
+        code: AdmissionErrorCode,
+        now_ms: int,
+    ) -> AdmissionRecord:
+        """Fail closed when an admitted run loses its resource reservation."""
+
+        if type(code) is not AdmissionErrorCode or type(now_ms) is not int or now_ms < 0:
+            _reject(AdmissionErrorCode.INVALID_REQUEST, 400)
+        with self._transaction() as cursor:
+            current_record = _record(_load(cursor, record.tenant_id, record.idempotency_key))
+            _require_same(record, current_record)
+            if current_record.state in {
+                AdmissionState.FAILED,
+                AdmissionState.RECOVERY_REQUIRED,
+            }:
+                return current_record
+            if current_record.state is not AdmissionState.ADMITTED:
+                _reject(_terminal_code(current_record), _terminal_status(current_record))
+            audit = cursor.execute(
+                """SELECT state FROM audit_runs
+                   WHERE tenant_id=? AND run_id=?""",
+                (record.tenant_id, record.run_id),
+            ).fetchone()
+            if audit is None:
+                _reject(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
+            if audit["state"] in {
+                "SUCCEEDED",
+                "FAILED",
+                "INDETERMINATE",
+                "CANCELLED",
+                "SUPERSEDED",
+            }:
+                return current_record
+            cursor.execute(
+                """UPDATE audit_runs
+                   SET state='ADMISSION_BLOCKED', version=version+1, updated_at=?
+                   WHERE tenant_id=? AND run_id=? AND state=?""",
+                (
+                    _timestamp(now_ms),
+                    record.tenant_id,
+                    record.run_id,
+                    audit["state"],
+                ),
+            )
+            if cursor.rowcount != 1:
+                _reject(AdmissionErrorCode.RUN_CONFLICT, 409)
+            cursor.execute(
+                """UPDATE run_admissions
+                   SET state='RECOVERY_REQUIRED', failure_code=?, updated_at_ms=?
+                   WHERE tenant_id=? AND idempotency_key=? AND state='ADMITTED'""",
+                (
+                    code.value,
+                    now_ms,
+                    record.tenant_id,
+                    record.idempotency_key,
+                ),
             )
             if cursor.rowcount != 1:
                 _reject(AdmissionErrorCode.RUN_CONFLICT, 409)
@@ -353,13 +422,18 @@ class SqliteRunAdmissionStore:
     def run_document(self, record: AdmissionRecord) -> dict[str, object]:
         row = self._connection.execute(
             """SELECT tenant_id, run_id, repository_id,
-                      execution_identity_hash, base_sha, head_sha, state, version
+                      execution_identity_hash, base_sha, head_sha, state, version,
+                      (SELECT outcome FROM worker_run_queue AS q
+                       WHERE q.tenant_id=audit_runs.tenant_id
+                         AND q.run_id=audit_runs.run_id) AS outcome
                FROM audit_runs WHERE tenant_id=? AND run_id=?""",
             (record.tenant_id, record.run_id),
         ).fetchone()
         if row is None:
             _reject(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
-        return dict(row)
+        document = dict(row)
+        document.update(run_receipt_fields(str(row["state"]), int(row["version"])))
+        return document
 
 
 def _load(cursor: sqlite3.Cursor, tenant_id: str, idempotency_key: str) -> sqlite3.Row:

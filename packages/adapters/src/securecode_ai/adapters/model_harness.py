@@ -21,6 +21,7 @@ from securecode_ai.core import (
     ModelUsage,
     PreflightEligibility,
     PreflightNextAction,
+    ProviderKind,
     ProviderProfile,
     StructuredPayloadValidator,
     canonical_model_request_hash,
@@ -43,7 +44,7 @@ from .model_types import (
     _ProviderConnector,
 )
 from .native_repository_tools import parse_native_tool_calls
-from .remote_provider_budget import RemoteProviderCallContext
+from .remote_provider_budget import RemoteProviderCallContext, RemoteProviderCostReceipt
 
 ContextBuilder = Callable[[], PreparedModelContext]
 CredentialSupplier = Callable[[ProviderProfile], CredentialLease | None]
@@ -269,6 +270,7 @@ class AuthorizedProviderHarness:
         credential_supplier: CredentialSupplier,
         validator: StructuredPayloadValidator,
         now: float,
+        cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
     ) -> ModelBoundaryExecution:
         execution = self._execute_authorized_turn(
             preflight=preflight,
@@ -281,6 +283,7 @@ class AuthorizedProviderHarness:
             validator=validator,
             now=now,
             native=False,
+            cost_observer=cost_observer,
         )
         if type(execution) is not ModelBoundaryExecution:
             raise RuntimeError("final provider execution returned the wrong boundary type")
@@ -298,6 +301,7 @@ class AuthorizedProviderHarness:
         credential_supplier: CredentialSupplier,
         validator: StructuredPayloadValidator,
         now: float,
+        cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
     ) -> NativeTurnBoundaryExecution:
         execution = self._execute_authorized_turn(
             preflight=preflight,
@@ -310,6 +314,7 @@ class AuthorizedProviderHarness:
             validator=validator,
             now=now,
             native=True,
+            cost_observer=cost_observer,
         )
         if type(execution) is not NativeTurnBoundaryExecution:
             raise RuntimeError("native provider execution returned the wrong boundary type")
@@ -328,6 +333,7 @@ class AuthorizedProviderHarness:
         validator: StructuredPayloadValidator,
         now: float,
         native: bool,
+        cost_observer: Callable[[RemoteProviderCostReceipt], None] | None,
     ) -> ModelBoundaryExecution | NativeTurnBoundaryExecution:
         def outcome(
             value: ModelBoundaryExecution,
@@ -440,6 +446,15 @@ class AuthorizedProviderHarness:
                     profile_selector=profile.selector,
                     authority=profile.endpoint.authority,
                 )
+            input_token_upper_bound: int | None = None
+            if profile.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE:
+                framing_bound = profile.protocol_framing_token_upper_bound
+                if type(framing_bound) is not int:
+                    raise ValueError("remote protocol token bound is unavailable")
+                # SealedRepositoryView uses UTF-8 byte count as a conservative
+                # token ceiling.  Add only the explicitly profiled wire
+                # framing bound; never substitute a tokenizer heuristic.
+                input_token_upper_bound = len(payload_bytes) + framing_bound
             attempt = connector.send(
                 channel,
                 credential=credential,
@@ -448,13 +463,28 @@ class AuthorizedProviderHarness:
                 timeout_ms=request.budget.timeout_ms,
                 binding=binding,
                 call_budget=RemoteProviderCallContext(
+                    run_id=request.run_id,
                     tenant_id=request.tenant_id,
                     request_id=request.request_id,
                     attempt=request.attempt,
                     max_input_tokens=request.budget.max_input_tokens,
                     max_output_tokens=request.budget.max_output_tokens,
+                    input_token_upper_bound=input_token_upper_bound,
                 ),
             )
+            receipt = attempt.cost_receipt
+            if attempt.cost_receipt_required:
+                if (
+                    cost_observer is None
+                    or receipt is None
+                    or receipt.run_id != request.run_id
+                    or receipt.tenant_id != request.tenant_id
+                    or receipt.model_id != request.model_id
+                    or receipt.request_id != request.request_id
+                    or receipt.attempt != request.attempt
+                ):
+                    raise ValueError("remote cost receipt is not bound to the active run")
+                cost_observer(receipt)
             if native:
                 execution = _native_turn_execution(
                     preflight=decision,

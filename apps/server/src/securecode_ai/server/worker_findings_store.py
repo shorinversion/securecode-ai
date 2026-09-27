@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 from securecode_ai.contracts import ArtifactRef
 
+from .run_admission_models import RunOperation
 from .worker_findings import WorkerFindingRecord, parse_worker_findings
 from .worker_queue_models import (
     OUTCOME_STATES,
@@ -21,6 +22,7 @@ from .worker_queue_models import (
     timestamp,
     utc,
 )
+from .worker_queue_models import _MAX_VERSION
 from .worker_resource_accounting import settle_worker_resources
 from .worker_resource_models import WorkerResourceSettlement
 
@@ -54,6 +56,13 @@ def complete_worker_run(
             outcome in {"PASS", "FAIL", "INDETERMINATE"}
             and (outcome == "FAIL") is not any(item.blocking for item in findings)
         )
+        or (
+            outcome == "FAIL"
+            and any(
+                item.blocking and item.verdict not in {"CONFIRMED", "CONFLICTING"}
+                for item in findings
+            )
+        )
     ):
         raise WorkerQueueConflict()
     lease_arguments(
@@ -70,8 +79,19 @@ def complete_worker_run(
         if type(resource_now_ms) is not int:
             raise WorkerQueueConflict()
         row = _current(cursor, tenant_id, session_id)
+        binding = resource_settlement.binding
+        if (
+            resource_settlement.outcome != outcome
+            or binding.tenant_id != tenant_id
+            or binding.run_id != run_id
+            or binding.execution_identity_hash != execution_identity_hash
+            or binding.repository_id != row["current_repository_id"]
+        ):
+            raise WorkerQueueConflict()
         _require_finding_bindings(cursor, row, tenant_id, run_id, findings)
         if bool(row["terminal"]):
+            if row["state"] != OUTCOME_STATES[outcome]:
+                raise WorkerQueueConflict()
             _require_terminal_replay(
                 cursor,
                 row,
@@ -99,6 +119,8 @@ def complete_worker_run(
             now=observed_at,
         )
         requested = command(row["state"])
+        if row["state"] not in {"RUNNING", "CANCEL_REQUESTED", "SUPERSEDE_REQUESTED"}:
+            raise WorkerQueueConflict()
         if requested == "CANCEL" and outcome != "CANCELLED":
             raise WorkerQueueConflict()
         if requested == "SUPERSEDE" and outcome != "SUPERSEDED":
@@ -108,6 +130,8 @@ def complete_worker_run(
 
         settle_worker_resources(cursor, resource_settlement, now_ms=resource_now_ms)
         _insert_findings(cursor, tenant_id, run_id, findings)
+        if expected_version >= _MAX_VERSION or row["audit_version"] >= _MAX_VERSION:
+            raise WorkerQueueConflict()
         next_version = expected_version + 1
         cursor.execute(
             """UPDATE worker_run_queue
@@ -120,12 +144,14 @@ def complete_worker_run(
         cursor.execute(
             """UPDATE audit_runs
                SET state=?, version=version+1, updated_at=?
-               WHERE tenant_id=? AND run_id=?""",
+               WHERE tenant_id=? AND run_id=? AND state=? AND version=?""",
             (
                 OUTCOME_STATES[outcome],
                 observed_at.isoformat(),
                 tenant_id,
                 run_id,
+                row["state"],
+                row["audit_version"],
             ),
         )
         if cursor.rowcount != 1:
@@ -171,7 +197,10 @@ def _require_finding_bindings(
             raise WorkerQueueConflict()
         artifact = cursor.execute(
             """SELECT a.metadata_json, a.content_sha256,
-                      z.content_id, z.size_bytes, z.data_class
+                      z.content_id, z.size_bytes, z.data_class,
+                      z.run_id AS authorization_run_id,
+                      z.repository_id AS authorization_repository_id,
+                      z.execution_identity_hash AS authorization_identity_hash
                FROM run_artifacts AS a
                JOIN artifact_upload_authorizations AS z
                  ON z.tenant_id=a.tenant_id
@@ -180,7 +209,13 @@ def _require_finding_bindings(
                  AND a.purpose='evidence-graph'""",
             (tenant_id, run_id, reference.content_sha256),
         ).fetchone()
-        if artifact is None or not _artifact_matches(artifact, reference):
+        if (
+            artifact is None
+            or artifact["authorization_run_id"] != run_id
+            or artifact["authorization_repository_id"] != revision.repository_id
+            or artifact["authorization_identity_hash"] != identity.execution_identity_hash
+            or not _artifact_matches(artifact, reference)
+        ):
             raise WorkerQueueConflict()
 
 
@@ -189,7 +224,7 @@ def _artifact_matches(row: sqlite3.Row, reference: ArtifactRef) -> bool:
         value = row["metadata_json"]
         if type(value) is not str:
             return False
-        document = json.loads(value)
+        document = json.loads(value, object_pairs_hook=_closed_object)
         return (
             isinstance(document, dict)
             and row["content_id"] == reference.content_id
@@ -200,7 +235,7 @@ def _artifact_matches(row: sqlite3.Row, reference: ArtifactRef) -> bool:
             and document.get("size_bytes") == reference.size_bytes
             and document.get("purpose") == "evidence-graph"
         )
-    except (AttributeError, json.JSONDecodeError, TypeError, ValueError):
+    except (AttributeError, json.JSONDecodeError, TypeError, ValueError, RecursionError):
         return False
 
 
@@ -261,14 +296,23 @@ def _same_finding_identity(value: object, finding: WorkerFindingRecord) -> bool:
     try:
         if type(value) is not str:
             return False
-        document = json.loads(value)
+        document = json.loads(value, object_pairs_hook=_closed_object)
         return (
             isinstance(document, dict)
             and document.get("cwe_id") == finding.cwe_id
             and document.get("root_cause_fingerprint") == finding.root_cause_fingerprint
         )
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except (json.JSONDecodeError, TypeError, ValueError, RecursionError):
         return False
+
+
+def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, item in pairs:
+        if key in document:
+            raise ValueError("duplicate worker finding field")
+        document[key] = item
+    return document
 
 
 def _require_terminal_replay(
@@ -313,9 +357,9 @@ def _require_terminal_replay(
 
 def _current(cursor: sqlite3.Cursor, tenant_id: str, session_id: str) -> sqlite3.Row:
     row: sqlite3.Row | None = cursor.execute(
-        """SELECT q.*, r.state, r.execution_identity_hash,
+        """SELECT q.*, r.state, r.version AS audit_version, r.execution_identity_hash,
                   r.repository_id AS current_repository_id,
-                  r.head_sha AS current_head_sha
+                  r.head_sha AS current_head_sha, r.metadata_json
            FROM worker_run_queue AS q
            JOIN audit_runs AS r
              ON r.tenant_id=q.tenant_id AND r.run_id=q.run_id
@@ -364,7 +408,21 @@ def _lease(row: sqlite3.Row, lease_seconds: int) -> WorkerQueueLease:
         execution_identity=identity_document(row["execution_identity_json"]),
         terminal=bool(row["terminal"]),
         outcome=row["outcome"],
+        operation=_run_operation(row["metadata_json"]),
     )
+
+
+def _run_operation(value: str) -> RunOperation:
+    try:
+        metadata = json.loads(value, object_pairs_hook=_closed_object)
+    except (OverflowError, RecursionError, TypeError, ValueError):
+        raise WorkerQueueConflict() from None
+    if not isinstance(metadata, Mapping):
+        raise WorkerQueueConflict()
+    try:
+        return RunOperation(metadata.get("operation", RunOperation.SCAN.value))
+    except (TypeError, ValueError):
+        raise WorkerQueueConflict() from None
 
 
 def load_worker_findings_for_run(
@@ -387,7 +445,7 @@ def load_worker_findings_for_run(
         ).fetchall()
         documents: list[dict[str, object]] = []
         for row in rows:
-            metadata = json.loads(row["metadata_json"])
+            metadata = json.loads(row["metadata_json"], object_pairs_hook=_closed_object)
             if type(metadata) is not dict:
                 raise ValueError
             documents.append(
@@ -398,7 +456,7 @@ def load_worker_findings_for_run(
                 }
             )
         return parse_worker_findings(documents, required=True, supplied=True)
-    except (KeyError, sqlite3.Error, TypeError, ValueError):
+    except (KeyError, sqlite3.Error, TypeError, ValueError, RecursionError):
         raise WorkerQueueConflict() from None
 
 

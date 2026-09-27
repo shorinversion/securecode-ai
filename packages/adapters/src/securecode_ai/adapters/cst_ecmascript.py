@@ -111,7 +111,7 @@ def build_typescript_symbol_index(
         expected_language="typescript",
         suffixes=(".ts", ".mts", ".cts", ".tsx"),
         parser_id="tree-sitter-typescript@0.23",
-        grammar=_typescript_language(tsx=path.endswith(".tsx")),
+        grammar=_typescript_language(tsx=path.lower().endswith(".tsx")),
         limits=limits,
     )
 
@@ -132,7 +132,8 @@ def _build_ecmascript_symbol_index(
 ) -> SymbolIndex:
     if type(source) is not bytes or type(limits) is not CstLimits:
         raise _fail(CstAdapterErrorCode.REQUEST_INVALID)
-    if language != expected_language or not path.endswith(suffixes):
+    normalized_path = path.lower()
+    if language != expected_language or not normalized_path.endswith(suffixes):
         raise _fail(CstAdapterErrorCode.LANGUAGE_UNSUPPORTED)
     if len(source) > limits.max_source_bytes:
         raise _fail(CstAdapterErrorCode.SOURCE_LIMIT)
@@ -188,22 +189,17 @@ def _build_ecmascript_symbol_index(
     symbols = [module]
     occurrences: dict[tuple[SymbolKind, str], int] = {}
 
-    def visit(node: Node, parents: tuple[Symbol, ...]) -> None:
-        if node.type in {
-            "class_declaration",
-            "function_declaration",
-            "method_definition",
-            "arrow_function",
-            "function_expression",
-            "generator_function",
-            "generator_function_declaration",
-        }:
-            visit_definition(node, parents)
-            return
-        for child in node.named_children:
-            visit(child, parents)
+    definition_types = {
+        "class_declaration",
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "function_expression",
+        "generator_function",
+        "generator_function_declaration",
+    }
 
-    def visit_definition(node: Node, parents: tuple[Symbol, ...]) -> None:
+    def visit_definition(node: Node, parents: tuple[Symbol, ...]) -> Symbol | None:
         name_node = node.child_by_field_name("name")
         declaration = node
         if node.type in {"arrow_function", "function_expression", "generator_function"}:
@@ -238,7 +234,7 @@ def _build_ecmascript_symbol_index(
                     None,
                 )
         if name_node is None:
-            return
+            return None
         name = _decode_name(source, name_node.start_byte, name_node.end_byte)
         parent = parents[-1] if parents else module
         if node.type == "class_declaration":
@@ -264,11 +260,23 @@ def _build_ecmascript_symbol_index(
         symbols.append(symbol)
         if len(symbols) > limits.max_symbols:
             raise _fail(CstAdapterErrorCode.SYMBOL_LIMIT)
-        for child in node.named_children:
-            visit(child, (*parents, symbol))
+        return symbol
 
-    for child in root.named_children:
-        visit(child, ())
+    traversal: list[tuple[Node, tuple[Symbol, ...]]] = [
+        (child, ()) for child in reversed(root.named_children)
+    ]
+    while traversal:
+        node, parents = traversal.pop()
+        if node.type in definition_types:
+            symbol = visit_definition(node, parents)
+            if symbol is None:
+                continue
+            child_parents = (*parents, symbol)
+        else:
+            child_parents = parents
+        traversal.extend(
+            (child, child_parents) for child in reversed(node.named_children)
+        )
     health = ParseHealth.RECOVERED_WITH_ERRORS if diagnostics else ParseHealth.HEALTHY
     try:
         return _build_symbol_index(
@@ -292,7 +300,8 @@ def _build_ecmascript_symbol_index(
 
 
 def _ecmascript_module_name(path: str, suffixes: tuple[str, ...]) -> str:
-    suffix = next(item for item in suffixes if path.endswith(item))
+    normalized_path = path.lower()
+    suffix = next(item for item in suffixes if normalized_path.endswith(item))
     return path[: -len(suffix)].replace("/", ".")
 
 

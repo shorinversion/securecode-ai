@@ -61,7 +61,6 @@ def run_auditor_investigation(
     current = _validated_package(package)
     initial_selection_sha256 = current.selection_sha256
     attempts: list[AuditorAttemptReceipt] = []
-    selected_evidence_ids = {item.evidence_id for item in current.selected}
     context_rounds = 1
     tokens_used = 0
     tool_calls = 0
@@ -162,6 +161,36 @@ def run_auditor_investigation(
                 model_call_status=ModelCallStatus.INVALID_SCHEMA,
                 stop_reason=InvestigationStopReason.MODEL_NON_SUCCESS,
             )
+        if len(attempts) >= budget.max_attempts:
+            return _indeterminate_receipt(
+                current,
+                initial_selection_sha256=initial_selection_sha256,
+                attempts=tuple(attempts),
+                context_rounds=context_rounds,
+                tokens_used=tokens_used,
+                tool_calls=tool_calls,
+                elapsed_ms=elapsed_ms,
+                no_progress_count=0,
+                model_call_status=ModelCallStatus.BUDGET_EXHAUSTED,
+                stop_reason=InvestigationStopReason.BUDGET_EXHAUSTED,
+            )
+        if (
+            tokens_used >= budget.max_tokens
+            or tool_calls >= budget.max_tool_calls
+            or elapsed_ms >= budget.max_elapsed_ms
+        ):
+            return _indeterminate_receipt(
+                current,
+                initial_selection_sha256=initial_selection_sha256,
+                attempts=tuple(attempts),
+                context_rounds=context_rounds,
+                tokens_used=tokens_used,
+                tool_calls=tool_calls,
+                elapsed_ms=elapsed_ms,
+                no_progress_count=0,
+                model_call_status=ModelCallStatus.BUDGET_EXHAUSTED,
+                stop_reason=InvestigationStopReason.BUDGET_EXHAUSTED,
+            )
         if context_rounds >= budget.max_context_rounds:
             return _indeterminate_receipt(
                 current,
@@ -218,7 +247,7 @@ def run_auditor_investigation(
                 stop_reason=InvestigationStopReason.CONTEXT_PORT_FAILURE,
             )
         if not _same_candidate(current, next_package) or not _is_strict_evidence_superset(
-            selected_evidence_ids, next_package
+            current, next_package
         ):
             return _indeterminate_receipt(
                 current,
@@ -232,6 +261,5 @@ def run_auditor_investigation(
                 model_call_status=ModelCallStatus.INCOMPLETE,
                 stop_reason=InvestigationStopReason.NO_NEW_EVIDENCE,
             )
-        selected_evidence_ids.update(item.evidence_id for item in next_package.selected)
         current = next_package
         context_rounds += 1

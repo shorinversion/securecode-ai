@@ -22,6 +22,8 @@ MAX_SPEND_MICROUNITS: Final = 1_000_000_000_000
 class QuotaErrorCode(StrEnum):
     INVALID_CONFIGURATION = "INVALID_CONFIGURATION"
     STORE_UNAVAILABLE = "STORE_UNAVAILABLE"
+    COST_UNAVAILABLE = "COST_UNAVAILABLE"
+    IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT"
 
 
 class QuotaError(ValueError):
@@ -80,7 +82,7 @@ class RequestQuota(Protocol):
         *,
         tenant_id: object,
         now_ms: object,
-        cost_microunits: int = 0,
+        cost_microunits: int | None = None,
     ) -> QuotaDecision: ...
 
 
@@ -116,7 +118,7 @@ class QuotaLedger:
         *,
         tenant_id: object,
         now_ms: object,
-        cost_microunits: int = 0,
+        cost_microunits: int | None = None,
     ) -> QuotaDecision:
         """Charge one request against the tenant's window, or refuse it.
 
@@ -128,16 +130,34 @@ class QuotaLedger:
             not _valid_tenant_id(tenant_id)
             or type(now_ms) is not int
             or now_ms < 0
-            or type(cost_microunits) is not int
-            or not 0 <= cost_microunits <= MAX_SPEND_MICROUNITS
+            or (
+                cost_microunits is not None
+                and (
+                    type(cost_microunits) is not int
+                    or not 0 <= cost_microunits <= MAX_SPEND_MICROUNITS
+                )
+            )
         ):
             raise QuotaError(QuotaErrorCode.INVALID_CONFIGURATION)
         policy = self._policies.get(tenant_id)
         if policy is None:
             return QuotaDecision(True, MAX_REQUESTS_PER_WINDOW, MAX_SPEND_MICROUNITS, 0)
+        if cost_microunits is None:
+            raise QuotaError(QuotaErrorCode.COST_UNAVAILABLE)
         window_ms = policy.window_seconds * 1000
         with self._lock:
             window = self._windows.get(tenant_id)
+            if window is not None and window.started_ms > now_ms:
+                # A wall-clock rollback must not extend a previously charged
+                # window or make its counters appear to belong to the future.
+                # Fail closed until the stored window can naturally expire.
+                retry_ms = window.started_ms + window_ms - now_ms
+                return QuotaDecision(
+                    False,
+                    0,
+                    0,
+                    max(1, (retry_ms + 999) // 1000),
+                )
             if window is None or now_ms - window.started_ms >= window_ms:
                 window = _Window(started_ms=now_ms, requests=0, spend_microunits=0)
                 self._windows[tenant_id] = window

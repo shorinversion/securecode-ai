@@ -17,6 +17,7 @@ from securecode_ai.adapters.product_runtime import (
     ProductDiscoveryBackend,
     dispatch_native_repository_calls,
 )
+from securecode_ai.adapters.remote_provider_budget import RemoteProviderCallContext
 from securecode_ai.contracts import ModelRequest
 from securecode_ai.core import StructuredPayloadValidator
 from securecode_ai.core.model_discovery import RepositoryToolSession
@@ -162,6 +163,14 @@ def test_native_connector_sends_pinned_tools_and_preserves_selection(
         model_id=profile.model_id,
         timeout_ms=1000,
         binding=_binding(_request()),
+        call_budget=RemoteProviderCallContext(
+            run_id="native-run",
+            tenant_id="native-tenant",
+            request_id="native-request",
+            attempt=1,
+            max_input_tokens=4096,
+            max_output_tokens=4096,
+        ),
     )
     assert attempt.http_status == 200 and attempt.response_bytes is not None
     assert json.loads(attempt.response_bytes)["choices"][0]["finish_reason"] == "tool_calls"
@@ -665,6 +674,7 @@ def test_product_native_cycle_late_response_preserves_verified_usage(
         model_id: str,
         timeout_ms: int,
         binding: ProviderAttemptBinding,
+        call_budget: RemoteProviderCallContext,
     ) -> ProviderAttempt:
         attempt = original_send(
             connector,
@@ -674,6 +684,7 @@ def test_product_native_cycle_late_response_preserves_verified_usage(
             model_id=model_id,
             timeout_ms=timeout_ms,
             binding=binding,
+            call_budget=call_budget,
         )
         calls[0] += 1
         if calls[0] == late_turn:

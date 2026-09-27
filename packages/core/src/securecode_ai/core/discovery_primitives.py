@@ -80,6 +80,12 @@ class IgnoreRule:
 
 
 def _valid_relative_path(path: str) -> bool:
+    if type(path) is not str:
+        return False
+    try:
+        path.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
     parts = path.split("/")
     return bool(
         path

@@ -15,13 +15,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from securecode_ai.contracts import FindingCase
+from securecode_ai.contracts import CommandOperationEvidence, FindingCase
 
 from .root_cause import RootCauseEvidenceRefs, RootCauseRecord
 
 _SCHEMA_VERSION: Final = "1.0.0"
 _INVARIANT_VERSION: Final = "1.0.0"
 _PARAMETER_BINDING_ID: Final = "CWE-89-PARAMETER-BINDING"
+_COMMAND_SAFETY_ID: Final = "CWE-78-COMMAND-SAFETY"
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _COMMIT_SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -84,6 +85,7 @@ class SecurityInvariant:
     required_evidence_ids: tuple[str, ...]
     invariant_sha256: str
     schema_version: str = _SCHEMA_VERSION
+    command_operation_evidence: tuple[CommandOperationEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -121,8 +123,32 @@ class SecurityInvariant:
             or any(_ID.fullmatch(value) is None for value in self.required_evidence_ids)
             or tuple(sorted(self.required_evidence_ids)) != self.required_evidence_ids
             or len(set(self.required_evidence_ids)) != len(self.required_evidence_ids)
-            or self.invariant_id != _PARAMETER_BINDING_ID
-            or self.property_name != "database driver parameter binding"
+            or type(self.command_operation_evidence) is not tuple
+            or any(
+                type(value) is not CommandOperationEvidence
+                for value in self.command_operation_evidence
+            )
+            or (
+                self.invariant_id == _PARAMETER_BINDING_ID
+                and (
+                    self.property_name != "database driver parameter binding"
+                    or self.command_operation_evidence
+                )
+            )
+            or (
+                self.invariant_id == _COMMAND_SAFETY_ID
+                and (
+                    self.property_name != "command execution operation safety"
+                    or len(self.command_operation_evidence) != 1
+                    or any(
+                        value.source_evidence_id is None
+                        or value.sink_evidence_id is None
+                        or value.flow_evidence_id is None
+                        for value in self.command_operation_evidence
+                    )
+                )
+            )
+            or self.invariant_id not in {_PARAMETER_BINDING_ID, _COMMAND_SAFETY_ID}
             or self.invariant_sha256 != _invariant_hash(self)
         ):
             raise SecurityInvariantError(SecurityInvariantErrorCode.INVARIANT_INVALID)
@@ -200,10 +226,20 @@ def build_security_invariant(
             )
         )
     )
+    if checked_finding.cwe_id == "CWE-89":
+        invariant_id = _PARAMETER_BINDING_ID
+        property_name = "database driver parameter binding"
+        command_operation_evidence: tuple[CommandOperationEvidence, ...] = ()
+    elif checked_finding.cwe_id == "CWE-78" and len(checked_root.command_operation_evidence) == 1:
+        invariant_id = _COMMAND_SAFETY_ID
+        property_name = "command execution operation safety"
+        command_operation_evidence = checked_root.command_operation_evidence
+    else:
+        raise SecurityInvariantError(SecurityInvariantErrorCode.INVARIANT_INVALID)
     value = _unchecked_invariant(
-        invariant_id=_PARAMETER_BINDING_ID,
+        invariant_id=invariant_id,
         invariant_version=_INVARIANT_VERSION,
-        property_name="database driver parameter binding",
+        property_name=property_name,
         finding_id=checked_finding.finding_id,
         root_cause_id=checked_root.record_id,
         candidate_id=checked_root.candidate_id,
@@ -217,6 +253,7 @@ def build_security_invariant(
         required_evidence_ids=evidence_ids,
         invariant_sha256="0" * 64,
         schema_version=_SCHEMA_VERSION,
+        command_operation_evidence=command_operation_evidence,
     )
     return _with_invariant_hash(value)
 
@@ -232,14 +269,11 @@ def evaluate_security_invariant(
     checked_root = _copy_root_cause(root_cause)
     checked_finding = _copy_finding(finding) if finding is not None else None
     reason = InvariantEvaluationReason.SATISFIED
-    if checked_invariant.invariant_id != _PARAMETER_BINDING_ID:
+    if checked_invariant.invariant_id not in {_PARAMETER_BINDING_ID, _COMMAND_SAFETY_ID}:
         reason = InvariantEvaluationReason.UNKNOWN_INVARIANT
     elif (
         checked_finding is not None
-        and (
-            checked_finding.finding_id != checked_invariant.finding_id
-            or checked_finding.repository_revision.head_sha != checked_invariant.head_sha
-        )
+        and not _finding_matches_invariant(checked_finding, checked_invariant)
     ) or (
         checked_root.record_id != checked_invariant.root_cause_id
         or checked_root.finding_id != checked_invariant.finding_id
@@ -266,7 +300,42 @@ def evaluate_security_invariant(
         != checked_invariant.required_evidence_ids
     ):
         reason = InvariantEvaluationReason.MISSING_EVIDENCE
+    elif checked_invariant.invariant_id == _COMMAND_SAFETY_ID and (
+        checked_root.command_operation_evidence != checked_invariant.command_operation_evidence
+        or checked_finding is not None
+        and checked_finding.command_operation_evidence
+        != checked_invariant.command_operation_evidence
+    ):
+        reason = InvariantEvaluationReason.CONFLICTING_EVIDENCE
     return _evaluation(checked_invariant, reason)
+
+
+def _finding_matches_invariant(
+    finding: FindingCase,
+    invariant: SecurityInvariant,
+) -> bool:
+    """Require the optional finding witness to carry the full invariant identity.
+
+    Matching only ``finding_id`` and HEAD is insufficient because a producer
+    can reuse an identifier while changing the candidate, repository scope, or
+    EvidenceGraph binding.  An invariant evaluation that accepts such a
+    witness would make the wrong finding appear independently validated.
+    """
+
+    revision = finding.repository_revision
+    return (
+        finding.finding_id == invariant.finding_id
+        and finding.candidate_id == invariant.candidate_id
+        and finding.candidate_version == invariant.candidate_version
+        and finding.root_cause_fingerprint == invariant.root_cause_fingerprint
+        and revision.tenant_id == invariant.tenant_id
+        and revision.repository_id == invariant.repository_id
+        and revision.head_sha == invariant.head_sha
+        and finding.evidence_graph_ref.tenant_id == invariant.tenant_id
+        and finding.evidence_graph_ref.content_id == invariant.evidence_graph_id
+        and finding.evidence_graph_ref.content_sha256 == invariant.evidence_graph_sha256
+        and set(invariant.required_evidence_ids).issubset(set(finding.evidence_ids))
+    )
 
 
 def _copy_finding(value: FindingCase) -> FindingCase:
@@ -299,6 +368,7 @@ def _copy_root_cause(value: RootCauseRecord) -> RootCauseRecord:
                 propagation_evidence_id=value.evidence.propagation_evidence_id,
                 sink_evidence_id=value.evidence.sink_evidence_id,
             ),
+            command_operation_evidence=tuple(value.command_operation_evidence),
         )
     except (AttributeError, TypeError, ValueError):
         raise SecurityInvariantError(SecurityInvariantErrorCode.ROOT_CAUSE_INVALID) from None
@@ -325,13 +395,14 @@ def _copy_invariant(value: SecurityInvariant) -> SecurityInvariant:
             required_evidence_ids=tuple(value.required_evidence_ids),
             invariant_sha256=value.invariant_sha256,
             schema_version=value.schema_version,
+            command_operation_evidence=tuple(value.command_operation_evidence),
         )
     except (AttributeError, TypeError, ValueError):
         raise SecurityInvariantError(SecurityInvariantErrorCode.INVARIANT_INVALID) from None
 
 
 def _invariant_material(value: SecurityInvariant) -> dict[str, object]:
-    return {
+    material: dict[str, object] = {
         "candidate_id": value.candidate_id,
         "candidate_version": value.candidate_version,
         "evidence_graph_id": value.evidence_graph_id,
@@ -348,6 +419,11 @@ def _invariant_material(value: SecurityInvariant) -> dict[str, object]:
         "schema_version": value.schema_version,
         "tenant_id": value.tenant_id,
     }
+    if value.command_operation_evidence:
+        material["command_operation_evidence"] = [
+            item.model_dump(mode="json") for item in value.command_operation_evidence
+        ]
+    return material
 
 
 def _invariant_hash(value: SecurityInvariant) -> str:
@@ -377,6 +453,7 @@ def _with_invariant_hash(value: SecurityInvariant) -> SecurityInvariant:
         required_evidence_ids=value.required_evidence_ids,
         invariant_sha256=_invariant_hash(value),
         schema_version=value.schema_version,
+        command_operation_evidence=value.command_operation_evidence,
     )
 
 

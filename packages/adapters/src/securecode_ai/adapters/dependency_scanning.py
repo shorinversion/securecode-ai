@@ -258,6 +258,7 @@ class DependencyScanResult:
     manifest_scan_sha256: str
     advisories: tuple[DependencyAdvisory, ...]
     scan_sha256: str
+    coordinates: tuple[DependencyCoordinate, ...] = ()
 
     def __post_init__(self) -> None:
         if (
@@ -268,9 +269,42 @@ class DependencyScanResult:
             != tuple(sorted((item.coordinate.purl, item.advisory_id) for item in self.advisories))
             or len({(item.coordinate.purl, item.advisory_id) for item in self.advisories})
             != len(self.advisories)
+            or type(self.coordinates) is not tuple
+            or any(type(item) is not DependencyCoordinate for item in self.coordinates)
+            or tuple((item.purl, item.name, item.version) for item in self.coordinates)
+            != tuple(sorted((item.purl, item.name, item.version) for item in self.coordinates))
+            or len({item.purl for item in self.coordinates}) != len(self.coordinates)
+            or (
+                self.coordinates
+                and (
+                    any(
+                        item.repository_id != self.coordinates[0].repository_id
+                        or item.revision != self.coordinates[0].revision
+                        or item.manifest_path != self.coordinates[0].manifest_path
+                        or item.manifest_sha256 != self.coordinates[0].manifest_sha256
+                        or item.ecosystem is not self.coordinates[0].ecosystem
+                        for item in self.coordinates
+                    )
+                    or _manifest_hash(
+                        self.coordinates[0].repository_id,
+                        self.coordinates[0].revision,
+                        self.coordinates[0].manifest_path,
+                        self.coordinates[0].manifest_sha256,
+                        self.coordinates,
+                    )
+                    != self.manifest_scan_sha256
+                )
+            )
+            or any(advisory.coordinate not in self.coordinates for advisory in self.advisories)
             or self.scan_sha256 != _scan_hash(self.manifest_scan_sha256, self.advisories)
         ):
             raise ValueError("dependency scan result is invalid")
+
+    @property
+    def inventory_sha256(self) -> str:
+        """Hash of every pinned coordinate retained for this manifest."""
+
+        return _inventory_hash(self.manifest_scan_sha256, self.coordinates)
 
 
 def parse_python_requirements(
@@ -367,13 +401,22 @@ def parse_python_requirements(
 
 def scan_dependency_advisories(
     parsed: ParsedDependencyManifest,
-    scanner: ApprovedOsvScanner,
+    scanner: ApprovedOsvScanner | None,
     *,
     limits: DependencyScanLimits = DEFAULT_DEPENDENCY_SCAN_LIMITS,
 ) -> DependencyScanResult:
     """Normalize an approved OSV batch result without granting it path or verdict authority."""
 
     if type(parsed) is not ParsedDependencyManifest or type(limits) is not DependencyScanLimits:
+        raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
+    if not parsed.dependencies:
+        return DependencyScanResult(
+            parsed.manifest_scan_sha256,
+            (),
+            _scan_hash(parsed.manifest_scan_sha256, ()),
+            parsed.dependencies,
+        )
+    if scanner is None:
         raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
     identity_failed = False
     try:
@@ -391,12 +434,6 @@ def scan_dependency_advisories(
         or scanner_version != "v1"
     ):
         raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
-    if not parsed.dependencies:
-        return DependencyScanResult(
-            parsed.manifest_scan_sha256,
-            (),
-            _scan_hash(parsed.manifest_scan_sha256, ()),
-        )
     request = OsvBatchRequest(tuple(sorted(item.purl for item in parsed.dependencies)))
     scanner_failed = False
     try:
@@ -444,6 +481,7 @@ def scan_dependency_advisories(
         parsed.manifest_scan_sha256,
         advisories,
         _scan_hash(parsed.manifest_scan_sha256, advisories),
+        parsed.dependencies,
     )
 
 
@@ -544,6 +582,17 @@ def _scan_hash(manifest_hash: str, advisories: tuple[DependencyAdvisory, ...]) -
     return _canonical_hash(
         {
             "advisories": [item.advisory_sha256 for item in advisories],
+            "manifest_scan_sha256": manifest_hash,
+        }
+    )
+
+
+def _inventory_hash(
+    manifest_hash: str, coordinates: tuple[DependencyCoordinate, ...]
+) -> str:
+    return _canonical_hash(
+        {
+            "coordinates": [_coordinate_projection(item) for item in coordinates],
             "manifest_scan_sha256": manifest_hash,
         }
     )

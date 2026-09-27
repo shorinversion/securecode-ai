@@ -1,0 +1,311 @@
+services:
+  securecode-server:
+    build:
+      context: .
+      dockerfile: deploy/docker/server.Dockerfile
+    image: securecode-ai/server:local
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:${SECURECODE_SERVER_PUBLISHED_PORT:-8443}:8080"
+    environment:
+      SECURECODE_SERVER_HOST: 0.0.0.0
+      SECURECODE_SERVER_PORT: "8080"
+      SECURECODE_DATA_DIR: /var/lib/securecode
+      SECURECODE_DATA_REGION: ${SECURECODE_DATA_REGION:-}
+      SECURECODE_TENANT_RESIDENCY_REGIONS: ${SECURECODE_TENANT_RESIDENCY_REGIONS:-}
+      SECURECODE_TMP_DIR: /tmp/securecode
+      SECURECODE_BOOTSTRAP_TENANT_ID: ${SECURECODE_BOOTSTRAP_TENANT_ID:?set tenant id}
+      SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE: /run/secrets/admin_token
+      SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES: ${SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES:?set repository scope}
+      SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE: /run/secrets/worker_token
+      SECURECODE_ARTIFACT_UPLOAD_URL: https://securecode-server:8080/api/v1/artifact-uploads
+      SECURECODE_TLS_CERT_FILE: /run/secrets/server_tls_cert
+      SECURECODE_TLS_KEY_FILE: /run/secrets/server_tls_key
+    secrets:
+      - admin_token
+      - source: server_tls_cert
+        target: server_tls_cert
+        mode: 0444
+      - source: server_tls_key
+        target: server_tls_key
+        mode: 0444
+      - worker_token
+    volumes:
+      - securecode_server_data:/var/lib/securecode
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    pids_limit: 128
+    mem_limit: 2g
+    cpus: 2
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "/app/healthcheck.py"]
+      interval: 15s
+      timeout: 3s
+      start_period: 20s
+      retries: 3
+    networks: [securecode-private, securecode-egress]
+
+  securecode-validator-broker:
+    build:
+      context: .
+      dockerfile: deploy/docker/repair-validator.Dockerfile
+    image: securecode-ai/validator-broker:local
+    entrypoint: ["/usr/local/bin/python", "-I", "-m", "securecode_ai.adapters.local_repair_oci_broker"]
+    init: true
+    user: "${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?set rootless Docker socket UID}:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    environment:
+      SECURECODE_AI_VALIDATOR_MODE: broker
+      SECURECODE_AI_VALIDATOR_SOCKET: /run/securecode/validator/validator.sock
+      SECURECODE_AI_VALIDATOR_PROTOCOL_GID: "65532"
+      SECURECODE_AI_VALIDATOR_BUNDLE_ROOT: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?set absolute host-visible validator bundle root}
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET: /run/securecode/docker.sock
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID: ${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?set rootless Docker socket UID}
+      SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE: /run/securecode/docker
+      SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256: ${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256:?set approved Docker CLI SHA256}
+      SECURECODE_AI_VALIDATOR_IDENTITY: ${SECURECODE_AI_VALIDATOR_IDENTITY:?set validator broker identity}
+      SECURECODE_AI_VALIDATION_IMAGE: ${SECURECODE_AI_VALIDATION_IMAGE:?set pinned validator image digest}
+    volumes:
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_SOURCE:?set rootless Docker socket path}
+        target: /run/securecode/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SOURCE:?set approved Docker CLI path}
+        target: /run/securecode/docker
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?set absolute host-visible validator bundle root}
+        target: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?set absolute host-visible validator bundle root}
+        read_only: false
+        bind:
+          create_host_path: false
+      - validator-transport:/run/securecode/validator
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,stat; path=os.environ.get('SECURECODE_AI_VALIDATOR_SOCKET',''); details=os.stat(path, follow_symlinks=False); raise SystemExit(0 if stat.S_ISSOCK(details.st_mode) else 1)",
+        ]
+      interval: 5s
+      timeout: 2s
+      start_period: 5s
+      retries: 12
+
+  securecode-worker:
+    build:
+      context: .
+      dockerfile: deploy/docker/worker.Dockerfile
+    image: securecode-ai/worker:local
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      securecode-server:
+        condition: service_healthy
+      securecode-validator-broker:
+        condition: service_healthy
+    environment:
+      SECURECODE_CONTROL_PLANE_URL: https://securecode-server:8080
+      SECURECODE_WORKER_ID: ${SECURECODE_WORKER_ID:?set worker id}
+      SECURECODE_WORKER_TARGET: /workspace/repository
+      SECURECODE_WORKER_TOKEN_FILE: /run/secrets/securecode_worker_token
+      SECURECODE_WORKER_ARTIFACT_HOSTS: securecode-server
+      SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS: ${SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS:-15}
+      SECURECODE_WORKER_POLL_SECONDS: ${SECURECODE_WORKER_POLL_SECONDS:-2}
+      SECURECODE_WORKER_MAX_BACKOFF_SECONDS: ${SECURECODE_WORKER_MAX_BACKOFF_SECONDS:-30}
+      SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS: ${SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS:-300}
+      SECURECODE_DATA_DIR: /var/lib/securecode
+      SECURECODE_AI_ARTIFACT_ROOT: /var/lib/securecode/suggestions
+      SECURECODE_TMP_DIR: /tmp/securecode
+      SECURECODE_AI_VALIDATION_IMAGE: ${SECURECODE_AI_VALIDATION_IMAGE:?set pinned validator image digest}
+      SECURECODE_AI_VALIDATOR_MODE: broker
+      SECURECODE_AI_VALIDATOR_SOCKET: /run/securecode/validator/validator.sock
+      SECURECODE_AI_VALIDATOR_BUNDLE_ROOT: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?set absolute host-visible validator bundle root}
+      SECURECODE_AI_VALIDATOR_IDENTITY: ${SECURECODE_AI_VALIDATOR_IDENTITY:?set validator broker identity}
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET: /run/securecode/docker.sock
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID: ${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?set rootless Docker socket UID}
+      SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256: ${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256:?set approved Docker CLI SHA256}
+      SSL_CERT_FILE: /run/secrets/server_ca
+    secrets:
+      - source: server_tls_ca
+        target: server_ca
+        mode: 0444
+      - source: worker_token
+        target: securecode_worker_token
+    volumes:
+      - type: bind
+        source: ${SECURECODE_WORKER_SOURCE:?set absolute checkout path}
+        target: /workspace/repository
+        read_only: true
+      - type: bind
+        source: ${SECURECODE_WORKER_APPROVAL_ANCHOR_SOURCE:?set root-owned approval anchor path}
+        target: /etc/securecode-ai/approval-anchor.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_OLLAMA_BINARY_SOURCE:?set approved Ollama executable path}
+        target: /run/securecode/ollama
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?set absolute host-visible validator bundle root}
+        target: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?set absolute host-visible validator bundle root}
+        read_only: false
+        bind:
+          create_host_path: false
+      - validator-transport:/run/securecode/validator:ro
+      - securecode_worker_data:/var/lib/securecode
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g,mode=1777
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 4
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "python", "/app/worker_healthcheck.py"]
+      interval: 15s
+      timeout: 3s
+      start_period: ${SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS:-300}s
+      retries: 3
+    networks: [securecode-private]
+
+  securecode-ollama:
+    image: ${SECURECODE_OLLAMA_IMAGE:?set pinned Ollama image digest}
+    network_mode: service:securecode-worker
+    depends_on:
+      securecode-worker:
+        condition: service_started
+    entrypoint: ["/usr/bin/ollama"]
+    command: ["serve"]
+    user: "65532:65532"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    gpus: all
+    environment:
+      HOME: /tmp
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_MODELS: /models
+    volumes:
+      - type: bind
+        source: ${SECURECODE_OLLAMA_BINARY_SOURCE:?set approved Ollama executable path}
+        target: /usr/bin/ollama
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_OLLAMA_MODELS_SOURCE:?set preloaded local model store}
+        target: /models
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    pids_limit: 64
+    mem_limit: 16g
+    cpus: 8
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "/usr/bin/ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+
+  securecode-maintenance:
+    image: securecode-ai/server:local
+    command: ["python", "-m", "securecode_ai.server.maintenance_daemon"]
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    depends_on:
+      securecode-server:
+        condition: service_healthy
+    environment:
+      SECURECODE_DATA_DIR: /var/lib/securecode
+      SECURECODE_DATA_REGION: ${SECURECODE_DATA_REGION:-}
+      SECURECODE_TENANT_RESIDENCY_REGIONS: ${SECURECODE_TENANT_RESIDENCY_REGIONS:-}
+      SECURECODE_TLS_CERT_FILE: ""
+      SECURECODE_TLS_KEY_FILE: ""
+      SECURECODE_TMP_DIR: /tmp/securecode
+      SECURECODE_MAINTENANCE_TENANT_IDS: ${SECURECODE_MAINTENANCE_TENANT_IDS:-${SECURECODE_MAINTENANCE_TENANT_ID:?set maintenance tenant id or tenant ids}}
+      SECURECODE_MAINTENANCE_OWNER_ID: ${SECURECODE_MAINTENANCE_OWNER_ID:?set maintenance owner identity}
+      SECURECODE_RETENTION_METADATA_DAYS: ${SECURECODE_RETENTION_METADATA_DAYS:?set metadata retention}
+      SECURECODE_RETENTION_ARTIFACT_DAYS: ${SECURECODE_RETENTION_ARTIFACT_DAYS:?set artifact retention}
+      SECURECODE_RETENTION_AUDIT_DAYS: ${SECURECODE_RETENTION_AUDIT_DAYS:?set audit retention}
+      SECURECODE_RETENTION_PLAN_LIMIT: ${SECURECODE_RETENTION_PLAN_LIMIT:-32}
+      SECURECODE_RETENTION_EXECUTE_LIMIT: ${SECURECODE_RETENTION_EXECUTE_LIMIT:-32}
+      SECURECODE_MAINTENANCE_INTERVAL_SECONDS: ${SECURECODE_MAINTENANCE_INTERVAL_SECONDS:-60}
+    volumes:
+      - securecode_server_data:/var/lib/securecode
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    pids_limit: 32
+    mem_limit: 512m
+    cpus: 1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      disable: true
+
+secrets:
+  admin_token:
+    file: ${SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE:?set admin token file}
+  worker_token:
+    file: ${SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE:?set worker token file}
+  server_tls_cert:
+    file: ${SECURECODE_TLS_CERT_FILE:?set TLS certificate file}
+  server_tls_key:
+    file: ${SECURECODE_TLS_KEY_FILE:?set TLS private key file}
+  server_tls_ca:
+    file: ${SECURECODE_TLS_CA_SOURCE:?set TLS CA certificate file}
+
+volumes:
+  securecode_server_data:
+  securecode_worker_data:
+  validator-transport:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?set rootless Docker socket UID},gid=65532,mode=0770,size=16m,nodev,nosuid,noexec"
+
+networks:
+  securecode-private:
+    driver: bridge
+    internal: true
+  securecode-egress:
+    driver: bridge

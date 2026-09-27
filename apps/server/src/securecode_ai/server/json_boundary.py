@@ -43,12 +43,7 @@ def load_json_object(
             max_items=max_items,
             max_scalar_bytes=max_scalar_bytes,
         )
-    except (
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-        JsonBoundaryError,
-        RecursionError,
-    ):
+    except (ValueError, RecursionError):
         raise JsonBoundaryError from None
     if type(value) is not dict:
         raise JsonBoundaryError

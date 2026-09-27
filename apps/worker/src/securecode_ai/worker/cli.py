@@ -65,6 +65,8 @@ def main(
     except _InvalidInput:
         errors.write("invalid worker input\n")
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except KeyboardInterrupt:
+        return 130
     except (_OperationalFailure, CiWorkerArtifactError, OSError):
         errors.write("worker operation failed\n")
         return int(CliExitCode.OPERATIONAL_ERROR)

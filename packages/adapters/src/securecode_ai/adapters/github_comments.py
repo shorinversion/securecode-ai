@@ -57,6 +57,14 @@ class GithubCommentReceipt:
     suppressions: tuple[tuple[str, GithubCommentSuppression], ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _SummaryWrite:
+    remote_id: str
+    body: str
+    created_by_attempt: bool
+    prior_body: str | None = None
+
+
 class GithubCommentPublisher:
     __slots__ = ("_api", "_head")
 
@@ -121,7 +129,7 @@ class GithubCommentPublisher:
                 (*annotation_suppressions, *stale),
             )
         repository = self._api.repository_path_for_id(installation_id, repository_id)
-        summary_id = self._upsert_summary(
+        summary_write = self._upsert_summary(
             installation_id,
             repository_id,
             repository,
@@ -131,7 +139,7 @@ class GithubCommentPublisher:
             summary,
             delivery_key,
         )
-        if summary_id is None:
+        if summary_write is None:
             stale = tuple(
                 (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED)
                 for item in inline
@@ -142,8 +150,47 @@ class GithubCommentPublisher:
                 (),
                 (*annotation_suppressions, *stale),
             )
-        existing = self._existing_inline(installation_id, repository, change_id)
+        try:
+            current_head = self._head(installation_id, repository_id, change_id)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            return GithubCommentReceipt(
+                "INDETERMINATE",
+                summary_write.remote_id,
+                (),
+                annotation_suppressions,
+            )
+        if current_head != expected_head:
+            stale = tuple(
+                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED)
+                for item in inline
+            )
+            if not self._compensate_summary(
+                installation_id, repository, summary_write, delivery_key
+            ):
+                return GithubCommentReceipt(
+                    "INDETERMINATE",
+                    summary_write.remote_id,
+                    (),
+                    (*annotation_suppressions, *stale),
+                )
+            return GithubCommentReceipt(
+                "STALE_SUPPRESSED",
+                None,
+                (),
+                (*annotation_suppressions, *stale),
+            )
+        summary_id = summary_write.remote_id
+        existing = self._existing_inline(
+            installation_id,
+            repository,
+            change_id,
+            expected_head,
+            inline,
+        )
         written: list[str] = []
+        written_remote_ids: list[str] = []
         suppressions: list[tuple[str, GithubCommentSuppression]] = []
         ordered_inline = sorted(inline, key=lambda value: value.finding_id)
         for index, item in enumerate(ordered_inline):
@@ -181,9 +228,56 @@ class GithubCommentPublisher:
                     },
                     idempotency_key=_inline_idempotency_key(delivery_key, item.finding_id),
                 )
-                if response.status != 201 or _remote_identity(response.document) is None:
+                document = response.document
+                if (
+                    response.status != 201
+                    or _remote_identity(document) is None
+                    or type(document) is not dict
+                    or document.get("body") != body
+                    or document.get("commit_id") != expected_head
+                    or document.get("path") != item.path
+                    or document.get("line") != item.start_line
+                    or document.get("side") != "RIGHT"
+                ):
                     raise GitHubError("COMMENT_RECEIPT_INVALID")
                 written.append(item.finding_id)
+                remote_id = _remote_identity(document)
+                if remote_id is None:
+                    raise GitHubError("COMMENT_RECEIPT_INVALID")
+                written_remote_ids.append(remote_id)
+        try:
+            current_head = self._head(installation_id, repository_id, change_id)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            return GithubCommentReceipt(
+                "INDETERMINATE",
+                summary_id,
+                tuple(written),
+                (*annotation_suppressions, *suppressions),
+            )
+        if current_head != expected_head:
+            summary_compensated = self._compensate_summary(
+                installation_id, repository, summary_write, delivery_key
+            )
+            inline_compensated = self._compensate_inline(
+                installation_id,
+                repository,
+                tuple(written_remote_ids),
+            )
+            if not summary_compensated or not inline_compensated:
+                return GithubCommentReceipt(
+                    "INDETERMINATE",
+                    summary_id,
+                    tuple(written),
+                    (*annotation_suppressions, *suppressions),
+                )
+            return GithubCommentReceipt(
+                "STALE_SUPPRESSED",
+                None,
+                (),
+                (*annotation_suppressions, *suppressions),
+            )
         return GithubCommentReceipt(
             "WRITTEN",
             summary_id,
@@ -201,21 +295,29 @@ class GithubCommentPublisher:
         external_id: str,
         summary: str,
         delivery_key: str,
-    ) -> str | None:
+    ) -> _SummaryWrite | None:
         marker = "<!-- securecode-ai-summary:" + external_id + " -->"
         comments = self._list(
             installation_id, repository + "/issues/" + change_id + "/comments?per_page=100"
         )
-        matches = [item for item in comments if marker in str(item.get("body", ""))]
+        matches = [
+            item
+            for item in comments
+            if type(item.get("body")) is str
+            and item["body"].splitlines()[-1:] == [marker]
+        ]
         if len(matches) > 1:
             raise GitHubError("SUMMARY_RECONCILIATION_CONFLICT")
         body = summary + "\n\n" + marker
         if matches:
             remote_id = _remote_identity(matches[0])
-            if remote_id is None:
+            existing_body = matches[0].get("body")
+            if remote_id is None or type(existing_body) is not str:
                 raise GitHubError("SUMMARY_RECONCILIATION_INVALID")
             if self._head(installation_id, repository_id, change_id) != expected_head:
                 return None
+            if existing_body == body:
+                return _SummaryWrite(remote_id, body, False, body)
             response = self._api.request(
                 "PATCH",
                 repository + "/issues/comments/" + remote_id,
@@ -223,9 +325,15 @@ class GithubCommentPublisher:
                 document={"body": body},
                 idempotency_key=delivery_key,
             )
-            if response.status != 200 or _remote_identity(response.document) != remote_id:
+            updated_id = _remote_identity(response.document)
+            if (
+                response.status != 200
+                or updated_id != remote_id
+                or type(response.document) is not dict
+                or response.document.get("body") != body
+            ):
                 raise GitHubError("COMMENT_RECEIPT_INVALID")
-            return remote_id
+            return _SummaryWrite(remote_id, body, False, existing_body)
         if self._head(installation_id, repository_id, change_id) != expected_head:
             return None
         response = self._api.request(
@@ -236,23 +344,136 @@ class GithubCommentPublisher:
             idempotency_key=delivery_key,
         )
         remote_id = _remote_identity(response.document)
-        if response.status != 201 or remote_id is None:
+        if (
+            response.status != 201
+            or remote_id is None
+            or type(response.document) is not dict
+            or response.document.get("body") != body
+        ):
             raise GitHubError("COMMENT_RECEIPT_INVALID")
-        return remote_id
+        return _SummaryWrite(remote_id, body, True)
 
-    def _existing_inline(self, installation_id: str, repository: str, change_id: str) -> set[str]:
+    def _compensate_summary(
+        self,
+        installation_id: str,
+        repository: str,
+        write: _SummaryWrite,
+        delivery_key: str,
+    ) -> bool:
+        if not write.created_by_attempt and write.prior_body == write.body:
+            return True
+        path = repository + "/issues/comments/" + write.remote_id
+        try:
+            current = self._api.request("GET", path, installation_id=installation_id)
+        except GitHubError as error:
+            return error.code == "HTTP_404"
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            return False
+        if (
+            current.status != 200
+            or type(current.document) is not dict
+            or _remote_identity(current.document) != write.remote_id
+            or current.document.get("body") != write.body
+        ):
+            return False
+        if not write.created_by_attempt:
+            if write.prior_body is None:
+                return False
+            try:
+                response = self._api.request(
+                    "PATCH",
+                    path,
+                    installation_id=installation_id,
+                    document={"body": write.prior_body},
+                    idempotency_key=_summary_restore_idempotency_key(
+                        delivery_key, write.remote_id
+                    ),
+                )
+            except (KeyboardInterrupt, SystemExit, GeneratorExit):
+                raise
+            except Exception:
+                return False
+            return (
+                response.status == 200
+                and type(response.document) is dict
+                and _remote_identity(response.document) == write.remote_id
+                and response.document.get("body") == write.prior_body
+            )
+        try:
+            response = self._api.request(
+                "DELETE",
+                path,
+                installation_id=installation_id,
+            )
+        except GitHubError as error:
+            return error.code == "HTTP_404"
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            return False
+        return response.status == 204
+
+    def _compensate_inline(
+        self,
+        installation_id: str,
+        repository: str,
+        remote_ids: tuple[str, ...],
+    ) -> bool:
+        for remote_id in remote_ids:
+            if _REMOTE_ID.fullmatch(remote_id) is None:
+                return False
+            try:
+                response = self._api.request(
+                    "DELETE",
+                    repository + "/issues/comments/" + remote_id,
+                    installation_id=installation_id,
+                )
+            except GitHubError as error:
+                if error.code == "HTTP_404":
+                    continue
+                return False
+            except (KeyboardInterrupt, SystemExit, GeneratorExit):
+                raise
+            except Exception:
+                return False
+            if response.status != 204:
+                return False
+        return True
+
+    def _existing_inline(
+        self,
+        installation_id: str,
+        repository: str,
+        change_id: str,
+        expected_head: str,
+        annotations: tuple[GithubAnnotationProjection, ...],
+    ) -> set[str]:
         values = self._list(
             installation_id, repository + "/pulls/" + change_id + "/comments?per_page=100"
         )
+        expected_locations = {
+            (item.finding_id, item.path, item.start_line) for item in annotations
+        }
         result: set[str] = set()
         for item in values:
             body = item.get("body")
-            if type(body) is str:
-                result.update(
-                    re.findall(
-                        r"<!-- securecode-ai-inline:([A-Za-z0-9][A-Za-z0-9._:-]{0,127}) -->", body
-                    )
-                )
+            path = item.get("path")
+            line = item.get("line")
+            if (
+                item.get("commit_id") != expected_head
+                or item.get("side") != "RIGHT"
+                or type(body) is not str
+                or type(path) is not str
+                or type(line) is not int
+            ):
+                continue
+            for finding_id in re.findall(
+                r"<!-- securecode-ai-inline:([A-Za-z0-9][A-Za-z0-9._:-]{0,127}) -->", body
+            ):
+                if (finding_id, path, line) in expected_locations:
+                    result.add(finding_id)
         return result
 
     def _list(self, installation_id: str, path: str) -> list[dict[str, object]]:
@@ -286,6 +507,11 @@ def _inline_idempotency_key(delivery_key: str, finding_id: str) -> str:
     return "inline-" + hashlib.sha256(material).hexdigest()
 
 
+def _summary_restore_idempotency_key(delivery_key: str, remote_id: str) -> str:
+    material = (delivery_key + "\x00" + remote_id).encode("ascii")
+    return "summary-restore-" + hashlib.sha256(material).hexdigest()
+
+
 def _remote_identity(document: object) -> str | None:
     if type(document) is not dict:
         return None
@@ -309,7 +535,12 @@ def _verified_annotations(
     if (
         type(publication) is not SCMRunPublicationReceipt
         or publication.disposition
-        not in {PublicationDisposition.AUTHORIZED, PublicationDisposition.SUPERSEDED}
+        not in {
+            PublicationDisposition.AUTHORIZED,
+            PublicationDisposition.COMPLETED,
+            PublicationDisposition.DUPLICATE,
+            PublicationDisposition.SUPERSEDED,
+        }
         or publication.head_sha != expected_head
         or type(receipt.annotations) is not tuple
         or type(receipt.suppressions) is not tuple

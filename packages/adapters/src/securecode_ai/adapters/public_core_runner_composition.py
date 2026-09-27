@@ -18,7 +18,10 @@ from securecode_ai.adapters.endpoint import EndpointAuthorizationIssuer, Resolve
 from securecode_ai.adapters.model import AuthorizedProviderHarness, CredentialSupplier
 from securecode_ai.adapters.openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from securecode_ai.adapters.openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
-from securecode_ai.adapters.remote_provider_budget import RemoteProviderBudgetPort
+from securecode_ai.adapters.remote_provider_budget import (
+    RemoteProviderBudgetPort,
+    RemoteProviderCostReceipt,
+)
 from securecode_ai.adapters.remote_provider_budget_config import (
     build_remote_provider_budget_from_environment,
 )
@@ -178,6 +181,7 @@ def _executor(
     resolver: Resolver | None = None,
     credential_supplier: CredentialSupplier | None = None,
     spend_budget: RemoteProviderBudgetPort | None = None,
+    cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
     connector_factory: Callable[..., object] = OpenAICompatibleLocalHttpConnector,
 ) -> AuthorizedLocalModelExecutor:
     registry = ProviderProfileRegistry((inputs.profile,))
@@ -221,6 +225,7 @@ def _executor(
         connector=cast(ProviderConnector, connector),
         preflight=lambda request: _preflight(inputs, request),
         credential_supplier=credential_supplier,
+        cost_observer=cost_observer,
     )
 
 

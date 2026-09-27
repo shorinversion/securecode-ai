@@ -15,10 +15,19 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO, Final
 
-from .data_lifecycle_models import LifecycleConflict
+from .artifact_upload import (
+    ArtifactUploadConflict,
+    _parse_receipt,
+    _unique_object_pairs,
+)
+from .artifact_tenant_namespace import (
+    ArtifactTenantNamespaceError,
+    artifact_tenant_path_component,
+)
+from .data_lifecycle_models import LifecycleConflict, require_identifier, require_sha256
 from .filesystem_paths import lexical_absolute_path
+from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
 
-_SAFE_TENANT: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _REPARSE_POINT: Final = 0x400
 _MAX_RECEIPT_BYTES: Final = 65_536
@@ -72,6 +81,9 @@ class _DeletionBinding:
     repository_id: str
     content_sha256: str
     execution_identity_hash: str
+    approved: bool
+    executed: bool
+    legal_hold: bool
 
 
 class LocalArtifactStorageExecutor:
@@ -89,6 +101,8 @@ class LocalArtifactStorageExecutor:
         artifact_root: Path,
         *,
         clock: Callable[[], datetime] | None = None,
+        residency_guard: ResidencyGuard | None = None,
+        residency_region: str | None = None,
     ) -> None:
         if not isinstance(connection, sqlite3.Connection):
             raise TypeError("connection must be a sqlite3 connection")
@@ -97,26 +111,57 @@ class LocalArtifactStorageExecutor:
         self._db = connection
         self._root = lexical_absolute_path(artifact_root)
         self._clock = clock or (lambda: datetime.now(UTC))
+        if (residency_guard is None) != (residency_region is None):
+            raise TypeError("storage residency configuration is incomplete")
+        if residency_guard is not None and not callable(
+            getattr(residency_guard, "require_region", None)
+        ):
+            raise TypeError("storage residency guard is invalid")
+        self._residency_guard = residency_guard
+        self._residency_region = residency_region
         _require_directory_chain(self._root)
         self._markers = self._root / ".tombstones"
         _create_private_directory(self._markers)
         self._initialize_schema()
 
-    def execute_tombstone(self, *, tenant_id: str, content_sha256: str) -> None:
+    def execute_tombstone(
+        self,
+        *,
+        tenant_id: str,
+        content_sha256: str,
+        deletion_id: str,
+        repository_id: str,
+        identity_hash: str,
+    ) -> None:
         _require_tenant(tenant_id)
         _require_sha256(content_sha256)
-        binding = self._binding(tenant_id, content_sha256)
+        require_identifier(deletion_id, "deletion_id")
+        require_identifier(repository_id, "repository_id")
+        require_sha256(identity_hash, "identity_hash")
+        self._require_residency(tenant_id)
+        binding = self._binding(
+            tenant_id=tenant_id,
+            content_sha256=content_sha256,
+            deletion_id=deletion_id,
+            repository_id=repository_id,
+            identity_hash=identity_hash,
+        )
         marker_path = self._marker_path(tenant_id, content_sha256)
         stored = self._stored_tombstone(tenant_id, content_sha256)
         marker = self._read_marker(marker_path) if marker_path.exists() else None
 
         if stored is not None:
             self._require_exact(stored, binding)
+            if not binding.approved or not binding.executed or binding.legal_hold:
+                raise LifecycleConflict("artifact deletion is not in a completed state")
             if marker is None:
                 raise LifecycleConflict("artifact tombstone marker is unavailable")
             self._require_exact(marker, binding)
             self._require_object_absent(tenant_id, content_sha256)
             return
+
+        if not binding.approved or binding.executed or binding.legal_hold:
+            raise LifecycleConflict("artifact deletion is not approved for execution")
 
         target = self._object_path(tenant_id, content_sha256)
         if marker is None:
@@ -130,6 +175,28 @@ class LocalArtifactStorageExecutor:
         self._remove_object(target, marker_exists=True)
         self._insert_tombstone(marker)
 
+    def _require_residency(self, tenant_id: str) -> None:
+        guard = self._residency_guard
+        if guard is None:
+            return
+        region = self._residency_region
+        if region is None:
+            raise LifecycleConflict("storage residency configuration is incomplete")
+        try:
+            decision = guard.require_region(tenant_id=tenant_id, region=region)
+        except ResidencyConflict as error:
+            raise LifecycleConflict("storage residency policy denied") from error
+        except Exception as error:
+            raise LifecycleConflict("storage residency check failed") from error
+        if (
+            type(decision) is not ResidencyDecision
+            or decision.tenant_id != tenant_id
+            or decision.source_region != region
+            or decision.destination_region != region
+            or not decision.same_region
+        ):
+            raise LifecycleConflict("storage residency decision is invalid")
+
     def _initialize_schema(self) -> None:
         try:
             for statement in STORAGE_TOMBSTONE_SCHEMA_STATEMENTS:
@@ -139,25 +206,55 @@ class LocalArtifactStorageExecutor:
             self._db.rollback()
             raise
 
-    def _binding(self, tenant_id: str, content_sha256: str) -> _DeletionBinding:
+    def _binding(
+        self,
+        *,
+        tenant_id: str,
+        content_sha256: str,
+        deletion_id: str,
+        repository_id: str,
+        identity_hash: str,
+    ) -> _DeletionBinding:
         rows = self._db.execute(
             """SELECT d.deletion_id, d.tenant_id, d.content_sha256,
-                      d.data_class, d.identity_hash, s.repository_id
+                      d.data_class, d.identity_hash, s.repository_id,
+                      d.approved_by, d.approved_at, d.executed, d.legal_hold
                FROM lifecycle_deletions AS d
                JOIN lifecycle_repository_scopes AS s
                  ON s.deletion_id=d.deletion_id AND s.tenant_id=d.tenant_id
-               WHERE d.tenant_id=? AND d.content_sha256=?""",
-            (tenant_id, content_sha256),
+               WHERE d.tenant_id=? AND d.deletion_id=?
+                 AND d.content_sha256=? AND d.identity_hash=?
+                 AND s.repository_id=?""",
+            (tenant_id, deletion_id, content_sha256, identity_hash, repository_id),
         ).fetchall()
         if len(rows) != 1 or str(rows[0]["data_class"]) != "artifact":
             raise LifecycleConflict("artifact deletion binding is unavailable")
         row = rows[0]
+        approved_by = row["approved_by"]
+        approved_at = row["approved_at"]
+        executed = row["executed"]
+        legal_hold = row["legal_hold"]
+        if (
+            (approved_by is None) != (approved_at is None)
+            or (approved_by is not None and type(approved_by) is not str)
+            or (approved_at is not None and type(approved_at) is not str)
+            or type(executed) is not int
+            or executed not in (0, 1)
+            or type(legal_hold) is not int
+            or legal_hold not in (0, 1)
+        ):
+            raise LifecycleConflict("artifact deletion state is invalid")
+        if approved_by is not None:
+            require_identifier(approved_by, "approved_by")
         return _DeletionBinding(
             deletion_id=str(row["deletion_id"]),
             tenant_id=str(row["tenant_id"]),
             repository_id=str(row["repository_id"]),
             content_sha256=str(row["content_sha256"]),
             execution_identity_hash=str(row["identity_hash"]),
+            approved=approved_by is not None,
+            executed=executed == 1,
+            legal_hold=legal_hold == 1,
         )
 
     def _validated_receipt(
@@ -175,8 +272,10 @@ class LocalArtifactStorageExecutor:
         _require_regular_file(receipt_path)
         receipt_bytes = _read_bounded(receipt_path, _MAX_RECEIPT_BYTES)
         try:
-            value = json.loads(receipt_bytes.decode("ascii"))
-        except (UnicodeError, json.JSONDecodeError):
+            value = json.loads(
+                receipt_bytes.decode("ascii"), object_pairs_hook=_unique_object_pairs
+            )
+        except (UnicodeError, json.JSONDecodeError, ValueError, RecursionError):
             raise LifecycleConflict("artifact receipt is invalid") from None
         if not isinstance(value, Mapping):
             raise LifecycleConflict("artifact receipt is invalid")
@@ -187,7 +286,11 @@ class LocalArtifactStorageExecutor:
         digest, size = _digest_file(payload)
         if digest != expected_hash or size != expected_size:
             raise LifecycleConflict("artifact payload integrity check failed")
-        candidates = [value]
+        try:
+            primary = _parse_receipt(value)
+        except (ArtifactUploadConflict, TypeError, ValueError):
+            raise LifecycleConflict("artifact receipt is invalid") from None
+        candidates: list[Mapping[str, object]] = [primary.document()]
         if "authorizations" in entries:
             authorization_root = target / "authorizations"
             _require_plain_directory(authorization_root)
@@ -203,19 +306,27 @@ class LocalArtifactStorageExecutor:
                 _require_regular_file(receipt_path)
                 try:
                     candidate = json.loads(
-                        _read_bounded(receipt_path, _MAX_RECEIPT_BYTES).decode("ascii")
+                        _read_bounded(receipt_path, _MAX_RECEIPT_BYTES).decode("ascii"),
+                        object_pairs_hook=_unique_object_pairs,
                     )
-                except (UnicodeError, json.JSONDecodeError):
+                except (UnicodeError, json.JSONDecodeError, ValueError, RecursionError):
                     raise LifecycleConflict("artifact authorization receipt is invalid") from None
+                if not isinstance(candidate, Mapping):
+                    raise LifecycleConflict("artifact authorization receipt scope conflicts")
+                try:
+                    parsed_candidate = _parse_receipt(candidate)
+                except (ArtifactUploadConflict, TypeError, ValueError):
+                    raise LifecycleConflict(
+                        "artifact authorization receipt is invalid"
+                    ) from None
                 if (
-                    not isinstance(candidate, Mapping)
-                    or candidate.get("authorization_id") != authorization_directory.name
-                    or candidate.get("tenant_id") != binding.tenant_id
-                    or candidate.get("content_sha256") != binding.content_sha256
-                    or candidate.get("size_bytes") != size
+                    parsed_candidate.authorization_id != authorization_directory.name
+                    or parsed_candidate.tenant_id != binding.tenant_id
+                    or parsed_candidate.content_sha256 != binding.content_sha256
+                    or parsed_candidate.size_bytes != size
                 ):
                     raise LifecycleConflict("artifact authorization receipt scope conflicts")
-                candidates.append(candidate)
+                candidates.append(parsed_candidate.document())
         selected = next(
             (
                 receipt
@@ -253,13 +364,34 @@ class LocalArtifactStorageExecutor:
             raise LifecycleConflict("artifact receipt scope conflicts")
         row = self._db.execute(
             """SELECT tenant_id, repository_id, content_sha256,
-                      execution_identity_hash
+                      execution_identity_hash, worker_id, run_id, content_id,
+                      size_bytes, data_class, purpose, signer_key_id,
+                      receipt_signature, issued_at, expires_at
                FROM artifact_upload_authorizations
                WHERE tenant_id=? AND authorization_id=?""",
             (binding.tenant_id, authorization_id),
         ).fetchone()
         if row is None or tuple(str(row[index]) for index in range(4)) != expected:
             raise LifecycleConflict("artifact authorization scope conflicts")
+        if any(
+            receipt.get(name) != row[name]
+            for name in (
+                "worker_id",
+                "repository_id",
+                "run_id",
+                "execution_identity_hash",
+                "content_id",
+                "content_sha256",
+                "size_bytes",
+                "data_class",
+                "purpose",
+                "signer_key_id",
+                "authorization_signature",
+            )
+        ) or receipt.get("authorized_at") != row["issued_at"] or receipt.get(
+            "authorization_expires_at"
+        ) != row["expires_at"]:
+            raise LifecycleConflict("artifact authorization receipt conflicts")
         foreign = self._db.execute(
             """SELECT 1 FROM artifact_upload_authorizations
                WHERE tenant_id=? AND content_sha256=? AND repository_id<>?
@@ -336,7 +468,7 @@ class LocalArtifactStorageExecutor:
         )
 
     def _marker_path(self, tenant_id: str, content_sha256: str) -> Path:
-        tenant_dir = self._markers / tenant_id
+        tenant_dir = self._markers / _tenant_component(tenant_id)
         _create_private_directory(tenant_dir)
         return tenant_dir / f"{content_sha256}.json"
 
@@ -367,6 +499,7 @@ class LocalArtifactStorageExecutor:
     def _write_marker(self, path: Path, value: ArtifactTombstone) -> None:
         if path.exists():
             self._require_exact(self._read_marker(path), _binding_from(value))
+            _sync_directory(path.parent)
             return
         encoded = _canonical(value.document()).encode("ascii")
         descriptor, temporary_name = tempfile.mkstemp(
@@ -385,6 +518,7 @@ class LocalArtifactStorageExecutor:
             except FileExistsError:
                 self._require_exact(self._read_marker(path), _binding_from(value))
             _require_regular_file(path)
+            _sync_directory(path.parent)
         finally:
             temporary.unlink(missing_ok=True)
 
@@ -408,6 +542,7 @@ class LocalArtifactStorageExecutor:
                 path.unlink()
             except OSError as error:
                 raise LifecycleConflict("artifact byte removal failed") from error
+        _sync_directory(target)
         authorizations = entries.get("authorizations")
         if authorizations is not None:
             _require_plain_directory(authorizations)
@@ -429,6 +564,7 @@ class LocalArtifactStorageExecutor:
                         raise LifecycleConflict(
                             "artifact authorization receipt removal failed"
                         ) from error
+                    _sync_directory(authorization_directory)
                 try:
                     authorization_directory.rmdir()
                 except OSError as error:
@@ -438,11 +574,15 @@ class LocalArtifactStorageExecutor:
             try:
                 authorizations.rmdir()
             except OSError as error:
-                raise LifecycleConflict("artifact authorization directory removal failed") from error
+                raise LifecycleConflict(
+                    "artifact authorization directory removal failed"
+                ) from error
+            _sync_directory(target)
         try:
             target.rmdir()
         except OSError as error:
             raise LifecycleConflict("artifact object removal failed") from error
+        _sync_directory(target.parent)
 
     def _require_object_absent(self, tenant_id: str, content_sha256: str) -> None:
         target = self._object_path(tenant_id, content_sha256)
@@ -450,11 +590,15 @@ class LocalArtifactStorageExecutor:
             raise LifecycleConflict("tombstoned artifact bytes still exist")
 
     def _object_path(self, tenant_id: str, content_sha256: str) -> Path:
-        target = self._root / tenant_id / content_sha256[:2] / content_sha256
+        target = self._root / _tenant_component(tenant_id) / content_sha256[:2] / content_sha256
         try:
             target.relative_to(self._root)
         except ValueError:
             raise LifecycleConflict("artifact object path is unsafe") from None
+        try:
+            _require_directory_chain(target.parent)
+        except (OSError, ValueError) as error:
+            raise LifecycleConflict("artifact object path is unsafe") from error
         return target
 
     @staticmethod
@@ -485,6 +629,9 @@ def _binding_from(value: ArtifactTombstone) -> _DeletionBinding:
         repository_id=value.repository_id,
         content_sha256=value.content_sha256,
         execution_identity_hash=value.execution_identity_hash,
+        approved=True,
+        executed=False,
+        legal_hold=False,
     )
 
 
@@ -527,7 +674,20 @@ def _create_private_directory(path: Path) -> None:
     except FileNotFoundError:
         _create_private_directory(path.parent)
         path.mkdir(mode=0o700, exist_ok=True)
+        _sync_directory(path.parent)
+    else:
+        _sync_directory(path.parent)
     _require_plain_directory(path, value_error=True)
+
+
+def _sync_directory(path: Path) -> None:
+    if os.name != "posix":
+        return
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _require_plain_directory(path: Path, *, value_error: bool = False) -> None:
@@ -606,9 +766,17 @@ def _digest_file(path: Path) -> tuple[str, int]:
 
 
 def _require_tenant(value: object) -> str:
-    if type(value) is not str or _SAFE_TENANT.fullmatch(value) is None:
+    if type(value) is not str:
         raise LifecycleConflict("tenant_id is invalid")
+    _tenant_component(value)
     return value
+
+
+def _tenant_component(tenant_id: str) -> str:
+    try:
+        return artifact_tenant_path_component(tenant_id)
+    except ArtifactTenantNamespaceError:
+        raise LifecycleConflict("tenant_id is invalid") from None
 
 
 def _require_sha256(value: object) -> str:

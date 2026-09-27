@@ -87,6 +87,7 @@ class GitlabCIAdmissionRequest:
     target_project_id: str
     contribution_trust: GitlabContributionTrust
     execution_identity: RunExecutionIdentity
+    delivery_sha256: str | None = None
 
     def __post_init__(self) -> None:
         identifiers = (
@@ -103,6 +104,13 @@ class GitlabCIAdmissionRequest:
             or type(self.execution_identity) is not RunExecutionIdentity
             or self.project_id != self.target_project_id
             or self.execution_identity.repository_revision.repository_id != self.target_project_id
+            or (
+                self.delivery_sha256 is not None
+                and (
+                    type(self.delivery_sha256) is not str
+                    or _SHA256.fullmatch(self.delivery_sha256) is None
+                )
+            )
         ):
             raise GitlabCIError(GitlabCIErrorCode.INVALID_REQUEST)
         expected_trust = (
@@ -228,6 +236,7 @@ class GitlabCIAdapter:
                     installation_id=(f"gitlab:{request.project_id}:mr:{request.merge_request_iid}"),
                     execution_identity=identity,
                     authorized_head_sha=revision.head_sha,
+                    delivery_sha256=request.delivery_sha256,
                 ),
                 current_head_sha=current_head_sha,
             )

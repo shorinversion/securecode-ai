@@ -51,7 +51,7 @@ def _invoke(
             tool_calls=invocation.tool_calls,
             elapsed_ms=invocation.elapsed_ms,
         )
-    except (AttributeError, TypeError, ValueError):
+    except Exception:
         return AuditorInvocation(
             response=AuditorResponse(
                 model_call_status=ModelCallStatus.PROVIDER_ERROR,
@@ -181,12 +181,24 @@ def _same_candidate(left: EvidencePackage, right: EvidencePackage) -> bool:
         and left.candidate_version == right.candidate_version
         and left.tenant_id == right.tenant_id
         and left.head_sha == right.head_sha
+        and left.graph_id == right.graph_id
+        and left.graph_sha256 == right.graph_sha256
     )
 
 
-def _is_strict_evidence_superset(selected_evidence_ids: set[str], package: EvidencePackage) -> bool:
-    next_ids = {item.evidence_id for item in package.selected}
-    return selected_evidence_ids < next_ids
+def _is_strict_evidence_superset(
+    previous: EvidencePackage, package: EvidencePackage
+) -> bool:
+    """Require additive context without replacing an existing evidence binding."""
+
+    previous_by_id = {item.evidence_id: item for item in previous.selected}
+    next_by_id = {item.evidence_id: item for item in package.selected}
+    previous_ids = set(previous_by_id)
+    next_ids = set(next_by_id)
+    return previous_ids < next_ids and all(
+        next_by_id[evidence_id] == evidence
+        for evidence_id, evidence in previous_by_id.items()
+    )
 
 
 def _validated_package(package: EvidencePackage) -> EvidencePackage:

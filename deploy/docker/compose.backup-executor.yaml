@@ -1,0 +1,13 @@
+services:
+  securecode-server:
+    environment:
+      SECURECODE_BACKUP_EXECUTOR_EXECUTABLE: /run/securecode/backup-executor
+      SECURECODE_BACKUP_EXECUTOR_EXECUTABLE_SHA256: ${SECURECODE_BACKUP_EXECUTOR_EXECUTABLE_SHA256:?Set the approved backup executor SHA256}
+      SECURECODE_BACKUP_EXECUTOR_TIMEOUT_SECONDS: ${SECURECODE_BACKUP_EXECUTOR_TIMEOUT_SECONDS:-30}
+    volumes:
+      - type: bind
+        source: ${SECURECODE_BACKUP_EXECUTOR_SOURCE:?Set the approved backup executor path}
+        target: /run/securecode/backup-executor
+        read_only: true
+        bind:
+          create_host_path: false

@@ -78,12 +78,18 @@ class FeedbackService:
 
 
 def _safe_rationale(value: object) -> bool:
-    return (
+    if not (
         type(value) is str
         and 1 <= len(value) <= 1024
         and not value.isspace()
         and "\x00" not in value
-    )
+    ):
+        return False
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 __all__ = ["FeedbackService"]

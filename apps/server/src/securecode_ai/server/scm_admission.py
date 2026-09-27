@@ -112,8 +112,8 @@ class IdentityBindingWebhookAdapter:
         )
         if receipt.provider == "github":
             base_sha = receipt.base_sha
-        elif receipt.provider == "gitlab" and receipt.base_sha is None:
-            base_sha = None
+        elif receipt.provider == "gitlab":
+            base_sha = receipt.base_sha
         else:
             raise SCMWebhookError(SCMWebhookErrorCode.INVALID_CONFIGURATION)
         identity = self._pins.build_identity(
@@ -245,6 +245,8 @@ class SCMAdmissionHandler:
             _require_request_binding(request, receipt, identity)
             if receipt.admission.lifecycle is SCMRunLifecycle.SUPERSEDED:
                 return ServiceResponse(202, receipt.as_document())
+            if self._publications is not None and receipt.change_id is None:
+                raise SCMWebhookError(SCMWebhookErrorCode.PAYLOAD_INVALID)
 
             revision = identity.repository_revision
             for superseded_run_id in receipt.admission.superseded_run_ids:
@@ -274,15 +276,7 @@ class SCMAdmissionHandler:
                 },
             )
         except Exception:
-            return ServiceResponse(
-                503,
-                {
-                    "error": {
-                        "code": AdmissionErrorCode.SERVICE_UNAVAILABLE.value,
-                        "message": safe_message(AdmissionErrorCode.SERVICE_UNAVAILABLE),
-                    }
-                },
-            )
+            raise ServiceUnavailableError from None
 
     def _bind_publication(
         self,

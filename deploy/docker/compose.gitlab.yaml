@@ -1,0 +1,19 @@
+services:
+  securecode-server:
+    environment:
+      SECURECODE_GITLAB_API_URL: ${SECURECODE_GITLAB_API_URL:?Set the GitLab API URL}
+      SECURECODE_GITLAB_TOKEN_FILE: /run/secrets/securecode_gitlab_token
+      SECURECODE_GITLAB_WEBHOOK_SECRET_FILE: /run/secrets/securecode_gitlab_webhook_secret
+      SECURECODE_SCM_PINS_FILE: /run/secrets/securecode_scm_pins
+    secrets:
+      - securecode_gitlab_token
+      - securecode_gitlab_webhook_secret
+      - securecode_scm_pins
+
+secrets:
+  securecode_gitlab_token:
+    file: ${SECURECODE_GITLAB_TOKEN_SOURCE:?Set the GitLab access token file}
+  securecode_gitlab_webhook_secret:
+    file: ${SECURECODE_GITLAB_WEBHOOK_SECRET_SOURCE:?Set the GitLab webhook secret file}
+  securecode_scm_pins:
+    file: ${SECURECODE_SCM_PINS_SOURCE:?Set the SCM execution pins file}

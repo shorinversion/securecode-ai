@@ -19,6 +19,7 @@ from securecode_ai.contracts import (
 from securecode_ai.core.regression import RegressionResult
 from securecode_ai.core.sandbox import SandboxProfile
 from securecode_ai.core.validation import (
+    ValidationLadderResult,
     ValidationLadderRequest,
     ValidationStage,
     run_validation_ladder,
@@ -124,7 +125,11 @@ def validate_local_patch(
     patch: StoredPatchArtifact,
     port: LocalRepairValidationPort,
     validated_sink: Callable[[ValidationResult], None] | None = None,
+    ladder_sink: Callable[[ValidationLadderResult], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
+    on_cancel: Callable[[Callable[[], None]], None] | None = None,
 ) -> dict[str, object]:
+    _check_cancelled(cancelled)
     checkout, objects, git, head = _exact_checkout(target, host)
     candidate = patch.architect_result.patch_candidate
     expected_repository_id = "local-" + hashlib.sha256(str(checkout).encode()).hexdigest()[:32]
@@ -146,6 +151,11 @@ def validate_local_patch(
         )
         if type(prepared) is not PreparedLocalOciValidation:
             raise LocalRepairValidationError("VALIDATION_PREPARATION_INVALID")
+        if on_cancel is not None:
+            cancel_runtime = getattr(prepared.runtime, "cancel", None)
+            if callable(cancel_runtime):
+                on_cancel(cancel_runtime)
+        _check_cancelled(cancelled)
         if (
             prepared.fixed_head_sha == head
             or prepared.fixed_regression.descriptor_id != patch.regression.descriptor_id
@@ -176,6 +186,7 @@ def validate_local_patch(
             ),
             driver,
         )
+        _check_cancelled(cancelled)
     except Exception as error:
         failure = error
     finally:
@@ -196,6 +207,8 @@ def validate_local_patch(
         raise LocalRepairValidationError("VALIDATION_EXECUTION_FAILED") from None
     if prepared is None or result is None:
         raise LocalRepairValidationError("VALIDATION_EXECUTION_FAILED")
+    if ladder_sink is not None:
+        ladder_sink(result)
     validation = result.validation
     authoritative_gates = {
         receipt.stage: receipt.gate.gate_outcome
@@ -286,6 +299,19 @@ def _exact_checkout(target: str, host: LocalProductHost) -> tuple[Path, Path, Pa
     except Exception:
         raise LocalRepairValidationError("VALIDATION_GIT_UNAVAILABLE") from None
     return checkout, objects, git, head
+
+
+def _check_cancelled(cancelled: Callable[[], bool] | None) -> None:
+    """Convert cancellation callback failures into a fail-closed validation result."""
+
+    if cancelled is None:
+        return
+    try:
+        requested = cancelled()
+    except Exception:
+        raise LocalRepairValidationError("VALIDATION_CANCELLATION_UNAVAILABLE") from None
+    if requested:
+        raise LocalRepairValidationError("VALIDATION_CANCELLED")
 
 
 def _read_head(checkout: Path, git: Path) -> str:

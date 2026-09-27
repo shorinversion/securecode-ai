@@ -24,10 +24,12 @@ from .native_sources import build_native_source_catalogue
 from .product_execution_stages import (
     ProductDeterministicExecution,
     ProductSecretStageResult,
+    _program_graph_language_bindings,
     execute_dependency_stage,
     execute_secret_stage,
 )
 from .product_scanner import (
+    ProductDeterministicScanResult,
     scan_product_sources,
 )
 from .secret_detection import SecretFingerprintKey
@@ -77,13 +79,13 @@ def execute_deterministic_children(
     )
     discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
     has_python = any(entry.language is LanguageId.PYTHON for entry in discovery.languages)
-    has_source = bool(discovery.languages)
+    has_secret_scan_input = bool(catalogue.snapshot.files)
     has_manifest = bool(discovery.dependency_manifests)
     selected = tuple(
         stage
         for stage, applicable in (
             ("python_parse_symbols", has_python),
-            ("secret_scan", has_source),
+            ("secret_scan", has_secret_scan_input),
             ("dependency_scan", has_manifest),
             ("cwe89_scan", has_python),
         )
@@ -97,8 +99,36 @@ def execute_deterministic_children(
             for index in catalogue.indexes
             if index.path.endswith((".py", ".pyi"))
         )
+    try:
+        scan = scan_product_sources(
+            catalogue,
+            tenant_id=tenant_id,
+            repository_id=repository_id,
+        )
+    except Exception:
+        # Preserve the independent model-native lane when the deterministic
+        # worker fails before returning a typed result.  An empty graph is an
+        # explicit failed child, never a successful zero finding observation.
+        scan = ProductDeterministicScanResult(
+            graph=EvidenceGraph(
+                graph_id="product-deterministic-unavailable",
+                tenant_id=tenant_id,
+                head_sha=head_sha,
+                candidates=(),
+                evidence=(),
+                edges=(),
+            ),
+            receipts=(),
+            is_complete=False,
+            source_aliases=(),
+            source_bindings=(),
+            program_graph=None,
+            repository_id=repository_id,
+        )
+    if not scan.is_complete:
+        obstacles.append("PRODUCT_STATIC_EXECUTION_FAILED")
     secrets = None
-    if has_source:
+    if has_secret_scan_input:
         try:
             secrets = secret_stage(
                 reader=reader,
@@ -106,7 +136,14 @@ def execute_deterministic_children(
                 repository_id=repository_id,
                 fingerprint_key=fingerprint_key,
             )
-            outputs["secret_scan"] = (secrets.output_sha256,)
+            outputs["secret_scan"] = (
+                secrets.output_sha256,
+                *(
+                    _program_graph_language_bindings(catalogue, scan.program_graph)
+                    if scan.is_complete and scan.program_graph is not None
+                    else ()
+                ),
+            )
         except Exception:
             obstacles.append("PRODUCT_SECRET_EXECUTION_FAILED")
     dependencies = None
@@ -118,11 +155,11 @@ def execute_deterministic_children(
             outputs["dependency_scan"] = (dependencies.output_sha256,)
         except Exception:
             obstacles.append("PRODUCT_DEPENDENCY_EXECUTION_FAILED")
-    scan = scan_product_sources(catalogue, tenant_id=tenant_id)
-    if has_python and scan.is_complete:
-        outputs["cwe89_scan"] = (scan.graph.graph_sha256,)
-    if not scan.is_complete:
-        obstacles.append("PRODUCT_STATIC_EXECUTION_FAILED")
+    if has_python and scan.is_complete and scan.program_graph is not None:
+        outputs["cwe89_scan"] = (
+            scan.graph.graph_sha256,
+            scan.program_graph.graph_sha256,
+        )
     return ProductDeterministicExecution(
         catalogue,
         repository_id,

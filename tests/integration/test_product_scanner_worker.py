@@ -7,7 +7,7 @@ from securecode_ai.adapters.product_scanner import (
     ProductDeterministicScanResult,
     scan_product_sources,
 )
-from securecode_ai.contracts import ProducerRef
+from securecode_ai.contracts import EvidenceKind, ProducerRef
 from securecode_ai.core.investigation import AuditorInvestigationReceipt
 from securecode_ai.core.scanning import ScannerIsolationMode, ScannerRunStatus
 
@@ -65,7 +65,18 @@ def test_actual_worker_sql_facts_are_normalized_with_source_evidence(
     reader, head, _ = repository(path, source)
     result = scan_product_sources(build(reader, head), tenant_id="tenant-a")
     assert result.is_complete
-    assert len(result.graph.candidates) == len(result.graph.evidence) == 1
+    assert len(result.graph.candidates) == 1
+    assert (
+        sum(
+            evidence.evidence_kind is EvidenceKind.SCANNER_SIGNAL
+            for evidence in result.graph.evidence
+        )
+        == 1
+    )
+    assert any(
+        evidence.evidence_kind is EvidenceKind.DATA_FLOW for evidence in result.graph.evidence
+    )
+    assert len(result.graph.evidence) > len(result.graph.candidates)
     assert result.receipts[0].signals[0].rule_id == "cwe-89-sql-interpolation"
 
 
@@ -90,7 +101,13 @@ def test_partial_scanner_status_requires_indeterminate_and_keeps_native_candidat
             evidence=(),
             edges=(),
         )
-        return ProductDeterministicScanResult(graph, (), False, ())
+        return ProductDeterministicScanResult(
+            graph,
+            (),
+            False,
+            (),
+            repository_id=catalogue.indexes[0].repository_id,
+        )
 
     result, endpoint, observed = _flow(monkeypatch, count=2, scanner=incomplete)
     assert isinstance(result, ProductCandidateFlow)
@@ -156,5 +173,6 @@ def test_actual_worker_candidates_receive_core_auditor_with_guarded_source_reads
     auditor_endpoint = observed["auditor_endpoint"]
     auditor_tools = observed["auditor_tools"]
     assert auditor_endpoint is not None and auditor_tools is not None
-    assert len(auditor_endpoint.requests) == auditor_tools.calls_used == 2
+    assert len(auditor_endpoint.requests) == 2
+    assert auditor_tools.calls_used == 6
     assert result.required_terminal_outcome is None  # No final product PASS is authorized here.

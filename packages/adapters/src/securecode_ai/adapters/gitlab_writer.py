@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -17,6 +18,7 @@ from .gitlab_summary import GitlabSummaryProjection
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _COMMIT_SHA: Final = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _EXTERNAL_ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 _HASH_DOMAIN: Final = b"securecode-ai/gitlab-writer/v1\x00"
 
@@ -38,6 +40,7 @@ class GitlabWriteErrorCode(StrEnum):
     INVALID_REQUEST = "INVALID_REQUEST"
     CONFLICT = "CONFLICT"
     HEAD_UNAVAILABLE = "HEAD_UNAVAILABLE"
+    RECEIPT_UNAVAILABLE = "RECEIPT_UNAVAILABLE"
 
 
 class GitlabWriteError(ValueError):
@@ -120,15 +123,46 @@ TrustedHeadResolver = Callable[[str, str], str]
 class GitlabPublicationWriter:
     """Perform GitLab writes with a last-moment current-head comparison."""
 
-    __slots__ = ("_api", "_head_resolver", "_lock", "_receipts")
+    __slots__ = ("_api", "_connection", "_head_resolver", "_lock", "_receipts")
 
-    def __init__(self, *, api: object, head_resolver: object) -> None:
-        if not _is_api(api) or not callable(head_resolver):
+    def __init__(
+        self,
+        *,
+        api: object,
+        head_resolver: object,
+        connection: sqlite3.Connection | None = None,
+    ) -> None:
+        if (
+            not _is_api(api)
+            or not callable(head_resolver)
+            or (connection is not None and not isinstance(connection, sqlite3.Connection))
+        ):
             raise GitlabWriteError(GitlabWriteErrorCode.INVALID_REQUEST)
         self._api = cast(GitlabAuthenticatedAPI, api)
+        self._connection = connection
         self._head_resolver = cast(TrustedHeadResolver, head_resolver)
         self._lock = RLock()
-        self._receipts: dict[str, GitlabWriteReceipt] = {}
+        self._receipts: dict[tuple[str, str, str], GitlabWriteReceipt] = {}
+        if self._connection is not None:
+            try:
+                self._connection.execute(
+                    """CREATE TABLE IF NOT EXISTS gitlab_publication_receipts (
+                        project_id TEXT NOT NULL,
+                        merge_request_iid TEXT NOT NULL,
+                        idempotency_key TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        payload_sha256 TEXT NOT NULL,
+                        expected_head_sha TEXT NOT NULL,
+                        observed_head_sha TEXT,
+                        status TEXT NOT NULL,
+                        external_id TEXT,
+                        reason_code TEXT,
+                        PRIMARY KEY (project_id, merge_request_iid, idempotency_key)
+                    )"""
+                )
+                self._connection.commit()
+            except sqlite3.Error:
+                raise GitlabWriteError(GitlabWriteErrorCode.RECEIPT_UNAVAILABLE) from None
 
     def publish_summary(
         self,
@@ -217,6 +251,7 @@ class GitlabPublicationWriter:
                 "head_sha": projection.head_sha,
                 "kind": GitlabWriteKind.EXTERNAL_STATUS.value,
                 "merge_authority": projection.merge_authority,
+                "safe_summary": projection.safe_summary,
                 "status": projection.status.value,
             }
         )
@@ -244,7 +279,8 @@ class GitlabPublicationWriter:
     ) -> GitlabWriteReceipt:
         with self._lock:
             observed_head = self._current_head(target)
-            existing = self._receipts.get(key)
+            receipt_key = (target.project_id, target.merge_request_iid, key)
+            existing = self._load_receipt(receipt_key)
             if existing is not None:
                 if (
                     existing.payload_sha256 != payload_hash
@@ -299,7 +335,7 @@ class GitlabPublicationWriter:
                 status=GitlabWriteStatus.SUCCEEDED,
                 external_id=external_id,
             )
-            self._receipts[key] = receipt
+            self._store_receipt(receipt_key, receipt)
             return receipt
 
     def _stale_receipt(
@@ -319,8 +355,104 @@ class GitlabPublicationWriter:
             status=GitlabWriteStatus.STALE,
             reason_code="HEAD_CHANGED",
         )
-        self._receipts[key] = receipt
+        self._store_receipt((target.project_id, target.merge_request_iid, key), receipt)
         return receipt
+
+    def _load_receipt(
+        self,
+        receipt_key: tuple[str, str, str],
+    ) -> GitlabWriteReceipt | None:
+        if self._connection is None:
+            return self._receipts.get(receipt_key)
+        try:
+            row = self._connection.execute(
+                """SELECT project_id, merge_request_iid, idempotency_key,
+                          kind, payload_sha256, expected_head_sha,
+                          observed_head_sha, status, external_id, reason_code
+                   FROM gitlab_publication_receipts
+                   WHERE project_id=? AND merge_request_iid=? AND idempotency_key=?""",
+                receipt_key,
+            ).fetchone()
+        except sqlite3.Error:
+            raise GitlabWriteError(GitlabWriteErrorCode.RECEIPT_UNAVAILABLE) from None
+        if row is None:
+            return None
+        try:
+            values = tuple(row)
+            if len(values) != 10 or values[0:3] != receipt_key:
+                raise ValueError
+            receipt = _receipt_from_row(values)
+        except (TypeError, ValueError, IndexError):
+            raise GitlabWriteError(GitlabWriteErrorCode.RECEIPT_UNAVAILABLE) from None
+        self._receipts[receipt_key] = receipt
+        return receipt
+
+    def _store_receipt(
+        self,
+        receipt_key: tuple[str, str, str],
+        receipt: GitlabWriteReceipt,
+    ) -> None:
+        if self._connection is None:
+            self._receipts[receipt_key] = receipt
+            return
+        try:
+            with self._connection:
+                cursor = self._connection.execute(
+                    """INSERT OR IGNORE INTO gitlab_publication_receipts (
+                           project_id, merge_request_iid, idempotency_key,
+                           kind, payload_sha256, expected_head_sha,
+                           observed_head_sha, status, external_id, reason_code
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        receipt_key[0],
+                        receipt_key[1],
+                        receipt_key[2],
+                        receipt.kind.value,
+                        receipt.payload_sha256,
+                        receipt.expected_head_sha,
+                        receipt.observed_head_sha,
+                        receipt.status.value,
+                        receipt.external_id,
+                        receipt.reason_code,
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    existing = self._load_receipt(receipt_key)
+                    if existing is None:
+                        raise GitlabWriteError(GitlabWriteErrorCode.RECEIPT_UNAVAILABLE)
+                    if (
+                        existing.status
+                        in {GitlabWriteStatus.STALE, GitlabWriteStatus.SUCCEEDED}
+                        and receipt.status is GitlabWriteStatus.STALE
+                        and existing.kind is receipt.kind
+                        and existing.payload_sha256 == receipt.payload_sha256
+                        and existing.expected_head_sha == receipt.expected_head_sha
+                    ):
+                        refreshed = self._connection.execute(
+                            """UPDATE gitlab_publication_receipts
+                               SET observed_head_sha=?, status=?, external_id=?, reason_code=?
+                               WHERE project_id=? AND merge_request_iid=?
+                                 AND idempotency_key=?
+                                 AND status IN ('STALE', 'SUCCEEDED')""",
+                            (
+                                receipt.observed_head_sha,
+                                receipt.status.value,
+                                receipt.external_id,
+                                receipt.reason_code,
+                                receipt_key[0],
+                                receipt_key[1],
+                                receipt_key[2],
+                            ),
+                        )
+                        if refreshed.rowcount != 1:
+                            raise GitlabWriteError(GitlabWriteErrorCode.CONFLICT)
+                    elif existing != receipt:
+                        raise GitlabWriteError(GitlabWriteErrorCode.CONFLICT)
+        except GitlabWriteError:
+            raise
+        except sqlite3.Error:
+            raise GitlabWriteError(GitlabWriteErrorCode.RECEIPT_UNAVAILABLE) from None
+        self._receipts[receipt_key] = receipt
 
     def _current_head(self, target: GitlabWriteTarget) -> str:
         try:
@@ -345,6 +477,58 @@ def _discussion_key(projection: GitlabDiscussionProjection) -> str:
                 "path": projection.new_path,
             }
         )[:40]
+    )
+
+
+def _receipt_from_row(values: tuple[object, ...]) -> GitlabWriteReceipt:
+    (
+        project_id,
+        merge_request_iid,
+        idempotency_key,
+        kind,
+        payload_sha256,
+        expected_head_sha,
+        observed_head_sha,
+        status,
+        external_id,
+        reason_code,
+    ) = values
+    if (
+        type(project_id) is not str
+        or _ID.fullmatch(project_id) is None
+        or type(merge_request_iid) is not str
+        or _ID.fullmatch(merge_request_iid) is None
+        or type(idempotency_key) is not str
+        or _ID.fullmatch(idempotency_key) is None
+        or type(payload_sha256) is not str
+        or _SHA256.fullmatch(payload_sha256) is None
+        or type(expected_head_sha) is not str
+        or _COMMIT_SHA.fullmatch(expected_head_sha) is None
+        or (
+            observed_head_sha is not None
+            and (
+                type(observed_head_sha) is not str
+                or _COMMIT_SHA.fullmatch(observed_head_sha) is None
+            )
+        )
+        or (external_id is not None and _EXTERNAL_ID.fullmatch(external_id) is None)
+        or (reason_code is not None and _ID.fullmatch(reason_code) is None)
+    ):
+        raise ValueError
+    try:
+        parsed_kind = GitlabWriteKind(kind)
+        parsed_status = GitlabWriteStatus(status)
+    except (TypeError, ValueError):
+        raise ValueError from None
+    return GitlabWriteReceipt(
+        kind=parsed_kind,
+        idempotency_key=idempotency_key,
+        payload_sha256=payload_sha256,
+        expected_head_sha=expected_head_sha,
+        observed_head_sha=observed_head_sha,
+        status=parsed_status,
+        external_id=external_id,
+        reason_code=reason_code,
     )
 
 

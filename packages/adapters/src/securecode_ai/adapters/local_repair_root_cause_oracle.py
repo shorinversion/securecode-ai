@@ -48,9 +48,18 @@ class Cwe89RepairSignalComparison:
 def _safe_path(root: Path, relative: str) -> Path:
     if type(relative) is not str or not relative or "\x00" in relative or "\\" in relative:
         raise RootCauseOracleError
-    candidate = (root / relative).resolve()
+    parts = relative.split("/")
+    if relative.startswith("/") or any(part in {"", ".", ".."} for part in parts):
+        raise RootCauseOracleError
+    root = root.resolve()
+    candidate = root
+    for part in parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise RootCauseOracleError
+    candidate = candidate.resolve()
     try:
-        candidate.relative_to(root.resolve())
+        candidate.relative_to(root)
     except ValueError:
         raise RootCauseOracleError from None
     return candidate

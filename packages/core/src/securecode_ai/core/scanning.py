@@ -21,9 +21,17 @@ from .repository import RepositoryFile
 
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_.-]{0,127}\Z")
-_MODULE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,255}\Z")
-_QUALNAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,255}\Z")
+_DOTTED_NAME = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z"
+)
 _MAX_BUDGETS = (2_000_000, 60_000_000_000, 10_000, 16_384, 1_000_000, 2_000_000)
+
+
+def _utf8_length_at_most(value: str, limit: int) -> bool:
+    try:
+        return len(value.encode("utf-8")) <= limit
+    except UnicodeEncodeError:
+        return False
 
 
 class ScannerRunStatus(StrEnum):
@@ -111,7 +119,7 @@ class ScannerIdentity:
             raise ValueError("scanner identity is invalid")
         try:
             validated = ProducerRef.model_validate(self.producer.model_dump(mode="python"))
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError, RecursionError):
             raise ValueError("scanner identity is invalid") from None
         if validated != self.producer:
             raise ValueError("scanner identity is invalid")
@@ -134,10 +142,10 @@ class ScannerRequest:
             or _IDENTIFIER.fullmatch(self.request_id) is None
             or type(self.tenant_id) is not str
             or not self.tenant_id
-            or len(self.tenant_id.encode("utf-8")) > 128
+            or not _utf8_length_at_most(self.tenant_id, 128)
             or type(self.repository_id) is not str
             or not self.repository_id
-            or len(self.repository_id.encode("utf-8")) > 1024
+            or not _utf8_length_at_most(self.repository_id, 1024)
             or type(self.head_sha) is not str
             or _SHA1.fullmatch(self.head_sha) is None
             or type(self.file) is not RepositoryFile
@@ -178,11 +186,11 @@ class ScannerWorkerTarget:
     def __post_init__(self) -> None:
         if (
             type(self.module) is not str
-            or _MODULE_NAME.fullmatch(self.module) is None
+            or len(self.module) > 256
+            or _DOTTED_NAME.fullmatch(self.module) is None
             or type(self.qualname) is not str
-            or _QUALNAME.fullmatch(self.qualname) is None
-            or ".." in self.module
-            or ".." in self.qualname
+            or len(self.qualname) > 256
+            or _DOTTED_NAME.fullmatch(self.qualname) is None
         ):
             raise ValueError("scanner worker target is invalid")
 
@@ -203,15 +211,20 @@ class ScannerExecution:
     failure_code: ScannerFailureCode | None
 
     def __post_init__(self) -> None:
-        valid_signals = (
-            type(self.signals) is tuple
-            and all(type(item) is RawSignal for item in self.signals)
-            and tuple(item.raw_signal_id for item in self.signals)
-            == tuple(sorted(item.raw_signal_id for item in self.signals))
-            and len({item.raw_signal_id for item in self.signals}) == len(self.signals)
-            and all(item.producer == self.scanner.producer for item in self.signals)
-            and self.signal_digest == raw_signal_digest(self.signals)
-        )
+        try:
+            valid_signals = (
+                type(self.signals) is tuple
+                and all(type(item) is RawSignal for item in self.signals)
+                and tuple(item.raw_signal_id for item in self.signals)
+                == tuple(sorted(item.raw_signal_id for item in self.signals))
+                and len({item.raw_signal_id for item in self.signals}) == len(self.signals)
+                and all(item.producer == self.scanner.producer for item in self.signals)
+                and self.signal_digest == raw_signal_digest(self.signals)
+            )
+            expected_output_bytes = sum(raw_signal_payload_bytes(item) for item in self.signals)
+        except (AttributeError, TypeError, ValueError, RecursionError):
+            valid_signals = False
+            expected_output_bytes = -1
         succeeded = self.status is ScannerRunStatus.SUCCEEDED
         expected_failure = {
             ScannerRunStatus.TIMEOUT: {ScannerFailureCode.TIME_BUDGET_EXCEEDED},
@@ -239,6 +252,7 @@ class ScannerExecution:
             or self.input_bytes < 0
             or type(self.output_bytes) is not int
             or self.output_bytes < 0
+            or self.output_bytes != expected_output_bytes
             or type(self.signal_digest) is not str
             or re.fullmatch(r"[0-9a-f]{64}", self.signal_digest) is None
             or not valid_signals
@@ -261,7 +275,7 @@ def canonical_raw_signal(signal: RawSignal) -> RawSignal:
         raise TypeError("raw scanner signal is invalid")
     try:
         return RawSignal.model_validate(signal.model_dump(mode="python"))
-    except (AttributeError, TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         raise ValueError("raw scanner signal is invalid") from None
 
 

@@ -11,10 +11,10 @@ import os
 import re
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from securecode_ai.contracts import (
     ArtifactRef,
@@ -26,6 +26,12 @@ from securecode_ai.contracts import (
     RunExecutionIdentity,
 )
 from securecode_ai.contracts.runtime import WorkflowControlState, WorkflowSnapshot
+from securecode_ai.contracts import ModelCallStatus
+from securecode_ai.core.architect import ArchitectPatchResult
+from securecode_ai.core.regression import SecurityRegressionDescriptor
+from securecode_ai.core.repair_loop import RepairLoopReceipt
+from securecode_ai.core.root_cause import RootCauseRecord
+from securecode_ai.core.validation import ValidationLadderResult
 from securecode_ai.core.reports import (
     DeterministicReport,
 )
@@ -36,6 +42,11 @@ from .product_execution import (
 )
 from .product_runtime import ProductAuditorInvocationObservation
 from .product_scanner import ProductDeterministicScanResult
+from .product_rule_catalogue import PRODUCT_RULE_CWE
+
+if TYPE_CHECKING:
+    from .product_review import ProductReviewResult
+    from .product_scan import ProductCandidateFlow
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +221,114 @@ class ProductAuditHostInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class ProductRepairReceipt:
+    """One repair attempt bundle bound to the originating product run.
+
+    The values are metadata-only.  Patch bytes remain in the suggestion store,
+    and the validation ladder remains the sole source of sandbox authority.
+    ``security_test_*`` is optional because the current local repair path has a
+    deterministic regression descriptor but no independent model-backed test
+    generator.  The product audit layer turns that missing trusted receipt into
+    incomplete coverage instead of manufacturing a completed stage.
+    """
+
+    finding_id: str
+    candidate_id: str
+    candidate_version: int
+    run_id: str
+    execution_identity_hash: str
+    root_cause: RootCauseRecord
+    regression: SecurityRegressionDescriptor
+    architect: ArchitectPatchResult
+    architect_model_result_sha256: str
+    architect_model_call_status: ModelCallStatus
+    architect_schema_valid_result: bool
+    architect_receipt_id: str
+    validation: ValidationLadderResult
+    repair_loop: RepairLoopReceipt
+    security_test_model_call_status: ModelCallStatus | None = None
+    security_test_schema_valid_result: bool | None = None
+    security_test_receipt_id: str | None = None
+    security_test_output_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        values = (
+            self.finding_id,
+            self.candidate_id,
+            self.run_id,
+            self.execution_identity_hash,
+            self.architect_model_result_sha256,
+            self.architect_receipt_id,
+        )
+        if (
+            any(type(value) is not str or not value for value in values)
+            or type(self.candidate_version) is not int
+            or self.candidate_version < 1
+            or type(self.root_cause) is not RootCauseRecord
+            or type(self.regression) is not SecurityRegressionDescriptor
+            or type(self.architect) is not ArchitectPatchResult
+            or type(self.architect_model_call_status) is not ModelCallStatus
+            or type(self.architect_schema_valid_result) is not bool
+            or self.architect_model_call_status is not ModelCallStatus.SUCCEEDED
+            or self.architect_schema_valid_result is not True
+            or type(self.validation) is not ValidationLadderResult
+            or type(self.repair_loop) is not RepairLoopReceipt
+            or any(
+                type(value) is not str or len(value) != 64
+                or any(character not in "0123456789abcdef" for character in value)
+                for value in (self.architect_model_result_sha256,)
+            )
+            or self.root_cause.finding_id != self.finding_id
+            or self.root_cause.candidate_id != self.candidate_id
+            or self.root_cause.candidate_version != self.candidate_version
+            or self.regression.finding_id != self.finding_id
+            or self.regression.root_cause_id != self.root_cause.record_id
+            or self.regression.tenant_id != self.root_cause.tenant_id
+            or self.regression.repository_id != self.root_cause.repository_id
+            or self.regression.vulnerable_head_sha != self.root_cause.head_sha
+            or self.architect.patch_candidate.finding_id != self.finding_id
+            or self.architect.patch_candidate.repository_revision.tenant_id
+            != self.root_cause.tenant_id
+            or self.architect.patch_candidate.repository_revision.repository_id
+            != self.root_cause.repository_id
+            or self.architect.patch_candidate.repository_revision.head_sha != self.root_cause.head_sha
+            or self.architect.rationale.finding_id != self.finding_id
+            or self.architect.rationale.root_cause_id != self.root_cause.record_id
+            or self.architect.rationale.regression_descriptor_id != self.regression.descriptor_id
+            or self.validation.validation.patch_id != self.architect.patch_candidate.patch_id
+            or self.validation.validation.tenant_id != self.root_cause.tenant_id
+            or self.validation.validation.head_sha != self.regression.evaluated_head_sha
+            or not self.repair_loop.attempts
+            or self.repair_loop.attempts[-1].patch_id != self.architect.patch_candidate.patch_id
+            or self.repair_loop.attempts[-1].validation_id != self.validation.validation.validation_id
+            or self.repair_loop.attempts[-1].validation_result_sha256
+            != self.validation.validation.result_sha256
+        ):
+            raise ValueError("product repair receipt is not identity-bound")
+        security_fields = (
+            self.security_test_model_call_status,
+            self.security_test_schema_valid_result,
+            self.security_test_receipt_id,
+            self.security_test_output_sha256,
+        )
+        if all(value is None for value in security_fields):
+            return
+        if (
+            type(self.security_test_model_call_status) is not ModelCallStatus
+            or self.security_test_schema_valid_result is not True
+            or type(self.security_test_receipt_id) is not str
+            or not self.security_test_receipt_id
+            or type(self.security_test_output_sha256) is not str
+            or len(self.security_test_output_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.security_test_output_sha256
+            )
+        ):
+            raise ValueError("product security-test receipt is incomplete")
+
+
+@dataclass(frozen=True, slots=True)
 class ProductAuditComposition:
     """One exact Core run and reports rendered from that same run."""
 
@@ -219,6 +338,9 @@ class ProductAuditComposition:
     html_report: bytes
     preliminary_json_report: bytes | None = None
     preliminary_html_report: bytes | None = None
+    flow: ProductCandidateFlow | None = field(default=None, repr=False, compare=False)
+    review: ProductReviewResult | None = field(default=None, repr=False, compare=False)
+    host_inputs: ProductAuditHostInputs | None = field(default=None, repr=False, compare=False)
 
 
 class _AuditObstacle(ValueError):
@@ -229,8 +351,12 @@ class _AuditObstacle(ValueError):
 
 
 _PRODUCT_CWE_RULES = {
-    "CWE-22": "portfolio-cwe-22",
-    "CWE-78": "portfolio-cwe-78",
-    "CWE-862": "portfolio-cwe-862",
-    "CWE-918": "portfolio-cwe-918",
+    cwe_id: tuple(
+        sorted(
+            rule_id
+            for rule_id, mapped_cwe in PRODUCT_RULE_CWE.items()
+            if mapped_cwe == cwe_id
+        )
+    )
+    for cwe_id in sorted(set(PRODUCT_RULE_CWE.values()) - {"CWE-89"})
 }

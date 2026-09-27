@@ -155,6 +155,36 @@ class FindingValidationRecord:
     canonical_sha256: str
     source_disclosed: bool = False
 
+    def __post_init__(self) -> None:
+        if (
+            type(self.disposition) is not FindingValidationDisposition
+            or type(self.product) is not FindingProductSnapshot
+            or type(self.verifier_id) is not str
+            or _ID.fullmatch(self.verifier_id) is None
+            or type(self.verifier_auth_sha256) is not str
+            or _HASH.fullmatch(self.verifier_auth_sha256) is None
+            or type(self.attack_class) is not AttackControlClass
+            or type(self.result_sha256) is not str
+            or _HASH.fullmatch(self.result_sha256) is None
+            or type(self.canonical_sha256) is not str
+            or _HASH.fullmatch(self.canonical_sha256) is None
+            or self.source_disclosed is not False
+        ):
+            raise FindingValidationError()
+        try:
+            expected_sha256 = _record_hash(
+                self.disposition,
+                self.product,
+                self.verifier_id,
+                self.verifier_auth_sha256,
+                self.attack_class,
+                self.result_sha256,
+            )
+        except Exception:
+            raise FindingValidationError() from None
+        if self.canonical_sha256 != expected_sha256:
+            raise FindingValidationError()
+
 
 class FindingValidationRegistry:
     """Record independent validation without mutating the original finding product."""
@@ -193,6 +223,10 @@ class FindingValidationRegistry:
 def canonical_validation_json(record: FindingValidationRecord) -> str:
     if type(record) is not FindingValidationRecord:
         raise FindingValidationError()
+    try:
+        record.__post_init__()
+    except Exception:
+        raise FindingValidationError() from None
     data = {
         "attack_class": record.attack_class.value,
         "canonical_sha256": record.canonical_sha256,
@@ -227,14 +261,6 @@ def _record(
     verifier: AuthenticatedVerifier,
     observed: FindingValidationObservation,
 ) -> FindingValidationRecord:
-    material = {
-        "attack_class": observed.attack_class.value,
-        "disposition": disposition.value,
-        "fingerprint": product.fingerprint_sha256,
-        "finding": product.finding_id,
-        "result": observed.result_sha256,
-        "verifier": verifier.verifier_auth_sha256,
-    }
     return FindingValidationRecord(
         disposition,
         product,
@@ -242,11 +268,44 @@ def _record(
         verifier.verifier_auth_sha256,
         observed.attack_class,
         observed.result_sha256,
-        hashlib.sha256(
-            _HASH_DOMAIN
-            + json.dumps(material, sort_keys=True, separators=(",", ":")).encode("ascii")
-        ).hexdigest(),
+        _record_hash(
+            disposition,
+            product,
+            verifier.verifier_id,
+            verifier.verifier_auth_sha256,
+            observed.attack_class,
+            observed.result_sha256,
+        ),
     )
+
+
+def _record_hash(
+    disposition: FindingValidationDisposition,
+    product: FindingProductSnapshot,
+    verifier_id: str,
+    verifier_auth_sha256: str,
+    attack_class: AttackControlClass,
+    result_sha256: str,
+) -> str:
+    material = {
+        "attack_class": attack_class.value,
+        "disposition": disposition.value,
+        "execution_identity_sha256": product.execution_identity_sha256,
+        "fingerprint": product.fingerprint_sha256,
+        "finding": product.finding_id,
+        "producer_auth_sha256": product.producer_auth_sha256,
+        "producer_id": product.producer_id,
+        "result": result_sha256,
+        "severity": product.severity,
+        "source_sha256": product.source_sha256,
+        "verdict": product.verdict,
+        "verifier_auth_sha256": verifier_auth_sha256,
+        "verifier_id": verifier_id,
+        "confidence": product.confidence,
+    }
+    return hashlib.sha256(
+        _HASH_DOMAIN + json.dumps(material, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 __all__ = [

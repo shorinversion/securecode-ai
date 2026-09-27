@@ -89,7 +89,7 @@ class JwtVerificationPolicy:
                 self.authorized_party is not None
                 and not _configured_string(self.authorized_party, 512)
             )
-            or not isinstance(self.accepted_types, frozenset)
+            or type(self.accepted_types) is not frozenset
             or not self.accepted_types
             or not all(_configured_string(value, 64) for value in self.accepted_types)
         ):
@@ -136,6 +136,9 @@ class IdentityClaimMapping:
             or not self.workload_roles
             or not self.workload_roles.issubset(self.allowed_roles)
             or not self.workload_roles.issubset(_WORKLOAD_ROLES)
+            or not self.allowed_roles.intersection(_WORKLOAD_ROLES).issubset(
+                self.workload_roles
+            )
             or not set(self.role_map.values()).issubset(self.allowed_roles)
             or type(self.max_roles) is not int
             or not 1 <= self.max_roles <= 64
@@ -237,6 +240,8 @@ class BearerJwtIdentityVerifier:
         if (
             type(policy) is not JwtVerificationPolicy
             or type(mapping) is not IdentityClaimMapping
+            or mapping.tenant_map is None
+            or mapping.subject_map is None
             or not callable(getattr(key_resolver, "resolve_key", None))
             or not callable(getattr(signature_verifier, "verify_signature", None))
             or (clock is not None and not callable(clock))
@@ -266,6 +271,46 @@ class BearerJwtIdentityVerifier:
     def policy(self) -> JwtVerificationPolicy:
         return self._policy
 
+    @property
+    def allowed_roles(self) -> frozenset[str]:
+        """Return the immutable role boundary shared with interactive login."""
+
+        return self._allowed_roles
+
+    @property
+    def tenant_map(self) -> Mapping[str, str]:
+        """Return a copy-on-read canonical tenant mapping for OIDC admission."""
+
+        if self._tenant_map is None:
+            return MappingProxyType({})
+        return MappingProxyType(dict(self._tenant_map))
+
+    @property
+    def tenant_claim(self) -> str:
+        """Return the configured claim carrying the external tenant id."""
+
+        return self._mapping.tenant_claim
+
+    @property
+    def roles_claim(self) -> str:
+        """Return the configured claim carrying provider role groups."""
+
+        return self._mapping.roles_claim
+
+    @property
+    def subject_claim(self) -> str:
+        """Return the configured claim carrying the external subject."""
+
+        return self._mapping.subject_claim
+
+    @property
+    def subject_map(self) -> Mapping[str, str]:
+        """Return a copy-on-read canonical subject mapping for OIDC admission."""
+
+        if self._subject_map is None:
+            return MappingProxyType({})
+        return MappingProxyType(dict(self._subject_map))
+
     def verify_claims(self, token: str) -> dict[str, object] | None:
         """Return only claims needed by the interactive OIDC admission port."""
 
@@ -273,7 +318,18 @@ class BearerJwtIdentityVerifier:
             claims = self._verify_signed_claims(token)
         except Exception:
             return None
-        names = ("iss", "sub", "aud", "azp", "exp", "iat", "nonce", "groups")
+        names = (
+            "iss",
+            "sub",
+            "aud",
+            "azp",
+            "exp",
+            "iat",
+            "nonce",
+            self._mapping.subject_claim,
+            self._mapping.roles_claim,
+            self._mapping.tenant_claim,
+        )
         result = {name: claims[name] for name in names if name in claims}
         result["alg"] = self._policy.algorithm
         return result
@@ -493,14 +549,15 @@ def _claim_string(value: object, maximum: int) -> TypeGuard[str]:
 
 
 def _valid_string_map(value: object) -> bool:
-    return (
-        isinstance(value, Mapping)
-        and bool(value)
-        and len(value) <= 1024
-        and all(
-            _configured_string(key, 256) and _configured_string(item, 256)
-            for key, item in value.items()
-        )
+    if not isinstance(value, Mapping):
+        return False
+    try:
+        items = tuple(value.items())
+    except Exception:
+        return False
+    return bool(items) and len(items) <= 1024 and all(
+        _configured_string(key, 256) and _configured_string(item, 256)
+        for key, item in items
     )
 
 

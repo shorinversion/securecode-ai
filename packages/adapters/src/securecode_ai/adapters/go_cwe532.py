@@ -124,6 +124,7 @@ _SENSITIVE_LITERAL_MARKERS = frozenset(
         "x-api-key",
         "x-auth-token",
     }
+)
 _SANITIZER_WORDS = frozenset(
     {
         "bcrypt",

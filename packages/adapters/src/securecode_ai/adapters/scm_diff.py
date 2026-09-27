@@ -60,10 +60,13 @@ def parse_unified_diff_changed_lines(
         match = _HUNK_HEADER.fullmatch(lines[index])
         if match is None:
             raise SCMDiffError("SCM diff hunk is invalid")
-        old_start = int(match.group(1))
-        old_remaining = int(match.group(2) or "1")
-        new_start = int(match.group(3))
-        new_remaining = int(match.group(4) or "1")
+        try:
+            old_start = int(match.group(1))
+            old_remaining = int(match.group(2) or "1")
+            new_start = int(match.group(3))
+            new_remaining = int(match.group(4) or "1")
+        except ValueError:
+            raise SCMDiffError("SCM diff hunk range is invalid") from None
         if (
             (old_start == 0 and old_remaining != 0)
             or (new_start == 0 and new_remaining != 0)

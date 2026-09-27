@@ -43,6 +43,8 @@ def has_unvalidated_runtime_state(value: object) -> bool:
 
     if isinstance(value, BaseModel):
         declared = set(type(value).model_fields)
+        if not declared.issubset(value.__dict__):
+            return True
         if set(value.__dict__) - declared:
             return True
         if getattr(value, "__pydantic_extra__", None):

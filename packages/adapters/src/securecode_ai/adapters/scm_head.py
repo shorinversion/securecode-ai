@@ -28,7 +28,8 @@ class GithubPullRequestHeadResolver:
 
     def __call__(self, installation_id: str, repository_id: str, change_id: str) -> str:
         if any(
-            _ID.fullmatch(value) is None for value in (installation_id, repository_id, change_id)
+            type(value) is not str or _ID.fullmatch(value) is None
+            for value in (installation_id, repository_id, change_id)
         ):
             raise SCMHeadUnavailable("GitHub head is unavailable")
         try:
@@ -38,13 +39,13 @@ class GithubPullRequestHeadResolver:
                 installation_id=installation_id,
             )
             document = response.document
-            if document is None:
+            if type(document) is not dict:
                 raise ValueError
             head = document.get("head")
-            if not isinstance(head, dict):
+            if type(head) is not dict:
                 raise ValueError
             sha = head.get("sha")
-            if not isinstance(sha, str) or _SHA.fullmatch(sha) is None:
+            if type(sha) is not str or _SHA.fullmatch(sha) is None:
                 raise ValueError
             return sha
         except (GitHubError, TypeError, ValueError):
@@ -62,8 +63,12 @@ class GithubCommitLineageResolver:
     def __call__(
         self, installation_id: str, repository_id: str, base_sha: str, head_sha: str
     ) -> tuple[str, ...]:
-        if any(_ID.fullmatch(value) is None for value in (installation_id, repository_id)) or any(
-            _SHA.fullmatch(value) is None for value in (base_sha, head_sha)
+        if any(
+            type(value) is not str or _ID.fullmatch(value) is None
+            for value in (installation_id, repository_id)
+        ) or any(
+            type(value) is not str or _SHA.fullmatch(value) is None
+            for value in (base_sha, head_sha)
         ):
             raise SCMHeadUnavailable("GitHub commit lineage is unavailable")
         try:
@@ -163,7 +168,10 @@ class GitlabMergeRequestHeadResolver:
         self._api = api
 
     def __call__(self, project_id: str, merge_request_iid: str) -> str:
-        if any(_ID.fullmatch(value) is None for value in (project_id, merge_request_iid)):
+        if any(
+            type(value) is not str or _ID.fullmatch(value) is None
+            for value in (project_id, merge_request_iid)
+        ):
             raise SCMHeadUnavailable("GitLab head is unavailable")
         try:
             sha = self._api.merge_request_head(
@@ -172,7 +180,7 @@ class GitlabMergeRequestHeadResolver:
             )
         except GitlabAPIError:
             raise SCMHeadUnavailable("GitLab head is unavailable") from None
-        if _SHA.fullmatch(sha) is None:
+        if type(sha) is not str or _SHA.fullmatch(sha) is None:
             raise SCMHeadUnavailable("GitLab head is unavailable")
         return sha
 
@@ -186,8 +194,9 @@ class GitlabCommitLineageResolver:
         self._api = api
 
     def __call__(self, project_id: str, base_sha: str, head_sha: str) -> tuple[str, ...]:
-        if _ID.fullmatch(project_id) is None or any(
-            _SHA.fullmatch(value) is None for value in (base_sha, head_sha)
+        if type(project_id) is not str or _ID.fullmatch(project_id) is None or any(
+            type(value) is not str or _SHA.fullmatch(value) is None
+            for value in (base_sha, head_sha)
         ):
             raise SCMHeadUnavailable("GitLab commit lineage is unavailable")
         try:
@@ -237,7 +246,7 @@ def _github_compare_response(
     repository = api.request(
         "GET", f"/repositories/{repository_id}", installation_id=installation_id
     ).document
-    if repository is None:
+    if type(repository) is not dict:
         raise ValueError
     full_name = repository.get("full_name")
     if (

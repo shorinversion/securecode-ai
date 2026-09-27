@@ -23,9 +23,11 @@ from securecode_ai.core.sandbox import SandboxProfile, _profile_hash
 from securecode_ai.core.validation import ValidationStage
 
 from .git_snapshot import GitRevisionSnapshot, OfflineGitObjectReader, materialize_git_snapshot
+from .local_repair_command_oracle import validate_cwe78_manifest_contract
 from .local_repair_diff import validated_diff_paths
 from .local_repair_oci_protocol import canonical_json, image_digest
 from .local_repair_oci_runtime import DockerCliOciRuntime, LocalRepairOciRuntimeError
+from .local_repair_oci_transport import ValidatorBrokerOciRuntime
 from .patch_artifact import StoredPatchArtifact
 
 if TYPE_CHECKING:
@@ -51,6 +53,13 @@ class InstalledLocalOciValidationPort:
         patch: StoredPatchArtifact,
         git_executable: Path,
     ) -> PreparedLocalOciValidation:
+        if self._broker_configuration_selected():
+            return self._prepare_broker(
+                repository_objects=repository_objects,
+                parent_head_sha=parent_head_sha,
+                patch=patch,
+                git_executable=git_executable,
+            )
         from .local_repair_validation import LocalRepairValidationError, PreparedLocalOciValidation
 
         temporary: tempfile.TemporaryDirectory[str] | None = None
@@ -125,19 +134,189 @@ class InstalledLocalOciValidationPort:
                     receipt.receipt_sha256
                 ),
             )
-        except LocalRepairValidationError:
-            raise
         except Exception as error:
             if runtime is not None:
                 runtime.close()
             elif temporary is not None:
                 _release_temporary(temporary, Path(temporary.name))
+            if isinstance(error, LocalRepairValidationError):
+                raise
             reason = (
                 error.reason
                 if isinstance(error, LocalRepairOciRuntimeError)
                 else "VALIDATION_RUNTIME_UNAVAILABLE"
             )
             raise LocalRepairValidationError(reason) from None
+
+    def _prepare_broker(
+        self,
+        *,
+        repository_objects: Path,
+        parent_head_sha: str,
+        patch: StoredPatchArtifact,
+        git_executable: Path,
+    ) -> PreparedLocalOciValidation:
+        from .local_repair_validation import LocalRepairValidationError, PreparedLocalOciValidation
+
+        temporary: tempfile.TemporaryDirectory[str] | None = None
+        runtime: ValidatorBrokerOciRuntime | None = None
+        try:
+            image_reference = self._required_image()
+            socket_path, bundle_root, identity, docker_socket, socket_uid, docker_sha256 = (
+                self._broker_configuration(repository_objects=repository_objects)
+            )
+            profile = _sandbox_profile()
+            reader = OfflineGitObjectReader(
+                objects_dir=repository_objects,
+                git_executable=git_executable,
+            )
+            snapshot = materialize_git_snapshot(reader, parent_head_sha)
+            if snapshot.head_sha != parent_head_sha:
+                raise ValueError
+            modes = _snapshot_modes(reader, snapshot)
+            temporary = tempfile.TemporaryDirectory(
+                prefix="securecode-repair-oci-",
+                dir=str(bundle_root),
+            )
+            owned_temporary = temporary
+            root = Path(temporary.name).absolute()
+            if "," in str(root):
+                raise ValueError
+            bundle_sha = _materialize_bundle(root, snapshot, modes, patch, profile, image_reference)
+            runtime = ValidatorBrokerOciRuntime(
+                socket_path=socket_path,
+                bundle_root=root,
+                bundle_sha256=bundle_sha,
+                parent_head_sha=parent_head_sha,
+                patch_sha256=patch.architect_result.patch_candidate.unified_diff_sha256,
+                image_digest=image_digest(image_reference),
+                identity=identity,
+                docker_socket=docker_socket,
+                docker_socket_uid=socket_uid,
+                docker_executable_sha256=docker_sha256,
+                on_close=lambda: _release_temporary(owned_temporary, root),
+            )
+            receipt = runtime.prepare(
+                expected_case_ids=tuple(case.case_id for case in patch.regression.cases)
+            )
+            fixed_regression = evaluate_regression(
+                patch.regression,
+                patch.root_cause,
+                patch.invariant,
+                revision_role=RegressionRevisionRole.FIXED_CANDIDATE,
+                evaluated_head_sha=receipt.fixed_head_sha,
+                observations=receipt.observations,
+            )
+            usage = ResourceUsage(
+                schema_version=CONTRACT_SCHEMA_VERSION,
+                elapsed_ms=0,
+                peak_memory_bytes=0,
+                cpu_time_ms=0,
+            )
+            commands = {
+                stage.value: (
+                    *runtime.command_prefix,
+                    "stage",
+                    stage.value,
+                    "/securecode/input/manifest.json",
+                )
+                for stage in ValidationStage
+            }
+            return PreparedLocalOciValidation(
+                runtime=runtime,
+                image_digest=runtime.image_digest,
+                command_allowlist=commands,
+                seccomp_profile_id="runtime-default",
+                sandbox_profile=profile,
+                fixed_head_sha=receipt.fixed_head_sha,
+                fixed_regression=fixed_regression,
+                stage_resources=(usage,) * len(tuple(ValidationStage)),
+                preparation_receipt_sha256=runtime.validation_receipt_sha256(
+                    receipt.receipt_sha256
+                ),
+            )
+        except Exception as error:
+            if runtime is not None:
+                runtime.close()
+            elif temporary is not None:
+                _release_temporary(temporary, Path(temporary.name))
+            if isinstance(error, LocalRepairValidationError):
+                raise
+            reason = (
+                error.reason
+                if isinstance(error, LocalRepairOciRuntimeError)
+                else "VALIDATION_RUNTIME_UNAVAILABLE"
+            )
+            raise LocalRepairValidationError(reason) from None
+
+    def _broker_configuration_selected(self) -> bool:
+        return any(
+            self._environment.get(name)
+            for name in (
+                "SECURECODE_AI_VALIDATOR_SOCKET",
+                "SECURECODE_AI_VALIDATOR_MODE",
+                "SECURECODE_AI_VALIDATOR_BUNDLE_ROOT",
+                "SECURECODE_AI_VALIDATOR_IDENTITY",
+                "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET",
+                "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID",
+                "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256",
+            )
+        )
+
+    def _broker_configuration(
+        self, *, repository_objects: Path
+    ) -> tuple[Path, Path, str, Path, int, str]:
+        names = (
+            "SECURECODE_AI_VALIDATOR_MODE",
+            "SECURECODE_AI_VALIDATOR_SOCKET",
+            "SECURECODE_AI_VALIDATOR_BUNDLE_ROOT",
+            "SECURECODE_AI_VALIDATOR_IDENTITY",
+            "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET",
+            "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID",
+            "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256",
+        )
+        if any(not self._environment.get(name) for name in names):
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_AUTHORITY_UNAVAILABLE")
+        if self._environment["SECURECODE_AI_VALIDATOR_MODE"] != "broker":
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_CONFIGURATION_INVALID")
+        try:
+            socket_path = Path(self._environment["SECURECODE_AI_VALIDATOR_SOCKET"])
+            bundle_root = Path(self._environment["SECURECODE_AI_VALIDATOR_BUNDLE_ROOT"])
+            identity = self._environment["SECURECODE_AI_VALIDATOR_IDENTITY"]
+            docker_socket = Path(self._environment["SECURECODE_AI_VALIDATOR_DOCKER_SOCKET"])
+            socket_uid = int(self._environment["SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID"], 10)
+            docker_sha256 = self._environment[
+                "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256"
+            ]
+        except (KeyError, TypeError, ValueError):
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_CONFIGURATION_INVALID") from None
+        if (
+            not socket_path.is_absolute()
+            or socket_path.is_symlink()
+            or not bundle_root.is_absolute()
+            or bundle_root.is_symlink()
+            or not bundle_root.is_dir()
+            or not docker_socket.is_absolute()
+            or docker_socket.is_symlink()
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}", identity)
+            or not 0 < socket_uid < 2**32
+            or re.fullmatch(r"[0-9a-f]{64}", docker_sha256) is None
+            or "," in str(bundle_root)
+        ):
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_CONFIGURATION_INVALID")
+        try:
+            repository_root = repository_objects.resolve(strict=True)
+            bundle_root_resolved = bundle_root.resolve(strict=True)
+            repository_root.relative_to(bundle_root_resolved)
+        except ValueError:
+            pass
+        else:
+            raise LocalRepairOciRuntimeError("OCI_RUNTIME_CONFIGURATION_INVALID")
+        try:
+            bundle_root_resolved.relative_to(repository_root)
+        except ValueError:
+            return socket_path, bundle_root, identity, docker_socket, socket_uid, docker_sha256
+        raise LocalRepairOciRuntimeError("OCI_RUNTIME_CONFIGURATION_INVALID")
 
     def _required_image(self) -> str:
         reference = self._environment.get("SECURECODE_AI_VALIDATION_IMAGE", "")
@@ -273,6 +452,8 @@ def _materialize_bundle(
         "schema_version": "1.0.0",
         "stages": [stage.value for stage in ValidationStage],
     }
+    if patch.finding.cwe_id == "CWE-78":
+        validate_cwe78_manifest_contract(base)
     bundle_sha = hashlib.sha256(_BUNDLE_DOMAIN + canonical_json(base)).hexdigest()
     manifest = canonical_json({**base, "bundle_sha256": bundle_sha})
     if len(manifest) > _MAX_MANIFEST_BYTES:

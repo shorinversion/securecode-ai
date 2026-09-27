@@ -26,6 +26,27 @@ class ResourceService:
     def reserve(self, request: ResourceReservationRequest) -> ResourceReservationReceipt:
         return self._repository.reserve(request)
 
+    def is_active(
+        self,
+        *,
+        tenant_id: str,
+        repository_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        reservation_id: str,
+        expected_version: int,
+        now_ms: int,
+    ) -> bool:
+        return self._repository.is_active(
+            tenant_id=tenant_id,
+            repository_id=repository_id,
+            run_id=run_id,
+            execution_identity_hash=execution_identity_hash,
+            reservation_id=reservation_id,
+            expected_version=expected_version,
+            now_ms=now_ms,
+        )
+
     def reserve_run(
         self,
         *,
@@ -165,8 +186,24 @@ class ResourceService:
             max_items=max_items,
         )
 
+    def expire_all(
+        self,
+        *,
+        now_ms: int,
+        max_items: int = 100,
+        tenant_id: str | None = None,
+    ) -> int:
+        return self._repository.expire_all(
+            now_ms=now_ms,
+            max_items=max_items,
+            tenant_id=tenant_id,
+        )
+
     def has_expired(self, *, tenant_id: str, now_ms: int) -> bool:
         return self._repository.has_expired(tenant_id=tenant_id, now_ms=now_ms)
+
+    def has_expired_any(self, *, now_ms: int, tenant_id: str | None = None) -> bool:
+        return self._repository.has_expired_any(now_ms=now_ms, tenant_id=tenant_id)
 
 
 __all__ = ["ResourceService"]

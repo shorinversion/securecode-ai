@@ -40,7 +40,27 @@ _ROUTES: Final = (
     _Route("GET", "/api/v1/runs/{run_id}/events", "runs.events.read"),
     _Route("GET", "/api/v1/runs/{run_id}/findings", "runs.findings.read"),
     _Route("GET", "/api/v1/runs/{run_id}/artifacts", "runs.artifacts.read"),
+    _Route(
+        "GET",
+        "/api/v1/runs/{run_id}/artifacts/{content_sha256}/content",
+        "runs.artifacts.content",
+    ),
+    _Route(
+        "GET",
+        "/api/v1/runs/{run_id}/repair-patches/{finding_id}/content",
+        "runs.repair_patches.content",
+    ),
     _Route("GET", "/api/v1/runs/{run_id}/audit", "runs.audit.read"),
+    _Route(
+        "GET",
+        "/api/v1/audit/resources/{resource_type}/{resource_id}",
+        "runs.audit.read",
+    ),
+    _Route(
+        "GET",
+        "/api/v1/audit/resources/{resource_type}",
+        "runs.audit.read",
+    ),
     _Route("GET", "/api/v1/operations/metrics", "operations.metrics.read"),
     _Route("GET", "/api/v1/findings/{finding_id}", "findings.read"),
     _Route("GET", "/api/v1/findings/{finding_id}/evidence", "findings.evidence.read"),
@@ -64,12 +84,42 @@ _ROUTES: Final = (
         self_authenticated=True,
     ),
     _Route("GET", "/api/v1/policies", "policies.read"),
+    _Route("POST", "/api/v1/policies", "policies.create"),
+    _Route(
+        "POST",
+        "/api/v1/policies/{profile_id}/versions/{version}:activate",
+        "policies.activate",
+    ),
+    _Route(
+        "POST",
+        "/api/v1/policies/{profile_id}/versions/{version}/assignment",
+        "policies.assign",
+    ),
+    _Route(
+        "POST",
+        "/api/v1/policies/{profile_id}/versions/{version}/default",
+        "policies.default",
+    ),
+    _Route(
+        "POST",
+        "/api/v1/policies/repository-assignments",
+        "policies.assign_repository",
+    ),
+    _Route("POST", "/api/v1/policies/tenant-default", "policies.set_tenant_default"),
     _Route("POST", "/api/v1/approvals", "approvals.create"),
     _Route("GET", "/api/v1/approvals/{approval_id}", "approvals.read"),
     _Route(
         "POST",
         "/api/v1/approvals/{approval_id}:decide",
         "approvals.decide",
+        needs_precondition=True,
+    ),
+    _Route("POST", "/api/v1/findings/{finding_id}/waivers", "waivers.create"),
+    _Route("GET", "/api/v1/waivers/{waiver_id}", "waivers.read"),
+    _Route(
+        "POST",
+        "/api/v1/waivers/{waiver_id}:revoke",
+        "waivers.revoke",
         needs_precondition=True,
     ),
     _Route("POST", "/api/v1/secret-grants", "secrets.grant"),
@@ -98,6 +148,12 @@ _ROUTES: Final = (
         "POST",
         "/api/v1/backups/{backup_id}:restore",
         "backups.restore",
+        needs_precondition=True,
+    ),
+    _Route(
+        "POST",
+        "/api/v1/backups/{backup_id}:restore:resolve",
+        "backups.restore.resolve",
         needs_precondition=True,
     ),
     _Route(
@@ -157,6 +213,12 @@ _ROUTES: Final = (
         self_authenticated=True,
     ),
     _Route("POST", "/api/v1/worker-sessions", "worker_sessions.create", workload_only=True),
+    _Route(
+        "POST",
+        "/api/v1/worker-sessions/{session_id}/osv:query",
+        "worker_sessions.osv.query",
+        workload_only=True,
+    ),
     _Route(
         "POST",
         "/api/v1/worker-sessions/{session_id}:heartbeat",
@@ -251,6 +313,8 @@ def _json_object(body: bytes) -> dict[str, object] | None:
 
 
 def _match_route(method: str, path: str) -> tuple[_Route | None, dict[str, str]]:
+    if path != "/" + path.strip("/") or "//" in path:
+        return None, {}
     parts = path.strip("/").split("/")
     for route in _ROUTES:
         template = route.pattern.strip("/").split("/")
@@ -318,9 +382,10 @@ def _query(value: object) -> str | None:
     if type(value) is not bytes or len(value) > _MAX_QUERY_BYTES:
         return None
     try:
-        return value.decode("ascii")
+        decoded = value.decode("ascii")
     except UnicodeDecodeError:
         return None
+    return decoded
 
 
 def _safe_message(code: str) -> str:

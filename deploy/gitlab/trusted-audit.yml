@@ -52,7 +52,12 @@ securecode-trusted-audit:
       test -n "$SECURECODE_WORKER_TOKEN_FILE"
       test -f "$SECURECODE_WORKER_TOKEN_FILE"
       test ! -L "$SECURECODE_WORKER_TOKEN_FILE"
-      chmod 600 "$SECURECODE_WORKER_TOKEN_FILE"
+      test -f /etc/securecode-ai/approval-anchor.json
+      test ! -L /etc/securecode-ai/approval-anchor.json
+      test -x /run/securecode/ollama
+      private_tmp=/tmp/securecode
+      test -d "$private_tmp"
+      test ! -L "$private_tmp"
     - |
       python - <<'PY'
       import json
@@ -139,6 +144,11 @@ securecode-trusted-audit:
       rm -f "$askpass"
       unset GIT_ASKPASS CI_JOB_TOKEN CI_REGISTRY_PASSWORD
       mkdir -m 0700 "/tmp/securecode-home-$CI_JOB_ID"
+      worker_token_input="$(mktemp /tmp/securecode/.gitlab-worker-token-XXXXXXXX)"
+      chmod 600 "$worker_token_input"
+      cat "$SECURECODE_WORKER_TOKEN_FILE" > "$worker_token_input"
+      chmod 600 "$worker_token_input"
+      SECURECODE_WORKER_TOKEN_FILE="$worker_token_input"
       cd /app
       set -- env -i \
         PATH="$PATH" \
@@ -147,8 +157,11 @@ securecode-trusted-audit:
         PYTHONNOUSERSITE=1 \
         PYTHONUNBUFFERED=1 \
         HOME="/tmp/securecode-home-$CI_JOB_ID" \
+        SECURECODE_DATA_DIR=/var/lib/securecode \
+        SECURECODE_TMP_DIR=/tmp/securecode \
         SECURECODE_CONTROL_PLANE_URL="$SECURECODE_CONTROL_PLANE_URL" \
         SECURECODE_WORKER_TOKEN_FILE="$SECURECODE_WORKER_TOKEN_FILE" \
+        SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS="${SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS:-300}" \
         SECURECODE_WORKER_TARGET="$checkout" \
         SECURECODE_WORKER_ID="gitlab-$SECURECODE_SOURCE_PROJECT_ID-$CI_PIPELINE_ID-$CI_JOB_ID" \
         CI_PROJECT_ID="$SECURECODE_SOURCE_PROJECT_ID" \
@@ -157,4 +170,40 @@ securecode-trusted-audit:
       if test -n "${SECURECODE_WORKER_ARTIFACT_HOSTS:-}"; then
         set -- "$@" SECURECODE_WORKER_ARTIFACT_HOSTS="$SECURECODE_WORKER_ARTIFACT_HOSTS"
       fi
-      exec "$@" python -P -m securecode_ai.worker.service
+      if test -n "${SSL_CERT_FILE:-}"; then
+        set -- "$@" SSL_CERT_FILE="$SSL_CERT_FILE"
+      fi
+      if test -n "${SECURECODE_PROVIDER_PROFILE:-}"; then
+        set -- "$@" SECURECODE_PROVIDER_PROFILE="$SECURECODE_PROVIDER_PROFILE"
+      fi
+      if test -n "${SECURECODE_POLICY_PROFILE:-}"; then
+        set -- "$@" SECURECODE_POLICY_PROFILE="$SECURECODE_POLICY_PROFILE"
+      fi
+      if test -n "${SECURECODE_EGRESS_PROFILE:-}"; then
+        set -- "$@" SECURECODE_EGRESS_PROFILE="$SECURECODE_EGRESS_PROFILE"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATION_IMAGE:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATION_IMAGE="$SECURECODE_AI_VALIDATION_IMAGE"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_MODE:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_MODE="$SECURECODE_AI_VALIDATOR_MODE"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_SOCKET:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_SOCKET="$SECURECODE_AI_VALIDATOR_SOCKET"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_BUNDLE_ROOT="$SECURECODE_AI_VALIDATOR_BUNDLE_ROOT"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_IDENTITY:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_IDENTITY="$SECURECODE_AI_VALIDATOR_IDENTITY"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_DOCKER_SOCKET="$SECURECODE_AI_VALIDATOR_DOCKER_SOCKET"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID="$SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID"
+      fi
+      if test -n "${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256:-}"; then
+        set -- "$@" SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256="$SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256"
+      fi
+      exec "$@" python -P /app/entrypoint.py python -P -m securecode_ai.worker.service

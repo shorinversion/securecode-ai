@@ -25,6 +25,7 @@ from .dependency_scanning import (
     _dependency_purl,
     _manifest_hash,
 )
+from .dependency_scanning_yarn import parse_yarn_berry_lock
 
 _REVISION = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -151,6 +152,12 @@ def _validate_input(
 
 def _parse_yarn(source: bytes, limits: DependencyScanLimits) -> set[tuple[str, str]]:
     text = _decode_text(source)
+    if not any(row.strip() == "# yarn lockfile v1" for row in text.splitlines()):
+        return parse_yarn_berry_lock(text, limits)
+    return _parse_yarn_v1(text, limits)
+
+
+def _parse_yarn_v1(text: str, limits: DependencyScanLimits) -> set[tuple[str, str]]:
     pins: set[tuple[str, str]] = set()
     selectors: set[str] = set()
     current: dict[str, object] | None = None

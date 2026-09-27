@@ -204,7 +204,7 @@ def build_native_source_catalogue(
     indexes: list[SymbolIndex] = []
     anchors: list[DiscoveryEvidence] = []
     for file in snapshot.files:
-        suffix = PurePosixPath(file.path).suffix
+        suffix = PurePosixPath(file.path).suffix.casefold()
         if suffix in (".py", ".pyi"):
             builder, grammar = build_python_symbol_index, tree_sitter_python.language()
         elif suffix in (".js", ".mjs", ".cjs", ".jsx"):

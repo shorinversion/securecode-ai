@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 
 from securecode_ai.contracts import (
     AuditRunOutcome,
@@ -48,6 +49,7 @@ from securecode_ai.core.runtime import (
 from securecode_ai.core.tool_policy import RepositoryToolBudget, RepositoryToolScope
 
 from .config import EffectiveConfiguration
+from .dependency_scanning import ApprovedOsvScanner
 from .dependency_scanning_osv import BoundedOsvScanner
 from .endpoint import EndpointAuthorizationIssuer
 from .git_snapshot import OfflineGitObjectReader as OfflineGitObjectReader
@@ -100,10 +102,29 @@ from .product_runtime import (
     ProductAuditorInvoker,
     ProductDiscoveryBackend,
 )
+from .product_provider_runtime import ProductProviderRuntime
 from .product_scan import ProductCandidateFlow
 from .product_skeptic import PRODUCT_SKEPTIC_PROMPT_PIN, SKEPTIC_WIRE_PIN, ProductSkepticReviewPort
+from .remote_provider_budget import RemoteProviderCostReceipt
 from .runtime import LocalWorkflowRuntime
 from .secret_detection import SecretFingerprintKey
+
+_RUNTIME_CANCEL_LOCK_TIMEOUT_SECONDS = 5.0
+
+
+def _run_git_command(
+    git_command: _GitCommand,
+    checkout: Path,
+    executable: Path,
+    *arguments: str,
+    cancellation: LocalProductCancellationGuard,
+) -> str:
+    cancellation.checkpoint()
+    if git_command is _git:
+        return _git(checkout, executable, *arguments, cancelled=cancellation)
+    result = git_command(checkout, executable, *arguments)
+    cancellation.checkpoint()
+    return result
 
 
 def _run_local_product_scan(
@@ -115,31 +136,47 @@ def _run_local_product_scan(
     execution_identity: RunExecutionIdentity | None = None,
     run_id: str | None = None,
     cancelled: Callable[[], bool] | None = None,
+    on_cancel: Callable[[Callable[[], None]], None] | None = None,
+    usage_observer: Callable[[ModelUsage], None] | None = None,
+    cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
+    dependency_scanner: ApprovedOsvScanner | None = None,
     git_verifier: Callable[[str], Path] = verify_local_git_executable,
     git_command: _GitCommand = _git,
     reader_factory: _ReaderFactory = OfflineGitObjectReader,
+    provider_runtime: ProductProviderRuntime | None = None,
 ) -> LocalProductScanResult:
     cancellation = LocalProductCancellationGuard(cancelled)
     cancellation.checkpoint()
-    profile, policy = host.profile, host.policy
+    selected_runtime = provider_runtime
+    if selected_runtime is None:
+        profile, policy = host.profile, host.policy
+        registry = host.registry
+        resolver = _LiteralLoopbackResolver()
+        local_provider = True
+    else:
+        profile, policy = selected_runtime.profile, selected_runtime.policy
+        registry = selected_runtime.registry
+        resolver = selected_runtime.resolver
+        local_provider = False
     # Freeze exact authority bindings, independently of the mutable manifest
     # mapping and subsequent fresh loader results. Never adopt a replacement.
     original_authority = (
         host.approval_record_sha256,
         host.artifact_manifest_sha256,
         host.approved_bundle_sha256,
-        profile.canonical_content_hash(),
-        policy.canonical_content_hash(),
+        host.profile.canonical_content_hash(),
+        host.policy.canonical_content_hash(),
         _hash(host.artifact_manifest),
     )
-    host.registry.require_registered(profile)
+    registry.require_registered(profile)
     if (
         configuration.provider_profile != profile
+        or configuration.policy_profile_id != policy.policy_id
         or configuration.egress_profile is not policy.profile
     ):
         raise LocalProductConfigurationError()
     # Local execution is deliberately literal loopback, with no DNS authority.
-    if not ipaddress.ip_address(profile.endpoint.authority).is_loopback:
+    if local_provider and not ipaddress.ip_address(profile.endpoint.authority).is_loopback:
         raise LocalProductUnavailableError()
     policy_pin = _pin(policy.policy_id, policy.policy_version, policy.canonical_content_hash())
     workflow = build_default_workflow_definition(policy_pin=policy_pin)
@@ -161,11 +198,46 @@ def _run_local_product_scan(
     if root.is_symlink() or not root.is_dir() or "\x00" in target:
         raise LocalProductConfigurationError()
     git = git_verifier(host.artifact_manifest.get("git_executable_sha256", ""))
-    checkout = Path(git_command(root, git, "rev-parse", "--show-toplevel")).resolve()
+    checkout = Path(
+        _run_git_command(
+            git_command,
+            root,
+            git,
+            "rev-parse",
+            "--show-toplevel",
+            cancellation=cancellation,
+        )
+    ).resolve()
     if checkout != root.resolve():
         raise LocalProductConfigurationError()
-    head = git_command(checkout, git, "rev-parse", "--verify", "HEAD")
-    repository_id = "local-" + hashlib.sha256(str(checkout).encode()).hexdigest()[:32]
+    head = _run_git_command(
+        git_command,
+        checkout,
+        git,
+        "rev-parse",
+        "--verify",
+        "HEAD",
+        cancellation=cancellation,
+    )
+    local_repository_id = "local-" + hashlib.sha256(str(checkout).encode()).hexdigest()[:32]
+    scm_provider = "git"
+    base_sha = None
+    repository_id = local_repository_id
+    if execution_identity is not None:
+        supplied_revision = execution_identity.repository_revision
+        if (
+            supplied_revision.tenant_id != policy.tenant_scope
+            or supplied_revision.head_sha != head
+            or supplied_revision.scm_provider not in {"git", "github", "gitlab"}
+            or not supplied_revision.repository_id
+        ):
+            raise LocalProductConfigurationError()
+        # Connected jobs carry the server's SCM identity.  Keep that identity
+        # when deriving local scanner indexes; the checkout path is only a
+        # fallback for standalone CLI scans and is not a repository identity.
+        repository_id = supplied_revision.repository_id
+        scm_provider = supplied_revision.scm_provider
+        base_sha = supplied_revision.base_sha
     provider_pin = _pin(
         profile.profile_id, profile.profile_version, profile.canonical_content_hash()
     )
@@ -173,9 +245,10 @@ def _run_local_product_scan(
         repository_revision=RepositoryRevision(
             schema_version="0.2.0",
             tenant_id=policy.tenant_scope,
-            scm_provider="git",
+            scm_provider=scm_provider,
             repository_id=repository_id,
             head_sha=head,
+            base_sha=base_sha,
         ),
         stage_catalogue=DEFAULT_STAGE_CATALOGUE_PIN,
         workflow=workflow.component_pin,
@@ -238,14 +311,14 @@ def _run_local_product_scan(
         budget=budget,
     )
     issuer = ModelAuthorizationIssuer(
-        provider_registry=host.registry, policy_registry=EgressPolicyRegistry((policy,))
+        provider_registry=registry, policy_registry=EgressPolicyRegistry((policy,))
     )
 
     def preflight(selected: ModelRequest) -> ModelPreflightRequest:
         return ModelPreflightRequest(
             schema_version="0.2.0",
             model_request=selected,
-            required_execution_boundary=ExecutionBoundary.LOCAL_RUNNER,
+            required_execution_boundary=profile.execution_boundary,
             required_data_class=DataClass.CONFIDENTIAL_SOURCE,
             required_purpose=selected.mode,
             planned_transforms=("bounded_repository_view",),
@@ -299,7 +372,17 @@ def _run_local_product_scan(
         ):
             raise LocalProductUnavailableError()
         cancellation.checkpoint()
-    objects = Path(_git(checkout, git, "rev-parse", "--git-path", "objects"))
+    objects = Path(
+        _run_git_command(
+            git_command,
+            checkout,
+            git,
+            "rev-parse",
+            "--git-path",
+            "objects",
+            cancellation=cancellation,
+        )
+    )
     if not objects.is_absolute():
         objects = checkout / objects
     reader = reader_factory(objects_dir=objects.absolute(), git_executable=git)
@@ -327,28 +410,30 @@ def _run_local_product_scan(
     if started.snapshot is None:
         raise LocalProductUnavailableError()
     latest = [started.snapshot]
+    runtime_state_lock = Lock()
 
     def snapshot_for(
         selected_run: str, selected_identity: RunExecutionIdentity
     ) -> WorkflowSnapshot:
-        previous = latest[0]
-        observed = runtime.snapshot(
-            WorkflowSnapshotRequest(
-                schema_version="0.2.0",
-                operation=WorkflowOperation.SNAPSHOT,
-                request_id=run_id + "-state",
-                run_id=selected_run,
-                tenant_id=policy.tenant_scope,
-                execution_identity=selected_identity,
-                expected_sequence=previous.journal_sequence,
-                expected_journal_head_sha256=previous.journal_head_sha256,
-                expected_state_sha256=previous.state_sha256,
+        with runtime_state_lock:
+            previous = latest[0]
+            observed = runtime.snapshot(
+                WorkflowSnapshotRequest(
+                    schema_version="0.2.0",
+                    operation=WorkflowOperation.SNAPSHOT,
+                    request_id=run_id + "-state",
+                    run_id=selected_run,
+                    tenant_id=policy.tenant_scope,
+                    execution_identity=selected_identity,
+                    expected_sequence=previous.journal_sequence,
+                    expected_journal_head_sha256=previous.journal_head_sha256,
+                    expected_state_sha256=previous.state_sha256,
+                )
             )
-        )
-        if observed.snapshot is None:
-            raise LocalProductUnavailableError()
-        latest[0] = observed.snapshot
-        return observed.snapshot
+            if observed.snapshot is None:
+                raise LocalProductUnavailableError()
+            latest[0] = observed.snapshot
+            return observed.snapshot
 
     def reporting_policy(snapshot: WorkflowSnapshot) -> bool:
         if snapshot.execution_identity != identity:
@@ -376,42 +461,68 @@ def _run_local_product_scan(
         reporting_policy=reporting_policy,
     )
 
+    runtime_cancelled = False
+
     def cancel() -> None:
-        previous = latest[0]
-        cancelled = runtime.cancel(
-            WorkflowCancelRequest(
-                schema_version="0.2.0",
-                operation=WorkflowOperation.CANCEL,
-                request_id=run_id + "-cancel",
-                run_id=run_id,
-                tenant_id=policy.tenant_scope,
-                execution_identity=identity,
-                idempotency_key=run_id + "-cancel",
-                expected_sequence=previous.journal_sequence,
-                expected_journal_head_sha256=previous.journal_head_sha256,
-                expected_state_sha256=previous.state_sha256,
-            )
-        )
-        if cancelled.snapshot is None:
+        nonlocal runtime_cancelled
+        if not runtime_state_lock.acquire(timeout=_RUNTIME_CANCEL_LOCK_TIMEOUT_SECONDS):
             raise LocalProductUnavailableError()
-        latest[0] = cancelled.snapshot
+        try:
+            if runtime_cancelled:
+                return
+            previous = latest[0]
+            cancelled = runtime.cancel(
+                WorkflowCancelRequest(
+                    schema_version="0.2.0",
+                    operation=WorkflowOperation.CANCEL,
+                    request_id=run_id + "-cancel",
+                    run_id=run_id,
+                    tenant_id=policy.tenant_scope,
+                    execution_identity=identity,
+                    idempotency_key=run_id + "-cancel",
+                    expected_sequence=previous.journal_sequence,
+                    expected_journal_head_sha256=previous.journal_head_sha256,
+                    expected_state_sha256=previous.state_sha256,
+                )
+            )
+            if cancelled.snapshot is None:
+                raise LocalProductUnavailableError()
+            latest[0] = cancelled.snapshot
+            runtime_cancelled = True
+        finally:
+            runtime_state_lock.release()
+
+    if on_cancel is not None:
+        on_cancel(cancel)
+    cancellation.checkpoint()
 
     model_usage: list[ModelUsage] = []
+
+    def observe_usage(usage: ModelUsage) -> None:
+        model_usage.append(usage)
+        if usage_observer is not None:
+            usage_observer(usage)
+
     executor = AuthorizedLocalModelExecutor(
         harness=AuthorizedProviderHarness(
             model_issuer=issuer,
-            endpoint_issuer=EndpointAuthorizationIssuer(provider_registry=host.registry),
+            endpoint_issuer=EndpointAuthorizationIssuer(provider_registry=registry),
         ),
-        registry=host.registry,
+        registry=registry,
         profile=profile,
         policy=policy,
-        resolver=_LiteralLoopbackResolver(),
-        connector=OpenAICompatibleLocalHttpConnector(
-            profile=profile,
-            cancelled=cancellation,
+        resolver=resolver,
+        connector=(
+            selected_runtime.connector
+            if selected_runtime is not None
+            else OpenAICompatibleLocalHttpConnector(profile=profile, cancelled=cancellation)
         ),
         preflight=preflight,
-        usage_observer=model_usage.append,
+        credential_supplier=(
+            selected_runtime.credential_supplier if selected_runtime is not None else None
+        ),
+        usage_observer=observe_usage,
+        cost_observer=cost_observer,
     )
     tools_budget = RepositoryToolBudget(16, 65536, max_input)
     plan = ModelNativeDiscoveryPlan(
@@ -543,15 +654,18 @@ def _run_local_product_scan(
         state_probe=probe,
     )
     cancellation.checkpoint()
+    selected_dependency_scanner = dependency_scanner
+    if selected_dependency_scanner is None:
+        selected_dependency_scanner = BoundedOsvScanner(
+            timeout_seconds=min(15.0, float(profile.budgets.timeout_seconds)),
+            cancelled=cancellation,
+        )
     result = execute_product_audit(
         reader=reader,
         host=inputs,
         content_key=content_key,
         fingerprint_key=SecretFingerprintKey("local-ephemeral", os.urandom(32)),
-        dependency_scanner=BoundedOsvScanner(
-            timeout_seconds=min(15.0, float(profile.budgets.timeout_seconds)),
-            cancelled=cancellation,
-        ),
+        dependency_scanner=selected_dependency_scanner,
         model_plan=plan,
         model_backend=ProductDiscoveryBackend(
             executor=executor,

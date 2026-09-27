@@ -44,17 +44,27 @@ from .product_execution_stages import (
     ProductDeterministicExecution,
     ProductSecretStageResult,
 )
+from .product_scanner import scanner_facts_match_receipts
+from .secret_detection import SecretCandidate
 
 
 def child_fact_catalogue(
     execution: ProductDeterministicExecution, *, tenant_id: str
 ) -> ProductChildFacts:
-    """Retain every secret/advisory fact as a candidate, never as a verdict.
+    """Retain child security signals as candidates, never as verdicts.
 
-    Secret metadata remains DC4, so the existing evidence-package boundary
-    explicitly refuses model interpretation. No matched secret or source bytes
-    are present in this graph. Advisory metadata is independent of repository
-    source and retains its exact immutable manifest location.
+    Dependency inventory without a matched advisory remains in the
+    dependency-stage receipt, but is not a vulnerability candidate. Matched
+    advisory facts bind the candidate to the inventory and manifest digests
+    used for correlation.
+
+    A ``SecretCandidate`` remains DC4_RESTRICTED and is never copied into this
+    projection.  Secret findings use a value-free INTERNAL_METADATA projection
+    containing only detector kind, redaction label, and source location.  The
+    restricted source path is still denied to model tools, so neither matched
+    bytes nor the detector fingerprint can enter model context or an ordinary
+    artifact.  Advisory metadata is independent of repository source and
+    retains its exact immutable manifest location.
     """
     if any(anchor.tenant_id != tenant_id for anchor in execution.catalogue.anchors):
         raise ValueError("PRODUCT_CHILD_FACT_TENANT_INVALID")
@@ -66,16 +76,21 @@ def child_fact_catalogue(
     )
     facts: list[tuple[str, str, str, SourceRange, str, DataClass, dict[str, object]]] = []
     if execution.secrets is not None:
+        secret_ordinal = 0
         for result in execution.secrets.results:
             for candidate in result.candidates:
+                fact_id = _secret_fact_id(
+                    execution, candidate, tenant_id=tenant_id, ordinal=secret_ordinal
+                )
+                secret_ordinal += 1
                 facts.append(
                     (
                         "secret-" + candidate.kind.value,
                         candidate.path,
                         candidate.content_sha256,
                         candidate.location,
-                        candidate.fingerprint_sha256,
-                        DataClass.RESTRICTED,
+                        fact_id,
+                        DataClass.INTERNAL_METADATA,
                         {
                             "kind": candidate.kind.value,
                             "redaction": candidate.redaction,
@@ -98,8 +113,13 @@ def child_fact_catalogue(
                         {
                             "advisory_id": advisory.advisory_id,
                             "aliases": advisory.aliases,
+                            "ecosystem": coordinate.ecosystem.value,
+                            "inventory_sha256": dependency_result.inventory_sha256,
+                            "manifest_scan_sha256": dependency_result.manifest_scan_sha256,
+                            "name": coordinate.name,
                             "purl": coordinate.purl,
                             "producer": advisory.producer,
+                            "version": coordinate.version,
                         },
                     )
                 )
@@ -181,7 +201,7 @@ def child_fact_catalogue(
         for lineage in data["lineage"]:
             lineage["evidence_ids"] = lineage["input_signal_ids"]
         candidates.append(DiscoveryCandidate.model_validate_json(json.dumps(data)))
-    edges = tuple(
+    candidate_edges = tuple(
         EvidenceGraphEdge(
             EvidenceEdgeKind.CANDIDATE_EVIDENCE,
             EvidenceNodeRef(EvidenceNodeKind.CANDIDATE, candidate.candidate_id),
@@ -196,10 +216,52 @@ def child_fact_catalogue(
         head_sha=execution.catalogue.snapshot.head_sha,
         candidates=tuple(candidates),
         evidence=tuple(evidence),
-        edges=edges,
+        edges=candidate_edges,
     )
 
     return ProductChildFacts(graph, tuple(artifacts))
+
+
+def _secret_fact_id(
+    execution: ProductDeterministicExecution,
+    candidate: SecretCandidate,
+    *,
+    tenant_id: str,
+    ordinal: int,
+) -> str:
+    """Derive an opaque ID from safe detector metadata, never secret material.
+
+    The detector's ``fingerprint_sha256`` is deliberately excluded.  It is a
+    keyed digest of the matched bytes and therefore remains inside the DC4
+    detector result.  This projection is bound to one immutable execution and
+    source span while exposing no value-derived identifier.
+    """
+
+    if (
+        type(tenant_id) is not str
+        or not tenant_id
+        or type(ordinal) is not int
+        or ordinal < 0
+    ):
+        raise ValueError("PRODUCT_SECRET_FACT_METADATA_INVALID")
+    location = candidate.location
+    material = (
+        "product-secret-fact-v2",
+        tenant_id,
+        execution.repository_id,
+        execution.catalogue.snapshot.head_sha,
+        execution.catalogue.snapshot.tree_oid,
+        candidate.path,
+        candidate.content_sha256,
+        candidate.kind.value,
+        candidate.producer.value,
+        location.start_byte,
+        location.end_byte,
+        ordinal,
+    )
+    return hashlib.sha256(
+        json.dumps(material, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 def _child_producer_sha256() -> str:
@@ -217,6 +279,8 @@ def _child_producer_sha256() -> str:
         "dependency_scanning_go.py",
         "dependency_scanning_javascript.py",
         "dependency_scanning_javascript_locks.py",
+        "dependency_scanning_osv.py",
+        "product_execution_facts.py",
     )
     manifest = [
         (name, hashlib.sha256((root / name).read_bytes()).hexdigest())
@@ -230,6 +294,12 @@ def execution_fact_graph(
     execution: ProductDeterministicExecution, *, tenant_id: str
 ) -> EvidenceGraph:
     """Merge retained static and child facts without consuming model authority."""
+    if execution.scan.is_complete and not scanner_facts_match_receipts(
+        execution.catalogue,
+        execution.scan,
+        repository_id=execution.repository_id,
+    ):
+        raise ValueError("PRODUCT_STATIC_FACT_RECEIPT_BINDING_INVALID")
     child = child_fact_graph(execution, tenant_id=tenant_id)
     static = execution.scan.graph
     if static.tenant_id != tenant_id or static.head_sha != child.head_sha:
@@ -240,7 +310,7 @@ def execution_fact_graph(
         if record.evidence_id in records and records[record.evidence_id] != record:
             raise ValueError("PRODUCT_CHILD_FACT_COLLISION")
         records[record.evidence_id] = record
-    edges = tuple(
+    candidate_edges = tuple(
         EvidenceGraphEdge(
             EvidenceEdgeKind.CANDIDATE_EVIDENCE,
             EvidenceNodeRef(EvidenceNodeKind.CANDIDATE, candidate.candidate_id),
@@ -249,13 +319,21 @@ def execution_fact_graph(
         for candidate in candidates
         for evidence_id in candidate.evidence_ids
     )
+    derived_edges = tuple(
+        {
+            edge
+            for source_graph in (static, child)
+            for edge in source_graph.edges
+            if edge.kind is EvidenceEdgeKind.EVIDENCE_DERIVED_FROM
+        }
+    )
     return EvidenceGraph(
         graph_id="product-deterministic-union",
         tenant_id=tenant_id,
         head_sha=child.head_sha,
         candidates=candidates,
         evidence=tuple(records.values()),
-        edges=edges,
+        edges=(*candidate_edges, *derived_edges),
     )
 
 

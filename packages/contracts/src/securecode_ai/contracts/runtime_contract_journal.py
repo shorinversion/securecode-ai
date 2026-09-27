@@ -336,14 +336,55 @@ class WorkflowTransitionEvent(WireModel):
                 or self.receipt_status is None
             ):
                 raise ValueError("signal transition requires closed receipt metadata")
-        elif (
-            self.signal_kind is not None
-            or self.receipt_status is not None
-            or self.model_call_status is not None
-            or self.exhaustion_reason is not None
-            or self.receipt_sha256 is not None
-        ):
-            raise ValueError("non-signal transition cannot carry receipt metadata")
+            if self.reason not in {
+                WorkflowTransitionReason.NODE_COMPLETED,
+                WorkflowTransitionReason.DISCOVERY_LANE_RESOLVED,
+                WorkflowTransitionReason.DISCOVERY_FAN_IN,
+                WorkflowTransitionReason.LOOP_RETRY,
+                WorkflowTransitionReason.LOOP_EXHAUSTED,
+            }:
+                raise ValueError("signal transition requires a signal-specific reason")
+            if (
+                self.reason is WorkflowTransitionReason.DISCOVERY_LANE_RESOLVED
+                and self.completed_node
+                not in {
+                    WorkflowNode.DETERMINISTIC_ANALYSIS,
+                    WorkflowNode.MODEL_NATIVE_DISCOVERY,
+                }
+            ):
+                raise ValueError("discovery lane resolution requires a discovery node")
+            if (
+                self.reason is WorkflowTransitionReason.DISCOVERY_FAN_IN
+                and self.completed_node is not WorkflowNode.NORMALIZATION
+            ):
+                raise ValueError("discovery fan-in requires the normalization node")
+        else:
+            if (
+                self.completed_node is not None
+                or self.signal_kind is not None
+                or self.receipt_status is not None
+                or self.model_call_status is not None
+                or self.exhaustion_reason is not None
+                or self.receipt_sha256 is not None
+            ):
+                raise ValueError("non-signal transition cannot carry receipt metadata")
+            expected_reason = {
+                WorkflowOperation.START: WorkflowTransitionReason.RUN_STARTED,
+                WorkflowOperation.CANCEL: WorkflowTransitionReason.CANCELLED,
+                WorkflowOperation.SUPERSEDE: WorkflowTransitionReason.SUPERSEDED,
+            }.get(self.operation)
+            if expected_reason is None or self.reason is not expected_reason:
+                raise ValueError("non-signal reason must match its operation")
+        if (self.operation is WorkflowOperation.START) != (self.sequence == 1):
+            raise ValueError("only the start transition may be the journal genesis")
+        expected_control_state = {
+            WorkflowOperation.START: WorkflowControlState.ACTIVE,
+            WorkflowOperation.SIGNAL: WorkflowControlState.ACTIVE,
+            WorkflowOperation.CANCEL: WorkflowControlState.CANCELLED,
+            WorkflowOperation.SUPERSEDE: WorkflowControlState.SUPERSEDED,
+        }.get(self.operation)
+        if self.resulting_snapshot.control_state is not expected_control_state:
+            raise ValueError("resulting control state must match the transition operation")
         if (self.operation is WorkflowOperation.SUPERSEDE) != (
             self.superseding_head_sha is not None
         ):

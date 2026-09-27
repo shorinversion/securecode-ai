@@ -15,6 +15,7 @@ from enum import StrEnum
 
 from securecode_ai.contracts import (
     CandidateOrigin,
+    CommandOperationEvidence,
     ContractExtension,
     DiscoveryCandidate,
     DiscoveryLane,
@@ -119,7 +120,7 @@ def root_cause_location_fingerprint(
         raise NormalizationError(NormalizationErrorCode.REQUEST_INVALID)
     try:
         location = SourceLocation.model_validate_json(location.model_dump_json())
-    except (AttributeError, TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE) from None
     material = {
         "location": {
@@ -191,6 +192,11 @@ def normalize_signals(
                 candidate_version=1,
                 lineages=(_lineage_for_signal(signal, fingerprint),),
                 evidence_ids=(),
+                command_operation_evidence=(
+                    (signal.command_operation_evidence,)
+                    if signal.command_operation_evidence is not None
+                    else ()
+                ),
             )
         )
     for candidate in candidates:
@@ -217,6 +223,7 @@ class _CandidateMaterial:
     candidate_version: int
     lineages: tuple[LineageRef, ...]
     evidence_ids: tuple[str, ...]
+    command_operation_evidence: tuple[CommandOperationEvidence, ...]
 
 
 def _validated_signal(signal: RawSignal) -> RawSignal:
@@ -224,7 +231,7 @@ def _validated_signal(signal: RawSignal) -> RawSignal:
         raise NormalizationError(NormalizationErrorCode.REQUEST_INVALID)
     try:
         return RawSignal.model_validate(signal.model_dump(mode="python"))
-    except (TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE) from None
 
 
@@ -233,7 +240,7 @@ def _validated_candidate(candidate: DiscoveryCandidate) -> DiscoveryCandidate:
         raise NormalizationError(NormalizationErrorCode.REQUEST_INVALID)
     try:
         return DiscoveryCandidate.model_validate(candidate.model_dump(mode="python"))
-    except (TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE) from None
 
 
@@ -310,6 +317,7 @@ def _material_for_candidate(candidate: DiscoveryCandidate) -> _CandidateMaterial
         candidate_version=candidate.candidate_version,
         lineages=lineages,
         evidence_ids=candidate.evidence_ids,
+        command_operation_evidence=candidate.command_operation_evidence,
     )
 
 
@@ -322,7 +330,7 @@ def _lineage_with_input_candidate(lineage: LineageRef, candidate_id: str) -> Lin
         )
         material["evidence_ids"] = tuple(sorted(lineage.evidence_ids))
         return LineageRef(**material)
-    except (TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE) from None
 
 
@@ -356,6 +364,7 @@ def _merge_materials(
         )
     )
     extensions = _merged_extensions(materials)
+    command_operation_evidence = _merged_command_operation_evidence(materials)
     try:
         return DiscoveryCandidate(
             schema_version=schema_version,
@@ -368,8 +377,9 @@ def _merge_materials(
             candidate_origin=origin,
             lineage=lineages,
             evidence_ids=evidence_ids,
+            command_operation_evidence=command_operation_evidence,
         )
-    except (TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE) from None
 
 
@@ -406,6 +416,21 @@ def _merged_extensions(materials: list[_CandidateMaterial]) -> tuple[ContractExt
                 raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE)
             extensions_by_namespace[extension.namespace] = extension
     return tuple(extension for _, extension in sorted(extensions_by_namespace.items()))
+
+
+def _merged_command_operation_evidence(
+    materials: list[_CandidateMaterial],
+) -> tuple[CommandOperationEvidence, ...]:
+    evidence_by_signal: dict[str, CommandOperationEvidence] = {}
+    for material in materials:
+        for evidence in material.command_operation_evidence:
+            previous = evidence_by_signal.get(evidence.scanner_signal_id)
+            if previous is not None and previous != evidence:
+                raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE)
+            evidence_by_signal[evidence.scanner_signal_id] = evidence
+    return tuple(
+        evidence_by_signal[key] for key in sorted(evidence_by_signal)
+    )
 
 
 def _origin_for_lanes(lanes: set[DiscoveryLane]) -> CandidateOrigin:

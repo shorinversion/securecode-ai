@@ -630,7 +630,7 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
             ("advisory_non_blocking",),
             None,
         )
-    if comparison is None:
+    if mode is ScmPolicyMode.NEW_CODE and comparison is None:
         return _decision(
             policy,
             mode,
@@ -643,7 +643,7 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
             ("baseline_required",),
             ScmPolicyErrorCode.BASELINE_REQUIRED,
         )
-    if not _comparison_matches_run(comparison, audit_run):
+    if comparison is not None and not _comparison_matches_run(comparison, audit_run):
         return _decision(
             policy,
             mode,
@@ -753,61 +753,41 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
         and item.severity in policy.rules.block_severities
     )
     if mode is ScmPolicyMode.NEW_CODE:
-        raw_new = tuple(
-            item
+        try:
+            proven_new = set(
+                comparison.new_code_fingerprints(changed_scope=changed_scope)
+            )
+        except (TypeError, ValueError):
+            proven_new = set()
+        relations = tuple(
+            (
+                BaselineFindingRelation.LEGACY
+                if comparison.relation_for(item.root_cause_fingerprint)
+                is BaselineFindingRelation.LEGACY
+                else BaselineFindingRelation.NEW
+                if item.root_cause_fingerprint in proven_new
+                else BaselineFindingRelation.UNKNOWN
+            )
             for item in eligible
-            if comparison.relation_for(item.root_cause_fingerprint)
-            is BaselineFindingRelation.NEW
         )
-        if raw_new:
-            if changed_scope is None:
-                return _decision(
-                    policy,
-                    mode,
-                    audit_run,
-                    hashes,
-                    ScmPolicyEnforcement.NON_PASS,
-                    False,
-                    False,
-                    False,
-                    ("changed_scope_required",),
-                    ScmPolicyErrorCode.CHANGED_SCOPE_REQUIRED,
-                )
-            try:
-                scoped_new = set(comparison.new_code_fingerprints(changed_scope=changed_scope))
-            except (TypeError, ValueError):
-                scoped_new = set()
-            if any(item.root_cause_fingerprint not in scoped_new for item in raw_new):
-                return _decision(
-                    policy,
-                    mode,
-                    audit_run,
-                    hashes,
-                    ScmPolicyEnforcement.NON_PASS,
-                    False,
-                    False,
-                    False,
-                    ("changed_scope_unproven",),
-                    ScmPolicyErrorCode.CHANGED_SCOPE_REQUIRED,
-                )
-        if not raw_new:
-            if any(
-                comparison.relation_for(item.root_cause_fingerprint)
-                is not BaselineFindingRelation.LEGACY
-                for item in eligible
-            ):
-                return _decision(
-                    policy,
-                    mode,
-                    audit_run,
-                    hashes,
-                    ScmPolicyEnforcement.NON_PASS,
-                    False,
-                    False,
-                    False,
-                    ("unmapped_blocking_finding",),
-                    ScmPolicyErrorCode.UNMAPPED_BLOCKING_FINDING,
-                )
+        if BaselineFindingRelation.UNKNOWN in relations:
+            return _decision(
+                policy,
+                mode,
+                audit_run,
+                hashes,
+                ScmPolicyEnforcement.NON_PASS,
+                False,
+                False,
+                False,
+                (
+                    "changed_scope_required"
+                    if changed_scope is None
+                    else "changed_scope_unproven",
+                ),
+                ScmPolicyErrorCode.CHANGED_SCOPE_REQUIRED,
+            )
+        if BaselineFindingRelation.NEW not in relations:
             return _decision(
                 policy,
                 mode,
@@ -911,10 +891,11 @@ def _validate_comparison(value: object) -> None:
     if (
         value.schema_version != BASELINE_FINGERPRINT_SCHEMA_VERSION
         or type(value.tenant_id) is not str
-        or not value.tenant_id
+        or _ID.fullmatch(value.tenant_id) is None
         or not _is_commit(value.base_sha)
         or not _is_commit(value.head_sha)
         or any(type(field) is not tuple for field in fields)
+        or any(len(field) > _MAX_FINDINGS for field in fields)
         or any(
             not all(_is_sha(item) for item in field) or tuple(sorted(field)) != field
             for field in fields

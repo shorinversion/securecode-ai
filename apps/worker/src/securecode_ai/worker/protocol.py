@@ -18,6 +18,19 @@ from .usage import WorkerResourceUsage
 
 _OPAQUE_ID: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SHA256: Final = re.compile(r"^[0-9a-f]{64}$")
+_MAX_ARTIFACT_BYTES: Final = 16_777_216
+_MAX_VERSION: Final = 2_147_483_647
+_MAX_SEQUENCE: Final = 2_147_483_647
+_MAX_SOURCE_LINE: Final = 2_147_483_647
+_SCHEMA_VERSION: Final = "0.2.0"
+_WORKER_ARTIFACT_DATA_CLASSES: Final = frozenset(
+    {
+        DataClass.PUBLIC,
+        DataClass.INTERNAL_METADATA,
+        DataClass.CONFIDENTIAL_SECURITY,
+        DataClass.CONFIDENTIAL_SOURCE,
+    }
+)
 
 
 class ProtocolError(ValueError):
@@ -30,12 +43,45 @@ class WorkerCommand(StrEnum):
     SUPERSEDE = "SUPERSEDE"
 
 
+class WorkerOperation(StrEnum):
+    """Internal product operation selected for one leased worker run.
+
+    The control-plane payload may omit this optional field, in which case the
+    historical scan operation remains the only active path.  ``REPAIR`` never
+    authorizes applying or publishing a patch; it only enables the local,
+    suggestion-only repair journey after the immutable scan.
+    """
+
+    SCAN = "SCAN"
+    REPAIR = "REPAIR"
+
+
 class WorkerContributionTrust(StrEnum):
     NOT_SCM = "NOT_SCM"
     TRUSTED_SAME_REPOSITORY = "TRUSTED_SAME_REPOSITORY"
     UNTRUSTED_FORK = "UNTRUSTED_FORK"
     UNTRUSTED_SAME_REPOSITORY = "UNTRUSTED_SAME_REPOSITORY"
     UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerResourceBudget:
+    """The reservation bound delivered with a claimed worker job."""
+
+    profile_sha256: str
+    reservation_id: str
+    reservation_version: int
+    reserved: WorkerResourceUsage
+
+    def __post_init__(self) -> None:
+        if (
+            _SHA256.fullmatch(self.profile_sha256) is None
+            or _OPAQUE_ID.fullmatch(self.reservation_id) is None
+            or type(self.reservation_version) is not int
+            or self.reservation_version < 1
+            or type(self.reserved) is not WorkerResourceUsage
+        ):
+            raise ProtocolError("worker resource budget is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,11 +93,33 @@ class WorkerJob:
     command: WorkerCommand
     execution_identity: RunExecutionIdentity
     contribution_trust: WorkerContributionTrust = WorkerContributionTrust.NOT_SCM
+    next_event_sequence: int = 1
+    operation: WorkerOperation = WorkerOperation.SCAN
+    resource_budget: WorkerResourceBudget | None = None
 
     def __post_init__(self) -> None:
         """Refuse a forged trust label before it can affect worker isolation."""
 
-        if type(self.contribution_trust) is not WorkerContributionTrust:
+        if (
+            type(self.session_id) is not str
+            or _OPAQUE_ID.fullmatch(self.session_id) is None
+            or type(self.run_id) is not str
+            or _OPAQUE_ID.fullmatch(self.run_id) is None
+            or type(self.version) is not int
+            or not 1 <= self.version <= _MAX_VERSION
+            or type(self.lease_seconds) is not int
+            or not 5 <= self.lease_seconds <= 3600
+            or type(self.command) is not WorkerCommand
+            or type(self.execution_identity) is not RunExecutionIdentity
+            or type(self.contribution_trust) is not WorkerContributionTrust
+            or type(self.next_event_sequence) is not int
+            or not 1 <= self.next_event_sequence <= _MAX_SEQUENCE
+            or type(self.operation) is not WorkerOperation
+            or (
+                self.resource_budget is not None
+                and type(self.resource_budget) is not WorkerResourceBudget
+            )
+        ):
             raise ProtocolError("worker job is invalid")
 
     @classmethod
@@ -66,10 +134,28 @@ class WorkerJob:
             "execution_identity",
             "execution_identity_hash",
             "contribution_trust",
+            "next_event_sequence",
+            "resource_budget",
+            "operation",
         }
-        if set(document) - allowed:
+        required = {
+            "schema_version",
+            "session_id",
+            "run_id",
+            "version",
+            "lease_seconds",
+            "command",
+            "execution_identity",
+            "execution_identity_hash",
+            "contribution_trust",
+            "next_event_sequence",
+            "resource_budget",
+        }
+        if set(document) - allowed or not required.issubset(document):
             raise ProtocolError("worker job is invalid")
         try:
+            if document["schema_version"] != _SCHEMA_VERSION:
+                raise ProtocolError("worker job is invalid")
             session_id = document["session_id"]
             run_id = document["run_id"]
             version = document["version"]
@@ -88,9 +174,15 @@ class WorkerJob:
                 "execution_identity_hash", identity.execution_identity_hash
             )
             trust_value = document.get("contribution_trust", WorkerContributionTrust.NOT_SCM.value)
+            next_event_sequence = document["next_event_sequence"]
             if type(trust_value) is not str:
                 raise ProtocolError("worker job is invalid")
             contribution_trust = WorkerContributionTrust(trust_value)
+            operation_value = document.get("operation", WorkerOperation.SCAN.value)
+            resource_budget = _resource_budget(document.get("resource_budget"))
+            if type(operation_value) is not str:
+                raise ProtocolError("worker job is invalid")
+            operation = WorkerOperation(operation_value)
         except (KeyError, TypeError, ValueError):
             raise ProtocolError("worker job is invalid") from None
         if (
@@ -99,14 +191,18 @@ class WorkerJob:
             or type(run_id) is not str
             or _OPAQUE_ID.fullmatch(run_id) is None
             or type(version) is not int
-            or version < 1
+            or not 1 <= version <= _MAX_VERSION
             or type(lease_seconds) is not int
             or not 5 <= lease_seconds <= 3600
             or type(identity_hash) is not str
             or _SHA256.fullmatch(identity_hash) is None
             or identity_hash != identity.execution_identity_hash
+            or type(next_event_sequence) is not int
+            or not 1 <= next_event_sequence <= _MAX_SEQUENCE
         ):
             raise ProtocolError("worker job is invalid")
+        if resource_budget is None:
+            raise ProtocolError("worker resource budget is unavailable")
         return cls(
             session_id,
             run_id,
@@ -115,7 +211,47 @@ class WorkerJob:
             command,
             identity,
             contribution_trust,
+            next_event_sequence,
+            operation,
+            resource_budget,
         )
+
+
+def _resource_budget(value: object) -> WorkerResourceBudget | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != {
+        "profile_sha256",
+        "reservation_id",
+        "reservation_version",
+        "reserved",
+    }:
+        raise ProtocolError("worker resource budget is invalid")
+    reserved = value["reserved"]
+    if not isinstance(reserved, Mapping) or set(reserved) != {
+        "tokens",
+        "cost_microunits",
+        "cpu_ms",
+        "peak_memory_bytes",
+        "wall_ms",
+    }:
+        raise ProtocolError("worker resource budget is invalid")
+    try:
+        usage = WorkerResourceUsage(
+            tokens=reserved["tokens"],
+            cost_microunits=reserved["cost_microunits"],
+            cpu_ms=reserved["cpu_ms"],
+            peak_memory_bytes=reserved["peak_memory_bytes"],
+            wall_ms=reserved["wall_ms"],
+        )
+        return WorkerResourceBudget(
+            profile_sha256=value["profile_sha256"],
+            reservation_id=value["reservation_id"],
+            reservation_version=value["reservation_version"],
+            reserved=usage,
+        )
+    except (TypeError, ValueError):
+        raise ProtocolError("worker resource budget is invalid") from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,7 +274,7 @@ class WorkerEvent:
             _OPAQUE_ID.fullmatch(run_id) is None
             or _SHA256.fullmatch(execution_identity_hash) is None
             or type(sequence) is not int
-            or sequence < 1
+            or not 1 <= sequence <= _MAX_SEQUENCE
             or kind
             not in {
                 "RUN_STARTED",
@@ -173,19 +309,105 @@ class WorkerEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkerRepairPatchBinding:
+    """Durable source-bearing repair binding carried beside one patch bundle."""
+
+    tenant_id: str
+    repository_id: str
+    run_id: str
+    finding_id: str
+    head_sha: str
+    execution_identity_hash: str
+    patch_sha256: str
+    patch_size_bytes: int
+    manifest_sha256: str
+    validation_result_sha256: str
+    patch_status_sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            any(
+                type(value) is not str or _OPAQUE_ID.fullmatch(value) is None
+                for value in (
+                    self.tenant_id,
+                    self.repository_id,
+                    self.run_id,
+                    self.finding_id,
+                )
+            )
+            or type(self.head_sha) is not str
+            or re.fullmatch(r"[0-9a-f]{40}", self.head_sha) is None
+            or type(self.execution_identity_hash) is not str
+            or _SHA256.fullmatch(self.execution_identity_hash) is None
+            or type(self.patch_sha256) is not str
+            or _SHA256.fullmatch(self.patch_sha256) is None
+            or type(self.manifest_sha256) is not str
+            or _SHA256.fullmatch(self.manifest_sha256) is None
+            or type(self.validation_result_sha256) is not str
+            or _SHA256.fullmatch(self.validation_result_sha256) is None
+            or type(self.patch_status_sha256) is not str
+            or _SHA256.fullmatch(self.patch_status_sha256) is None
+            or type(self.patch_size_bytes) is not int
+            or not 1 <= self.patch_size_bytes <= 131_072
+        ):
+            raise ProtocolError("worker repair patch binding is invalid")
+
+    def document(self) -> dict[str, object]:
+        return {
+            "execution_identity_hash": self.execution_identity_hash,
+            "finding_id": self.finding_id,
+            "head_sha": self.head_sha,
+            "manifest_sha256": self.manifest_sha256,
+            "patch_size_bytes": self.patch_size_bytes,
+            "patch_sha256": self.patch_sha256,
+            "patch_status_sha256": self.patch_status_sha256,
+            "repository_id": self.repository_id,
+            "run_id": self.run_id,
+            "tenant_id": self.tenant_id,
+            "validation_result_sha256": self.validation_result_sha256,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class WorkerArtifact:
     reference: ArtifactRef
     purpose: str
     content: bytes
+    binding: WorkerRepairPatchBinding | None = None
 
     def __post_init__(self) -> None:
         if (
             type(self.reference) is not ArtifactRef
-            or self.purpose not in {"audit-report", "audit-run", "evidence-graph", "sarif-report"}
+            or self.reference.data_class not in _WORKER_ARTIFACT_DATA_CLASSES
+            or type(self.purpose) is not str
+            or self.purpose
+            not in {
+                "audit-report",
+                "audit-run",
+                "evidence-graph",
+                "repair-patch",
+                "repair-report",
+                "sarif-report",
+            }
             or type(self.content) is not bytes
             or not self.content
+            or len(self.content) > _MAX_ARTIFACT_BYTES
             or len(self.content) != self.reference.size_bytes
             or hashlib.sha256(self.content).hexdigest() != self.reference.content_sha256
+            or (
+                self.purpose == "repair-patch"
+                and (
+                    self.reference.data_class is not DataClass.CONFIDENTIAL_SOURCE
+                    or type(self.binding) is not WorkerRepairPatchBinding
+                )
+            )
+            or (
+                self.purpose != "repair-patch"
+                and (
+                    self.reference.data_class is DataClass.CONFIDENTIAL_SOURCE
+                    or self.binding is not None
+                )
+            )
         ):
             raise ProtocolError("worker artifact is invalid")
 
@@ -213,9 +435,9 @@ class WorkerFindingLocation:
             or any(part in {"", ".", ".."} for part in normalized.parts)
             or normalized.parts[0].endswith(":")
             or type(self.start_line) is not int
-            or self.start_line < 1
+            or not 1 <= self.start_line <= _MAX_SOURCE_LINE
             or type(self.end_line) is not int
-            or self.end_line < self.start_line
+            or not self.start_line <= self.end_line <= _MAX_SOURCE_LINE
         ):
             raise ProtocolError("worker finding location is invalid")
 
@@ -304,11 +526,14 @@ def _canonical_sha256(document: Mapping[str, object]) -> str:
 __all__ = [
     "ProtocolError",
     "WorkerArtifact",
+    "WorkerRepairPatchBinding",
     "WorkerCommand",
     "WorkerContributionTrust",
     "WorkerEvent",
     "WorkerFinding",
     "WorkerFindingLocation",
     "WorkerJob",
+    "WorkerOperation",
+    "WorkerResourceBudget",
     "WorkerResourceUsage",
 ]

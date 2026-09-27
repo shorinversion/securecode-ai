@@ -19,7 +19,10 @@ from securecode_ai.contracts import (
     AuditRunOutcome,
     CoverageManifest,
     CoverageScenario,
+    CoverageStatus,
+    CoverageUnit,
     FindingGateState,
+    ModelCallStatus,
 )
 from securecode_ai.core.classification import (
     ClassificationError,
@@ -66,6 +69,7 @@ from .product_audit_types import (
     ProductAuditHostInputs,
     ProductAuditObstacle,
     ProductDiscoveryCandidateMapping,
+    ProductRepairReceipt,
     _AuditObstacle,
 )
 from .product_audit_types import (
@@ -105,6 +109,7 @@ for _product_audit_type in (
     ProductAuditStateObservation,
     ProductAuditStateProbe,
     ProductDiscoveryCandidateMapping,
+    ProductRepairReceipt,
 ):
     _product_audit_type.__module__ = __name__
 del _product_audit_type
@@ -192,7 +197,15 @@ def compose_product_audit(
         preliminary_json = render_report(report, ReportFormat.JSON)
         preliminary_html = render_report(report, ReportFormat.HTML)
         if host.deterministic_execution is None:
-            return ProductAuditComposition(run, report, preliminary_json, preliminary_html)
+            return ProductAuditComposition(
+                run,
+                report,
+                preliminary_json,
+                preliminary_html,
+                flow=flow,
+                review=review,
+                host_inputs=host,
+            )
         # These are actual retained preliminary bytes, never the final report's
         # self-hash. Only successful final rendering can return a composition.
         reporting = _completed_unit(
@@ -236,8 +249,15 @@ def compose_product_audit(
             unit.satisfies_required_coverage for unit in final_units if unit.required
         )
         final_manifest = CoverageManifest.model_validate_json(json.dumps(manifest_data))
+        final_gate_state = _gate_state(
+            review,
+            flow=flow,
+            host=host,
+            coverage_units=tuple(final_units),
+        )
         run_data = run.model_dump(mode="json")
         run_data["coverage_manifest"] = final_manifest.model_dump(mode="json")
+        run_data["finding_gate_state"] = final_gate_state.value
         run_data["unresolved_gate_ids"] = list(_unresolved_units(final_units))
         run_data["analysis_health"] = (
             AnalysisHealth.HEALTHY
@@ -252,7 +272,7 @@ def compose_product_audit(
             not blocking_ids
             and final_manifest.coverage_complete
             and run_data["analysis_health"] == AnalysisHealth.HEALTHY.value
-            and gate_state is not FindingGateState.INCONCLUSIVE
+            and final_gate_state is not FindingGateState.INCONCLUSIVE
             and not run_data["unresolved_gate_ids"]
             and state.reporting_allowed
         ):
@@ -278,6 +298,9 @@ def compose_product_audit(
             final_html,
             preliminary_json,
             preliminary_html,
+            flow,
+            review,
+            host,
         )
     except _AuditObstacle as error:
         return ProductAuditObstacle(error.code, error.detail)
@@ -292,13 +315,231 @@ def compose_product_audit(
         return ProductAuditObstacle("PRODUCT_AUDIT_INPUT_INVALID", "input bindings are invalid")
 
 
+def compose_product_repair_audit(
+    composition: ProductAuditComposition,
+    receipts: tuple[ProductRepairReceipt, ...],
+) -> ProductAuditComposition | ProductAuditObstacle:
+    """Bind local repair receipts to the exact product-flow audit.
+
+    The scan flow and its Finding Gate remain immutable.  This function creates
+    a second source-free composition in the ``repair`` operation, carrying the
+    real root-cause, regression, Architect and validation receipts.  It never
+    applies the patch and it refuses to infer a security-test completion from a
+    deterministic descriptor when no independent test receipt exists.
+    """
+
+    try:
+        if (
+            type(composition) is not ProductAuditComposition
+            or type(receipts) is not tuple
+            or not receipts
+            or any(type(item) is not ProductRepairReceipt for item in receipts)
+            or composition.flow is None
+            or composition.review is None
+            or composition.host_inputs is None
+        ):
+            return ProductAuditObstacle(
+                "PRODUCT_REPAIR_CONTEXT_UNAVAILABLE",
+                "product repair context is unavailable",
+            )
+        host = composition.host_inputs
+        if (
+            host.operation != "scan"
+            or host.run_id != composition.run.run_id
+            or host.execution_identity != composition.run.execution_identity
+            or composition.run.current_head_sha
+            != composition.run.execution_identity.repository_revision.head_sha
+        ):
+            return ProductAuditObstacle(
+                "PRODUCT_REPAIR_CONTEXT_INVALID",
+                "repair context is not bound to the scan run",
+            )
+        finding_by_id = {
+            item.finding.finding_id: item.finding for item in composition.report.findings
+        }
+        requested: list[str] = []
+        for receipt in receipts:
+            if (
+                receipt.run_id != composition.run.run_id
+                or receipt.execution_identity_hash
+                != composition.run.execution_identity.execution_identity_hash
+                or receipt.finding_id not in finding_by_id
+            ):
+                return ProductAuditObstacle(
+                    "PRODUCT_REPAIR_RECEIPT_IDENTITY_MISMATCH",
+                    "repair receipt is not bound to the scan run",
+                )
+            finding = finding_by_id[receipt.finding_id]
+            if (
+                not finding.blocking
+                or finding.candidate_id != receipt.candidate_id
+                or finding.candidate_version != receipt.candidate_version
+                or finding.repository_revision
+                != composition.run.execution_identity.repository_revision
+            ):
+                return ProductAuditObstacle(
+                    "PRODUCT_REPAIR_RECEIPT_FINDING_MISMATCH",
+                    "repair receipt does not match the confirmed finding",
+                )
+            requested.append(receipt.candidate_id)
+        requested_ids = tuple(sorted(requested))
+        if len(set(requested_ids)) != len(requested_ids):
+            return ProductAuditObstacle(
+                "PRODUCT_REPAIR_RECEIPT_DUPLICATE",
+                "repair receipts contain duplicate candidates",
+            )
+        units = _product_repair_coverage_units(receipts)
+        repair_host = replace(
+            host,
+            operation="repair",
+            repair_requested_candidate_ids=requested_ids,
+            repair_coverage_units=units,
+        )
+        result = compose_product_audit(composition.flow, composition.review, host=repair_host)
+        if isinstance(result, ProductAuditComposition):
+            if result.run.execution_identity != composition.run.execution_identity:
+                return ProductAuditObstacle(
+                    "PRODUCT_REPAIR_IDENTITY_DRIFT",
+                    "repair composition changed execution identity",
+                )
+            return result
+        return result
+    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+        return ProductAuditObstacle(
+            "PRODUCT_REPAIR_RECEIPT_INVALID",
+            "repair receipts are invalid",
+        )
+
+
+def _product_repair_coverage_units(
+    receipts: tuple[ProductRepairReceipt, ...],
+) -> tuple[CoverageUnit, ...]:
+    units: list[CoverageUnit] = []
+    for receipt in sorted(receipts, key=lambda item: item.candidate_id):
+        candidate_id = receipt.candidate_id
+        root_hash = _sha256(
+            {
+                "record_id": receipt.root_cause.record_id,
+                "finding_id": receipt.root_cause.finding_id,
+                "head_sha": receipt.root_cause.head_sha,
+                "evidence_graph_id": receipt.root_cause.evidence_graph_id,
+                "evidence_graph_sha256": receipt.root_cause.evidence_graph_sha256,
+                "root_cause_fingerprint": receipt.root_cause.root_cause_fingerprint,
+            }
+        )
+        units.append(
+            _repair_unit(
+                "root_cause_localization",
+                candidate_id,
+                receipt_id=receipt.root_cause.record_id,
+                input_hashes=(receipt.root_cause.evidence_graph_sha256,),
+                output_hashes=(root_hash, receipt.root_cause.root_cause_fingerprint),
+            )
+        )
+        if (
+            receipt.security_test_model_call_status is ModelCallStatus.SUCCEEDED
+            and receipt.security_test_schema_valid_result is True
+            and receipt.security_test_receipt_id is not None
+            and receipt.security_test_output_sha256 is not None
+        ):
+            units.append(
+                _repair_unit(
+                    "security_test_generation",
+                    candidate_id,
+                    receipt_id=receipt.security_test_receipt_id,
+                    input_hashes=(receipt.root_cause.root_cause_fingerprint,),
+                    output_hashes=(receipt.security_test_output_sha256,),
+                    model_call_status=receipt.security_test_model_call_status,
+                    schema_valid_result=receipt.security_test_schema_valid_result,
+                )
+            )
+        else:
+            units.append(
+                _repair_unit(
+                    "security_test_generation",
+                    candidate_id,
+                    status=CoverageStatus.FAILED,
+                    reason_code="SECURITY_TEST_RECEIPT_MISSING",
+                )
+            )
+        units.append(
+            _repair_unit(
+                "architect",
+                candidate_id,
+                receipt_id=receipt.architect_receipt_id,
+                input_hashes=(
+                    receipt.regression.descriptor_sha256,
+                    receipt.root_cause.root_cause_fingerprint,
+                ),
+                output_hashes=(
+                    receipt.architect.patch_candidate.unified_diff_sha256,
+                    receipt.architect.rationale.rationale_sha256,
+                    receipt.architect_model_result_sha256,
+                ),
+                model_call_status=receipt.architect_model_call_status,
+                schema_valid_result=receipt.architect_schema_valid_result,
+            )
+        )
+        validation_status = (
+            CoverageStatus.COMPLETED
+            if receipt.validation.validation.validation_outcome.value == "VALIDATED"
+            else CoverageStatus.FAILED
+        )
+        units.append(
+            _repair_unit(
+                "validation_ladder",
+                candidate_id,
+                status=validation_status,
+                reason_code=None
+                if validation_status is CoverageStatus.COMPLETED
+                else "VALIDATION_LADDER_NON_SUCCESS",
+                receipt_id=receipt.validation.validation.validation_id,
+                input_hashes=(receipt.architect.patch_candidate.unified_diff_sha256,),
+                output_hashes=(receipt.validation.validation.result_sha256,),
+            )
+        )
+    return tuple(units)
+
+
+def _repair_unit(
+    stage_id: str,
+    candidate_id: str,
+    *,
+    status: CoverageStatus = CoverageStatus.COMPLETED,
+    reason_code: str | None = None,
+    receipt_id: str | None = None,
+    input_hashes: tuple[str, ...] = (),
+    output_hashes: tuple[str, ...] = (),
+    model_call_status: ModelCallStatus | None = None,
+    schema_valid_result: bool | None = None,
+) -> CoverageUnit:
+    return CoverageUnit(
+        schema_version=CONTRACT_SCHEMA_VERSION,
+        coverage_unit_id=f"product-repair-{stage_id}-{_sha256({'candidate_id': candidate_id})[:32]}",
+        stage_id=stage_id,
+        subject_id=candidate_id,
+        required=True,
+        applicable=True,
+        coverage_status=status,
+        reason_code=reason_code,
+        producer_version="1.0.0" if status is CoverageStatus.COMPLETED else None,
+        input_hashes=input_hashes if status is CoverageStatus.COMPLETED else (),
+        output_hashes=output_hashes if status is CoverageStatus.COMPLETED else (),
+        model_call_status=model_call_status,
+        schema_valid_result=schema_valid_result,
+        receipt_id=receipt_id,
+    )
+
+
 __all__ = [
     "ProductAuditComposition",
     "ProductAuditFindingMetadata",
     "ProductAuditHostInputs",
     "ProductAuditObstacle",
     "ProductDiscoveryCandidateMapping",
+    "ProductRepairReceipt",
     "compose_product_audit",
+    "compose_product_repair_audit",
     "model_discovery_candidate_mappings",
 ]
 
@@ -383,6 +624,20 @@ def execute_product_audit(
         if not isinstance(flow, ProductCandidateFlow):
             raise _AuditObstacle(
                 "PRODUCT_EXECUTION_COMPOSITION_FAILED", "candidate union unavailable"
+            )
+        discovery_receipt = flow.discovery.receipt
+        if (
+            discovery_receipt.receipt_id != model_plan.receipt_id
+            or discovery_receipt.scope_sha256 != model_plan.scope_sha256
+            or discovery_receipt.input_sha256 != model_plan.input_sha256
+            or discovery_receipt.tenant_id != model_plan.request.tenant_id
+            or discovery_receipt.head_sha != model_plan.request.head_sha
+            or discovery_receipt.model_profile != model_plan.request.provider_profile
+            or discovery_receipt.prompt != model_plan.request.prompt
+        ):
+            raise _AuditObstacle(
+                "PRODUCT_DISCOVERY_RECEIPT_BINDING_INVALID",
+                "model discovery receipt is not bound to the admitted plan",
             )
         tools = sessions[0] if sessions else tools_for(flow.graph)
         review = review_factory(flow, tools)

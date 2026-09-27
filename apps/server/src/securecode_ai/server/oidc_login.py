@@ -19,14 +19,14 @@ import hashlib
 import re
 import secrets
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from enum import StrEnum
 from threading import Lock
-from typing import Final, Protocol
+from typing import Callable, Final, Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .identity import Principal
+from .identity import Principal, Role
 from .oidc import OidcDenied, OidcReceipt
 from .oidc_sessions import (
     IssuedOidcSession,
@@ -40,6 +40,11 @@ MAX_SESSION_SECONDS: Final = 86_400
 DEFAULT_ATTEMPT_LIMIT: Final = 60
 ATTEMPT_WINDOW_SECONDS: Final = 60
 LOGIN_STATE_TTL_SECONDS: Final = 600
+_MAX_LOCAL_RATE_SCOPES: Final = 4096
+_MAX_SOURCE_ATTEMPTS: Final = 1000
+_DEFAULT_RATE_SCOPE: Final = "default"
+_GLOBAL_RATE_SCOPE: Final = "global"
+_RATE_SCOPE: Final = re.compile(r"(?:default|[0-9a-f]{64})\Z")
 _OAUTH_SCOPE: Final = re.compile(r"[\x21\x23-\x5B\x5D-\x7E]{1,64}\Z")
 _OAUTH_CLIENT_ID: Final = re.compile(r"[A-Za-z0-9._~:/-]{1,256}\Z")
 
@@ -63,6 +68,8 @@ class OidcLoginError(RuntimeError):
         *,
         retry_after_seconds: int = ATTEMPT_WINDOW_SECONDS,
     ) -> None:
+        if type(code) is not OidcLoginErrorCode:
+            raise TypeError("OIDC login error code is invalid")
         if type(retry_after_seconds) is not int or not 1 <= retry_after_seconds <= 3600:
             raise TypeError("OIDC retry interval is invalid")
         self.code = code
@@ -72,6 +79,18 @@ class OidcLoginError(RuntimeError):
 
 class OidcAdmissionPort(Protocol):
     def admit(self, token: str, *, nonce: str) -> tuple[Principal, OidcReceipt]: ...
+
+
+class OidcSourceRateLimitPort(Protocol):
+    def charge_source_attempt(
+        self,
+        *,
+        bucket: str,
+        source_hash: str,
+        now: int,
+        limit: int,
+        window_seconds: int,
+    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +151,7 @@ class OidcAuthorizationClient:
             or "openid" not in self.scope.split()
             or len(self.scope.split()) != len(set(self.scope.split()))
             or len(self.scope.split()) > 16
+            or " ".join(self.scope.split()) != self.scope
             or any(_OAUTH_SCOPE.fullmatch(scope) is None for scope in self.scope.split())
         ):
             raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
@@ -139,6 +159,10 @@ class OidcAuthorizationClient:
         object.__setattr__(self, "redirect_uri", redirect)
 
     def build(self, *, state: str, nonce: str) -> tuple[str, str, str]:
+        if not _bounded_login_value(
+            state, 1_024
+        ) or not _bounded_login_value(nonce, 1_024):
+            raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
         verifier = secrets.token_urlsafe(48)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
         code_challenge = challenge.rstrip(b"=").decode("ascii")
@@ -194,10 +218,13 @@ class OidcLoginService:
         "_attempt_window_seconds",
         "_attempts",
         "_authorization_client",
+        "_authorization_client_loader",
+        "_attempt_policy_loader",
         "_issuer",
         "_ledger",
         "_lock",
         "_pending_states",
+        "_source_rate_limiter",
         "_state_expiry",
         "_state_store",
     )
@@ -209,7 +236,10 @@ class OidcLoginService:
         ledger: NonceReplayLedger,
         issuer: SessionIssuer | None = None,
         state_store: LoginStatePort | None = None,
+        source_rate_limiter: OidcSourceRateLimitPort | None = None,
         authorization_client: OidcAuthorizationClient | None = None,
+        authorization_client_loader: Callable[[], OidcAuthorizationClient | None] | None = None,
+        attempt_policy_loader: Callable[[], tuple[int, int]] | None = None,
         attempt_limit: int = DEFAULT_ATTEMPT_LIMIT,
         attempt_window_seconds: int = ATTEMPT_WINDOW_SECONDS,
     ) -> None:
@@ -229,59 +259,87 @@ class OidcLoginService:
                 and type(authorization_client) is not OidcAuthorizationClient
             )
             or (
+                authorization_client_loader is not None
+                and not callable(authorization_client_loader)
+            )
+            or (attempt_policy_loader is not None and not callable(attempt_policy_loader))
+            or (
                 state_store is not None
                 and not all(
                     callable(getattr(state_store, method, None))
-                    for method in ("create", "matches", "consume", "charge_attempt")
+                    for method in (
+                        "create",
+                        "matches",
+                        "consume",
+                        "charge_attempt",
+                    )
                 )
+            )
+            or (
+                source_rate_limiter is not None
+                and not callable(
+                    getattr(source_rate_limiter, "charge_source_attempt", None)
+                )
+            )
+            or (
+                state_store is not None
+                and source_rate_limiter is None
+                and not callable(getattr(state_store, "charge_source_attempt", None))
             )
         ):
             raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
         self._admission = admission
         self._authorization_client = authorization_client
+        self._authorization_client_loader = authorization_client_loader
+        self._attempt_policy_loader = attempt_policy_loader
         self._ledger = ledger
         self._issuer = issuer
         self._state_store = state_store
+        self._source_rate_limiter = source_rate_limiter
         self._attempt_limit = attempt_limit
         self._attempt_window_seconds = attempt_window_seconds
-        self._attempts: deque[float] = deque(maxlen=attempt_limit)
+        self._attempts: OrderedDict[tuple[str, str], tuple[float, int]] = OrderedDict()
         self._pending_states: dict[str, tuple[str, float]] = {}
         self._state_expiry: deque[tuple[float, str]] = deque()
         self._lock = Lock()
 
-    def start(self) -> OidcLoginStart:
+    def start(self, *, rate_limit_key: str = _DEFAULT_RATE_SCOPE) -> OidcLoginStart:
         """Begin one login attempt with a fresh, unguessable nonce and state."""
 
+        self._reload_attempt_policy()
+        if type(rate_limit_key) is not str or _RATE_SCOPE.fullmatch(rate_limit_key) is None:
+            raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
+        # Resolve the current authorization profile before consuming a durable
+        # rate-limit slot or writing state.  Configuration rotation must not
+        # leave orphaned login states behind when the new profile is invalid.
+        client = self._load_authorization_client()
         nonce = secrets.token_urlsafe(NONCE_BYTES)
         state = secrets.token_urlsafe(NONCE_BYTES)
         if self._state_store is None:
+            self._charge_attempt(bucket="start", rate_limit_key=rate_limit_key)
             self._remember_start(state=state, nonce=nonce)
         else:
             try:
-                self._state_store.charge_attempt(
-                    bucket="start",
-                    now=int(time.time()),
-                    limit=self._attempt_limit,
-                    window_seconds=self._attempt_window_seconds,
-                )
+                self._charge_attempt(bucket="start", rate_limit_key=rate_limit_key)
                 self._state_store.create(
                     state=state,
                     nonce=nonce,
                     expires_at=int(time.time()) + LOGIN_STATE_TTL_SECONDS,
                 )
+            except OidcLoginError:
+                raise
             except Exception:
+                with self._lock:
+                    retry_after_seconds = self._attempt_window_seconds
                 raise OidcLoginError(
                     OidcLoginErrorCode.RATE_LIMITED,
-                    retry_after_seconds=self._attempt_window_seconds,
+                    retry_after_seconds=retry_after_seconds,
                 ) from None
         authorization_url = None
         verifier = ""
         challenge = None
-        if self._authorization_client is not None:
-            authorization_url, verifier, challenge = self._authorization_client.build(
-                state=state,
-                nonce=nonce,
-            )
+        if client is not None:
+            authorization_url, verifier, challenge = client.build(state=state, nonce=nonce)
         return OidcLoginStart(
             nonce=nonce,
             state=state,
@@ -290,27 +348,56 @@ class OidcLoginService:
             code_challenge=challenge,
         )
 
-    def callback(self, *, token: str, nonce: str, state: str) -> OidcLoginReceipt:
+    def callback(
+        self,
+        *,
+        token: str,
+        nonce: str,
+        state: str,
+        rate_limit_key: str = _DEFAULT_RATE_SCOPE,
+    ) -> OidcLoginReceipt:
         """Verify the callback token, refuse a replayed nonce, and issue a session."""
 
+        self._reload_attempt_policy()
         if (
             type(token) is not str
-            or not token
-            or type(nonce) is not str
-            or not nonce
-            or type(state) is not str
-            or not state
+            or not _bounded_login_value(token, 16_384)
+            or not _bounded_login_value(nonce, 1_024)
+            or not _bounded_login_value(state, 1_024)
+            or type(rate_limit_key) is not str
+            or _RATE_SCOPE.fullmatch(rate_limit_key) is None
         ):
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED)
-        self._charge_attempt(bucket="callback")
+        self._charge_attempt(bucket="callback", rate_limit_key=rate_limit_key)
         if not self._matches_start(state=state, nonce=nonce):
             raise OidcLoginError(OidcLoginErrorCode.STATE_REJECTED)
+        # Re-read the server-owned client profile on callback.  The verifier
+        # is reloaded below as well, but checking both profiles together makes
+        # a client-id or authorization-profile rotation invalidate the old
+        # relationship instead of accepting a callback under mixed config.
+        self._load_authorization_client()
         try:
             principal, receipt = self._admission.admit(token, nonce=nonce)
         except OidcDenied:
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED) from None
         except (TypeError, ValueError):
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED) from None
+        if (
+            type(principal) is not Principal
+            or type(receipt) is not OidcReceipt
+            or type(principal.roles) is not frozenset
+            or not principal.roles
+            or not all(type(role) is Role for role in principal.roles)
+            or receipt.subject_id != principal.subject_id
+            or receipt.tenant_id != principal.tenant_id
+            or receipt.roles != tuple(sorted(role.value for role in principal.roles))
+        ):
+            raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED)
+        # Keep the durable state available while the signed callback is being
+        # verified.  A rejected token must not destroy a valid state binding;
+        # consume it only after admission has produced a coherent identity.
+        # Concurrent callbacks may both perform verification, but exactly one
+        # can consume the one-shot state before issuing a session.
         if not self._consume_start(state=state, nonce=nonce):
             raise OidcLoginError(OidcLoginErrorCode.STATE_REJECTED)
         try:
@@ -330,33 +417,114 @@ class OidcLoginService:
             session_token=session_token,
         )
 
-    def _charge_attempt(self, *, bucket: str) -> None:
+    def _load_authorization_client(self) -> OidcAuthorizationClient | None:
+        client = self._authorization_client
+        if self._authorization_client_loader is not None:
+            try:
+                client = self._authorization_client_loader()
+            except Exception:
+                raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION) from None
+            if client is not None and type(client) is not OidcAuthorizationClient:
+                raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
+        return client
+
+    def _charge_attempt(self, *, bucket: str, rate_limit_key: str) -> None:
         """Refuse login work once the bounded attempt window is exhausted."""
 
+        with self._lock:
+            attempt_limit = self._attempt_limit
+            attempt_window_seconds = self._attempt_window_seconds
+        self._charge_local_attempt(
+            bucket=bucket,
+            scope=rate_limit_key,
+            limit=min(attempt_limit, _MAX_SOURCE_ATTEMPTS),
+            window_seconds=attempt_window_seconds,
+        )
         if self._state_store is not None:
             try:
+                now = int(time.time())
                 self._state_store.charge_attempt(
                     bucket=bucket,
-                    now=int(time.time()),
-                    limit=self._attempt_limit,
-                    window_seconds=self._attempt_window_seconds,
+                    now=now,
+                    limit=_aggregate_attempt_limit(attempt_limit),
+                    window_seconds=attempt_window_seconds,
+                )
+                source_hash = hashlib.sha256(
+                    b"securecode.oidc.login-source-scope.v1\x00"
+                    + rate_limit_key.encode("ascii")
+                ).hexdigest()
+                source_rate_limiter = self._source_rate_limiter
+                if source_rate_limiter is None:
+                    source_rate_limiter = self._state_store
+                charge_source_attempt = getattr(
+                    source_rate_limiter, "charge_source_attempt", None
+                )
+                if not callable(charge_source_attempt):
+                    raise OidcDenied()
+                charge_source_attempt(
+                    bucket=bucket,
+                    source_hash=source_hash,
+                    now=now,
+                    limit=min(attempt_limit, _MAX_SOURCE_ATTEMPTS),
+                    window_seconds=attempt_window_seconds,
                 )
             except Exception:
                 raise OidcLoginError(
                     OidcLoginErrorCode.RATE_LIMITED,
-                    retry_after_seconds=self._attempt_window_seconds,
+                    retry_after_seconds=attempt_window_seconds,
                 ) from None
             return
+        self._charge_local_attempt(
+            bucket=bucket,
+            scope=_GLOBAL_RATE_SCOPE,
+            limit=_aggregate_attempt_limit(attempt_limit),
+            window_seconds=attempt_window_seconds,
+        )
+
+    def _charge_local_attempt(
+        self, *, bucket: str, scope: str, limit: int, window_seconds: int
+    ) -> None:
         now = time.monotonic()
         with self._lock:
-            while self._attempts and now - self._attempts[0] >= self._attempt_window_seconds:
-                self._attempts.popleft()
-            if len(self._attempts) >= self._attempt_limit:
-                raise OidcLoginError(
-                    OidcLoginErrorCode.RATE_LIMITED,
-                    retry_after_seconds=self._attempt_window_seconds,
-                )
-            self._attempts.append(now)
+            key = (bucket, scope)
+            window = self._attempts.get(key)
+            if window is None:
+                if len(self._attempts) >= _MAX_LOCAL_RATE_SCOPES:
+                    self._attempts.popitem(last=False)
+                self._attempts[key] = (now, 1)
+            else:
+                self._attempts.move_to_end(key)
+                started, attempts = window
+                if now < started:
+                    raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
+                if now - started >= window_seconds:
+                    self._attempts[key] = (now, 1)
+                elif attempts >= limit:
+                    raise OidcLoginError(
+                        OidcLoginErrorCode.RATE_LIMITED,
+                        retry_after_seconds=window_seconds,
+                    )
+                else:
+                    self._attempts[key] = (started, attempts + 1)
+
+    def _reload_attempt_policy(self) -> None:
+        loader = self._attempt_policy_loader
+        if loader is None:
+            return
+        try:
+            limit, window = loader()
+        except Exception:
+            raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION) from None
+        if (
+            type(limit) is not int
+            or not 1 <= limit <= 100_000
+            or type(window) is not int
+            or not 1 <= window <= 3600
+        ):
+            raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
+        with self._lock:
+            self._attempt_limit = limit
+            self._attempt_window_seconds = window
 
     def _matches_start(self, *, state: str, nonce: str) -> bool:
         if self._state_store is not None:
@@ -419,6 +587,10 @@ class OidcLoginService:
             issued = issuer.issue(principal, token_expires_at=receipt.expires_at)
         except Exception:
             raise OidcLoginError(OidcLoginErrorCode.TOKEN_REJECTED) from None
+        try:
+            current_time = int(time.time())
+        except Exception:
+            raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION) from None
         if (
             type(issued) is not IssuedOidcSession
             or type(issued.token) is not str
@@ -428,8 +600,9 @@ class OidcLoginService:
             or issued.receipt.subject_id != receipt.subject_id
             or issued.receipt.tenant_id != receipt.tenant_id
             or issued.receipt.roles != receipt.roles
-            or not int(time.time()) < issued.receipt.expires_at <= receipt.expires_at
-            or issued.receipt.expires_at - int(time.time()) > MAX_SESSION_SECONDS
+            or type(issued.receipt.expires_at) is not int
+            or not current_time < issued.receipt.expires_at <= receipt.expires_at
+            or issued.receipt.expires_at - current_time > MAX_SESSION_SECONDS
         ):
             raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
         return issued.token, issued.receipt
@@ -447,7 +620,13 @@ __all__ = [
 
 
 def _https_url(value: str, *, allow_loopback: bool) -> str:
-    if type(value) is not str or not 1 <= len(value) <= 2048:
+    if (
+        type(value) is not str
+        or not 1 <= len(value) <= 2048
+        or not value.isascii()
+        or value != value.strip()
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
         raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
     try:
         parsed = urlsplit(value)
@@ -467,3 +646,17 @@ def _https_url(value: str, *, allow_loopback: bool) -> str:
     ):
         raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
     return value
+
+
+def _aggregate_attempt_limit(source_limit: int) -> int:
+    return min(100_000, max(source_limit, source_limit * 1_000))
+
+
+def _bounded_login_value(value: object, maximum: int) -> bool:
+    return (
+        type(value) is str
+        and 1 <= len(value) <= maximum
+        and value.isascii()
+        and value == value.strip()
+        and not any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    )

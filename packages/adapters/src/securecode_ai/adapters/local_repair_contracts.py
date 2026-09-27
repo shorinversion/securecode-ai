@@ -43,6 +43,7 @@ from .local_product_runner_config import LocalProductScanResult
 
 _MAX_GRAPH_BYTES: Final = 16 * 1024 * 1024
 _LOCAL_ORACLE_DOMAIN: Final = b"securecode-ai/local-cwe89-root-oracle/v2\x00"
+_LOCAL_CWE78_ORACLE_DOMAIN: Final = b"securecode-ai/local-cwe78-command-oracle/v1\x00"
 _SQL_SINK_CALL: Final = re.compile(rb"\.(?:execute|query|raw|exec)\s*\(", re.IGNORECASE)
 
 
@@ -133,42 +134,70 @@ def parse_retained_graph(graph_bytes: bytes, finding: FindingCase) -> EvidenceGr
 def build_local_repair_binding(finding: FindingCase, graph: EvidenceGraph) -> LocalRepairBinding:
     if type(finding) is not FindingCase or type(graph) is not EvidenceGraph:
         raise LocalRepairContractError("REPAIR_BINDING_INVALID")
-    if finding.cwe_id != "CWE-89":
-        raise LocalRepairContractError("REPAIR_INVARIANT_UNSUPPORTED")
+    if finding.cwe_id not in {"CWE-89", "CWE-78"}:
+        raise LocalRepairContractError(_unsupported_repair_reason(finding))
     records = {
         item.evidence_id: item
         for item in graph.evidence
         if item.evidence_id in set(finding.evidence_ids)
     }
-    locations = sorted(
-        (
-            item
-            for item in records.values()
-            if item.evidence_kind is EvidenceKind.SOURCE_LOCATION and item.location is not None
-        ),
-        key=_location_key,
-    )
     data_flows = sorted(
         (item for item in records.values() if item.evidence_kind is EvidenceKind.DATA_FLOW),
         key=lambda item: item.evidence_id,
     )
-    distinct_locations = []
-    seen = set()
-    for item in locations:
-        location = item.location
-        if location is None:
+    evidence_node = EvidenceNodeKind.EVIDENCE
+    locations_by_flow: dict[str, list[Evidence]] = {}
+    for edge in graph.edges:
+        if (
+            edge.kind is EvidenceEdgeKind.EVIDENCE_DERIVED_FROM
+            and edge.source.kind is evidence_node
+            and edge.target.kind is evidence_node
+        ):
+            flow = records.get(edge.source.node_id)
+            location = records.get(edge.target.node_id)
+            if (
+                flow is not None
+                and flow.evidence_kind is EvidenceKind.DATA_FLOW
+                and location is not None
+                and location.evidence_kind is EvidenceKind.SOURCE_LOCATION
+                and location.location is not None
+            ):
+                locations_by_flow.setdefault(flow.evidence_id, []).append(location)
+    if finding.cwe_id == "CWE-78":
+        suffixes = {PurePosixPath(item.path).suffix.lower() for item in finding.locations}
+        if not suffixes or not suffixes.issubset({".py", ".pyi"}):
+            raise LocalRepairContractError("REPAIR_CWE78_LANGUAGE_UNSUPPORTED")
+        refs = _cwe78_refs(finding, graph, records, data_flows)
+    else:
+        selected_flow = next(
+            (
+                flow
+                for flow in data_flows
+                if len(
+                    {
+                        item.location.model_dump_json()
+                        for item in locations_by_flow.get(flow.evidence_id, ())
+                        if item.location is not None
+                    }
+                ) >= 2
+            ),
+            None,
+        )
+        if selected_flow is None:
             raise LocalRepairContractError("ROOT_CAUSE_EVIDENCE_INCOMPLETE")
-        location_key = location.model_dump_json()
-        if location_key not in seen:
-            seen.add(location_key)
-            distinct_locations.append(item)
-    if len(distinct_locations) < 2 or not data_flows:
-        raise LocalRepairContractError("ROOT_CAUSE_EVIDENCE_INCOMPLETE")
-    refs = RootCauseEvidenceRefs(
-        source_evidence_id=distinct_locations[0].evidence_id,
-        propagation_evidence_id=data_flows[0].evidence_id,
-        sink_evidence_id=distinct_locations[-1].evidence_id,
-    )
+        distinct_locations = sorted(
+            {
+                item.location.model_dump_json(): item
+                for item in locations_by_flow[selected_flow.evidence_id]
+                if item.location is not None
+            }.values(),
+            key=_location_key,
+        )
+        refs = RootCauseEvidenceRefs(
+            source_evidence_id=distinct_locations[0].evidence_id,
+            propagation_evidence_id=selected_flow.evidence_id,
+            sink_evidence_id=distinct_locations[-1].evidence_id,
+        )
     receipt = localize_root_cause(finding, graph, refs)
     if receipt.status is not RootCauseLocalizationStatus.CONFIRMED or receipt.record is None:
         raise LocalRepairContractError("ROOT_CAUSE_NOT_CONFIRMED")
@@ -179,6 +208,81 @@ def build_local_repair_binding(finding: FindingCase, graph: EvidenceGraph) -> Lo
         _regression_cases(receipt.record, invariant),
     )
     return LocalRepairBinding(finding, receipt.record, invariant, regression)
+
+
+def _cwe78_refs(
+    finding: FindingCase,
+    graph: EvidenceGraph,
+    records: dict[str, Evidence],
+    data_flows: list[Evidence],
+) -> RootCauseEvidenceRefs:
+    bindings = finding.command_operation_evidence
+    if not bindings:
+        raise LocalRepairContractError("REPAIR_CWE78_EVIDENCE_INCOMPLETE")
+    if len(bindings) != 1:
+        raise LocalRepairContractError("REPAIR_CWE78_EVIDENCE_AMBIGUOUS")
+    binding = bindings[0]
+    ids = (
+        binding.source_evidence_id,
+        binding.sink_evidence_id,
+        binding.flow_evidence_id,
+    )
+    if any(value is None for value in ids):
+        raise LocalRepairContractError("REPAIR_CWE78_EVIDENCE_INCOMPLETE")
+    source_id, sink_id, flow_id = cast(tuple[str, str, str], ids)
+    if any(value not in records for value in (source_id, sink_id, flow_id)):
+        raise LocalRepairContractError("REPAIR_CWE78_EVIDENCE_INCOMPLETE")
+    source = records[source_id]
+    sink = records[sink_id]
+    flow = records[flow_id]
+    scanner = records.get(binding.scanner_signal_id)
+    if (
+        source.evidence_kind is not EvidenceKind.SOURCE_LOCATION
+        or sink.evidence_kind is not EvidenceKind.SOURCE_LOCATION
+        or flow.evidence_kind is not EvidenceKind.DATA_FLOW
+        or scanner is None
+        or scanner.evidence_kind is not EvidenceKind.SCANNER_SIGNAL
+        or scanner.location != binding.sink
+        or source.location != binding.source
+        or sink.location != binding.sink
+        or flow not in data_flows
+    ):
+        raise LocalRepairContractError("REPAIR_CWE78_EVIDENCE_MISMATCH")
+    targets = {
+        edge.target.node_id
+        for edge in graph.edges
+        if edge.kind is EvidenceEdgeKind.EVIDENCE_DERIVED_FROM
+        and edge.source.kind is EvidenceNodeKind.EVIDENCE
+        and edge.target.kind is EvidenceNodeKind.EVIDENCE
+        and edge.source.node_id == flow_id
+    }
+    if not {source_id, sink_id, binding.scanner_signal_id}.issubset(targets):
+        raise LocalRepairContractError("REPAIR_CWE78_EVIDENCE_INCOMPLETE")
+    return RootCauseEvidenceRefs(
+        source_evidence_id=source_id,
+        propagation_evidence_id=flow_id,
+        sink_evidence_id=sink_id,
+    )
+
+
+def _unsupported_repair_reason(finding: FindingCase) -> str:
+    """Return a bounded reason when no sound local repair invariant exists.
+
+    Only the narrow Python CWE-78 operation contract is supported. A finding
+    without the complete graph binding is rejected by the caller before it can
+    enter the repair path.
+    """
+
+    if finding.cwe_id == "CWE-78":
+        suffixes = {
+            PurePosixPath(item.path).suffix.lower()
+            for item in finding.locations
+            if type(item.path) is str
+        }
+        if suffixes and suffixes.issubset({".py", ".pyi"}):
+            return "REPAIR_CWE78_EVIDENCE_INCOMPLETE"
+        return "REPAIR_CWE78_LANGUAGE_UNSUPPORTED"
+    return "REPAIR_CWE_INVARIANT_UNSUPPORTED"
 
 
 def _location_key(item: Evidence) -> tuple[str, int, int, str]:
@@ -199,7 +303,12 @@ def _regression_cases(
     result = []
     for kind in RegressionCaseKind:
         material = _regression_case_material(root, invariant, kind)
-        oracle = _LOCAL_ORACLE_DOMAIN + kind.value.encode("ascii")
+        oracle_domain = (
+            _LOCAL_CWE78_ORACLE_DOMAIN
+            if invariant.invariant_id == "CWE-78-COMMAND-SAFETY"
+            else _LOCAL_ORACLE_DOMAIN
+        )
+        oracle = oracle_domain + kind.value.encode("ascii")
         result.append(
             RegressionCase(
                 case_id=f"local-{kind.value.lower().replace('_', '-')}-{hashlib.sha256(material).hexdigest()[:24]}",

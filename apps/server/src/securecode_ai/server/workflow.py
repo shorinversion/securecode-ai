@@ -38,6 +38,7 @@ _LEGAL = {
         WorkflowState.SUPERSEDED,
     },
     WorkflowState.CLAIMED: {
+        WorkflowState.CLAIMED,
         WorkflowState.RUNNING,
         WorkflowState.QUEUED,
         WorkflowState.CANCEL_REQUESTED,
@@ -94,6 +95,7 @@ class DurableWorkflow:
         if existing is not None:
             if (
                 existing.execution_identity_hash == execution_identity_hash
+                and existing.metadata.get("repository_id") == repository_id
                 and existing.metadata.get("start_key") == idempotency_key
             ):
                 return self._receipt(existing)
@@ -115,6 +117,14 @@ class DurableWorkflow:
         try:
             return self._receipt(self._store.save(checkpoint, None))
         except CheckpointConflict as error:
+            existing = self._restore(tenant_id, run_id)
+            if (
+                existing is not None
+                and existing.execution_identity_hash == execution_identity_hash
+                and existing.metadata.get("repository_id") == repository_id
+                and existing.metadata.get("start_key") == idempotency_key
+            ):
+                return self._receipt(existing)
             raise WorkflowConflict() from error
 
     def claim(
@@ -130,17 +140,19 @@ class DurableWorkflow:
         current = self._require(tenant_id, run_id, identity_hash)
         if current.state in _TERMINAL or current.state is WorkflowState.CANCEL_REQUESTED:
             return self._receipt(current)
+        now = self._now()
+        expires = _parse_time(current.metadata.get("lease_until"))
         if (
             current.metadata.get("claim_key") == idempotency_key
             and current.metadata.get("lease_owner") == worker_id
+            and expires is not None
+            and expires > now
         ):
             return self._receipt(current)
-        expires = _parse_time(current.metadata.get("lease_until"))
         if (
             current.state is WorkflowState.CLAIMED
             and expires is not None
-            and expires > self._now()
-            and current.metadata.get("lease_owner") != worker_id
+            and expires > now
         ):
             raise WorkflowConflict()
         return self._transition(
@@ -196,7 +208,12 @@ class DurableWorkflow:
             if current.metadata.get("outcome") == outcome:
                 return self._receipt(current)
             raise WorkflowConflict()
-        if current.metadata.get("lease_owner") != worker_id:
+        expires = _parse_time(current.metadata.get("lease_until"))
+        if (
+            current.metadata.get("lease_owner") != worker_id
+            or expires is None
+            or expires <= self._now()
+        ):
             raise WorkflowConflict()
         target = {
             "PASS": WorkflowState.SUCCEEDED,

@@ -14,7 +14,7 @@ import json
 import os
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -49,7 +49,10 @@ _EXIT_TO_OUTCOME = {
     CliExitCode.INVALID_USAGE_OR_CONFIG: RepairOutcome.INVALID_USAGE_OR_CONFIG,
     CliExitCode.CANCELLED_OR_SUPERSEDED: RepairOutcome.CANCELLED_OR_SUPERSEDED,
 }
-_UNSAFE_KEYS = frozenset({"source", "source_text", "diff", "patch", "content", "secret", "raw"})
+_UNSAFE_KEYS = frozenset(
+    {"source", "source_text", "diff", "repair_diff", "patch", "content", "secret", "raw"}
+)
+_MAX_DIFF_OUTPUT_BYTES = 1_048_576
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
 
@@ -67,6 +70,7 @@ class RepairReceipt:
     product_outcome: str
     metadata: Mapping[str, Any]
     artifact_sha256: str
+    diff_output: str | None = field(default=None, repr=False)
 
     def document(self) -> dict[str, Any]:
         return {
@@ -133,12 +137,27 @@ class RepairCli:
             raw = worker(target)
             if not isinstance(raw, Mapping):
                 raise ValueError
+            diff_output = None
+            if command is CliCommand.FIX and raw.get("repair_diff") is not None:
+                candidate = raw.get("repair_diff")
+                digest = raw.get("diff_sha256")
+                if (
+                    type(candidate) is not str
+                    or len(candidate) > _MAX_DIFF_OUTPUT_BYTES
+                    or len(candidate.encode("utf-8", errors="strict")) > _MAX_DIFF_OUTPUT_BYTES
+                    or _CONTROL.search(candidate)
+                    or type(digest) is not str
+                    or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+                    or hashlib.sha256(candidate.encode("utf-8")).hexdigest() != digest
+                ):
+                    raise ValueError
+                diff_output = candidate
             safe = _safe_metadata(raw)
             code = CliExitCode(int(raw.get("exit_code", CliExitCode.COMPLETED)))
             outcome = _EXIT_TO_OUTCOME[code]
             # A successful CLI operation is not evidence of a product PASS.
             safe["product_pass"] = False
-            return _receipt(command, outcome, code, safe)
+            return _receipt(command, outcome, code, safe, diff_output=diff_output)
         except KeyboardInterrupt:
             return _receipt(
                 command,
@@ -153,7 +172,12 @@ class RepairCli:
 
 
 def _receipt(
-    command: CliCommand, outcome: RepairOutcome, code: CliExitCode, metadata: Mapping[str, Any]
+    command: CliCommand,
+    outcome: RepairOutcome,
+    code: CliExitCode,
+    metadata: Mapping[str, Any],
+    *,
+    diff_output: str | None = None,
 ) -> RepairReceipt:
     document = {
         "command": command.value,
@@ -161,7 +185,9 @@ def _receipt(
         "metadata": dict(metadata),
     }
     digest = hashlib.sha256(_canonical(document)).hexdigest()
-    return RepairReceipt(command, outcome, code, "NOT_EVALUATED", dict(metadata), digest)
+    return RepairReceipt(
+        command, outcome, code, "NOT_EVALUATED", dict(metadata), digest, diff_output
+    )
 
 
 def _installed_workers(
@@ -176,30 +202,97 @@ def _installed_workers(
 
     def fix(target: str) -> Mapping[str, Any]:
         from securecode_ai.adapters.local_repair import (
-            propose_local_repairs,
             repair_failure_receipt,
+            run_local_repair_journey,
         )
 
         from .scan import (
             ProductScanArguments,
-            execute_installed_product_scan,
+            _execute_installed_product_scan,
             load_installed_product_host,
+            _remote_provider_requested,
+        )
+        from securecode_ai.adapters.product_provider_runtime import (
+            load_product_provider_runtime,
+        )
+        from securecode_ai.adapters.local_provider_gateway_server import (
+            _running_approved_gateway,
+            gateway_observation_path,
         )
 
         try:
-            scan_result = execute_installed_product_scan(
-                ProductScanArguments(target, RepairFormat.JSON, None),
-                environment=selected_environment,
-            )
-            scan_result.require_publication()
             host = load_installed_product_host()
-            scan_result.require_publication()
-            return propose_local_repairs(
-                target=target,
-                host=host,
-                scan_result=scan_result,
-                environment=selected_environment,
-            )
+            if _remote_provider_requested(host, selected_environment):
+                provider_runtime = load_product_provider_runtime(
+                    profile_path=selected_environment.get("SECURECODE_REMOTE_PROFILE_FILE", ""),
+                    policy_path=selected_environment.get("SECURECODE_REMOTE_POLICY_FILE", ""),
+                    environment=selected_environment,
+                    tenant_id=selected_environment.get("SECURECODE_REMOTE_TENANT_ID", ""),
+                    expected_profile_sha256=selected_environment.get(
+                        "SECURECODE_REMOTE_PROFILE_SHA256"
+                    ),
+                    expected_policy_sha256=selected_environment.get(
+                        "SECURECODE_REMOTE_POLICY_SHA256"
+                    ),
+                    expected_egress_sha256=selected_environment.get(
+                        "SECURECODE_REMOTE_EGRESS_SHA256"
+                    ),
+                    expected_configuration_sha256=selected_environment.get(
+                        "SECURECODE_REMOTE_CONFIGURATION_SHA256"
+                    ),
+                )
+                try:
+                    provider_runtime.repair()
+                    scan_result = _execute_installed_product_scan(
+                        ProductScanArguments(target, RepairFormat.JSON, None),
+                        environment=selected_environment,
+                        host=host,
+                        gateway_already_running=False,
+                    )
+                    scan_result.require_publication()
+                    identity = scan_result.composition.run.execution_identity
+                    if (
+                        identity.provider_profile.content_sha256
+                        != provider_runtime.profile.canonical_content_hash()
+                        or identity.policy.content_sha256
+                        != provider_runtime.policy.canonical_content_hash()
+                        or identity.egress_profile.content_sha256
+                        != provider_runtime.policy.canonical_content_hash()
+                        or identity.configuration.content_sha256
+                        != provider_runtime.configuration.canonical_content_hash()
+                    ):
+                        raise ValueError("remote repair identity mismatch")
+                    result = run_local_repair_journey(
+                        target=target,
+                        host=host,
+                        scan_result=scan_result,
+                        environment=selected_environment,
+                        validation_port=validation_port,
+                        provider_runtime=provider_runtime,
+                    )
+                    return result
+                finally:
+                    provider_runtime.close()
+            with _running_approved_gateway(
+                host.profile,
+                host.ollama_version,
+                observation_path=gateway_observation_path(selected_environment),
+            ):
+                scan_result = _execute_installed_product_scan(
+                    ProductScanArguments(target, RepairFormat.JSON, None),
+                    environment=selected_environment,
+                    host=host,
+                    gateway_already_running=True,
+                )
+                scan_result.require_publication()
+                result = run_local_repair_journey(
+                    target=target,
+                    host=host,
+                    scan_result=scan_result,
+                    environment=selected_environment,
+                    validation_port=validation_port,
+                )
+                return result
         except Exception as error:
             return repair_failure_receipt(error)
 
@@ -275,7 +368,11 @@ def render_receipt(receipt: RepairReceipt, report_format: RepairFormat) -> bytes
     if type(receipt) is not RepairReceipt or type(report_format) is not RepairFormat:
         raise ValueError("repair receipt or format is invalid")
     document = receipt.document()
-    if report_format is RepairFormat.JSON or report_format is RepairFormat.DIFF:
+    if report_format is RepairFormat.DIFF:
+        if receipt.diff_output is not None:
+            return receipt.diff_output.encode("utf-8")
+        return _canonical(document) + b"\n"
+    if report_format is RepairFormat.JSON:
         return _canonical(document) + b"\n"
     if report_format is RepairFormat.SARIF:
         return (
@@ -295,7 +392,7 @@ def render_receipt(receipt: RepairReceipt, report_format: RepairFormat) -> bytes
             + b"\n"
         )
     if report_format is RepairFormat.MARKDOWN:
-        return (
+        rendered = (
             "# SecureCode AI operation\n\n"
             + "- command: "
             + _md(receipt.command.value)
@@ -304,14 +401,54 @@ def render_receipt(receipt: RepairReceipt, report_format: RepairFormat) -> bytes
             + _md(receipt.operation_outcome.value)
             + "\n"
             + "- product outcome: NOT_EVALUATED\n"
-        ).encode()
-    return (
+        )
+        audit = _repair_audit_fields(receipt.metadata)
+        if audit:
+            rendered += "\n## Repaired audit\n\n"
+            rendered += "".join(
+                f"- {key}: {_md(value)}\n" for key, value in audit.items()
+            )
+        return rendered.encode()
+    rendered_html = (
         '<!doctype html><meta charset="utf-8"><title>SecureCode AI operation</title><h1>SecureCode AI operation</h1><dl><dt>command</dt><dd>'
         + html.escape(receipt.command.value)
         + "</dd><dt>outcome</dt><dd>"
         + html.escape(receipt.operation_outcome.value)
         + "</dd><dt>product outcome</dt><dd>NOT_EVALUATED</dd></dl>"
-    ).encode()
+    )
+    audit = _repair_audit_fields(receipt.metadata)
+    if audit:
+        rendered_html += "<h2>Repaired audit</h2><dl>"
+        rendered_html += "".join(
+            f"<dt>{html.escape(key)}</dt><dd>{html.escape(value)}</dd>"
+            for key, value in audit.items()
+        )
+        rendered_html += "</dl>"
+    return rendered_html.encode()
+
+
+def _repair_audit_fields(metadata: Mapping[str, Any]) -> dict[str, str]:
+    """Select bounded audit summary fields for human-readable reports."""
+
+    audit = metadata.get("repair_audit")
+    if not isinstance(audit, Mapping):
+        return {}
+    safe = _safe_metadata(audit)
+    fields: dict[str, str] = {}
+    for key in (
+        "state",
+        "run_id",
+        "audit_outcome",
+        "finding_gate_state",
+        "json_report_sha256",
+    ):
+        value = safe.get(key)
+        if type(value) is str:
+            fields[key] = value
+    coverage_complete = safe.get("coverage_complete")
+    if type(coverage_complete) is bool:
+        fields["coverage_complete"] = str(coverage_complete).lower()
+    return fields
 
 
 def _md(value: str) -> str:

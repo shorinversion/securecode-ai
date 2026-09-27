@@ -10,6 +10,8 @@ from pathlib import Path
 
 from securecode_ai.adapters.github_api import GitHubApi
 from securecode_ai.adapters.github_comments import GithubCommentPublisher
+from securecode_ai.adapters.github_app import github_app_permissions
+from securecode_ai.adapters.github_sarif import GithubSarifPublisher
 from securecode_ai.adapters.github_writer import GitHubWriter
 from securecode_ai.adapters.gitlab_api import GitlabRestAPI
 from securecode_ai.adapters.gitlab_writer import GitlabPublicationWriter
@@ -25,7 +27,14 @@ from securecode_ai.adapters.scm_head import (
 from securecode_ai.contracts import ComponentPin
 
 from .scm_state import SqliteSCMRunState
-from .scm_webhooks import GithubWebhookAdapter, GitlabWebhookAdapter, WebhookExecutionPins
+from .scm_publication_store import SqliteSCMPublicationStore
+from .scm_webhooks import (
+    ConnectedRunIdentityResolver,
+    ConnectedRunIdentityResolverRouter,
+    GithubWebhookAdapter,
+    GitlabWebhookAdapter,
+    WebhookExecutionPins,
+)
 from .secure_files import decode_ascii_secret, read_json_object, read_secret_bytes
 
 _PIN_NAMES = (
@@ -49,10 +58,15 @@ class SCMHandlers:
     github_head: GithubPullRequestHeadResolver | None = None
     github_writer: GitHubWriter | None = None
     github_comments: GithubCommentPublisher | None = None
+    github_sarif: GithubSarifPublisher | None = None
     gitlab_head: GitlabMergeRequestHeadResolver | None = None
     gitlab_writer: GitlabPublicationWriter | None = None
+    gitlab_api: GitlabRestAPI | None = None
     lineage_resolver: SCMRunCommitLineageResolver | None = None
     changed_lines_resolver: SCMRunChangedLinesResolver | None = None
+    connected_identity_resolver: (
+        ConnectedRunIdentityResolver | ConnectedRunIdentityResolverRouter | None
+    ) = None
     _secret_material: tuple[bytes, ...] = field(default=(), repr=False)
 
 
@@ -157,6 +171,7 @@ def build_scm_handlers(
     *,
     tenant_id: str,
     connection: sqlite3.Connection,
+    publications: SqliteSCMPublicationStore | None = None,
 ) -> SCMHandlers:
     github_enabled = _configured(
         values,
@@ -167,6 +182,9 @@ def build_scm_handlers(
             "SECURECODE_GITHUB_WEBHOOK_SECRET_FILE",
         ),
     )
+    github_sarif_enabled = _flag(values, "SECURECODE_GITHUB_SARIF_ENABLED")
+    if github_sarif_enabled and not github_enabled:
+        raise ValueError("GitHub SARIF publication requires the GitHub adapter")
     gitlab_enabled = _configured(
         values,
         (
@@ -188,16 +206,20 @@ def build_scm_handlers(
     github_head: GithubPullRequestHeadResolver | None = None
     github_writer: GitHubWriter | None = None
     github_comments: GithubCommentPublisher | None = None
+    github_sarif: GithubSarifPublisher | None = None
     gitlab_head: GitlabMergeRequestHeadResolver | None = None
     gitlab_writer: GitlabPublicationWriter | None = None
+    gitlab_api: GitlabRestAPI | None = None
     github_lineage: GithubCommitLineageResolver | None = None
     gitlab_lineage: GitlabCommitLineageResolver | None = None
     github_changed_lines: GithubChangedLinesResolver | None = None
     gitlab_changed_lines: GitlabChangedLinesResolver | None = None
+    github_installation_id: str | None = None
     if github_enabled:
         api_url = _required(values, "SECURECODE_GITHUB_API_URL")
         token_path = Path(_required(values, "SECURECODE_GITHUB_TOKEN_FILE"))
         installation_id = _required(values, "SECURECODE_GITHUB_INSTALLATION_ID")
+        github_installation_id = installation_id
         secret = read_secret_bytes(Path(_required(values, "SECURECODE_GITHUB_WEBHOOK_SECRET_FILE")))
         github_api = GitHubApi(
             api_url,
@@ -217,6 +239,13 @@ def build_scm_handlers(
             github_api,
             pull_request_head=github_head,
         )
+        if github_sarif_enabled:
+            github_sarif = GithubSarifPublisher(
+                github_api,
+                pull_request_head=github_head,
+                connection=connection,
+                permissions=dict(github_app_permissions(enable_sarif=True)),
+            )
         secrets.append(secret)
     if gitlab_enabled:
         api_url = _required(values, "SECURECODE_GITLAB_API_URL")
@@ -238,18 +267,59 @@ def build_scm_handlers(
         gitlab_writer = GitlabPublicationWriter(
             api=gitlab_api,
             head_resolver=gitlab_head,
+            connection=connection,
         )
         secrets.extend((token_bytes, secret))
+    if github_enabled and gitlab_enabled:
+        connected_identity_resolver = ConnectedRunIdentityResolverRouter(
+            github=ConnectedRunIdentityResolver(
+                pins=pins,
+                scm_provider="github",
+                head_resolver=github_head,
+                installation_id=github_installation_id,
+                publication_store=publications,
+                run_state=run_state,
+            ),
+            gitlab=ConnectedRunIdentityResolver(
+                pins=pins,
+                scm_provider="gitlab",
+                head_resolver=gitlab_head,
+                publication_store=publications,
+                run_state=run_state,
+            ),
+        )
+    elif github_enabled:
+        connected_identity_resolver = ConnectedRunIdentityResolver(
+            pins=pins,
+            scm_provider="github",
+            head_resolver=github_head,
+            installation_id=github_installation_id,
+            publication_store=publications,
+            run_state=run_state,
+        )
+    elif gitlab_enabled:
+        connected_identity_resolver = ConnectedRunIdentityResolver(
+            pins=pins,
+            scm_provider="gitlab",
+            head_resolver=gitlab_head,
+            publication_store=publications,
+            run_state=run_state,
+        )
+    else:
+        connected_identity_resolver = None
     return SCMHandlers(
         github=github,
         gitlab=gitlab,
         pins=pins,
+        connected_identity_resolver=connected_identity_resolver,
         run_state=run_state,
         github_head=github_head,
         github_writer=github_writer,
         github_comments=github_comments,
+        github_sarif=github_sarif,
         gitlab_head=gitlab_head,
         gitlab_writer=gitlab_writer,
+        gitlab_api=gitlab_api if gitlab_enabled else None,
         lineage_resolver=(
             SCMRunCommitLineageResolver(
                 run_state=run_state,
@@ -284,6 +354,17 @@ def _required(values: Mapping[str, str], name: str) -> str:
     if not value:
         raise ValueError("SCM integration configuration is incomplete")
     return value
+
+
+def _flag(values: Mapping[str, str], name: str) -> bool:
+    value = values.get(name, "")
+    if value == "":
+        return False
+    if value.lower() in {"1", "true", "yes", "on"}:
+        return True
+    if value.lower() in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("SCM feature flag is invalid")
 
 
 def _load_pins(path: Path, tenant_id: str) -> WebhookExecutionPins:

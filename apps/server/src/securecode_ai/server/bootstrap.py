@@ -5,20 +5,32 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import sqlite3
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, Protocol
+
+from securecode_ai.contracts import RunExecutionIdentity
 
 from .application import ServerApp, create_app
 from .approvals import ApprovalLedger
+from .backup_lifecycle import BackupLifecycleAdapter
+from .artifact_read import LocalCommittedArtifactReader
+from .artifact_store import LocalArtifactStore, TenantNamespacedArtifactStore
 from .artifact_upload import AuthorizedLocalArtifactUploadService
 from .artifact_upload_handler import ArtifactUploadHandler
 from .artifact_upload_verifier import LocalArtifactUploadVerifier
 from .assurance_repository import AssuranceRepository
+from .assurance_pins_source import build_assurance_pins_provider
 from .assurance_service import AssuranceService
 from .assurance_verifiers import load_assurance_verifier_registry
 from .audit_log import AuditLog
-from .auth_configuration import build_oidc_login_service, build_oidc_verifier
+from .auth_configuration import (
+    active_oidc_session_principal,
+    build_oidc_login_service,
+    build_oidc_verifier,
+)
 from .auth_runtime import CompositeIdentityVerifier
 from .baseline_store import DurableBaselineStore
 from .bootstrap_identity import (
@@ -44,9 +56,15 @@ from .operations_handler_governance import (
     LifecycleOperationsHandler,
     LifecycleScopeRepository,
 )
+from .operations_handler_backup import BackupScopeRepository
+from .operations_handler_waivers import WaiverOperationsHandler
 from .operations_runtime import build_operational_handlers
 from .operations_telemetry import OperationsTelemetry
+from .telemetry import build_request_telemetry
 from .persistence import DevelopmentRepository
+from .policy_operations import PolicyOperationsHandler
+from .policy_store import PolicyStore
+from .oidc_login import OidcSourceRateLimitPort
 from .ports import (
     ControlPlaneService,
     IdentityVerifier,
@@ -54,6 +72,7 @@ from .ports import (
 )
 from .reloading_identity import ReloadingIdentityVerifier
 from .residency_registry import load_residency_registry
+from .request_quota import MAX_SPEND_MICROUNITS
 from .resource_configuration import (
     TenantProvisioningResourceService,
     load_resource_configuration,
@@ -74,13 +93,17 @@ from .scm_admission import (
     SCMAdmissionHandler,
     SqliteWorkerSupersession,
 )
-from .scm_annotations import GithubAnnotationReceiptResolver
 from .scm_completion import (
     SCMCompletionPublicationHandler,
     SCMCompletionPublicationService,
 )
-from .scm_policy_registry import load_scm_policy_registry
+from .scm_policy_registry import (
+    PolicyStoreScmPolicyResolver,
+    load_scm_policy_registry,
+)
 from .scm_publication_store import SqliteSCMPublicationStore
+from .scm_publication_runtime import build_scm_publication_service
+from .scm_reconciler import SCMPublicationReconciler
 from .scm_resolution import SCMRunResolutionHandler
 from .scm_runtime import build_scm_handlers
 from .secure_files import read_secret_bytes
@@ -107,9 +130,82 @@ from .worker_resource_accounting import (
     WorkerResourceAccountingService,
 )
 from .worker_resource_store import SqliteWorkerReservationBindingStore
-from .worker_scm_policy import load_run_scm_policy_decision
+from .waivers import WaiverLedger
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+
+
+class _ConnectedResolverPort(Protocol):
+    """Combined resolver and publication-binding port used by admission."""
+
+    def resolve(
+        self,
+        *,
+        authenticated_tenant_id: str,
+        document: Mapping[str, object],
+    ) -> tuple[RunExecutionIdentity, str] | None: ...
+
+    def bind_publication(
+        self,
+        *,
+        run_id: str,
+        identity: RunExecutionIdentity,
+        document: Mapping[str, object] | None,
+    ) -> None: ...
+
+
+class _ConnectedRunIdentityResolverAdapter:
+    """Keep CLI operation metadata out of the identity resolver input."""
+
+    __slots__ = ("_resolver",)
+
+    def __init__(self, resolver: _ConnectedResolverPort) -> None:
+        if not callable(getattr(resolver, "resolve", None)) or not callable(
+            getattr(resolver, "bind_publication", None)
+        ):
+            raise TypeError("connected identity resolver is invalid")
+        self._resolver = resolver
+
+    def resolve(
+        self,
+        *,
+        authenticated_tenant_id: str,
+        document: Mapping[str, object],
+    ) -> tuple[RunExecutionIdentity, str] | None:
+        operation = document.get("operation", "SCAN")
+        if type(operation) is not str or operation not in {"SCAN", "REPAIR"}:
+            raise ValueError("connected operation is invalid")
+        identity_document = {
+            key: value for key, value in document.items() if key != "operation"
+        }
+        resolved = self._resolver.resolve(
+            authenticated_tenant_id=authenticated_tenant_id,
+            document=identity_document,
+        )
+        if resolved is None:
+            return None
+        if (
+            type(resolved) is not tuple
+            or len(resolved) != 2
+            or type(resolved[0]) is not RunExecutionIdentity
+            or type(resolved[1]) is not str
+            or _ID.fullmatch(resolved[1]) is None
+        ):
+            raise ValueError("connected identity resolver returned an invalid result")
+        return resolved
+
+    def bind_publication(
+        self,
+        *,
+        run_id: str,
+        identity: RunExecutionIdentity,
+        document: Mapping[str, object] | None,
+    ) -> None:
+        self._resolver.bind_publication(
+            run_id=run_id,
+            identity=identity,
+            document=document,
+        )
 
 
 class RoleAuthorization:
@@ -117,6 +213,7 @@ class RoleAuthorization:
 
     __slots__ = ()
 
+    _WORKLOAD_ROLES: Final = frozenset({"worker", "scm", "artifact_uploader"})
     _ROLE_ACTIONS: Final = {
         "admin": frozenset({"*"}),
         "viewer": frozenset(
@@ -126,10 +223,13 @@ class RoleAuthorization:
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",
+                "runs.artifacts.content",
+                "runs.repair_patches.content",
                 "findings.read",
                 "findings.evidence.read",
                 "policies.read",
                 "approvals.read",
+                "waivers.read",
                 "lifecycle.deletions.read",
                 "feedback.metrics.read",
                 "assurance.read",
@@ -144,6 +244,8 @@ class RoleAuthorization:
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",
+                "runs.artifacts.content",
+                "runs.repair_patches.content",
                 "runs.audit.read",
                 "findings.read",
                 "findings.evidence.read",
@@ -151,6 +253,7 @@ class RoleAuthorization:
                 "artifacts.authorize",
                 "approvals.create",
                 "approvals.read",
+                "waivers.read",
                 "lifecycle.deletions.create",
                 "lifecycle.deletions.read",
                 "feedback.submit",
@@ -166,12 +269,17 @@ class RoleAuthorization:
                 "runs.events.read",
                 "runs.findings.read",
                 "runs.artifacts.read",
+                "runs.artifacts.content",
+                "runs.repair_patches.content",
                 "findings.read",
                 "findings.evidence.read",
                 "findings.decide",
                 "policies.read",
                 "approvals.read",
                 "approvals.decide",
+                "waivers.create",
+                "waivers.read",
+                "waivers.revoke",
                 "lifecycle.deletions.read",
                 "lifecycle.deletions.approve",
                 "lifecycle.deletions.legal_hold",
@@ -182,6 +290,7 @@ class RoleAuthorization:
                 "artifacts.authorize",
                 "scm.runs.resolve",
                 "worker_sessions.create",
+                "worker_sessions.osv.query",
                 "worker_sessions.heartbeat",
                 "worker_sessions.events.append",
                 "worker_sessions.artifacts.commit",
@@ -211,9 +320,10 @@ class RoleAuthorization:
             or (repository_id is not None and (type(repository_id) is not str or not repository_id))
         ):
             return False
-        if identity.workload and not identity.roles.issubset(
-            {"worker", "scm", "artifact_uploader"}
-        ):
+        if identity.workload:
+            if not identity.roles.issubset(self._WORKLOAD_ROLES):
+                return False
+        elif not identity.roles.isdisjoint(self._WORKLOAD_ROLES):
             return False
         allowed: set[str] = set()
         for role in identity.roles:
@@ -228,6 +338,8 @@ class RoleAuthorization:
 def build_local_app(
     settings: RuntimeSettings,
     environment: dict[str, str] | None = None,
+    *,
+    oidc_source_rate_limiter: OidcSourceRateLimitPort | None = None,
 ) -> ServerApp:
     values = os.environ if environment is None else environment
     data_dir = prepare_private_data_directory(Path(settings.data_dir))
@@ -243,6 +355,7 @@ def build_local_app(
         session_store,
         verifier_loader=lambda: build_oidc_verifier(values),
         connection=connection,
+        source_rate_limiter=oidc_source_rate_limiter,
     )
     identity_readiness: list[ReloadingIdentityVerifier] = []
     oidc_identity = (
@@ -260,7 +373,15 @@ def build_local_app(
         identity_readiness.append(bootstrap_identity)
         identity_verifiers.append(bootstrap_identity)
     if oidc_login is not None:
-        identity_verifiers.append(SessionIdentityVerifier(session_store))
+        identity_verifiers.append(
+            SessionIdentityVerifier(
+                session_store,
+                principal_is_active=lambda principal: active_oidc_session_principal(
+                    values,
+                    principal,
+                ),
+            )
+        )
     if not identity_verifiers:
         raise ValueError("identity verification is not configured")
     identity_verifier: IdentityVerifier = (
@@ -274,13 +395,28 @@ def build_local_app(
     if _ID.fullmatch(scm_tenant) is None:
         raise ValueError("SCM tenant is invalid")
     residency = load_residency_registry(connection, values)
-    scm = build_scm_handlers(values, tenant_id=scm_tenant, connection=connection)
+    residency_region = values.get("SECURECODE_DATA_REGION") or None
+    scm_publications = SqliteSCMPublicationStore(connection, initialize=True)
+    scm = build_scm_handlers(
+        values,
+        tenant_id=scm_tenant,
+        connection=connection,
+        publications=scm_publications,
+    )
     policy_registry_path = values.get("SECURECODE_SCM_POLICY_REGISTRY_FILE")
     policy_registry = (
         None
         if policy_registry_path is None
         else load_scm_policy_registry(Path(policy_registry_path))
     )
+    policy_store = PolicyStore(connection)
+    policy_operations = PolicyOperationsHandler(policy_store)
+    policy_resolver = (
+        policy_registry
+        if policy_registry is not None
+        else PolicyStoreScmPolicyResolver(policy_store)
+    )
+    policy_pin_validator = policy_resolver.validate_identity
     webhook_identity = VerifiedIdentity(
         subject_id="scm-webhook",
         tenant_id=scm_tenant,
@@ -305,6 +441,14 @@ def build_local_app(
         authorization=authorization,
         clock=lambda: time.time_ns() // 1_000_000,
         default_resource_policy=resource_policy,
+        identity_resolver=(
+            _ConnectedRunIdentityResolverAdapter(scm.connected_identity_resolver)
+            if scm.connected_identity_resolver is not None
+            else None
+        ),
+        policy_pin_validator=policy_pin_validator,
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
     )
     admission = RunAdmissionHandler(admission_service)
     webhook_admission = RunAdmissionService(
@@ -314,6 +458,9 @@ def build_local_app(
         authorization=ExactWebhookRunAuthorization(webhook_identity),
         clock=lambda: time.time_ns() // 1_000_000,
         default_resource_policy=resource_policy,
+        policy_pin_validator=policy_pin_validator,
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
     )
     upload_base_url = values.get("SECURECODE_ARTIFACT_UPLOAD_URL")
     if upload_base_url is None:
@@ -332,13 +479,32 @@ def build_local_app(
     artifact_uploads = AuthorizedLocalArtifactUploadService(
         data_dir / "artifacts",
         authorizations=artifact_authorizations,
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
+    )
+    artifact_reader = LocalCommittedArtifactReader(
+        connection,
+        data_dir / "artifacts",
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
     )
     artifact_storage = LocalArtifactStorageExecutor(
         connection,
         data_dir / "artifacts",
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
+    )
+    backup_root = data_dir / "backup-records"
+    LocalArtifactStore(backup_root)
+    lifecycle_storage = BackupLifecycleAdapter(
+        connection,
+        backup_root,
+        requested_by="lifecycle-executor",
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
+        fallback=artifact_storage,
     )
     supersession = SqliteWorkerSupersession(runs=repository, queue=worker_queue)
-    scm_publications = SqliteSCMPublicationStore(connection)
     github_handler = (
         SCMAdmissionHandler(
             adapter=IdentityBindingWebhookAdapter(adapter=scm.github, pins=scm.pins),
@@ -365,6 +531,8 @@ def build_local_app(
             resources=durable_resources,
             clock=lambda: time.time_ns() // 1_000_000,
         ),
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
         fallback=WorkerQueueHandler(
             queue=worker_queue,
             artifact_authorizations=artifact_authorizations,
@@ -372,60 +540,77 @@ def build_local_app(
             baseline_store=DurableBaselineStore(connection),
             lineage_resolver=scm.lineage_resolver,
             changed_lines_resolver=scm.changed_lines_resolver,
-            policy_resolver=policy_registry,
+            policy_resolver=policy_resolver,
+            residency_guard=residency if residency_region is not None else None,
+            residency_region=residency_region,
         ),
     )
+    approval_ledger = ApprovalLedger(connection)
+    waiver_ledger = WaiverLedger(connection)
+    scm_publisher: SCMCompletionPublicationService | None = None
+    scm_reconciler: SCMPublicationReconciler | None = None
     if scm.run_state is not None:
-        github_annotation_receipt = (
-            GithubAnnotationReceiptResolver(
-                connection=connection,
-                artifact_root=data_dir / "artifacts",
-                baseline_store=DurableBaselineStore(connection),
-                lineage_resolver=scm.lineage_resolver,
-                changed_lines_resolver=scm.changed_lines_resolver,
-                authorizer=scm.github,
-            )
-            if (
-                scm.github is not None
-                and scm.github_comments is not None
-                and scm.lineage_resolver is not None
-                and scm.changed_lines_resolver is not None
-            )
-            else None
+        scm_publisher = build_scm_publication_service(
+            connection=connection,
+            repository=repository,
+            scm=scm,
+            publications=scm_publications,
+            waiver_ledger=waiver_ledger,
+            artifact_root=data_dir / "artifacts",
+            residency_guard=residency if residency_region is not None else None,
+            residency_region=residency_region,
         )
         worker_handler = SCMCompletionPublicationHandler(
-            publisher=SCMCompletionPublicationService(
-                publications=scm_publications,
-                run_state=scm.run_state,
-                github_head=scm.github_head,
-                github_writer=scm.github_writer,
-                github_comment_writer=scm.github_comments,
-                github_annotation_receipt=github_annotation_receipt,
-                gitlab_head=scm.gitlab_head,
-                gitlab_writer=scm.gitlab_writer,
-                policy_decisions=lambda tenant_id, run_id, identity_hash: (
-                    load_run_scm_policy_decision(
-                        connection,
-                        tenant_id=tenant_id,
-                        run_id=run_id,
-                        execution_identity_hash=identity_hash,
-                    )
-                ),
-            ),
+            publisher=scm_publisher,
             fallback=worker_handler,
         )
-    approvals = ApprovalOperationsHandler(ApprovalLedger(connection))
+        scm_reconciler = SCMPublicationReconciler(
+            database_path=database_path,
+            values=values,
+            tenant_id=scm_tenant,
+            artifact_root=data_dir / "artifacts",
+        )
+    approvals = ApprovalOperationsHandler(approval_ledger, connection=connection)
+    waivers = WaiverOperationsHandler(
+        waiver_ledger,
+        approval_ledger,
+        connection=connection,
+        refresh_verdict=(
+            scm_publisher.refresh_after_waiver if scm_publisher is not None else None
+        ),
+    )
     lifecycle = LifecycleOperationsHandler(
-        LifecycleLedger(connection, storage=artifact_storage),
+        LifecycleLedger(
+            connection,
+            storage=lifecycle_storage,
+            residency_guard=residency if residency_region is not None else None,
+            residency_region=residency_region,
+        ),
         LifecycleScopeRepository(connection),
         execute_available=True,
+        residency_guard=residency if residency_region is not None else None,
+        residency_region=residency_region,
     )
     feedback = FeedbackOperationsHandler(FeedbackService(FeedbackRepository(connection)))
+    assurance_pins_provider = build_assurance_pins_provider(
+        values,
+        tenant_id=scm_tenant,
+    )
     assurance = AssuranceOperationsHandler(
         AssuranceService(AssuranceRepository(connection)),
         load_assurance_verifier_registry(values),
+        assurance_pins_provider,
     )
-    operations = build_operational_handlers(values, connection, residency=residency)
+    operational_values = dict(values)
+    operational_values["_SECURECODE_INTERNAL_BACKUP_ARTIFACT_STORE"] = (
+        TenantNamespacedArtifactStore(LocalArtifactStore(data_dir / "backup-records"))
+    )
+    operational_values["_SECURECODE_INTERNAL_BACKUP_SCOPE_REPOSITORY"] = (
+        BackupScopeRepository(connection)
+    )
+    operations = build_operational_handlers(
+        operational_values, connection, residency=residency
+    )
     service: ControlPlaneService = CompositeService(
         core=RunAdmissionRoutingService(
             admission=admission,
@@ -434,7 +619,11 @@ def build_local_app(
                 finding_evidence=FindingEvidenceReader(
                     repository=repository,
                     artifact_root=data_dir / "artifacts",
+                    residency_guard=residency if residency_region is not None else None,
+                    residency_region=residency_region,
                 ),
+                artifact_reader=artifact_reader,
+                policy_store=policy_store,
             ),
         ),
         worker=worker_handler,
@@ -446,6 +635,9 @@ def build_local_app(
             "approvals.create": approvals,
             "approvals.read": approvals,
             "approvals.decide": approvals,
+            "waivers.create": waivers,
+            "waivers.read": waivers,
+            "waivers.revoke": waivers,
             "lifecycle.deletions.create": lifecycle,
             "lifecycle.deletions.read": lifecycle,
             "lifecycle.deletions.approve": lifecycle,
@@ -463,13 +655,21 @@ def build_local_app(
             "backups.read": operations.backups,
             "backups.execute": operations.backups,
             "backups.restore": operations.backups,
+            "backups.restore.resolve": operations.backups,
+            "policies.assign_repository": policy_operations,
+            "policies.set_tenant_default": policy_operations,
         },
     )
     service = SCMRunResolutionHandler(store=scm_publications, fallback=service)
+    operational_telemetry = OperationsTelemetry(connection)
+    request_telemetry = build_request_telemetry(
+        values,
+        counters=operational_telemetry,
+    )
     service = AuditTelemetryControlPlane(
         fallback=service,
         audit_log=AuditLog(connection),
-        telemetry=OperationsTelemetry(),
+        telemetry=operational_telemetry,
         runs=repository,
     )
     disabled_capabilities = {
@@ -484,16 +684,24 @@ def build_local_app(
     available_capabilities = tuple(
         capability
         for capability in CAPABILITIES
-        if capability != "scm-webhooks" or scm_webhooks_available
+        if (capability != "scm-webhooks" or scm_webhooks_available)
+        and (capability != "expiring-finding-waivers" or scm_publisher is not None)
     )
     if oidc_login is not None:
         available_capabilities += ("oidc-login",)
+
+    def shutdown_resources() -> None:
+        if scm_reconciler is not None:
+            scm_reconciler.shutdown()
+        connection.close()
+
     return create_app(
         identities=identity_verifier,
         oidc_login=oidc_login,
         sessions=session_store if oidc_login is not None else None,
         authorization=authorization,
         service=service,
+        telemetry=request_telemetry,
         readiness=CompositeReadiness(
             SqliteSchemaReadiness(connection),
             *identity_readiness,
@@ -533,13 +741,25 @@ def build_local_app(
                 minimum=1,
                 maximum=1_000_000,
             ),
+            max_spend_microunits=_quota_integer(
+                values,
+                "SECURECODE_API_MAX_SPEND_MICROUNITS",
+                default=MAX_SPEND_MICROUNITS,
+                minimum=0,
+                maximum=MAX_SPEND_MICROUNITS,
+            ),
         ),
+        quota_run_cost_microunits=resource_configuration.run_defaults.requested_cost_microunits,
         artifact_upload_identity=VerifiedIdentity(
             subject_id="artifact-upload",
             tenant_id="artifact-transport",
             roles=frozenset({"artifact_uploader"}),
             workload=True,
         ),
+        background_reconcile=(
+            (scm_reconciler.trigger if scm_reconciler is not None else None)
+        ),
+        shutdown_callback=shutdown_resources,
         capabilities=tuple(
             sorted(
                 capability

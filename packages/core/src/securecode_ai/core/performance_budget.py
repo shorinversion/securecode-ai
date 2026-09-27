@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final
+from threading import RLock
+from typing import Callable, Final
 
 _VERSION: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
 _CONFIGURATION: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -106,7 +107,7 @@ def within(budget: PerformanceBudget, observation: PerformanceObservation) -> bo
 
 
 def hard_stop(budget: PerformanceBudget, observation: PerformanceObservation) -> bool:
-    """Stop before a request can overrun either the run or external cost cap."""
+    """Return true once any per-run or external hard ceiling is reached."""
     if type(budget) is not PerformanceBudget or type(observation) is not PerformanceObservation:
         return True
     return (
@@ -115,11 +116,57 @@ def hard_stop(budget: PerformanceBudget, observation: PerformanceObservation) ->
         or observation.cost_microunits > budget.max_cost_microunits
         or observation.calls > budget.max_calls
         or observation.tokens > budget.max_tokens
+        or observation.ram_mb > budget.max_ram_mb
+        or observation.vram_mb > budget.max_vram_mb
+        or observation.files > _TARGET_MAX_FILES
+        or observation.changed_lines > _TARGET_MAX_CHANGED_LINES
+        or observation.latency_ms > _TARGET_MAX_LATENCY_MS
     )
+
+
+class PerformanceBudgetEnforcer:
+    """Latch a hard-stop decision and cancel active work on its first breach."""
+
+    __slots__ = ("_budget", "_lock", "_stop", "_stopped")
+
+    def __init__(
+        self,
+        budget: PerformanceBudget,
+        stop: Callable[[], object],
+    ) -> None:
+        if type(budget) is not PerformanceBudget or not callable(stop):
+            raise PerformanceBudgetError("invalid runtime enforcer")
+        self._budget = budget
+        self._stop = stop
+        self._lock = RLock()
+        self._stopped = False
+
+    @property
+    def stopped(self) -> bool:
+        with self._lock:
+            return self._stopped
+
+    def observe(self, observation: PerformanceObservation) -> None:
+        """Accept a cumulative observation or stop and reject the run."""
+        if type(observation) is not PerformanceObservation:
+            raise PerformanceBudgetError("invalid runtime observation")
+        with self._lock:
+            if self._stopped:
+                raise PerformanceBudgetError("performance budget exceeded")
+            if not hard_stop(self._budget, observation):
+                return
+            self._stopped = True
+        try:
+            self._stop()
+        except Exception:
+            # Cancellation failure cannot make an over-budget run acceptable.
+            pass
+        raise PerformanceBudgetError("performance budget exceeded")
 
 
 __all__ = [
     "PerformanceBudget",
+    "PerformanceBudgetEnforcer",
     "PerformanceBudgetError",
     "PerformanceObservation",
     "hard_stop",

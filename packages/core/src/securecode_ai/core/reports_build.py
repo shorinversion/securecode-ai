@@ -6,6 +6,7 @@ import hashlib
 
 from securecode_ai.contracts import AuditRun, ComponentPin, FindingCase
 
+from .classification import ClassificationError, classify_product_cwe
 from .reports_contracts import (
     REPORT_FORMAT_VERSION,
     REPORT_SCHEMA_VERSION,
@@ -59,18 +60,29 @@ def build_deterministic_report(
         sorted(validated_tools, key=lambda item: (item.component_id, item.component_version))
     ):
         raise ReportError(ReportErrorCode.INPUT_INVALID)
+    blocking_finding_ids = set(validated_run.blocking_finding_ids)
+    candidates = {
+        (candidate.candidate_id, candidate.candidate_version): candidate
+        for candidate in validated_run.coverage_manifest.discovery_candidates
+    }
     for item in validated_findings:
         finding = item.finding
-        if finding.repository_revision != revision or finding.root_cause_fingerprint != next(
-            (
-                candidate.root_cause_fingerprint
-                for candidate in validated_run.coverage_manifest.discovery_candidates
-                if candidate.candidate_id == finding.candidate_id
-                and candidate.candidate_version == finding.candidate_version
-            ),
-            None,
+        candidate = candidates.get((finding.candidate_id, finding.candidate_version))
+        if candidate is None or (
+            finding.repository_revision != revision
+            or finding.root_cause_fingerprint != candidate.root_cause_fingerprint
+            or finding.candidate_origin is not candidate.candidate_origin
+            or finding.producer_lineage != candidate.lineage
         ):
             raise ReportError(ReportErrorCode.IDENTITY_MISMATCH)
+        if finding.blocking != (finding.finding_id in blocking_finding_ids):
+            raise ReportError(ReportErrorCode.FINDING_MISMATCH)
+        try:
+            expected_classification = classify_product_cwe(finding.cwe_id)
+        except ClassificationError:
+            raise ReportError(ReportErrorCode.INPUT_INVALID) from None
+        if item.classification != expected_classification:
+            raise ReportError(ReportErrorCode.INPUT_INVALID)
 
     document: dict[str, object] = {
         "analysis_health": validated_run.analysis_health.value,

@@ -35,6 +35,27 @@ class TenantProvisioningResourceService:
         self._service.configure(replace(self._template, tenant_id=request.tenant_id))
         return self._service.reserve(request)
 
+    def is_active(
+        self,
+        *,
+        tenant_id: str,
+        repository_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        reservation_id: str,
+        expected_version: int,
+        now_ms: int,
+    ) -> bool:
+        return self._service.is_active(
+            tenant_id=tenant_id,
+            repository_id=repository_id,
+            run_id=run_id,
+            execution_identity_hash=execution_identity_hash,
+            reservation_id=reservation_id,
+            expected_version=expected_version,
+            now_ms=now_ms,
+        )
+
     def commit(
         self,
         *,
@@ -133,6 +154,7 @@ def load_resource_configuration(
     *,
     tenant_id: str,
 ) -> ConfiguredResources:
+    profile_id = values.get("SECURECODE_RESOURCE_PROFILE_ID", "default-v1")
     profile = {
         "max_concurrent_runs": _integer(values, "SECURECODE_MAX_CONCURRENT_RUNS", 4),
         "max_admissions_per_window": _integer(values, "SECURECODE_MAX_ADMISSIONS_PER_WINDOW", 100),
@@ -148,11 +170,13 @@ def load_resource_configuration(
         "max_wall_ms_per_run": _integer(values, "SECURECODE_MAX_WALL_MS_PER_RUN", 600_000),
     }
     profile_sha256 = hashlib.sha256(
-        json.dumps(profile, sort_keys=True, separators=(",", ":")).encode("ascii")
+        json.dumps(
+            {"profile_id": profile_id, **profile}, sort_keys=True, separators=(",", ":")
+        ).encode("ascii")
     ).hexdigest()
     limits = TenantResourceLimits(
         tenant_id=tenant_id,
-        profile_id=values.get("SECURECODE_RESOURCE_PROFILE_ID", "default-v1"),
+        profile_id=profile_id,
         profile_sha256=profile_sha256,
         **profile,
     )
@@ -197,7 +221,12 @@ def _integer(
     raw = values.get(name)
     if raw is None:
         return default
-    if not raw.isascii() or not raw.isdigit():
+    if (
+        type(raw) is not str
+        or not 1 <= len(raw) <= 19
+        or not raw.isascii()
+        or not raw.isdigit()
+    ):
         raise ValueError("resource configuration is invalid")
     value = int(raw)
     if not minimum <= value <= 9_223_372_036_854_775_807:

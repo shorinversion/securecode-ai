@@ -353,6 +353,7 @@ _SENSITIVE_WORDS = frozenset(
         "token",
         "user_password",
     }
+)
 _SENSITIVE_TOKENS = frozenset(
     {
         "access",

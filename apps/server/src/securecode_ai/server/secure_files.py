@@ -18,6 +18,8 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
         or _O_NOFOLLOW == 0
         or not isinstance(path, Path)
         or not path.is_absolute()
+        or path.is_symlink()
+        or _has_symlink_ancestor(path)
         or ".." in path.parts
         or type(limit) is not int
         or not 1 <= limit <= 1_048_576
@@ -26,6 +28,7 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
     directory_descriptor = -1
     opened_directories: list[int] = []
     descriptor = -1
+    docker_secret_mount = _is_docker_secret_mount(path)
     try:
         directory_flags = (
             os.O_RDONLY
@@ -45,7 +48,7 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
             )
             opened_directories.append(directory_descriptor)
         before = os.stat(path.name, dir_fd=directory_descriptor, follow_symlinks=False)
-        _validate_regular_file(before, limit)
+        _validate_regular_file(before, limit, allow_docker_secret=docker_secret_mount)
         flags = (
             os.O_RDONLY
             | getattr(os, "O_CLOEXEC", 0)
@@ -55,12 +58,12 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
         )
         descriptor = os.open(path.name, flags, dir_fd=directory_descriptor)
         opened = os.fstat(descriptor)
-        _validate_regular_file(opened, limit)
+        _validate_regular_file(opened, limit, allow_docker_secret=docker_secret_mount)
         if not _same_file(before, opened):
             raise ValueError("configuration file changed while opening")
         value = _read_descriptor(descriptor, limit + 1)
         after = os.fstat(descriptor)
-        _validate_regular_file(after, limit)
+        _validate_regular_file(after, limit, allow_docker_secret=docker_secret_mount)
         if not _same_state(opened, after):
             raise ValueError("configuration file changed while reading")
     except OSError:
@@ -75,7 +78,28 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
     return value
 
 
-def _validate_regular_file(details: os.stat_result, limit: int) -> None:
+def _has_symlink_ancestor(path: Path) -> bool:
+    """Reject paths whose parent traversal can be redirected by a symlink."""
+    current = path.parent
+    while True:
+        try:
+            details = current.lstat()
+        except OSError:
+            return True
+        if stat.S_ISLNK(details.st_mode):
+            return True
+        parent = current.parent
+        if parent == current:
+            return False
+        current = parent
+
+
+def _validate_regular_file(
+    details: os.stat_result,
+    limit: int,
+    *,
+    allow_docker_secret: bool = False,
+) -> None:
     reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
     attributes = getattr(details, "st_file_attributes", 0)
     if (
@@ -86,11 +110,30 @@ def _validate_regular_file(details: os.stat_result, limit: int) -> None:
     ):
         raise ValueError("configuration file is invalid")
     if os.name == "posix":
-        if details.st_mode & 0o077:
+        mode = stat.S_IMODE(details.st_mode)
+        if mode & 0o077 and not (
+            allow_docker_secret
+            and details.st_uid == 0
+            and not mode & 0o222
+            and not mode & 0o111
+            and not mode & 0o7000
+        ):
             raise ValueError("configuration file permissions are unsafe")
         current_uid = cast(Callable[[], int], vars(os)["geteuid"])()
         if details.st_uid not in {0, current_uid}:
             raise ValueError("configuration file owner is unsafe")
+
+
+def _is_docker_secret_mount(path: Path) -> bool:
+    """Recognize only direct Compose secret mounts.
+
+    Docker Compose file-backed secrets are read-only bind mounts and commonly
+    retain mode ``0444``.  They are confined to the container's exact
+    ``/run/secrets`` directory; all other configuration paths keep the strict
+    private-file requirement above.
+    """
+
+    return path.parent == Path("/run/secrets")
 
 
 def _same_file(before: os.stat_result, opened: os.stat_result) -> bool:

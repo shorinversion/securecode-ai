@@ -43,42 +43,49 @@ def _index(builder: _IndexBuilder, path: str, source: bytes) -> SymbolIndex:
             build_python_symbol_index,
             "api/portfolio.py",
             b"import os, subprocess, requests\n"
-            b"def check(request, repo):\n"
+            b"@app.route('/admin/users/<user_id>', methods=['PATCH'])\n"
+            b"@login_required\n"
+            b"def check(user_id, repo):\n"
             b" subprocess.run(request.args.get('cmd'), shell=True)\n"
             b" open(os.path.join('/srv', request.args.get('file')))\n"
             b" requests.get(request.args.get('url'))\n"
-            b" repo.get(request.args.get('id'))\n",
+            b" repo.update(user_id)\n",
         ),
         (
             build_javascript_symbol_index,
             "api/portfolio.js",
-            b"function check(req, repo) {\n"
+            b"const app = express();\n"
+            b"app.use(csrfProtection);\n"
+            b"app.patch('/admin/users/:id', authenticate, (req, res) => {\n"
             b" exec(req.query.cmd);\n"
             b" fs.readFile(path.join(root, req.query.file));\n"
             b" fetch(req.query.url);\n"
-            b" repo.get(req.params.id);\n"
-            b"}\n",
+            b" repo.update(req.params.id);\n"
+            b"});\n",
         ),
         (
             build_typescript_symbol_index,
             "api/portfolio.ts",
-            b"function check(req: Request, repo: Repo): void {\n"
+            b"const app = express();\n"
+            b"app.use(csrfProtection);\n"
+            b"app.patch('/admin/users/:id', authenticate, (req: Request, res: Response) => {\n"
             b" exec(req.query.cmd);\n"
             b" fs.readFile(path.join(root, req.query.file));\n"
             b" fetch(req.query.url);\n"
-            b" repo.get(req.params.id);\n"
-            b"}\n",
+            b" repo.update(req.params.id);\n"
+            b"});\n",
         ),
         (
             build_go_symbol_index,
             "api/portfolio.go",
-            b'package api\nimport ("os"; "os/exec"; "path/filepath"; "net/http")\n'
-            b"func check(r *Request, repo Repo) {\n"
+            b'package api\nimport ("os"; "os/exec"; "path/filepath"; "net/http")\nvar repo Repository\n'
+            b"func updateUser(w http.ResponseWriter, r *http.Request) {\n"
             b' exec.Command("sh", "-c", r.URL.Query().Get("cmd"))\n'
             b' os.ReadFile(filepath.Join(root, r.URL.Query().Get("file")))\n'
             b' http.Get(r.URL.Query().Get("url"))\n'
-            b' repo.Find(r.URL.Query().Get("id"))\n'
-            b"}\n",
+            b' repo.Update(r.URL.Query().Get("id"))\n'
+            b"}\n"
+            b'func register(mux *http.ServeMux) { mux.HandleFunc("/admin/users/", updateUser) }\n',
         ),
     ],
 )
@@ -361,16 +368,19 @@ def test_os_system_with_constant_command_emits_no_command_injection_fact() -> No
         (
             build_python_symbol_index,
             "api/guards.py",
-            b"def check(request, repo):\n repo.get(request.args.get('id'))\n authorize(current_user, request.args.get('id'))\n",
-            b"def check(request, repo):\n authorize(current_user, request.args.get('other'))\n repo.get(request.args.get('id'))\n",
-            b"def check(request, repo):\n authorize(current_user, request.args.get('id'))\n repo.get(request.args.get('id'))\n",
+            b"@app.route('/admin/users/<user_id>', methods=['PATCH'])\n@login_required\n"
+            b"def check(user_id, repo):\n repo.update(user_id)\n authorize(current_user, user_id)\n",
+            b"@app.route('/admin/users/<user_id>', methods=['PATCH'])\n@login_required\n"
+            b"def check(user_id, repo):\n authorize(current_user, other)\n repo.update(user_id)\n",
+            b"@app.route('/admin/users/<user_id>', methods=['PATCH'])\n@login_required\n"
+            b"def check(user_id, repo):\n authorize(current_user, user_id)\n repo.update(user_id)\n",
         ),
         (
             build_javascript_symbol_index,
             "api/guards.js",
-            b"function check(req, repo) { repo.get(req.params.id); authorize(currentUser, req.params.id); }\n",
-            b"function check(req, repo) { authorize(currentUser, req.params.other); repo.get(req.params.id); }\n",
-            b"function check(req, repo) { authorize(currentUser, req.params.id); repo.get(req.params.id); }\n",
+            b"const app = express(); app.patch('/admin/users/:id', authenticate, (req, res) => { repo.update(req.params.id); authorize(currentUser, req.params.id); });\n",
+            b"const app = express(); app.patch('/admin/users/:id', authenticate, (req, res) => { authorize(currentUser, req.params.other); repo.update(req.params.id); });\n",
+            b"const app = express(); app.patch('/admin/users/:id', authenticate, (req, res) => { authorize(currentUser, req.params.id); repo.update(req.params.id); });\n",
         ),
     ],
 )

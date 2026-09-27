@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import asdict
 from threading import RLock
 from typing import Final
 
-from .backup_repository import BackupConflict, BackupRecord, validate_backup_record
+from .backup_repository import (
+    BackupConflict,
+    BackupRecord,
+    BackupRecoveryRecord,
+    validate_backup_record,
+)
 from .backup_service import BackupExecutorUnavailable, BackupReceipt, BackupService
 from .operations_handler_common import (
     CONFLICT,
@@ -20,7 +26,6 @@ from .operations_handler_common import (
     expected_version,
     matches_tenant,
     path_identifier,
-    path_value,
     repository_allowed,
     response,
     string,
@@ -35,6 +40,7 @@ BACKUP_SCOPE_SCHEMA_STATEMENTS: Final = (
         PRIMARY KEY (tenant_id, backup_id)
     )""",
 )
+_SCOPE_IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}\Z")
 
 
 class BackupScopeRepository:
@@ -50,6 +56,9 @@ class BackupScopeRepository:
         self._db.commit()
 
     def bind(self, *, tenant_id: str, backup_id: str, repository_id: str) -> None:
+        _validate_scope_identifier(tenant_id, "tenant_id")
+        _validate_scope_identifier(backup_id, "backup_id")
+        _validate_scope_identifier(repository_id, "repository_id")
         with self._lock:
             row = self._db.execute(
                 """SELECT repository_id FROM backup_repository_scopes
@@ -73,13 +82,20 @@ class BackupScopeRepository:
                 raise BackupConflict("backup scope conflicts") from failure
 
     def repository(self, *, tenant_id: str, backup_id: str) -> str | None:
+        _validate_scope_identifier(tenant_id, "tenant_id")
+        _validate_scope_identifier(backup_id, "backup_id")
         with self._lock:
             row = self._db.execute(
                 """SELECT repository_id FROM backup_repository_scopes
                    WHERE tenant_id=? AND backup_id=?""",
                 (tenant_id, backup_id),
             ).fetchone()
-        return None if row is None else str(row[0])
+        if row is None:
+            return None
+        repository_id = row[0]
+        if type(repository_id) is not str or _SCOPE_IDENTIFIER.fullmatch(repository_id) is None:
+            raise BackupConflict("backup scope is invalid")
+        return repository_id
 
 
 class BackupOperationsHandler:
@@ -108,6 +124,7 @@ class BackupOperationsHandler:
             "backups.read": self._read,
             "backups.execute": self._execute,
             "backups.restore": self._restore,
+            "backups.restore.resolve": self._resolve_restore,
         }
         handler = handlers.get(request.action)
         if handler is None:
@@ -139,6 +156,11 @@ class BackupOperationsHandler:
             return INVALID_REQUEST
         assert backup_id and repository_id and region and key_ref
         assert component_hashes is not None
+        if (
+            _SCOPE_IDENTIFIER.fullmatch(repository_id) is None
+            or _SCOPE_IDENTIFIER.fullmatch(region) is None
+        ):
+            return INVALID_REQUEST
         if not repository_allowed(request.identity, repository_id):
             return FORBIDDEN
         try:
@@ -203,6 +225,48 @@ class BackupOperationsHandler:
     def _restore(self, request: ServiceRequest) -> ServiceResponse:
         return self._transition(request, restore=True)
 
+    def _resolve_restore(self, request: ServiceRequest) -> ServiceResponse:
+        if request.idempotency_key is None:
+            return INVALID_REQUEST
+        value = document(
+            request,
+            required=frozenset({"evidence_ref", "reason"}),
+        )
+        if value is None:
+            return INVALID_REQUEST
+        version = expected_version(request)
+        if version is None:
+            return PRECONDITION_FAILED
+        reason = string(value, "reason", maximum=512)
+        evidence_ref = string(value, "evidence_ref", maximum=128)
+        if (
+            reason is None
+            or evidence_ref is None
+            or _SCOPE_IDENTIFIER.fullmatch(evidence_ref) is None
+        ):
+            return INVALID_REQUEST
+        scoped = self._scoped_backup(request)
+        if isinstance(scoped, ServiceResponse):
+            return scoped
+        backup_id, repository_id = scoped
+        try:
+            recovery = self._service.resolve_stuck_restore(
+                request.identity.tenant_id,
+                backup_id,
+                version,
+                actor_id=request.identity.subject_id,
+                reason=reason,
+                evidence_ref=evidence_ref,
+                idempotency_key=request.idempotency_key,
+            )
+        except (BackupConflict, TypeError, ValueError):
+            return CONFLICT
+        return response(
+            200,
+            _recovery_document(recovery, repository_id),
+            version=version,
+        )
+
     def _transition(self, request: ServiceRequest, *, restore: bool) -> ServiceResponse:
         if not self._executor_available:
             return error(
@@ -253,13 +317,16 @@ class BackupOperationsHandler:
         )
 
     def _scoped_backup(self, request: ServiceRequest) -> tuple[str, str] | ServiceResponse:
-        backup_id = path_value(request, "backup_id")
+        backup_id = path_identifier(request.path_params, "backup_id")
         if backup_id is None:
             return INVALID_REQUEST
-        repository_id = self._scopes.repository(
-            tenant_id=request.identity.tenant_id,
-            backup_id=backup_id,
-        )
+        try:
+            repository_id = self._scopes.repository(
+                tenant_id=request.identity.tenant_id,
+                backup_id=backup_id,
+            )
+        except (BackupConflict, TypeError, ValueError):
+            return CONFLICT
         if repository_id is None:
             return NOT_FOUND
         if not repository_allowed(request.identity, repository_id):
@@ -285,6 +352,19 @@ def _receipt_document(receipt: BackupReceipt, repository_id: str) -> dict[str, o
     value = asdict(receipt)
     value["repository_id"] = repository_id
     return value
+
+
+def _recovery_document(
+    recovery: BackupRecoveryRecord, repository_id: str
+) -> dict[str, object]:
+    value = asdict(recovery)
+    value["repository_id"] = repository_id
+    return value
+
+
+def _validate_scope_identifier(value: object, field: str) -> None:
+    if type(value) is not str or _SCOPE_IDENTIFIER.fullmatch(value) is None:
+        raise BackupConflict(f"{field} is invalid")
 
 
 __all__ = [

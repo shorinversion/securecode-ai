@@ -13,8 +13,10 @@ import json
 import os
 import subprocess
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Final
 
 from securecode_ai.contracts import (
@@ -32,15 +34,11 @@ from .product_audit import (
     GitProductAuditStateProbe,
     ProductAuditComposition,
 )
+from .product_rule_catalogue import PRODUCT_RULE_CWE as _RULES
 
-_RULES = {
-    "cwe-89-sql-interpolation": "CWE-89",
-    "portfolio-cwe-22": "CWE-22",
-    "portfolio-cwe-78": "CWE-78",
-    "portfolio-cwe-862": "CWE-862",
-    "portfolio-cwe-918": "CWE-918",
-}
 _CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+_GIT_EXIT_TIMEOUT_SECONDS: Final[float] = 2.0
+_MAX_REPAIR_SUMMARY_BYTES: Final[int] = 1_048_576
 
 
 class LocalProductConfigurationError(ValueError):
@@ -85,6 +83,30 @@ class LocalProductScanResult:
             raise LocalProductSupersededError()
         if not observed.reporting_allowed:
             raise LocalProductUnavailableError()
+
+
+@dataclass(frozen=True, slots=True)
+class LocalProductRepairResult:
+    """Source-free result of the optional suggestion-only repair sidecar."""
+
+    summary: bytes
+    exit_code: int
+    model_tokens: int = 0
+    model_cost_microunits: int = 0
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.summary) is not bytes
+            or not self.summary
+            or len(self.summary) > _MAX_REPAIR_SUMMARY_BYTES
+            or type(self.exit_code) is not int
+            or self.exit_code not in {0, 2}
+            or type(self.model_tokens) is not int
+            or self.model_tokens < 0
+            or type(self.model_cost_microunits) is not int
+            or self.model_cost_microunits < 0
+        ):
+            raise LocalProductConfigurationError()
 
 
 def _pin(name: str, version: str, digest: str) -> ComponentPin:
@@ -146,7 +168,14 @@ class _LiteralLoopbackResolver:
         return (str(address),)
 
 
-def _git(checkout: Path, executable: Path, *arguments: str) -> str:
+def _git(
+    checkout: Path,
+    executable: Path,
+    *arguments: str,
+    cancelled: Callable[[], bool] | None = None,
+) -> str:
+    if cancelled is not None and not callable(cancelled):
+        raise LocalProductConfigurationError()
     env = {
         key: os.environ[key]
         for key in ("SystemRoot", "WINDIR", "PATH", "TEMP", "TMP")
@@ -163,27 +192,60 @@ def _git(checkout: Path, executable: Path, *arguments: str) -> str:
         GIT_NO_LAZY_FETCH="1",
         GIT_ALLOW_PROTOCOL="",
     )
-    result = subprocess.run(
-        [
-            str(executable),
-            "--no-pager",
-            "--no-replace-objects",
-            "--no-optional-locks",
-            "-C",
-            str(checkout),
-            *arguments,
-        ],
+    command = [
+        str(executable),
+        "--no-pager",
+        "--no-replace-objects",
+        "--no-optional-locks",
+        "-C",
+        str(checkout),
+        *arguments,
+    ]
+    process = subprocess.Popen(
+        command,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         env=env,
-        timeout=10,
-        check=False,
         creationflags=_CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
-    if result.returncode or len(result.stdout) > 65536:
+    deadline = monotonic() + 10.0
+    try:
+        while True:
+            if cancelled is not None and cancelled():
+                _stop_git_process(process)
+                raise LocalProductCancelledError()
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                _stop_git_process(process)
+                raise subprocess.TimeoutExpired(command, 10.0)
+            try:
+                output, _ = process.communicate(timeout=min(0.1, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
+    finally:
+        if process.poll() is None:
+            _stop_git_process(process)
+    if process.returncode or output is None or len(output) > 65536:
         raise LocalProductUnavailableError()
-    return result.stdout.decode("utf-8").strip()
+    return output.decode("utf-8").strip()
+
+
+def _stop_git_process(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is None:
+        with suppress(OSError):
+            process.kill()
+    try:
+        process.communicate(timeout=_GIT_EXIT_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        if process.poll() is None:
+            with suppress(OSError):
+                process.kill()
+        try:
+            process.communicate(timeout=_GIT_EXIT_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            raise LocalProductUnavailableError() from None
 
 
 def resolve_local_product_configuration(

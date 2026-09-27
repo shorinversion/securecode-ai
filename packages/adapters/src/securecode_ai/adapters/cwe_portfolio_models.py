@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
+from securecode_ai.contracts import ContractExtension, ExtensionDataClass
 from securecode_ai.core import (
     CONTRACT_SCHEMA_VERSION,
     DataClass,
@@ -25,10 +26,25 @@ from securecode_ai.core import (
     SymbolIndex,
 )
 
+from .product_rule_catalogue import PRODUCT_RULE_CWE
+
 _MAX_LIMITS = (2_000_000, 2_048)
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _CWES = frozenset({"CWE-78", "CWE-22", "CWE-918", "CWE-862"})
+
+
+def _detector_name(language: str, cwe: str) -> str:
+    """Return the versioned detector identity used by the portfolio bridge."""
+
+    # CWE-862 has dedicated language detectors whose public rule IDs use the
+    # compact ``cwe862`` spelling.  Keep that identity stable while the older
+    # portfolio facts retain the ordinary hyphenated spelling for other CWEs.
+    detector_language = (
+        "ecmascript" if cwe == "CWE-862" and language in {"javascript", "typescript"} else language
+    )
+    suffix = "cwe862" if cwe == "CWE-862" else cwe.lower()
+    return f"securecode-{detector_language}-{suffix}@1.0"
 
 
 class CwePortfolioScanErrorCode(StrEnum):
@@ -75,7 +91,7 @@ DEFAULT_CWE_PORTFOLIO_SCAN_LIMITS = CwePortfolioScanLimits()
 
 @dataclass(frozen=True, slots=True)
 class CwePortfolioSignal:
-    """A source-free, bounded recognised-flow fact."""
+    """A source-free fact with stable Go receiver-method identity when present."""
 
     repository_id: str
     revision: str
@@ -87,9 +103,10 @@ class CwePortfolioSignal:
     source: SourceRange
     sink: SourceRange
     detector: str
+    receiver_qualified_method_id: str | None = None
 
     def __post_init__(self) -> None:
-        expected = f"securecode-{self.language}-{self.cwe.lower()}@1.0"
+        expected = _detector_name(self.language, self.cwe)
         valid = (
             type(self.repository_id) is str
             and bool(self.repository_id)
@@ -107,6 +124,14 @@ class CwePortfolioSignal:
             and type(self.sink) is SourceRange
             and self.source.end_byte <= self.source_size_bytes
             and self.sink.end_byte <= self.source_size_bytes
+            and (
+                self.receiver_qualified_method_id is None
+                or (
+                    self.language == "go"
+                    and type(self.receiver_qualified_method_id) is str
+                    and _SHA256.fullmatch(self.receiver_qualified_method_id) is not None
+                )
+            )
         )
         if valid:
             try:
@@ -149,7 +174,13 @@ class CwePortfolioScanResult:
             except ValueError:
                 identity_valid = False
         order = tuple(
-            (item.cwe, item.sink.start_byte, item.sink.end_byte, item.source.start_byte)
+            (
+                item.cwe,
+                item.sink.start_byte,
+                item.sink.end_byte,
+                item.source.start_byte,
+                item.source.end_byte,
+            )
             for item in self.signals
         )
         same_identity = all(
@@ -190,6 +221,7 @@ def scan_cwe_portfolio(
     """Return only direct, recognized source-to-sink facts for four CWEs."""
 
     from .cwe_portfolio_helpers import (
+        _go_receiver_qualified_method_id,
         _python_facts,
         _scan_sha256,
         _tree_facts,
@@ -203,7 +235,13 @@ def scan_cwe_portfolio(
         facts = _tree_facts(symbol_index.language, symbol_index.source)
     unique = sorted(
         set(facts),
-        key=lambda item: (item[0], item[2].start_byte, item[2].end_byte, item[1].start_byte),
+        key=lambda item: (
+            item[0],
+            item[2].start_byte,
+            item[2].end_byte,
+            item[1].start_byte,
+            item[1].end_byte,
+        ),
     )
     if len(unique) > limits.max_signals:
         raise CwePortfolioScanError(CwePortfolioScanErrorCode.SIGNAL_LIMIT)
@@ -218,7 +256,12 @@ def scan_cwe_portfolio(
             cwe=cwe,
             source=source,
             sink=sink,
-            detector=f"securecode-{symbol_index.language}-{cwe.lower()}@1.0",
+            detector=_detector_name(symbol_index.language, cwe),
+            receiver_qualified_method_id=(
+                _go_receiver_qualified_method_id(symbol_index, sink)
+                if symbol_index.language == "go"
+                else None
+            ),
         )
         for cwe, source, sink in unique
     )
@@ -248,7 +291,7 @@ def portfolio_signals_to_raw_signals(
     tenant_id: str,
     producer: ProducerRef,
 ) -> tuple[RawSignal, ...]:
-    """Translate scanner facts to the existing source-free RawSignal boundary."""
+    """Translate facts and retain stable Go receiver-method IDs as metadata."""
 
     if (
         type(result) is not CwePortfolioScanResult
@@ -259,25 +302,51 @@ def portfolio_signals_to_raw_signals(
         raise CwePortfolioScanError(CwePortfolioScanErrorCode.REQUEST_INVALID)
     output: list[RawSignal] = []
     for ordinal, signal in enumerate(result.signals, start=1):
+        location_range = (
+            signal.source if signal.cwe == "CWE-862" and signal.language == "go" else signal.sink
+        )
         location = SourceLocation(
             schema_version=CONTRACT_SCHEMA_VERSION,
             path=signal.path,
             start=SourcePosition(
                 schema_version=CONTRACT_SCHEMA_VERSION,
-                line=signal.sink.start_point.row + 1,
-                column=signal.sink.start_point.column + 1,
+                line=location_range.start_point.row + 1,
+                column=location_range.start_point.column + 1,
             ),
             end=SourcePosition(
                 schema_version=CONTRACT_SCHEMA_VERSION,
-                line=signal.sink.end_point.row + 1,
-                column=signal.sink.end_point.column + 1,
+                line=location_range.end_point.row + 1,
+                column=location_range.end_point.column + 1,
             ),
             content_sha256=signal.content_sha256,
         )
         stable = hashlib.sha256(f"{result.scan_sha256}:{ordinal}".encode("ascii")).hexdigest()
+        extensions: tuple[ContractExtension, ...] = ()
+        method_id = signal.receiver_qualified_method_id
+        if method_id is not None:
+            identity_bytes = method_id.encode("ascii")
+            extensions = (
+                ContractExtension(
+                    namespace=f"go-method-{method_id}",
+                    extension_version=CONTRACT_SCHEMA_VERSION,
+                    data_class=ExtensionDataClass.INTERNAL_METADATA,
+                    tenant_id=tenant_id,
+                    content_id=f"go-method-{method_id}",
+                    payload_sha256=hashlib.sha256(identity_bytes).hexdigest(),
+                    payload_size_bytes=len(identity_bytes),
+                ),
+            )
+        rule_id = (
+            signal.detector.split("@", maxsplit=1)[0]
+            if signal.cwe == "CWE-862"
+            else f"portfolio-{signal.cwe.lower()}"
+        )
+        if PRODUCT_RULE_CWE.get(rule_id) != signal.cwe:
+            raise ValueError("CWE portfolio rule is not registered")
         output.append(
             RawSignal(
                 schema_version=CONTRACT_SCHEMA_VERSION,
+                extensions=extensions,
                 raw_signal_id=(
                     f"portfolio-{signal.language}-{signal.cwe.lower()}-"
                     f"{ordinal}-{result.scan_sha256}"
@@ -285,7 +354,7 @@ def portfolio_signals_to_raw_signals(
                 tenant_id=tenant_id,
                 head_sha=signal.revision,
                 producer=producer,
-                rule_id=f"portfolio-{signal.cwe.lower()}",
+                rule_id=rule_id,
                 location=location,
                 payload_classification=DataClass.INTERNAL_METADATA,
                 signal_sha256=stable,

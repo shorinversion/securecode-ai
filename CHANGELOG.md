@@ -22,6 +22,13 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+- 2026-09-27: Подготовлены итоговый HTML-отчёт, сценарий скринкаста и обезличенная квитанция реального локального Qwen-прогона; README обновлён на русский-first и актуальную Ollama 0.34.4.
+- 2026-09-27: Исправлены неверный SHA закреплённого foundation-профиля и устаревшие GitHub comment tests, чтобы соответствовать проверенному annotation receipt контракту.
+- 2026-09-27: Итоговый отчёт и benchmark README уточняют binding кандидата: текущая правка CLI-профиля блокирует повторную агрегацию, поэтому сохранённые метрики обозначены архивными; добавлен фактический провал многоязыковой интеграционной suite.
+- 2026-09-27: В итоговой таблице контракт finding со ссылкой на EvidenceGraph отделён от отсутствующего поля фрагмента кода; требование помечено частичным.
+- 2026-09-27: P9.2-P9.6 отмечены `IN PROGRESS` по фактически подготовленным материалам и открытым критериям; дата сдачи P9.12 исправлена на 27 сентября по сообщению владельца.
+- 2026-09-27: Fixed connected CLI facade imports needed by the submission demo; the focused MVP and P9.17 integration suites pass (57 tests).
+
 - P8.7 now enforces bounded per-tenant API request ceilings from the durable SQLite control-plane store, surviving server restarts; quota storage failures return an explicit unavailable response.
 
 - Worker scans now render canonical SARIF beside the JSON report and publish it

@@ -1,0 +1,14 @@
+services:
+  securecode-server:
+    environment:
+      SECURECODE_OIDC_CONFIG_FILE: /run/secrets/securecode_oidc_config
+      SECURECODE_OIDC_KEY_FILE: /run/secrets/securecode_oidc_key
+    secrets:
+      - securecode_oidc_config
+      - securecode_oidc_key
+
+secrets:
+  securecode_oidc_config:
+    file: ${SECURECODE_OIDC_CONFIG_SOURCE:?Set the OIDC configuration file}
+  securecode_oidc_key:
+    file: ${SECURECODE_OIDC_KEY_SOURCE:?Set the OIDC signing key file}

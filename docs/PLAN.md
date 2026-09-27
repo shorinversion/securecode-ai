@@ -456,7 +456,7 @@ approvals и audit trail без обязательной передачи пол
 | `P7.4` | Расширить CWE portfolio | P7.3 | SQLi, command injection, path traversal, SSRF and authz samples are implemented, focused-tested and included in canonical quality; final review and protected delivery remain | `IN PROGRESS` |
 | `P7.5` | Подключить вторую SCM | G5 | feature parity matrix and E2E test | `TODO` |
 | `P7.6` | Pin benchmark datasets and licenses | P0.12 | development subset has a hash/license manifest and hardened Docker oracle; broader dataset acquisition and leakage review remain | `IN PROGRESS` |
-| `P7.7` | Baseline comparison | P7.6 | deterministic-only, scanner-seeded LLM, model-native-only, one-shot and full hybrid results | `TODO` |
+| `P7.7` | Baseline comparison | P7.6 | 600-case diagnostic comparison and Semgrep baseline are recorded; scanner failed on 253/600 cases, hybrid does not beat Semgrep on held-out recall, and full product-pipeline/repair evaluation remains incomplete | `IN PROGRESS` |
 | `P7.8` | Ablations | P7.7 | lanes/graph/skeptic/validator/root-cause contribution under declared comparable budgets | `TODO` |
 | `P7.9` | Confidence calibration and gate thresholds | P7.7, P7.8 | held-out reliability curves and chosen thresholds | `TODO` |
 | `P7.10` | Cost/latency/resource budgets | P7.7 | per-run/per-finding profile and regression limits | `TODO` |
@@ -524,21 +524,21 @@ unchanged and cannot be satisfied by the academic snapshot alone.
 | ID | Подзадача | Зависит от | Проверяемый результат | Статус |
 |---|---|---|---|---|
 | `P9.1` | Freeze scope and release checklist | G8 | no untriaged blockers; deferred list versioned | `TODO` |
-| `P9.2` | User/admin/deployment/API documentation | P9.1 | clean-room installation and operations review | `TODO` |
-| `P9.3` | Финальный notebook и demo repositories | P9.1 | offline and enterprise demos from clean environments | `TODO` |
-| `P9.4` | Итоговый benchmark and limitations report | P9.1 | rerunnable commands, raw metrics and caveats | `TODO` |
-| `P9.5` | Учебный отчёт и архитектурные диаграммы | P9.2–P9.4 | traceability to original assignment | `TODO` |
-| `P9.6` | Презентация и rehearsed defense scenario | P9.5 | timed rehearsal, fallback demo/video | `TODO` |
+| `P9.2` | User/admin/deployment/API documentation | P9.1 | Bilingual README and Docker runbook exist; offline clean-room install and selected tests/demos pass; service startup and operations review remain | `IN PROGRESS` |
+| `P9.3` | Финальный notebook и demo repositories | P9.1 | Notebook exists and offline reference demo was rerun; clean-environment enterprise demo remains | `IN PROGRESS` |
+| `P9.4` | Итоговый benchmark and limitations report | P9.1 | Archived metrics and caveats are documented; current candidate aggregation and complete product-pipeline evaluation remain | `IN PROGRESS` |
+| `P9.5` | Учебный отчёт и архитектурные диаграммы | P9.2–P9.4 | Final HTML report and requirement traceability exist; full academic report review remains | `IN PROGRESS` |
+| `P9.6` | Презентация и rehearsed defense scenario | P9.5 | Timed screencast script exists; recording and rehearsal remain | `IN PROGRESS` |
 | `P9.7` | Limited pilot and feedback triage | G8 | signed pilot outcomes and known limitations | `TODO` |
 | `P9.8` | Fix release blockers and rerun gates | P9.7 | regression evidence for every blocker | `TODO` |
 | `P9.9` | Tag/sign/publish `v1.0` | P9.2–P9.8 | immutable release, checksums, SBOM, release notes | `TODO` |
 | `P9.10` | Handoff, backlog and ownership | P9.9 | runbooks, owners, support/escalation and next roadmap | `TODO` |
 | `P9.11` | Retrospective and project archive | P9.9, P9.10 | outcomes vs goals, lessons, archived gate evidence | `TODO` |
-| `P9.12` | Confirm submission administration | user/source confirmation; start now | user confirmed defense 27 September 2026, Asia/Yekaterinburg, 1 person; defense/upload slot and instructor/individual-approval reference still required | `IN PROGRESS` |
-| `P9.13` | Build reproducible academic submission bundle | P9.2–P9.5, P9.12 | Git URL, README, dependency/config files, tests, notebook, dataset links/fixed-seed generator, PDF/HTML report and clean-room replay | `TODO` |
-| `P9.14` | Record and verify web-service delivery | P6.12, P9.3, P9.13 | Dockerfile/instructions, 2–5 minute screencast and anonymous public-link checks | `TODO` |
+| `P9.12` | Confirm submission administration | user/source confirmation; start now | user says submission is due 27 September 2026; exact upload/defense slot and instructor/individual-approval reference remain unverified | `IN PROGRESS` |
+| `P9.13` | Build reproducible academic submission bundle | P9.2–P9.5, P9.12 | Local archive contains README, dependencies/config, tests, notebook, dataset links/fixed-seed generator and HTML report; manifest, per-file hashes, CRC and outer checksum validate; clean-room offline install, 140 tests and P4/P9.17 demos reproduced; public Git URL/access remains | `IN PROGRESS` |
+| `P9.14` | Record and verify web-service delivery | P6.12, P9.3, P9.13 | Dockerfile/runbook and Compose syntax check are present; 3-minute recording and public-link check remain | `IN PROGRESS` |
 | `P9.15` | Deadline correction and coordinated delivery plan | explicit user instruction 2026-09-05 | CR-046/D-044, coherent calendar/scope, preserved frozen contracts, independent review and verified handoff | `IN PROGRESS` |
-| `P9.17` | First working demo for instructor discussion | G3, P3.13; scheduling via P9.12 | bounded runner and focused contract tests are implemented; integrator rerun confirmed one real literal-loopback vulnerable development case with dual-lane agreement, a separate repair request, an ephemeral parse/rescan pass, source unchanged and matching redacted JSON/HTML hashes; instructor feedback remains pending | `IN PROGRESS` |
+| `P9.17` | First working demo for instructor discussion | G3, P3.13; scheduling via P9.12 | current Ollama/Qwen literal-loopback run found one CWE-89 candidate with deterministic/model agreement; repair returned no patch, so applicability, parsing and security regression were not evaluated; installed CLI scan also returned exit 3 `INDETERMINATE` without a report; source stayed unchanged; instructor feedback remains pending | `IN PROGRESS` |
 | `P9.16` | Assemble and independently review M-A2026 snapshot | G4, P3.13, P7.1-P7.3, P7.17, P9.12 | fail-closed builder/validator, substantive experiment report, executed public CWE-89 audit notebook, Markdown, HTML, PDF, exact subject-bound quality receipt, real-local redacted receipt, delivery hashes and clean replay are present; canonical quality passes 1,613 tests at 81.61% Core branch coverage; `NOT_READY` pending durable final reviews, instructor confirmations and protected delivery | `IN PROGRESS` |
 
 Academic portions of P9.2–P9.6 and P9.13 are prepared during development and

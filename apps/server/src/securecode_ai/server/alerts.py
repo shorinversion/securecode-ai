@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from math import isfinite
 
 from .sli import SliWindow
 
@@ -41,12 +42,19 @@ class Alerts:
             or type(sli) is not SliWindow
             or type(metric) is not str
             or type(threshold) not in {int, float}
+            or isinstance(threshold, bool)
         ):
             raise ValueError("alert request is invalid")
+        try:
+            normalized_threshold = float(threshold)
+        except (OverflowError, ValueError):
+            raise ValueError("alert threshold is invalid") from None
+        if not isfinite(normalized_threshold):
+            raise ValueError("alert threshold is invalid")
         value = sli.value(metric)
         if value is None:
             return None
-        state = AlertState.FIRING if value > float(threshold) else AlertState.RESOLVED
+        state = AlertState.FIRING if value > normalized_threshold else AlertState.RESOLVED
         if self._state.get(key) is state:
             return None
         self._state[key] = state

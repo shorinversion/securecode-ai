@@ -59,7 +59,7 @@ def build_go_symbol_index(
 
     if type(source) is not bytes or type(limits) is not CstLimits:
         raise _fail(CstAdapterErrorCode.REQUEST_INVALID)
-    if language != "go" or not path.endswith(".go"):
+    if language != "go" or not path.lower().endswith(".go"):
         raise _fail(CstAdapterErrorCode.LANGUAGE_UNSUPPORTED)
     if len(source) > limits.max_source_bytes:
         raise _fail(CstAdapterErrorCode.SOURCE_LIMIT)

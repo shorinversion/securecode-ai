@@ -110,6 +110,7 @@ class OciRuntimeResult:
     network_packets: int
     oom_killed: bool
     timed_out: bool
+    cancelled: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -129,6 +130,7 @@ class OciRuntimeResult:
             )
             or type(self.oom_killed) is not bool
             or type(self.timed_out) is not bool
+            or type(self.cancelled) is not bool
         ):
             raise SandboxError(SandboxErrorCode.DRIVER_FAILURE)
 
@@ -289,6 +291,8 @@ class HardenedOciSandboxDriver:
         except Exception as error:
             raise SandboxError(SandboxErrorCode.DRIVER_FAILURE) from error
         if type(result) is not OciRuntimeResult:
+            raise SandboxError(SandboxErrorCode.DRIVER_FAILURE)
+        if result.cancelled:
             raise SandboxError(SandboxErrorCode.DRIVER_FAILURE)
         output = result.stdout + result.stderr
         exceeded = (

@@ -10,9 +10,9 @@ RUN apt-get update \
 FROM ${RUNTIME_IMAGE}
 WORKDIR /app
 COPY apps/worker/src /app/apps/worker/src
-COPY packages/adapters /app/packages/adapters
-COPY packages/contracts /app/packages/contracts
-COPY packages/core /app/packages/core
+COPY packages/adapters/src /app/packages/adapters/src
+COPY packages/contracts/src /app/packages/contracts/src
+COPY packages/core/src /app/packages/core/src
 COPY deploy/docker/entrypoint.py /app/entrypoint.py
 COPY deploy/docker/worker_healthcheck.py /app/worker_healthcheck.py
 ENV PYTHONPATH=/app/apps/worker/src:/app/packages/adapters/src:/app/packages/contracts/src:/app/packages/core/src \
@@ -21,6 +21,7 @@ ENV PYTHONPATH=/app/apps/worker/src:/app/packages/adapters/src:/app/packages/con
     PYTHONUNBUFFERED=1 \
     SECURECODE_DATA_DIR=/var/lib/securecode \
     SECURECODE_TMP_DIR=/tmp/securecode
+USER root
 RUN install -d -o root -g root -m 0755 /etc/securecode-ai /run/securecode \
     && mkdir -p /var/lib/securecode /tmp/securecode \
     && chown -R 65532:65532 /var/lib/securecode /tmp/securecode \

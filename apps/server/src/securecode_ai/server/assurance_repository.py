@@ -8,13 +8,14 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from threading import RLock
-from typing import Final
+from typing import Final, cast
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_PAYLOAD_BYTES: Final = 65_536
 _MAX_PAYLOAD_DEPTH: Final = 6
 _MAX_COLLECTION_ITEMS: Final = 256
+_MAX_RECORDS: Final = 10_000
 _FORBIDDEN_PAYLOAD_KEYS: Final = frozenset(
     {
         "access_token",
@@ -27,10 +28,16 @@ _FORBIDDEN_PAYLOAD_KEYS: Final = frozenset(
         "raw",
         "raw_source",
         "secret",
+        "source",
+        "source_code",
         "snippet",
         "source_text",
         "token",
     }
+)
+_NORMALIZED_FORBIDDEN_PAYLOAD_KEYS: Final = frozenset(
+    key.casefold().replace("_", "").replace("-", "")
+    for key in _FORBIDDEN_PAYLOAD_KEYS
 )
 
 ASSURANCE_SCHEMA_STATEMENTS: Final = (
@@ -127,6 +134,12 @@ class AssuranceRepository:
         ):
             raise AssuranceConflict()
         payload_json = _canonical_payload(value.payload)
+        try:
+            payload = json.loads(payload_json)
+        except json.JSONDecodeError:
+            raise AssuranceConflict() from None
+        if type(payload) is not dict:
+            raise AssuranceConflict()
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
@@ -153,15 +166,20 @@ class AssuranceRepository:
                         value.execution_identity_hash,
                     ),
                 ).fetchone()
-                current_sequence = 0 if latest is None else int(latest[0])
+                current_sequence = 0 if latest is None else _stored_int(latest[0])
                 if expected_sequence is not None and expected_sequence != current_sequence:
                     raise AssuranceConflict()
                 sequence = current_sequence + 1
-                previous_hash = "0" * 64 if latest is None else str(latest[1])
+                previous_hash = "0" * 64
+                if latest is not None:
+                    if not _sha256(latest[1]):
+                        raise AssuranceConflict()
+                    previous_hash = cast(str, latest[1])
                 material = _record_material(
                     value,
                     sequence=sequence,
                     previous_hash=previous_hash,
+                    payload=payload,
                 )
                 record_hash = _hash(material)
                 record = AssuranceRecord(
@@ -173,7 +191,7 @@ class AssuranceRepository:
                     outcome=value.outcome,
                     verifier_id=value.verifier_id,
                     verifier_sha256=value.verifier_sha256,
-                    payload=value.payload,
+                    payload=payload,
                     sequence=sequence,
                     previous_hash=previous_hash,
                     record_hash=record_hash,
@@ -222,9 +240,12 @@ class AssuranceRepository:
                           verifier_hash, payload, previous_hash, record_hash
                    FROM assurance_records
                    WHERE tenant=? AND repo=? AND identity_hash=?
-                   ORDER BY sequence""",
-                (tenant, repo, identity),
+                   ORDER BY sequence
+                   LIMIT ?""",
+                (tenant, repo, identity, _MAX_RECORDS + 1),
             ).fetchall()
+        if len(rows) > _MAX_RECORDS:
+            raise AssuranceConflict()
         records = tuple(_from_row(tenant, repo, identity, row) for row in rows)
         _verify_chain(records)
         return records
@@ -255,29 +276,34 @@ def _from_row(
     row: tuple[object, ...],
 ) -> AssuranceRecord:
     try:
-        payload = json.loads(str(row[6]))
+        if not all(type(row[index]) is str for index in (1, 2, 3, 4, 5, 6, 7, 8)):
+            raise AssuranceConflict()
+        raw_payload = cast(str, row[6])
+        if len(raw_payload) > _MAX_PAYLOAD_BYTES:
+            raise AssuranceConflict()
+        payload = json.loads(raw_payload)
         if type(payload) is not dict:
             raise AssuranceConflict()
         return AssuranceRecord(
             tenant_id=tenant_id,
             repository_id=repository_id,
             execution_identity_hash=identity_hash,
-            record_id=str(row[1]),
-            kind=str(row[2]),
-            outcome=str(row[3]),
-            verifier_id=str(row[4]),
-            verifier_sha256=str(row[5]),
+            record_id=cast(str, row[1]),
+            kind=cast(str, row[2]),
+            outcome=cast(str, row[3]),
+            verifier_id=cast(str, row[4]),
+            verifier_sha256=cast(str, row[5]),
             payload=payload,
             sequence=_stored_int(row[0]),
-            previous_hash=str(row[7]),
-            record_hash=str(row[8]),
+            previous_hash=cast(str, row[7]),
+            record_hash=cast(str, row[8]),
         )
     except (TypeError, ValueError, json.JSONDecodeError) as error:
         raise AssuranceConflict() from error
 
 
 def _stored_int(value: object) -> int:
-    if type(value) is not int:
+    if type(value) is not int or value < 1:
         raise AssuranceConflict()
     return value
 
@@ -311,6 +337,7 @@ def _record_material(
     *,
     sequence: int,
     previous_hash: str,
+    payload: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "tenant_id": value.tenant_id,
@@ -321,7 +348,7 @@ def _record_material(
         "outcome": value.outcome,
         "verifier_id": value.verifier_id,
         "verifier_sha256": value.verifier_sha256,
-        "payload": value.payload,
+        "payload": value.payload if payload is None else payload,
         "sequence": sequence,
         "previous_hash": previous_hash,
     }
@@ -384,7 +411,10 @@ def _validate_json_value(value: object, *, depth: int) -> None:
         if len(value) > _MAX_COLLECTION_ITEMS:
             raise AssuranceConflict()
         for key, item in value.items():
-            if not _identifier(key) or key.lower() in _FORBIDDEN_PAYLOAD_KEYS:
+            if not _identifier(key):
+                raise AssuranceConflict()
+            normalized_key = key.casefold().replace("_", "").replace("-", "")
+            if normalized_key in _NORMALIZED_FORBIDDEN_PAYLOAD_KEYS:
                 raise AssuranceConflict()
             _validate_json_value(item, depth=depth + 1)
         return

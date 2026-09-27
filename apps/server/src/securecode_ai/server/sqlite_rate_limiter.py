@@ -20,6 +20,7 @@ _MAX_CAPACITY: Final = 10_000
 _MAX_REFILL_PER_SECOND: Final = 10_000
 _MAX_CLOCK_NS: Final = (1 << 63) - 1
 _MAX_TENANT_ID_LENGTH: Final = 128
+_MAX_IDLE_PURGE: Final = 256
 _SAVEPOINT: Final = "securecode_tenant_rate_limit"
 
 SQLITE_RATE_LIMIT_SCHEMA_STATEMENTS: Final = (
@@ -73,11 +74,20 @@ class SqliteTenantTokenBucketRateLimiter:
         self._max_tenants = max_tenants
         self._idle_timeout_ms = idle_timeout_seconds * 1000
         self._lock = Lock()
+        had_transaction = connection.in_transaction
         try:
             for statement in SQLITE_RATE_LIMIT_SCHEMA_STATEMENTS:
                 connection.execute(statement)
         except sqlite3.Error:
+            if not had_transaction:
+                connection.rollback()
             raise RateLimitError(RateLimitErrorCode.STORE_UNAVAILABLE) from None
+        if not had_transaction:
+            try:
+                connection.commit()
+            except sqlite3.Error:
+                connection.rollback()
+                raise RateLimitError(RateLimitErrorCode.STORE_UNAVAILABLE) from None
 
     def allow(
         self,
@@ -107,8 +117,14 @@ class SqliteTenantTokenBucketRateLimiter:
             cursor.execute(f"SAVEPOINT {_SAVEPOINT}")
             active = True
             cursor.execute(
-                "DELETE FROM tenant_rate_limit_buckets WHERE last_seen_ms<=?",
-                (now_ms - self._idle_timeout_ms,),
+                """DELETE FROM tenant_rate_limit_buckets
+                   WHERE tenant_id IN (
+                       SELECT tenant_id FROM tenant_rate_limit_buckets
+                       WHERE last_seen_ms<=?
+                       ORDER BY last_seen_ms, tenant_id
+                       LIMIT ?
+                   )""",
+                (now_ms - self._idle_timeout_ms, _MAX_IDLE_PURGE),
             )
             row = cursor.execute(
                 "SELECT tokens_micro, updated_ms FROM tenant_rate_limit_buckets "
@@ -138,10 +154,17 @@ class SqliteTenantTokenBucketRateLimiter:
             if (
                 type(tokens) is not int
                 or type(updated_ms) is not int
-                or not 0 <= tokens <= self._capacity_micro
+                or not 0 <= tokens <= _MAX_CAPACITY * _TOKEN_UNIT
                 or not 0 <= updated_ms <= now_ms
             ):
                 raise RateLimitError(RateLimitErrorCode.CLOCK_INVALID)
+            stored_tokens = tokens
+            # The bucket survives a restart, while the operator may lower the
+            # configured capacity between deployments.  A balance recorded
+            # under the old profile must not turn every request into a
+            # persistent CLOCK_INVALID outage.  Rebase it to the new ceiling
+            # before applying refill and charge logic.
+            tokens = min(tokens, self._capacity_micro)
             elapsed_ms = now_ms - updated_ms
             refill_micro = elapsed_ms * self._refill_per_second * 1000
             available = min(self._capacity_micro, tokens + refill_micro)
@@ -149,8 +172,9 @@ class SqliteTenantTokenBucketRateLimiter:
                 remaining = available - _TOKEN_UNIT
                 cursor.execute(
                     "UPDATE tenant_rate_limit_buckets "
-                    "SET tokens_micro=?, updated_ms=?, last_seen_ms=? WHERE tenant_id=?",
-                    (remaining, now_ms, now_ms, tenant_id),
+                    "SET tokens_micro=?, updated_ms=?, last_seen_ms=? "
+                    "WHERE tenant_id=? AND tokens_micro=? AND updated_ms=?",
+                    (remaining, now_ms, now_ms, tenant_id, stored_tokens, updated_ms),
                 )
                 if cursor.rowcount != 1:
                     raise RateLimitError(RateLimitErrorCode.STORE_UNAVAILABLE)
@@ -160,8 +184,8 @@ class SqliteTenantTokenBucketRateLimiter:
 
             cursor.execute(
                 "UPDATE tenant_rate_limit_buckets SET tokens_micro=?, updated_ms=?, "
-                "last_seen_ms=? WHERE tenant_id=?",
-                (available, now_ms, now_ms, tenant_id),
+                "last_seen_ms=? WHERE tenant_id=? AND tokens_micro=? AND updated_ms=?",
+                (available, now_ms, now_ms, tenant_id, stored_tokens, updated_ms),
             )
             if cursor.rowcount != 1:
                 raise RateLimitError(RateLimitErrorCode.STORE_UNAVAILABLE)

@@ -325,6 +325,7 @@ def test_remote_profile_cannot_claim_local_data_terms_exemption() -> None:
     data.update(
         {
             "profile_id": "remote-local-exemption",
+            "protocol_framing_token_upper_bound": 4096,
             "provider_kind": "openai_compatible_remote",
             "execution_boundary": "private_tenant_endpoint",
             "credential_ref": "env://REMOTE_LOCAL_EXEMPTION_KEY",

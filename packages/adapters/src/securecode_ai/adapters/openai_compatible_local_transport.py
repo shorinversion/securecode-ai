@@ -410,11 +410,27 @@ class OpenAICompatibleLocalHttpConnector:
                 "response_format": {"type": "json_object"},
                 "max_tokens": self._max_output_tokens,
             }
-            if self._native_frames:
-                frame = json.loads(
-                    prompt,
-                    object_pairs_hook=_closed_json_object,
-                    parse_constant=_reject_json_constant,
+            frame: object | None = None
+            if self._native_frames or (
+                prompt.startswith("{")
+                and prompt.endswith("}")
+                and '"initial_context"' in prompt
+                and '"tool_history"' in prompt
+            ):
+                try:
+                    frame = json.loads(
+                        prompt,
+                        object_pairs_hook=_closed_json_object,
+                        parse_constant=_reject_json_constant,
+                    )
+                except (ValueError, UnicodeDecodeError):
+                    if self._native_frames:
+                        raise
+                    frame = None
+            if frame is not None:
+                native_marker_keys = {"initial_context", "tool_history"}
+                has_native_marker = isinstance(frame, dict) and bool(
+                    native_marker_keys.intersection(frame)
                 )
                 if (
                     not isinstance(frame, dict)
@@ -423,20 +439,23 @@ class OpenAICompatibleLocalHttpConnector:
                     or not isinstance(frame["tool_history"], list)
                     or len(frame["tool_history"]) > 32
                 ):
-                    raise ValueError("LOCAL_CONNECTOR_NATIVE_FRAME_REJECTED")
-                request_payload["messages"] = [
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            frame["initial_context"],
-                            ensure_ascii=True,
-                            allow_nan=False,
-                            separators=(",", ":"),
-                        ),
-                    },
-                    *frame["tool_history"],
-                ]
-                request_payload["tools"] = json.loads(NATIVE_REPOSITORY_TOOLS_JSON)
+                    if self._native_frames or has_native_marker:
+                        raise ValueError("LOCAL_CONNECTOR_NATIVE_FRAME_REJECTED")
+                    frame = None
+                else:
+                    request_payload["messages"] = [
+                        {
+                            "role": "user",
+                            "content": json.dumps(
+                                frame["initial_context"],
+                                ensure_ascii=True,
+                                allow_nan=False,
+                                separators=(",", ":"),
+                            ),
+                        },
+                        *frame["tool_history"],
+                    ]
+                    request_payload["tools"] = json.loads(NATIVE_REPOSITORY_TOOLS_JSON)
             if self._temperature is not None:
                 request_payload["temperature"] = self._temperature
             if self._seed is not None:

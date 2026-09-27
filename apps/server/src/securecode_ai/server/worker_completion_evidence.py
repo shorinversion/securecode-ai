@@ -8,6 +8,7 @@ import os
 import sqlite3
 import stat
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final
 
@@ -33,10 +34,15 @@ from securecode_ai.core.evidence_graph import (
     EvidenceNodeRef,
 )
 
+from .artifact_tenant_namespace import (
+    ArtifactTenantNamespaceError,
+    artifact_tenant_path_component,
+)
 from .worker_findings import WorkerFindingRecord
 from .worker_queue_models import WorkerQueueConflict, identity_document
 
 _MAX_ARTIFACT_BYTES: Final = 16_777_216
+_REPARSE_POINT: Final = 0x400
 _REPORT_KEYS: Final = frozenset(
     {
         "analysis_health",
@@ -91,7 +97,7 @@ def verify_terminal_evidence(
     outcome: str,
     findings: tuple[WorkerFindingRecord, ...],
 ) -> None:
-    """Require canonical report and graph bytes before accepting PASS or FAIL."""
+    """Require canonical report and graph bytes before accepting a terminal audit."""
 
     load_verified_terminal_audit_run(
         connection=connection,
@@ -118,7 +124,7 @@ def load_verified_terminal_audit_run(
 ) -> AuditRun | tuple[AuditRun, EvidenceGraph] | tuple[AuditRun, EvidenceGraph, tuple[FindingCase, ...]] | None:
     """Load an AuditRun only after validating its stored terminal evidence."""
 
-    if outcome not in {"PASS", "FAIL"}:
+    if outcome not in {"PASS", "FAIL", "INDETERMINATE"}:
         return None
     if not isinstance(connection, sqlite3.Connection) or not isinstance(artifact_root, Path):
         raise WorkerQueueConflict()
@@ -131,23 +137,54 @@ def load_verified_terminal_audit_run(
         raise WorkerQueueConflict()
     try:
         expected_identity = identity_document(row["execution_identity_json"])
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, RecursionError, TypeError, ValueError):
         raise WorkerQueueConflict() from None
     if expected_identity.execution_identity_hash != execution_identity_hash:
         raise WorkerQueueConflict()
 
     artifacts = connection.execute(
-        """SELECT metadata_json FROM run_artifacts
-           WHERE tenant_id=? AND run_id=?
-             AND purpose IN ('audit-report', 'audit-run', 'evidence-graph')
-           ORDER BY purpose, content_sha256""",
+        """SELECT a.content_sha256, a.purpose, a.metadata_json,
+                  z.repository_id AS authorization_repository_id,
+                  z.run_id AS authorization_run_id,
+                  z.execution_identity_hash AS authorization_identity_hash,
+                  z.content_sha256 AS authorization_content_sha256,
+                  z.size_bytes AS authorization_size_bytes,
+                  z.purpose AS authorization_purpose
+           FROM run_artifacts AS a
+           JOIN artifact_upload_authorizations AS z
+             ON z.tenant_id=a.tenant_id AND z.authorization_id=a.authorization_id
+           WHERE a.tenant_id=? AND a.run_id=?
+             AND a.purpose IN ('audit-report', 'audit-run', 'evidence-graph')
+             AND a.rowid=(
+                 SELECT latest.rowid FROM run_artifacts AS latest
+                 WHERE latest.tenant_id=a.tenant_id
+                   AND latest.run_id=a.run_id
+                   AND latest.purpose=a.purpose
+                 ORDER BY latest.rowid DESC
+                 LIMIT 1
+             )
+           ORDER BY a.purpose, a.content_sha256""",
         (tenant_id, run_id),
     ).fetchall()
+    if not artifacts and outcome == "INDETERMINATE":
+        return None
     selected: dict[str, dict[str, object]] = {}
     for artifact_row in artifacts:
         metadata = _closed_json_text(artifact_row["metadata_json"])
         purpose = metadata.get("purpose")
-        if purpose not in {"audit-report", "audit-run", "evidence-graph"} or purpose in selected:
+        if (
+            purpose not in {"audit-report", "audit-run", "evidence-graph"}
+            or purpose in selected
+            or artifact_row["purpose"] != purpose
+            or metadata.get("content_sha256") != artifact_row["content_sha256"]
+            or artifact_row["authorization_repository_id"]
+            != expected_identity.repository_revision.repository_id
+            or artifact_row["authorization_run_id"] != run_id
+            or artifact_row["authorization_identity_hash"] != execution_identity_hash
+            or artifact_row["authorization_content_sha256"] != artifact_row["content_sha256"]
+            or artifact_row["authorization_size_bytes"] != metadata.get("size_bytes")
+            or artifact_row["authorization_purpose"] != purpose
+        ):
             raise WorkerQueueConflict()
         selected[str(purpose)] = metadata
     if set(selected) != {"audit-report", "audit-run", "evidence-graph"}:
@@ -163,7 +200,7 @@ def load_verified_terminal_audit_run(
     graph = _validated_graph(graph_document, graph_digest)
     try:
         audit_run = AuditRun.model_validate_json(run_bytes)
-    except (TypeError, ValueError):
+    except (RecursionError, TypeError, ValueError):
         raise WorkerQueueConflict() from None
     report_findings = _validate_report(
         report,
@@ -272,7 +309,7 @@ def _validate_report(
             for reported, finding in zip(report_findings, findings, strict=True)
         )
         return validated_findings
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, RecursionError, TypeError, ValueError):
         raise WorkerQueueConflict() from None
 
 
@@ -399,7 +436,7 @@ def _validated_graph(document: dict[str, Any], digest: str) -> EvidenceGraph:
         if graph.canonical_payload != document or graph.graph_sha256 != digest:
             raise ValueError
         return graph
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, RecursionError, TypeError, ValueError):
         raise WorkerQueueConflict() from None
 
 
@@ -433,7 +470,26 @@ def _payload(root: Path, tenant_id: str, metadata: Mapping[str, object]) -> byte
         or not 1 <= size <= _MAX_ARTIFACT_BYTES
     ):
         raise WorkerQueueConflict()
-    target = root / tenant_id / digest[:2] / digest / "payload"
+    expiry_value = metadata.get("expires_at")
+    if expiry_value is not None:
+        if type(expiry_value) is not str:
+            raise WorkerQueueConflict()
+        try:
+            expiry = datetime.fromisoformat(expiry_value)
+            offset = expiry.utcoffset()
+        except (TypeError, ValueError):
+            raise WorkerQueueConflict() from None
+        if (
+            expiry.tzinfo is None
+            or offset != timedelta(0)
+            or expiry.astimezone(UTC) <= datetime.now(UTC)
+        ):
+            raise WorkerQueueConflict()
+    try:
+        tenant_component = artifact_tenant_path_component(tenant_id)
+    except ArtifactTenantNamespaceError:
+        raise WorkerQueueConflict() from None
+    target = root / tenant_component / digest[:2] / digest / "payload"
     _plain_chain(root, target.parent)
     descriptor = -1
     try:
@@ -444,15 +500,36 @@ def _payload(root: Path, tenant_id: str, metadata: Mapping[str, object]) -> byte
             | getattr(os, "O_CLOEXEC", 0)
             | getattr(os, "O_NOFOLLOW", 0),
         )
-        details = os.fstat(descriptor)
-        if not stat.S_ISREG(details.st_mode) or details.st_size != size:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or bool(getattr(before, "st_reparse_tag", 0))
+            or bool(getattr(before, "st_file_attributes", 0) & _REPARSE_POINT)
+            or before.st_size != size
+        ):
             raise WorkerQueueConflict()
-        with os.fdopen(descriptor, "rb") as stream:
-            descriptor = -1
-            content = stream.read(_MAX_ARTIFACT_BYTES + 1)
-        if len(content) != size or hashlib.sha256(content).hexdigest() != digest:
+        hasher = hashlib.sha256()
+        chunks: list[bytes] = []
+        total = 0
+        while chunk := os.read(descriptor, min(65_536, size + 1 - total)):
+            total += len(chunk)
+            if total > size:
+                raise WorkerQueueConflict()
+            hasher.update(chunk)
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        current = target.lstat()
+        if (
+            not stat.S_ISREG(current.st_mode)
+            or bool(getattr(current, "st_reparse_tag", 0))
+            or bool(getattr(current, "st_file_attributes", 0) & _REPARSE_POINT)
+            or (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+            or (current.st_dev, current.st_ino) != (after.st_dev, after.st_ino)
+            or total != size
+            or hasher.hexdigest() != digest
+        ):
             raise WorkerQueueConflict()
-        return content
+        return b"".join(chunks)
     except OSError:
         raise WorkerQueueConflict() from None
     finally:
@@ -488,13 +565,16 @@ def _plain_chain(root: Path, target: Path) -> None:
 
 def _canonical_document(value: bytes, *, newline: bool) -> dict[str, Any]:
     document = _closed_json_bytes(value)
-    canonical = json.dumps(
-        document,
-        ensure_ascii=True,
-        allow_nan=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8") + (b"\n" if newline else b"")
+    try:
+        canonical = json.dumps(
+            document,
+            ensure_ascii=True,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8") + (b"\n" if newline else b"")
+    except (OverflowError, RecursionError, UnicodeError, ValueError):
+        raise WorkerQueueConflict() from None
     if value != canonical:
         raise WorkerQueueConflict()
     return document
@@ -503,7 +583,7 @@ def _canonical_document(value: bytes, *, newline: bool) -> dict[str, Any]:
 def _closed_json_bytes(value: bytes) -> dict[str, Any]:
     try:
         document = json.loads(value.decode("utf-8"), object_pairs_hook=_closed_object)
-    except (UnicodeError, json.JSONDecodeError, ValueError):
+    except (RecursionError, UnicodeError, json.JSONDecodeError, ValueError):
         raise WorkerQueueConflict() from None
     if type(document) is not dict:
         raise WorkerQueueConflict()
@@ -513,7 +593,10 @@ def _closed_json_bytes(value: bytes) -> dict[str, Any]:
 def _closed_json_text(value: object) -> dict[str, object]:
     if type(value) is not str:
         raise WorkerQueueConflict()
-    return _closed_json_bytes(value.encode("utf-8"))
+    try:
+        return _closed_json_bytes(value.encode("utf-8"))
+    except UnicodeError:
+        raise WorkerQueueConflict() from None
 
 
 def _json_value(value: object) -> bytes:

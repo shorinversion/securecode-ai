@@ -64,6 +64,24 @@ _LEGACY_COLUMNS: Final = {
 }
 _COMPOSITE_COLUMNS: Final = {
     **_LEGACY_COLUMNS,
+    "approval_requests": (
+        "approval_id",
+        "tenant_id",
+        "repository_id",
+        "run_id",
+        "finding_id",
+        "finding_fingerprint",
+        "revision_sha",
+        "patch_sha256",
+        "validation_result_sha256",
+        "manifest_sha256",
+        "patch_status_sha256",
+        "execution_identity_hash",
+        "requester_id",
+        "expires_at",
+        "version",
+        "state",
+    ),
     "approval_decisions": (
         "approval_id",
         "tenant_id",

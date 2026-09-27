@@ -365,6 +365,7 @@ _PARAMETER_NAMES = frozenset(
         "username",
         "value",
     }
+)
 
 
 def scan_python_cwe90(

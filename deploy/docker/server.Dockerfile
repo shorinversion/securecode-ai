@@ -10,7 +10,9 @@ RUN apt-get update \
 FROM ${RUNTIME_IMAGE}
 WORKDIR /app
 COPY apps/server/src /app/apps/server/src
-COPY packages /app/packages
+COPY packages/adapters/src /app/packages/adapters/src
+COPY packages/contracts/src /app/packages/contracts/src
+COPY packages/core/src /app/packages/core/src
 COPY deploy/docker/entrypoint.py /app/entrypoint.py
 COPY deploy/docker/healthcheck.py /app/healthcheck.py
 ENV PYTHONPATH=/app/apps/server/src:/app/packages/adapters/src:/app/packages/contracts/src:/app/packages/core/src \
@@ -24,7 +26,9 @@ ENV PYTHONPATH=/app/apps/server/src:/app/packages/adapters/src:/app/packages/con
     SECURECODE_TLS_CERT_FILE=/run/secrets/securecode_tls_cert \
     SECURECODE_TLS_KEY_FILE=/run/secrets/securecode_tls_key \
     SECURECODE_TMP_DIR=/tmp/securecode
+USER root
 RUN mkdir -p /var/lib/securecode /tmp/securecode \
+    && install -d -o root -g root -m 0755 /run/securecode \
     && chown -R 65532:65532 /var/lib/securecode /tmp/securecode \
     && chmod 0700 /var/lib/securecode /tmp/securecode \
     && chmod -R a-w /app

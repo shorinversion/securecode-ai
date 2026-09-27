@@ -23,7 +23,7 @@ from securecode_ai.core import (
 )
 
 from .native_repository_tools import NativeRepositoryToolCall
-from .remote_provider_budget import RemoteProviderCallContext
+from .remote_provider_budget import RemoteProviderCallContext, RemoteProviderCostReceipt
 
 _MAX_NATIVE_BYTES: Final = 1024 * 1024
 _MAX_JSON_DEPTH: Final = 64
@@ -97,6 +97,8 @@ class ProviderAttempt:
     binding: ProviderAttemptBinding
     elapsed_ms: int
     redirected: bool = False
+    cost_receipt: RemoteProviderCostReceipt | None = None
+    cost_receipt_required: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.dialect, ApiDialect):
@@ -107,6 +109,10 @@ class ProviderAttempt:
             raise ValueError("provider elapsed time is invalid")
         if not isinstance(self.binding, ProviderAttemptBinding):
             raise TypeError("provider attempt binding must be typed")
+        if self.cost_receipt is not None and type(self.cost_receipt) is not RemoteProviderCostReceipt:
+            raise TypeError("provider cost receipt must be typed")
+        if type(self.cost_receipt_required) is not bool:
+            raise TypeError("provider cost receipt requirement must be typed")
 
     def __repr__(self) -> str:
         return "ProviderAttempt(<redacted>)"

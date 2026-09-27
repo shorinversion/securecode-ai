@@ -277,7 +277,7 @@ def _windows_open(path: Path, *, disposition: int) -> int:
         0x1 | 0x2 | 0x4,
         None,
         disposition,
-        0x02000000,
+        0x02000000 | 0x00200000,
         None,
     )
     if handle == ctypes.c_void_p(-1).value:

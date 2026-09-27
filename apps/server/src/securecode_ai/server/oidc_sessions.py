@@ -11,13 +11,14 @@ from datetime import UTC, datetime, timedelta
 from threading import Lock
 from typing import Protocol
 
-from .identity import Principal
+from .identity import Principal, Role
 from .oidc import OidcDenied, OidcReceipt
 from .sessions import SessionReceipt, SessionStore
 
 _DEFAULT_MAX_ENTRIES = 100_000
 _MAX_NONCE_LENGTH = 1_024
 _MAX_SUBJECT_LENGTH = 2_048
+_SOURCE_HASH_LENGTH = 64
 
 
 class SessionIssuer(Protocol):
@@ -52,6 +53,7 @@ class SqliteOidcLoginState:
         if type(expires_at) is not int or not now < expires_at <= now + 600:
             raise OidcDenied()
         with self._lock:
+            had_transaction = self._connection.in_transaction
             try:
                 self._connection.execute("SAVEPOINT oidc_state_create")
                 self._connection.execute(
@@ -68,6 +70,8 @@ class SqliteOidcLoginState:
                     (state_hash, nonce_hash, expires_at),
                 )
                 self._connection.execute("RELEASE oidc_state_create")
+                if not had_transaction:
+                    self._connection.commit()
             except OidcDenied:
                 _rollback_savepoint(self._connection, "oidc_state_create")
                 raise
@@ -97,6 +101,7 @@ class SqliteOidcLoginState:
         if type(now) is not int or now < 0:
             raise OidcDenied()
         with self._lock:
+            had_transaction = self._connection.in_transaction
             try:
                 self._connection.execute("SAVEPOINT oidc_state_consume")
                 self._connection.execute(
@@ -107,6 +112,8 @@ class SqliteOidcLoginState:
                     (state_hash, nonce_hash, now),
                 ).rowcount
                 self._connection.execute("RELEASE oidc_state_consume")
+                if not had_transaction:
+                    self._connection.commit()
                 return changed == 1
             except Exception:
                 _rollback_savepoint(self._connection, "oidc_state_consume")
@@ -123,6 +130,7 @@ class SqliteOidcLoginState:
         ):
             raise OidcDenied()
         with self._lock:
+            had_transaction = self._connection.in_transaction
             try:
                 self._connection.execute("SAVEPOINT oidc_state_purge")
                 changed = self._connection.execute(
@@ -134,6 +142,8 @@ class SqliteOidcLoginState:
                     (now, max_items),
                 ).rowcount
                 self._connection.execute("RELEASE oidc_state_purge")
+                if not had_transaction:
+                    self._connection.commit()
                 return changed
             except Exception:
                 _rollback_savepoint(self._connection, "oidc_state_purge")
@@ -165,6 +175,7 @@ class SqliteOidcLoginState:
         ):
             raise OidcDenied()
         with self._lock:
+            had_transaction = self._connection.in_transaction
             try:
                 self._connection.execute("SAVEPOINT oidc_attempt_charge")
                 row = self._connection.execute(
@@ -178,7 +189,12 @@ class SqliteOidcLoginState:
                     )
                 else:
                     started, attempts = row
-                    if type(started) is not int or type(attempts) is not int:
+                    if (
+                        type(started) is not int
+                        or started < 0
+                        or type(attempts) is not int
+                        or attempts < 1
+                    ):
                         raise OidcDenied()
                     if now < started:
                         raise OidcDenied()
@@ -195,12 +211,120 @@ class SqliteOidcLoginState:
                             (bucket,),
                         )
                 self._connection.execute("RELEASE oidc_attempt_charge")
+                if not had_transaction:
+                    self._connection.commit()
             except OidcDenied:
                 _rollback_savepoint(self._connection, "oidc_attempt_charge")
                 raise
             except Exception:
                 _rollback_savepoint(self._connection, "oidc_attempt_charge")
                 raise OidcDenied() from None
+
+    def charge_source_attempt(
+        self,
+        *,
+        bucket: str,
+        source_hash: str,
+        now: int,
+        limit: int,
+        window_seconds: int,
+    ) -> None:
+        """Charge a hashed source bucket shared by all server replicas.
+
+        ``source_hash`` is intentionally accepted only as a lowercase SHA-256
+        hex digest.  This keeps raw network identifiers out of the durable
+        login state while allowing the login service to maintain a per-source
+        limit independently from the aggregate bucket above.
+        """
+
+        if (
+            type(bucket) is not str
+            or bucket not in {"start", "callback"}
+            or type(source_hash) is not str
+            or len(source_hash) != _SOURCE_HASH_LENGTH
+            or any(character not in "0123456789abcdef" for character in source_hash)
+            or type(now) is not int
+            or now < 0
+            or type(limit) is not int
+            or not 1 <= limit <= _DEFAULT_MAX_ENTRIES
+            or type(window_seconds) is not int
+            or not 1 <= window_seconds <= 3600
+        ):
+            raise OidcDenied()
+        with self._lock:
+            rate_limited = False
+            had_transaction = self._connection.in_transaction
+            try:
+                self._connection.execute("SAVEPOINT oidc_source_attempt_charge")
+                self._connection.execute(
+                    "DELETE FROM oidc_login_source_rate_limit "
+                    "WHERE window_started_at <= ? "
+                    "AND window_started_at + window_seconds <= ?",
+                    (now, now),
+                )
+                row = self._connection.execute(
+                    "SELECT window_started_at, window_seconds, attempts "
+                    "FROM oidc_login_source_rate_limit "
+                    "WHERE bucket=? AND source_hash=?",
+                    (bucket, source_hash),
+                ).fetchone()
+                if row is None:
+                    count = self._connection.execute(
+                        "SELECT COUNT(*) FROM oidc_login_source_rate_limit"
+                    ).fetchone()
+                    if (
+                        count is None
+                        or type(count[0]) is not int
+                    ):
+                        raise OidcDenied()
+                    if count[0] >= _DEFAULT_MAX_ENTRIES:
+                        rate_limited = True
+                    else:
+                        self._connection.execute(
+                            "INSERT INTO oidc_login_source_rate_limit "
+                            "(bucket, source_hash, window_started_at, window_seconds, attempts) "
+                            "VALUES (?, ?, ?, ?, 1)",
+                            (bucket, source_hash, now, window_seconds),
+                        )
+                else:
+                    started, stored_window, attempts = row
+                    if (
+                        type(started) is not int
+                        or started < 0
+                        or type(stored_window) is not int
+                        or not 1 <= stored_window <= 3600
+                        or type(attempts) is not int
+                        or attempts < 1
+                    ):
+                        raise OidcDenied()
+                    if now < started:
+                        raise OidcDenied()
+                    if now - started >= window_seconds:
+                        self._connection.execute(
+                            "UPDATE oidc_login_source_rate_limit "
+                            "SET window_started_at=?, window_seconds=?, attempts=1 "
+                            "WHERE bucket=? AND source_hash=?",
+                            (now, window_seconds, bucket, source_hash),
+                        )
+                    elif attempts >= limit:
+                        rate_limited = True
+                    else:
+                        self._connection.execute(
+                            "UPDATE oidc_login_source_rate_limit SET attempts=attempts+1 "
+                            "WHERE bucket=? AND source_hash=?",
+                            (bucket, source_hash),
+                        )
+                self._connection.execute("RELEASE oidc_source_attempt_charge")
+                if not had_transaction:
+                    self._connection.commit()
+            except OidcDenied:
+                _rollback_savepoint(self._connection, "oidc_source_attempt_charge")
+                raise
+            except Exception:
+                _rollback_savepoint(self._connection, "oidc_source_attempt_charge")
+                raise OidcDenied() from None
+            if rate_limited:
+                raise OidcDenied()
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,7 +344,27 @@ class OpaqueSessionIssuer:
         self._store = store
 
     def issue(self, principal: Principal, *, token_expires_at: int) -> IssuedOidcSession:
-        if type(principal) is not Principal or type(token_expires_at) is not int:
+        if (
+            type(principal) is not Principal
+            or type(principal.subject_id) is not str
+            or not 1 <= len(principal.subject_id) <= 256
+            or not _safe_principal_value(principal.subject_id)
+            or type(principal.tenant_id) is not str
+            or not 1 <= len(principal.tenant_id) <= 256
+            or not _safe_principal_value(principal.tenant_id)
+            or type(principal.roles) is not frozenset
+            or not principal.roles
+            or not all(type(role) is Role for role in principal.roles)
+            or type(principal.repository_grants) is not frozenset
+            or len(principal.repository_grants) > 128
+            or not all(
+                type(grant) is str
+                and 1 <= len(grant) <= 256
+                and _safe_principal_value(grant)
+                for grant in principal.repository_grants
+            )
+            or type(token_expires_at) is not int
+        ):
             raise OidcDenied()
         now = datetime.now(UTC)
         remaining = token_expires_at - int(now.timestamp()) - 1
@@ -236,7 +380,7 @@ class OpaqueSessionIssuer:
         token_expiry = datetime.fromtimestamp(token_expires_at, UTC)
         session_expiry = session.expires_at if type(session) is SessionReceipt else None
         expiry_is_valid = False
-        if isinstance(session_expiry, datetime):
+        if type(session_expiry) is datetime:
             try:
                 expiry_is_valid = session_expiry.utcoffset() is not None
             except Exception:
@@ -297,8 +441,7 @@ class NonceReplayLedger:
             or type(receipt.subject_id) is not str
             or not 0 < len(receipt.subject_id) <= _MAX_SUBJECT_LENGTH
             or type(receipt.expires_at) is not int
-            or type(nonce) is not str
-            or not 0 < len(nonce) <= _MAX_NONCE_LENGTH
+            or not _safe_hash_value(nonce)
         ):
             raise OidcDenied()
 
@@ -334,11 +477,16 @@ class NonceReplayLedger:
         if type(max_items) is not int or not 1 <= max_items <= 10_000:
             raise OidcDenied()
         try:
-            effective_now = self._now() if now is None else now
+            current_time = self._now()
         except Exception:
             raise OidcDenied() from None
-        if type(effective_now) is not int or effective_now < 0:
+        if (
+            type(current_time) is not int
+            or current_time < 0
+            or (now is not None and (type(now) is not int or now < 0 or now > current_time))
+        ):
             raise OidcDenied()
+        effective_now = current_time if now is None else now
         with self._lock:
             if self._connection is None:
                 removed = 0
@@ -356,6 +504,7 @@ class NonceReplayLedger:
                         removed += 1
                 return removed
             connection = self._connection
+            had_transaction = connection.in_transaction
             try:
                 connection.execute("SAVEPOINT oidc_nonce_purge")
                 changed = connection.execute(
@@ -367,6 +516,8 @@ class NonceReplayLedger:
                     (effective_now, max_items),
                 ).rowcount
                 connection.execute("RELEASE oidc_nonce_purge")
+                if not had_transaction:
+                    connection.commit()
                 return changed
             except Exception:
                 _rollback_savepoint(connection, "oidc_nonce_purge")
@@ -397,6 +548,7 @@ class NonceReplayLedger:
             raise OidcDenied()
         subject_hash = _state_hash(b"subject", subject)
         nonce_hash = _state_hash(b"nonce", nonce)
+        had_transaction = connection.in_transaction
         try:
             connection.execute("SAVEPOINT oidc_nonce_consume")
             connection.execute("DELETE FROM oidc_nonce_replays WHERE expires_at<=?", (now,))
@@ -408,6 +560,8 @@ class NonceReplayLedger:
                 (subject_hash, nonce_hash, expires_at),
             )
             connection.execute("RELEASE oidc_nonce_consume")
+            if not had_transaction:
+                connection.commit()
         except OidcDenied:
             _rollback_savepoint(connection, "oidc_nonce_consume")
             raise
@@ -424,11 +578,31 @@ class NonceReplayLedger:
 
 
 def _state_hash(purpose: bytes, value: str) -> str:
-    if type(value) is not str or not value or len(value) > _MAX_NONCE_LENGTH or not value.isascii():
+    if not _safe_hash_value(value):
         raise OidcDenied()
     return hashlib.sha256(
-        b"securecode.oidc." + purpose + b".v1\0" + value.encode("ascii")
+        b"securecode.oidc." + purpose + b".v1\0" + value.encode("utf-8")
     ).hexdigest()
+
+
+def _safe_hash_value(value: object) -> bool:
+    if (
+        type(value) is not str
+        or not 0 < len(value) <= _MAX_NONCE_LENGTH
+        or value != value.strip()
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
+        return False
+    try:
+        return len(value.encode("utf-8")) <= _MAX_NONCE_LENGTH * 4
+    except UnicodeEncodeError:
+        return False
+
+
+def _safe_principal_value(value: str) -> bool:
+    return value == value.strip() and not any(
+        ord(character) < 0x20 or ord(character) == 0x7F for character in value
+    )
 
 
 def _rollback_savepoint(connection: sqlite3.Connection, name: str) -> None:

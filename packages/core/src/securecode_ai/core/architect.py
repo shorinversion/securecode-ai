@@ -375,6 +375,7 @@ def _copy_root(value: RootCauseRecord) -> RootCauseRecord:
                 value.evidence.propagation_evidence_id,
                 value.evidence.sink_evidence_id,
             ),
+            command_operation_evidence=tuple(value.command_operation_evidence),
         )
     except (AttributeError, TypeError, ValueError):
         raise ArchitectPatchError(ArchitectErrorCode.ROOT_CAUSE_MISMATCH) from None

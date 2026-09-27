@@ -8,10 +8,12 @@ import stat
 import tempfile
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final, cast
 
 from securecode_ai.core.release_candidate import ReleaseArtifact, ReleaseCandidate
+from securecode_ai.core.release_provenance import checksums
 from securecode_ai.core.release_publisher import (
     AuthorizedPublishRequest,
     PublishAuthorization,
@@ -28,6 +30,20 @@ _CHUNK_BYTES: Final = 1024 * 1024
 _MAX_TAG_BYTES: Final = 16 * 1024
 _MAX_MANIFEST_BYTES: Final = 8 * 1024 * 1024
 _SCHEMA_VERSION: Final = 2
+_SBOM_REPORT_SCHEMA_VERSION: Final = "securecode.sbom-report.v1"
+_SBOM_ASSESSMENT_SCHEMA_VERSION: Final = "securecode.sbom-assessment.v1"
+_SBOM_STATUS: Final = frozenset({"resolved", "unresolved", "unknown"})
+_SBOM_REPORT_KEYS: Final = frozenset(
+    {"bomFormat", "components", "metadata", "serialNumber", "specVersion", "version"}
+)
+_SBOM_COMPONENT_KEYS: Final = frozenset(
+    {"bom-ref", "name", "purl", "type", "version"}
+)
+_SBOM_ASSESSMENT_KEYS: Final = frozenset({"components", "report_sha256", "schema_version"})
+_SBOM_ASSESSMENT_COMPONENT_KEYS: Final = frozenset(
+    {"bom_ref", "content_sha256", "license", "source", "vulnerability_status"}
+)
+_SBOM_MAX_TEXT: Final = 512
 
 
 class LocalReleaseProviderError(ValueError):
@@ -35,6 +51,44 @@ class LocalReleaseProviderError(ValueError):
         super().__init__("Local release publication was rejected")
         self.__cause__ = None
         self.__context__ = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseSbomInput:
+    """Explicit source paths for a CycloneDX report and its assessment."""
+
+    report_relative_path: str
+    assessment_relative_path: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _safe_relative_path(self.report_relative_path)
+            or not _safe_relative_path(self.assessment_relative_path)
+            or self.report_relative_path == self.assessment_relative_path
+        ):
+            raise LocalReleaseProviderError()
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseSbomBinding:
+    """Protected source paths and hashes for the SBOM derivation inputs."""
+
+    report_relative_path: str
+    assessment_relative_path: str
+    report_sha256: str
+    assessment_sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _safe_relative_path(self.report_relative_path)
+            or not _safe_relative_path(self.assessment_relative_path)
+            or self.report_relative_path == self.assessment_relative_path
+            or type(self.report_sha256) is not str
+            or type(self.assessment_sha256) is not str
+            or _HASH.fullmatch(self.report_sha256) is None
+            or _HASH.fullmatch(self.assessment_sha256) is None
+        ):
+            raise LocalReleaseProviderError()
 
 
 def _manifest_bytes(
@@ -220,6 +274,195 @@ def _canonical_json(value: object) -> bytes:
     ).encode("ascii")
 
 
+def _canonical_artifact_checksums(
+    value: bytes,
+    artifacts: tuple[tuple[str, str, str], ...],
+) -> bytes:
+    """Translate a strict sha256sum manifest into the release checksum map.
+
+    The source manifest may contain the complete tracked-file inventory emitted
+    by ``scripts/release_provenance.py``.  Only entries that exactly match the
+    release artifact source paths are admitted into the canonical artifact map.
+    Missing, duplicate, malformed, or mismatched entries fail closed.
+    """
+
+    if type(value) is not bytes or not value or type(artifacts) is not tuple or not artifacts:
+        raise LocalReleaseProviderError()
+    observed: dict[str, str] = {}
+    for line in value.splitlines(keepends=True):
+        if not line.endswith(b"\n"):
+            raise LocalReleaseProviderError()
+        body = line[:-1]
+        if body.endswith(b"\r") or len(body) < 66 or body[64:66] != b"  ":
+            raise LocalReleaseProviderError()
+        try:
+            digest = body[:64].decode("ascii")
+            relative = body[66:].decode("ascii")
+        except UnicodeDecodeError:
+            raise LocalReleaseProviderError() from None
+        if (
+            _HASH.fullmatch(digest) is None
+            or not _checksum_manifest_path(relative)
+            or relative in observed
+        ):
+            raise LocalReleaseProviderError()
+        observed[relative] = digest
+    expected_paths: set[str] = set()
+    values: dict[str, str] = {}
+    for artifact_id, relative, digest in artifacts:
+        if (
+            type(artifact_id) is not str
+            or _ID.fullmatch(artifact_id) is None
+            or not _safe_relative_path(relative)
+            or _HASH.fullmatch(digest) is None
+            or relative in expected_paths
+            or artifact_id in values
+            or observed.get(relative) != digest
+        ):
+            raise LocalReleaseProviderError()
+        expected_paths.add(relative)
+        values[artifact_id] = digest
+    return checksums(values)
+
+
+def _sbom_text(value: object) -> bool:
+    return (
+        type(value) is str
+        and value == value.strip()
+        and 0 < len(value) <= _SBOM_MAX_TEXT
+        and all(ord(character) >= 0x20 and ord(character) != 0x7F for character in value)
+    )
+
+
+def _canonical_sbom_binding(
+    report_value: bytes,
+    assessment_value: bytes,
+    binding: ReleaseSbomBinding,
+) -> bytes:
+    try:
+        report = json.loads(report_value.decode("ascii"))
+        if (
+            type(report) is not dict
+            or set(report) != _SBOM_REPORT_KEYS
+            or report["bomFormat"] != "CycloneDX"
+            or report["specVersion"] != "1.5"
+            or type(report["version"]) is not int
+            or report["version"] != 1
+            or not _sbom_text(report["serialNumber"])
+            or hashlib.sha256(_canonical_json(report)).hexdigest() != binding.report_sha256
+        ):
+            raise LocalReleaseProviderError()
+        metadata = report["metadata"]
+        if (
+            type(metadata) is not dict
+            or set(metadata) != {"component", "schema_version"}
+            or metadata["schema_version"] != _SBOM_REPORT_SCHEMA_VERSION
+        ):
+            raise LocalReleaseProviderError()
+        metadata_component = metadata["component"]
+        if (
+            type(metadata_component) is not dict
+            or set(metadata_component) != {"bom-ref", "name", "type", "version"}
+            or any(not _sbom_text(metadata_component[name]) for name in metadata_component)
+        ):
+            raise LocalReleaseProviderError()
+        raw_components = report["components"]
+        if type(raw_components) is not list or not raw_components:
+            raise LocalReleaseProviderError()
+        report_components: dict[str, dict[str, object]] = {}
+        report_hashes: dict[str, frozenset[str]] = {}
+        for component in raw_components:
+            if type(component) is not dict or set(component) not in {
+                _SBOM_COMPONENT_KEYS,
+                _SBOM_COMPONENT_KEYS | {"hashes"},
+            }:
+                raise LocalReleaseProviderError()
+            if (
+                any(not _sbom_text(component[name]) for name in _SBOM_COMPONENT_KEYS)
+                or component["bom-ref"] in report_components
+            ):
+                raise LocalReleaseProviderError()
+            values = component.get("hashes", [])
+            if type(values) is not list:
+                raise LocalReleaseProviderError()
+            digests: set[str] = set()
+            for value in values:
+                if (
+                    type(value) is not dict
+                    or set(value) != {"alg", "content"}
+                    or value["alg"] != "sha256"
+                    or type(value["content"]) is not str
+                    or _HASH.fullmatch(value["content"]) is None
+                ):
+                    raise LocalReleaseProviderError()
+                digests.add(value["content"])
+            report_components[component["bom-ref"]] = component
+            report_hashes[component["bom-ref"]] = frozenset(digests)
+
+        assessment = json.loads(assessment_value.decode("ascii"))
+        if (
+            type(assessment) is not dict
+            or set(assessment) != _SBOM_ASSESSMENT_KEYS
+            or assessment["schema_version"] != _SBOM_ASSESSMENT_SCHEMA_VERSION
+            or assessment["report_sha256"] != binding.report_sha256
+            or assessment_value != _canonical_json(assessment)
+            or hashlib.sha256(assessment_value).hexdigest() != binding.assessment_sha256
+        ):
+            raise LocalReleaseProviderError()
+        raw_assessments = assessment["components"]
+        if type(raw_assessments) is not list or len(raw_assessments) != len(report_components):
+            raise LocalReleaseProviderError()
+        release_components: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in raw_assessments:
+            if type(item) is not dict or set(item) != _SBOM_ASSESSMENT_COMPONENT_KEYS:
+                raise LocalReleaseProviderError()
+            bom_ref = item["bom_ref"]
+            license_value = item["license"]
+            source = item["source"]
+            status = item["vulnerability_status"]
+            content_sha256 = item["content_sha256"]
+            if (
+                not _sbom_text(bom_ref)
+                or bom_ref in seen
+                or bom_ref not in report_components
+                or not _sbom_text(license_value)
+                or license_value.upper() in {"NOASSERTION", "UNKNOWN"}
+                or not _sbom_text(source)
+                or type(status) is not str
+                or status not in _SBOM_STATUS
+                or status != "resolved"
+                or type(content_sha256) is not str
+                or _HASH.fullmatch(content_sha256) is None
+            ):
+                raise LocalReleaseProviderError()
+            if report_hashes[bom_ref] and content_sha256 not in report_hashes[bom_ref]:
+                raise LocalReleaseProviderError()
+            seen.add(bom_ref)
+            component = report_components[bom_ref]
+            bound_source = f"{source}#cyclonedx-sha256={binding.report_sha256}"
+            if not _sbom_text(bound_source):
+                raise LocalReleaseProviderError()
+            release_components.append(
+                {
+                    "content_sha256": content_sha256,
+                    "license": license_value,
+                    "name": component["name"],
+                    "source": bound_source,
+                    "version": component["version"],
+                    "vulnerability_status": status,
+                }
+            )
+        if seen != set(report_components):
+            raise LocalReleaseProviderError()
+        release_components.sort(key=lambda item: (item["name"], item["version"], item["source"]))
+        return _canonical_json(release_components)
+    except LocalReleaseProviderError:
+        raise
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError, RecursionError, TypeError, ValueError):
+        raise LocalReleaseProviderError() from None
+
+
 def _json_object(value: bytes) -> dict[str, object]:
     parsed = json.loads(value.decode("ascii"))
     if type(parsed) is not dict:
@@ -266,6 +509,21 @@ def _safe_relative_path(value: object) -> bool:
         not path.is_absolute()
         and str(path) == value
         and all(part not in {"", ".", ".."} and _PATH_PART.fullmatch(part) for part in path.parts)
+    )
+
+
+def _checksum_manifest_path(value: object) -> bool:
+    if type(value) is not str or not value or "\\" in value or "\x00" in value:
+        return False
+    path = PurePosixPath(value)
+    return (
+        not path.is_absolute()
+        and str(path) == value
+        and all(
+            part not in {"", ".", ".."}
+            and all(ord(character) >= 0x20 and ord(character) != 0x7F for character in part)
+            for part in path.parts
+        )
     )
 
 

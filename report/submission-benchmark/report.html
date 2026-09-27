@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>SecureCode AI submission benchmark</title>
+  <style>
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <style>
+  :root { color-scheme: light; --ink: #172033; --muted: #526079; --blue: #2355a6; --pale: #eef3fa; --rule: #d7dfea; }
+  html { background: #f3f5f8; }
+  body { max-width: 1120px; margin: 32px auto; padding: 42px 54px; background: #fff; color: var(--ink); font: 16px/1.6 "Segoe UI", Arial, sans-serif; box-shadow: 0 8px 32px #17203318; }
+  h1, h2, h3 { color: var(--blue); line-height: 1.25; }
+  h1 { font-size: 2rem; border-bottom: 2px solid var(--rule); padding-bottom: .45em; }
+  h2 { margin-top: 2em; font-size: 1.4rem; }
+  h3 { margin-top: 1.5em; font-size: 1.1rem; }
+  p, li { max-width: 100ch; }
+  table { width: 100%; border-collapse: collapse; margin: 1.2em 0 1.8em; font-size: .9rem; }
+  th { background: var(--blue); color: #fff; text-align: left; }
+  th, td { border: 1px solid var(--rule); padding: .55em .65em; vertical-align: top; }
+  tr:nth-child(even) td { background: var(--pale); }
+  code { background: #f0f3f7; border-radius: 3px; padding: .1em .28em; overflow-wrap: anywhere; }
+  pre { background: #f0f3f7; padding: 1em; overflow-x: auto; border-left: 3px solid var(--blue); }
+  a { color: #174b9a; }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 3em 0; }
+  @media print { html { background: #fff; } body { max-width: none; margin: 0; padding: 12mm; box-shadow: none; font-size: 10pt; } h1, h2, h3 { break-after: avoid; } table, tr { break-inside: avoid; } a { color: inherit; text-decoration: none; } }
+  @media (max-width: 800px) { body { margin: 0; padding: 22px; } table { display: block; overflow-x: auto; } }
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">SecureCode AI submission benchmark</h1>
+</header>
+<h1 id="securecode-ai-expanded-submission-benchmark">SecureCode AI:
+expanded submission benchmark</h1>
+<p><strong>Результат анализа завершён 27 сентября 2026 года.</strong>
+Все шесть конфигураций имеют проверяемые результаты на 600 кейсах, но
+часть сравнений является архивной или вычислена как парная композиция.
+Это диагностический бенчмарк, а не подтверждение точности полного
+SecureCode AI pipeline и не доказательство превосходства над SAST.</p>
+<p><strong>Analysis completed on 27 September 2026.</strong> All six
+configurations have auditable results on 600 cases, but some comparisons
+reuse archived outputs or are paired post-hoc compositions. This is a
+diagnostic benchmark, not an accuracy claim for the complete SecureCode
+AI pipeline and not evidence of superiority over SAST.</p>
+<h2 id="краткий-вывод">Краткий вывод</h2>
+<p>На held-out части hybrid-композиция получила recall 27.8%, Semgrep
+32.5%. Разница hybrid минус Semgrep равна -4.7 процентного пункта;
+lineage-cluster bootstrap 95% interval составляет от -13.9 до +4.7 п.п.
+Интервал включает ноль. Hybrid-композиция также завершила только 130 из
+240 held-out cases, поскольку deterministic scanner завершился ошибкой
+на 110 кейсах этой части.</p>
+<p>В полном корпусе сканер завершился на 347 из 600 кейсов. Оставшиеся
+253 ошибки сохранены в знаменателе как <code>scanner-failed</code>.
+Поэтому результат не подтверждает, что SecureCode AI полезнее
+статического анализатора. Он показывает конкретные текущие ограничения,
+а не успешность релизного критерия.</p>
+<h2 id="executive-result">Executive result</h2>
+<p>On the held-out split, the derived hybrid lane reached 27.8% recall
+and Semgrep reached 32.5%. The hybrid-minus-Semgrep difference is -4.7
+percentage points; the lineage-cluster bootstrap 95% interval is -13.9
+to +4.7 pp and includes zero. The hybrid composition completed only 130
+of 240 held-out cases because the deterministic scanner failed on 110
+cases in that split.</p>
+<p>Across the full corpus, the scanner completed 347 of 600 cases. The
+other 253 failures remain visible as <code>scanner-failed</code>. These
+results do not show that SecureCode AI is more useful than static
+analysis. They document current limits and do not meet a release-quality
+claim.</p>
+<h2 id="corpus-and-protocol">Corpus and protocol</h2>
+<ul>
+<li>600 public CVEfixes v1.0.8 file revisions: 200 Python, 200
+JavaScript/TypeScript and 200 Go.</li>
+<li>300 vulnerable/fixed lineage pairs. Splits are development 240,
+calibration 120 and held-out 240, with no lineage crossing a split. Each
+language has 80/40/80 cases.</li>
+<li>Dataset content digest:
+<code>sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6</code>.</li>
+<li>Metadata manifest SHA-256:
+<code>82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c</code>.</li>
+<li>A source cache check recomputed all 600 source hashes with zero
+mismatches. The cache and source blobs are not included in this report.
+The dataset manifest records <code>NOASSERTION</code> for
+licensing.</li>
+<li>The archived candidate source manifest records 603 repository files,
+SHA-256
+<code>d12e34b2623a0747c1800aab344fb72dd34ef9f68e95609dc5653c20621939b1</code>.
+It was based on HEAD
+<code>88595ae7f50be5906defee9d06e6186ce66ee1f8</code> plus those
+content-pinned worktree files. The benchmark was not recomputed against this final
+worktree, so the metrics below remain archived for the prior candidate, not a
+fresh measurement of the current tree. The archived DeepSeek direct
+lanes use the earlier profile pin
+<code>c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0</code>,
+retained in <code>model-profile.json</code>.</li>
+<li>Latest scoped product suite on the current worktree: 140 tests passed across
+product audit, scanner, worker, CWE portfolio, portfolio pipeline and product
+reports. A full pytest run did not return a final count within the five-minute
+tool window. Ruff format/check and mypy passed on all eight changed
+production/test files. The full-tree canonical quality preflight still fails
+and these scoped checks do not update the archived benchmark candidate.</li>
+<li>Model repetitions stay grouped by lineage in 5,000 deterministic
+bootstrap samples. Repeated cells are not treated as independent source
+cases.</li>
+</ul>
+<h2 id="results-across-all-cases">Results across all cases</h2>
+<p>Cells from 3-repeat model lanes are shown together, so their
+confusion counts are three times the case-level counts. Semgrep’s raw
+output has 1,800 rows, but the three predictions for each case were
+verified identical, so only repetition 1 is scored. The
+<code>valid</code> column is completed scored cells divided by all
+scored cells. Hybrid rows marked <code>scanner-failed</code> retain
+their model prediction for diagnostic scoring, while the failed status
+remains in the completion denominator. The hybrid and scanner-seeded
+rows were generated after the direct runs by reusing paired outputs;
+they made no new model requests.</p>
+<table>
+<colgroup>
+<col style="width: 6%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+<col style="width: 8%" />
+</colgroup>
+<thead>
+<tr>
+<th>Configuration</th>
+<th style="text-align: right;">Cases x repetitions</th>
+<th style="text-align: right;">Cells</th>
+<th style="text-align: right;">TP</th>
+<th style="text-align: right;">FP</th>
+<th style="text-align: right;">TN</th>
+<th style="text-align: right;">FN</th>
+<th style="text-align: right;">Precision</th>
+<th style="text-align: right;">Recall</th>
+<th style="text-align: right;">F1</th>
+<th style="text-align: right;">Valid</th>
+<th style="text-align: right;">New API calls</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Deterministic only</td>
+<td style="text-align: right;">600 x 1</td>
+<td style="text-align: right;">600</td>
+<td style="text-align: right;">59</td>
+<td style="text-align: right;">61</td>
+<td style="text-align: right;">239</td>
+<td style="text-align: right;">241</td>
+<td style="text-align: right;">49.2%</td>
+<td style="text-align: right;">19.7%</td>
+<td style="text-align: right;">28.1%</td>
+<td style="text-align: right;">57.8%</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Scanner-seeded, derived</td>
+<td style="text-align: right;">600 x 1</td>
+<td style="text-align: right;">600</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">286</td>
+<td style="text-align: right;">286</td>
+<td style="text-align: right;">50.0%</td>
+<td style="text-align: right;">4.7%</td>
+<td style="text-align: right;">8.5%</td>
+<td style="text-align: right;">57.8%</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>DeepSeek model-native, archived direct lane</td>
+<td style="text-align: right;">600 x 3</td>
+<td style="text-align: right;">1,800</td>
+<td style="text-align: right;">151</td>
+<td style="text-align: right;">148</td>
+<td style="text-align: right;">752</td>
+<td style="text-align: right;">749</td>
+<td style="text-align: right;">50.5%</td>
+<td style="text-align: right;">16.8%</td>
+<td style="text-align: right;">25.2%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">1,800</td>
+</tr>
+<tr>
+<td>DeepSeek one-shot, archived direct lane</td>
+<td style="text-align: right;">600 x 3</td>
+<td style="text-align: right;">1,800</td>
+<td style="text-align: right;">204</td>
+<td style="text-align: right;">188</td>
+<td style="text-align: right;">712</td>
+<td style="text-align: right;">696</td>
+<td style="text-align: right;">52.0%</td>
+<td style="text-align: right;">22.7%</td>
+<td style="text-align: right;">31.6%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">1,800</td>
+</tr>
+<tr>
+<td>Full hybrid, derived paired union</td>
+<td style="text-align: right;">600 x 3</td>
+<td style="text-align: right;">1,800</td>
+<td style="text-align: right;">288</td>
+<td style="text-align: right;">289</td>
+<td style="text-align: right;">611</td>
+<td style="text-align: right;">612</td>
+<td style="text-align: right;">49.9%</td>
+<td style="text-align: right;">32.0%</td>
+<td style="text-align: right;">39.0%</td>
+<td style="text-align: right;">57.8%</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Semgrep 1.177.0, pinned baseline</td>
+<td style="text-align: right;">600 requested, 1 scored</td>
+<td style="text-align: right;">600</td>
+<td style="text-align: right;">103</td>
+<td style="text-align: right;">103</td>
+<td style="text-align: right;">197</td>
+<td style="text-align: right;">197</td>
+<td style="text-align: right;">50.0%</td>
+<td style="text-align: right;">34.3%</td>
+<td style="text-align: right;">40.7%</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">0</td>
+</tr>
+</tbody>
+</table>
+<p>The precision, recall and F1 cluster-bootstrap intervals for every
+lane are in <a href="aggregate.json"><code>aggregate.json</code></a>.
+Full metrics by language, split and all 79 CWE groups are in <a
+href="stratified-metrics.csv"><code>stratified-metrics.csv</code></a>.
+The machine-readable hash record is <a
+href="aggregate-output-manifest.json"><code>aggregate-output-manifest.json</code></a>.
+Read the standalone <a href="report.html">HTML report</a> or printable
+<a href="../../output/pdf/securecode-ai-submission-benchmark.pdf">PDF
+report</a>.</p>
+<h2 id="held-out-results-by-language">Held-out results by language</h2>
+<p>All rows below use the 80 held-out cases per language. Model and
+hybrid metrics pool three predictions per case; Semgrep uses the first
+of three identical repetitions. The hybrid completion rate exposes
+scanner failures rather than silently treating them as completed
+scans.</p>
+<table>
+<colgroup>
+<col style="width: 7%" />
+<col style="width: 7%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+<col style="width: 10%" />
+</colgroup>
+<thead>
+<tr>
+<th>Language</th>
+<th>Lane</th>
+<th style="text-align: right;">Completed</th>
+<th style="text-align: right;">TP</th>
+<th style="text-align: right;">FP</th>
+<th style="text-align: right;">TN</th>
+<th style="text-align: right;">FN</th>
+<th style="text-align: right;">Precision</th>
+<th style="text-align: right;">Recall</th>
+<th style="text-align: right;">F1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python</td>
+<td>Model-native</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">25</td>
+<td style="text-align: right;">31</td>
+<td style="text-align: right;">89</td>
+<td style="text-align: right;">95</td>
+<td style="text-align: right;">44.6%</td>
+<td style="text-align: right;">20.8%</td>
+<td style="text-align: right;">28.4%</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>One-shot</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">38</td>
+<td style="text-align: right;">38</td>
+<td style="text-align: right;">82</td>
+<td style="text-align: right;">82</td>
+<td style="text-align: right;">50.0%</td>
+<td style="text-align: right;">31.7%</td>
+<td style="text-align: right;">38.8%</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>Full hybrid, derived</td>
+<td style="text-align: right;">73.8%</td>
+<td style="text-align: right;">51</td>
+<td style="text-align: right;">55</td>
+<td style="text-align: right;">65</td>
+<td style="text-align: right;">69</td>
+<td style="text-align: right;">48.1%</td>
+<td style="text-align: right;">42.5%</td>
+<td style="text-align: right;">45.1%</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>Semgrep</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">22</td>
+<td style="text-align: right;">22</td>
+<td style="text-align: right;">50.0%</td>
+<td style="text-align: right;">45.0%</td>
+<td style="text-align: right;">47.4%</td>
+</tr>
+<tr>
+<td>JavaScript/TypeScript</td>
+<td>Model-native</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">112</td>
+<td style="text-align: right;">113</td>
+<td style="text-align: right;">46.7%</td>
+<td style="text-align: right;">5.8%</td>
+<td style="text-align: right;">10.4%</td>
+</tr>
+<tr>
+<td>JavaScript/TypeScript</td>
+<td>One-shot</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">106</td>
+<td style="text-align: right;">107</td>
+<td style="text-align: right;">48.1%</td>
+<td style="text-align: right;">10.8%</td>
+<td style="text-align: right;">17.7%</td>
+</tr>
+<tr>
+<td>JavaScript/TypeScript</td>
+<td>Full hybrid, derived</td>
+<td style="text-align: right;">70.0%</td>
+<td style="text-align: right;">31</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">88</td>
+<td style="text-align: right;">89</td>
+<td style="text-align: right;">49.2%</td>
+<td style="text-align: right;">25.8%</td>
+<td style="text-align: right;">33.9%</td>
+</tr>
+<tr>
+<td>JavaScript/TypeScript</td>
+<td>Semgrep</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">26</td>
+<td style="text-align: right;">27</td>
+<td style="text-align: right;">48.1%</td>
+<td style="text-align: right;">32.5%</td>
+<td style="text-align: right;">38.8%</td>
+</tr>
+<tr>
+<td>Go</td>
+<td>Model-native</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">108</td>
+<td style="text-align: right;">105</td>
+<td style="text-align: right;">55.6%</td>
+<td style="text-align: right;">12.5%</td>
+<td style="text-align: right;">20.4%</td>
+</tr>
+<tr>
+<td>Go</td>
+<td>One-shot</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">21</td>
+<td style="text-align: right;">17</td>
+<td style="text-align: right;">103</td>
+<td style="text-align: right;">99</td>
+<td style="text-align: right;">55.3%</td>
+<td style="text-align: right;">17.5%</td>
+<td style="text-align: right;">26.6%</td>
+</tr>
+<tr>
+<td>Go</td>
+<td>Full hybrid, derived</td>
+<td style="text-align: right;">18.8%</td>
+<td style="text-align: right;">18</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">105</td>
+<td style="text-align: right;">102</td>
+<td style="text-align: right;">54.5%</td>
+<td style="text-align: right;">15.0%</td>
+<td style="text-align: right;">23.5%</td>
+</tr>
+<tr>
+<td>Go</td>
+<td>Semgrep</td>
+<td style="text-align: right;">100%</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">33</td>
+<td style="text-align: right;">32</td>
+<td style="text-align: right;">53.3%</td>
+<td style="text-align: right;">20.0%</td>
+<td style="text-align: right;">29.1%</td>
+</tr>
+</tbody>
+</table>
+<p>The numbers above score the three repeated model or Semgrep
+predictions together for the same 80 cases per language. The full
+split-by-language and split-by-CWE table in the CSV retains exact cell
+denominators.</p>
+<h2 id="provenance-and-cost">Provenance and cost</h2>
+<ul>
+<li>Deterministic-only was freshly run from the pinned manifest in
+twelve validated 50-case shards. Merged output SHA-256:
+<code>27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf</code>.</li>
+<li>Model-native and one-shot outputs were complete archived direct
+classifications, not newly rerun in this pass. Their output SHA-256
+values are
+<code>78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272</code>
+and
+<code>5b567b6493d2e20437acd6b5efde02c83c7b21ef34fc2b23c4bf84235ca8b467</code>.</li>
+<li>Semgrep output SHA-256:
+<code>209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6</code>.
+Version 1.177.0 used <code>semgrep/semgrep-rules</code> commit
+<code>a84ff9cc2453ca91d581380de4b8b3f272f6f4be</code>. Its score is a
+broad any-finding-in-file policy, not a CWE-aligned comparison.</li>
+<li>Three Semgrep rows per case were present in the archived output and
+had identical class labels and completion statuses. The report keeps the
+full raw output hash, verifies the repeated values, and scores
+repetition 1 only.</li>
+<li><code>scanner_seeded</code> reuses 120 model-native predictions on
+deterministic-positive cases. <code>full_hybrid</code> is a Boolean
+union of the same-case model-native prediction and deterministic signal
+for each repetition. Both are post-hoc analyses, recorded in <a
+href="lane-composition.json"><code>lane-composition.json</code></a>,
+with zero new API requests. They are not runs of the full SecureCode
+agent pipeline.</li>
+<li>Raw-cell API cost for the scored model-native and one-shot outputs
+is $2.564667 + $2.567055 = $5.131722. The cumulative final-scope ledger
+records 6,921 settled attempts costing $10.270833 and 11 pending
+reservations of $0.037515, for $10.308348 settled-plus-reserved
+exposure. This ledger includes retries, prior corrected runs and an
+interrupted duplicate rerun; it is broader than cost of the scored
+output cells. The separate development ledger records $0.000248
+settled.</li>
+<li>A redundant remote rerun ended before any result file was written:
+1,300 of 1,304 attempts settled for $2.242200, with four pending
+reservations of $0.007296. These calls are excluded from benchmark
+scores.</li>
+<li>The model profile pins DeepSeek V4.1 Flash, alias
+<code>deepseek-flash</code>, temperature 0, JSON mode and reasoning
+disabled. The recorded off-peak prices are $0.15/M uncached input tokens
+and $0.60/M output tokens, checked against the <a
+href="https://api-docs.deepseek.com/quick_start/pricing/">official
+pricing page</a> on 27 September 2026.</li>
+<li>Archived direct model outputs predate the current scanner
+exception-accounting fix. Their archived plan and profile hashes remain
+available as <a
+href="evidence/run-plan-direct-baselines.json"><code>run-plan-direct-baselines.json</code></a>
+and <a
+href="evidence/model-profile.json"><code>model-profile.json</code></a>.</li>
+</ul>
+<h2 id="demo-evidence">Demo evidence</h2>
+<p>The current real-local rerun is recorded in <a href="evidence/current-real-local-p917.json"><code>evidence/current-real-local-p917.json</code></a>. Ollama 0.34.4 served <code>qwen2.5-coder:7b-instruct-q4_K_M</code> (Q4_K_M, SHA-256 <code>dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364</code>) through literal loopback. Model and deterministic lanes agreed on one CWE-89 candidate at <code>app.py:4</code>. The separate repair request completed but produced no accepted patch (<code>NOT_PROPOSED</code>). Result: <code>INDETERMINATE</code>. Patch applicability, syntax, and security regression checks were not performed, and the original checkout stayed unchanged.</p>
+<p>The earlier receipt at <a href="../m-a2026/evidence/p917-real-local/p917-local-demo.json"><code>report/m-a2026/evidence/p917-real-local/p917-local-demo.json</code></a> records a separate Ollama 0.16.2 run with a proposed patch and ephemeral parse/rescan success. No behavioral security tests were run and the patch bytes are not included. Keep that historical demonstration separate from the current result. Neither one-case run is benchmark evidence or a general repair claim. The <a href="../m-a2026/README.md">M-A2026 PDF and HTML</a> contain an earlier 312-cell development study and are a separate historical snapshot.</p>
+<h2 id="interpretation-and-limitations">Interpretation and
+limitations</h2>
+<ol type="1">
+<li>The full-hybrid recall is 2.3 percentage points below Semgrep across
+all cases and 4.7 points below on held-out. The paired 95% interval
+includes zero. The release target of at least 90% lower-bound precision
+and at least 5 points recall improvement over SAST is not met.</li>
+<li>The model-native and one-shot lanes classify public source directly
+with an API. They do not execute the complete product chain of scanners,
+EvidenceGraph, Auditor, Skeptic, validation and verdict.</li>
+<li>The scanner-seeded and full-hybrid configurations are paired
+post-hoc compositions. Their results are useful ablations, but they are
+not live end-to-end product runs.</li>
+<li>Deterministic scanner failures affect 253/600 cases. The scanner
+completed 154/200 Python, 148/200 JavaScript/TypeScript and 45/200 Go
+cases. Failed cells remain explicit in the CSV and completion
+denominators.</li>
+<li>Semgrep’s broad file-level any-finding rule has a different
+granularity from CWE-specific product findings. This is not a fully
+equivalent SAST baseline.</li>
+<li>No full repair study was performed. Zero unsafe-patch counters mean
+no such measurements were recorded, not that patches are safe.</li>
+<li>The corpus is public, one-file-per-case, and not balanced across 79
+CWE labels. Private-repository generalization is unknown. Its license
+field is <code>NOASSERTION</code>; source code is not redistributed
+here.</li>
+<li>RAM/VRAM and end-to-end scan time were not measured. Reported
+latency is the model or scanner call latency captured in individual
+cells.</li>
+<li>This report is not a G7/G9 review, release decision, v1.0 claim or
+production-readiness claim. The bundled M-A2026 snapshot still has
+status <code>NOT_READY</code>.</li>
+</ol>
+<h2 id="reproduce-the-analysis">Reproduce the analysis</h2>
+<p>From the repository root, with the existing locked local
+environment:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>uv run <span class="op">--</span>locked <span class="op">--</span>offline <span class="op">--</span>no-sync <span class="op">--</span>group quality python report<span class="op">/</span>submission-benchmark<span class="op">/</span>aggregate_benchmark<span class="op">.</span><span class="fu">py</span></span></code></pre></div>
+<p>The command validates each output row against the frozen source-free
+manifest, verifies case labels and repetition counts, computes
+aggregate/stratified metrics and cluster-bootstrap intervals, and
+rewrites the aggregate hash manifest. It does not execute CVEfixes
+source or contact DeepSeek/Semgrep. The deterministic scan outputs and
+archived raw lane files are required inputs.</p>
+</body>
+</html>

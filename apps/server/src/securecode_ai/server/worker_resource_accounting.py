@@ -19,6 +19,7 @@ from .ports import (
     ServiceResponse,
     ServiceUnavailableError,
 )
+from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
 from .worker_resource_models import (
     COMMIT_OUTCOMES,
     TERMINAL_OUTCOMES,
@@ -62,7 +63,9 @@ class WorkerResourceAccountingService:
         usage_document: object,
         usage_supplied: bool,
     ) -> WorkerResourceSettlement:
-        if outcome not in TERMINAL_OUTCOMES:
+        if type(outcome) is not str or outcome not in TERMINAL_OUTCOMES:
+            raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
+        if outcome in COMMIT_OUTCOMES and usage_supplied is not True:
             raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
         try:
             binding = self._bindings.load(
@@ -87,23 +90,67 @@ class WorkerResourceAccountingService:
                 recorded=binding.actual,
             )
         else:
-            if usage_supplied:
-                raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
             expected_state = (
                 ReservationState.CANCELLED if outcome == "CANCELLED" else ReservationState.RELEASED
             )
-            if binding.state not in {ReservationState.RESERVED, expected_state}:
-                raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
-            usage = None
+            if usage_supplied:
+                if binding.state not in {
+                    ReservationState.RESERVED,
+                    ReservationState.COMMITTED,
+                }:
+                    raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
+                usage = resolve_usage(
+                    usage_document,
+                    supplied=True,
+                    reserved=binding.reserved,
+                    recorded=binding.actual,
+                )
+            else:
+                if binding.state not in {ReservationState.RESERVED, expected_state}:
+                    raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
+                usage = None
         return WorkerResourceSettlement(binding, outcome, usage)
 
     def settle(self, settlement: WorkerResourceSettlement) -> None:
         if type(settlement) is not WorkerResourceSettlement:
             raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
-        binding = settlement.binding
+        requested_binding = settlement.binding
+        try:
+            binding = self._bindings.load(
+                tenant_id=requested_binding.tenant_id,
+                run_id=requested_binding.run_id,
+                execution_identity_hash=requested_binding.execution_identity_hash,
+            )
+        except WorkerResourceError:
+            raise
+        except Exception:
+            raise WorkerResourceError(WorkerResourceErrorCode.BINDING_UNAVAILABLE, 503) from None
+        if not _binding_scope_matches(binding, requested_binding):
+            raise WorkerResourceError(WorkerResourceErrorCode.BINDING_UNAVAILABLE, 503)
+        target = (
+            ReservationState.COMMITTED
+            if settlement.outcome in COMMIT_OUTCOMES or settlement.usage is not None
+            else ReservationState.CANCELLED
+            if settlement.outcome == "CANCELLED"
+            else ReservationState.RELEASED
+        )
+        # A worker retry may load the already-terminal binding after the first
+        # settlement committed.  The durable resource adapter treats that
+        # transition as an idempotent replay, so the service must do the same
+        # instead of issuing a stale-version mutation and then expecting a
+        # state-version increment that cannot occur.
+        if binding.state is target:
+            if target is ReservationState.COMMITTED:
+                if binding.actual is None or settlement.usage != binding.actual:
+                    raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
+            elif binding.actual is not None or settlement.usage is not None:
+                raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
+            return
+        if binding.state is not ReservationState.RESERVED:
+            raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
         now_ms = self._now_ms()
         try:
-            if settlement.outcome in COMMIT_OUTCOMES:
+            if settlement.outcome in COMMIT_OUTCOMES or settlement.usage is not None:
                 if settlement.usage is None:
                     raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
                 receipt = self._resources.commit(
@@ -139,6 +186,8 @@ class WorkerResourceAccountingService:
         except WorkerResourceError:
             raise
         except ResourceGovernorError:
+            if _terminal_settlement_matches(self._bindings, settlement, target):
+                return
             raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503) from None
         except Exception:
             raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503) from None
@@ -161,27 +210,52 @@ class WorkerResourceAccountingService:
 class WorkerResourceAccountingHandler:
     """Settle resources before exposing an idempotent terminal queue state."""
 
-    __slots__ = ("_accounting", "_fallback")
+    __slots__ = ("_accounting", "_fallback", "_residency_guard", "_residency_region")
 
     def __init__(
         self,
         *,
         accounting: WorkerResourceAccountingService,
         fallback: ControlPlaneService,
+        residency_guard: ResidencyGuard | None = None,
+        residency_region: str | None = None,
     ) -> None:
         if not isinstance(accounting, WorkerResourceAccountingService) or not hasattr(
             fallback, "dispatch"
         ):
             raise TypeError("worker resource handler dependencies are invalid")
+        if (residency_guard is None) != (residency_region is None):
+            raise ValueError("worker residency configuration is incomplete")
+        if residency_guard is not None and not callable(
+            getattr(residency_guard, "require_region", None)
+        ):
+            raise ValueError("worker residency guard is invalid")
         self._accounting = accounting
         self._fallback = fallback
+        self._residency_guard = residency_guard
+        self._residency_region = residency_region
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
+        residency_response = self._residency_response(request.identity.tenant_id)
+        if residency_response is not None:
+            return residency_response
         if request.action != "worker_sessions.complete":
             return await self._fallback.dispatch(request)
         terminal = _terminal_request(request)
         if terminal is None:
-            return await self._fallback.dispatch(request)
+            # The queue handler deliberately does not process completion
+            # requests by itself.  Returning its generic 503 here used to
+            # turn malformed worker payloads into transient failures and
+            # left the caller retrying a request that could never settle a
+            # reservation.  Keep non-completion actions on the fallback,
+            # while reporting an invalid completion contract directly.
+            return (
+                _error_response(
+                    WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
+                )
+                if request.action == "worker_sessions.complete"
+                else await self._fallback.dispatch(request)
+            )
         run_id, identity_hash, outcome, document = terminal
         try:
             settlement = self._accounting.prepare(
@@ -211,8 +285,10 @@ class WorkerResourceAccountingHandler:
                     resource_clock=self._accounting.now_ms,
                 ),
             )
-        except WorkerResourceError:
-            raise ServiceUnavailableError() from None
+        except WorkerResourceError as error:
+            if error.status >= 500:
+                raise ServiceUnavailableError() from None
+            return _error_response(error)
         except Exception as error:
             if isinstance(error, ServiceUnavailableError):
                 raise
@@ -225,6 +301,37 @@ class WorkerResourceAccountingHandler:
         ):
             raise ServiceUnavailableError()
         return response
+
+    def _residency_response(self, tenant_id: str) -> ServiceResponse | None:
+        guard = self._residency_guard
+        if guard is None:
+            return None
+        region = self._residency_region
+        if type(region) is not str or not region:
+            raise ServiceUnavailableError()
+        try:
+            decision = guard.require_region(tenant_id=tenant_id, region=region)
+        except ResidencyConflict:
+            return ServiceResponse(
+                403,
+                {
+                    "error": {
+                        "code": "RESIDENCY_DENIED",
+                        "message": "worker residency policy denied the request",
+                    }
+                },
+            )
+        except Exception:
+            raise ServiceUnavailableError() from None
+        if (
+            type(decision) is not ResidencyDecision
+            or decision.tenant_id != tenant_id
+            or decision.source_region != region
+            or decision.destination_region != region
+            or not decision.same_region
+        ):
+            raise ServiceUnavailableError()
+        return None
 
 
 def _terminal_request(
@@ -263,31 +370,70 @@ def settle_worker_resources(
         raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
     binding = settlement.binding
     row = cursor.execute(
-        """SELECT * FROM resource_reservations
-           WHERE tenant_id=? AND reservation_id=?""",
+        """SELECT r.*, a.state AS admission_state,
+                  a.reservation_id AS admission_reservation_id,
+                  a.reservation_version AS admission_reservation_version
+           FROM resource_reservations AS r
+           LEFT JOIN run_admissions AS a
+             ON a.tenant_id=r.tenant_id AND a.run_id=r.run_id
+           WHERE r.tenant_id=? AND r.reservation_id=?""",
         (binding.tenant_id, binding.reservation_id),
     ).fetchone()
-    if row is None or not _resource_binding_matches(row, binding):
+    if (
+        row is None
+        or not _resource_binding_matches(row, binding)
+        or row["admission_state"] != "ADMITTED"
+        or row["admission_reservation_id"] != binding.reservation_id
+        or row["admission_reservation_version"] != binding.reservation_version
+    ):
         raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
     target = (
         ReservationState.COMMITTED
-        if settlement.outcome in COMMIT_OUTCOMES
+        if settlement.outcome in COMMIT_OUTCOMES or settlement.usage is not None
         else ReservationState.CANCELLED
         if settlement.outcome == "CANCELLED"
         else ReservationState.RELEASED
     )
-    state = ReservationState(row["state"])
+    try:
+        state = ReservationState(row["state"])
+    except (TypeError, ValueError):
+        raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503) from None
     if state is target:
+        # The binding may have been read just before another identical
+        # completion committed the reservation.  It is safe to replay that
+        # transition only when this binding is the original RESERVED version
+        # and the durable terminal row still represents the same transition.
+        stale_reserved_binding = (
+            binding.state is ReservationState.RESERVED and binding.actual is None
+        )
+        current_terminal_binding = binding.state is target
         if (
-            row["state_version"] != binding.reservation_version + 1
+            not stale_reserved_binding and not current_terminal_binding
+            or row["state_version"] != binding.reservation_version + 1
             or (target is ReservationState.COMMITTED) is not (settlement.usage is not None)
-            or (settlement.usage is not None and _actual_resource_usage(row) != settlement.usage)
+            or (
+                target is ReservationState.COMMITTED
+                and settlement.usage is not None
+                and _actual_resource_usage(row) != settlement.usage
+            )
+            or (
+                target is not ReservationState.COMMITTED
+                and (settlement.usage is not None or binding.actual is not None)
+            )
+            or (
+                current_terminal_binding
+                and target is ReservationState.COMMITTED
+                and binding.actual != settlement.usage
+            )
         ):
             raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
         return
     if (
         state is not ReservationState.RESERVED
+        or binding.state is not ReservationState.RESERVED
+        or binding.actual is not None
         or row["state_version"] != binding.reservation_version
+        or now_ms < row["admitted_at_ms"]
         or now_ms >= row["lease_expires_at_ms"]
     ):
         raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503)
@@ -346,6 +492,42 @@ def _resource_binding_matches(row: sqlite3.Row, binding: WorkerReservationBindin
     )
 
 
+def _binding_scope_matches(
+    current: WorkerReservationBinding,
+    requested: WorkerReservationBinding,
+) -> bool:
+    return (
+        current.tenant_id == requested.tenant_id
+        and current.repository_id == requested.repository_id
+        and current.run_id == requested.run_id
+        and current.execution_identity_hash == requested.execution_identity_hash
+        and current.profile_sha256 == requested.profile_sha256
+        and current.reservation_id == requested.reservation_id
+        and current.reserved == requested.reserved
+    )
+
+
+def _terminal_settlement_matches(
+    bindings: WorkerReservationBindingStore,
+    settlement: WorkerResourceSettlement,
+    target: ReservationState,
+) -> bool:
+    requested = settlement.binding
+    try:
+        current = bindings.load(
+            tenant_id=requested.tenant_id,
+            run_id=requested.run_id,
+            execution_identity_hash=requested.execution_identity_hash,
+        )
+    except Exception:
+        return False
+    if not _binding_scope_matches(current, requested) or current.state is not target:
+        return False
+    if target is ReservationState.COMMITTED:
+        return current.actual is not None and current.actual == settlement.usage
+    return current.actual is None and settlement.usage is None
+
+
 def _reserved_values(row: sqlite3.Row) -> tuple[int, int, int, int, int]:
     return (
         row["requested_tokens"],
@@ -357,13 +539,16 @@ def _reserved_values(row: sqlite3.Row) -> tuple[int, int, int, int, int]:
 
 
 def _actual_resource_usage(row: sqlite3.Row) -> ResourceUsage:
-    return ResourceUsage(
-        tokens=row["actual_tokens"],
-        cost_microunits=row["actual_cost_microunits"],
-        cpu_ms=row["actual_cpu_ms"],
-        peak_memory_bytes=row["actual_peak_memory_bytes"],
-        wall_ms=row["actual_wall_ms"],
-    )
+    try:
+        return ResourceUsage(
+            tokens=row["actual_tokens"],
+            cost_microunits=row["actual_cost_microunits"],
+            cpu_ms=row["actual_cpu_ms"],
+            peak_memory_bytes=row["actual_peak_memory_bytes"],
+            wall_ms=row["actual_wall_ms"],
+        )
+    except Exception:
+        raise WorkerResourceError(WorkerResourceErrorCode.ACCOUNTING_UNAVAILABLE, 503) from None
 
 
 def _usage_values(value: ResourceUsage) -> tuple[int, int, int, int, int]:

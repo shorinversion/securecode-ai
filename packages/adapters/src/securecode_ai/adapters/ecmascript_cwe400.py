@@ -2,7 +2,7 @@
 
 The scanner works on an admitted :class:`~securecode_ai.core.SymbolIndex` and
 rebuilds that index before inspecting the CST.  It reports request data flowing
-to unbounded file, body, archive, decompression, JSON, or XML operations.  A
+to unbounded stream, body, archive, decompression, JSON, or XML operations.  A
 sink with an explicit byte, entry, buffer, or stream limit is treated as safe.
 Only immutable ranges and content-addressed identifiers leave this module.
 """
@@ -22,15 +22,13 @@ from .cst import CstAdapterError, build_javascript_symbol_index, build_typescrip
 from .cst_ecmascript import _javascript_language, _typescript_language
 
 _MAX_LIMITS = (2_000_000, 250_000, 512, 10_000)
-_SHA1 = re.compile(r"[0-9a-f]{40}\\Z")
-_SHA256 = re.compile(r"[0-9a-f]{64}\\Z")
-_IDENTIFIER = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*\\Z")
+_SHA1 = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_IDENTIFIER = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*\Z")
 _RULE_ID = "securecode-ecmascript-cwe400"
 _DETECTOR = "securecode-ecmascript-cwe400@1.0"
 
-_REQUEST_ROOTS = frozenset(
-    {"ctx", "context", "event", "httpRequest", "req", "request", "incoming"}
-)
+_REQUEST_ROOTS = frozenset({"ctx", "context", "event", "httpRequest", "req", "request", "incoming"})
 _REQUEST_FIELDS = frozenset(
     {
         "body",
@@ -147,7 +145,7 @@ _DECOMPRESSION_METHODS = frozenset(
     }
 )
 _BODY_METHODS = frozenset({"arrayBuffer", "blob", "formData", "json", "text"})
-_FILE_METHODS = frozenset({"createReadStream", "readFile", "readFileSync"})
+_FILE_METHODS = frozenset({"createReadStream"})
 _XML_METHODS = frozenset({"parse", "parseString", "parseFromString", "write"})
 
 
@@ -272,9 +270,7 @@ class EcmaScriptCwe400Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe400Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe400Operation
             else None
         )
         if (
@@ -344,7 +340,13 @@ class EcmaScriptCwe400ScanResult:
         )
         order = (
             tuple(
-                (item.sink.start_byte, item.sink.end_byte, item.source.start_byte, item.source.end_byte, item.operation.value)
+                (
+                    item.sink.start_byte,
+                    item.sink.end_byte,
+                    item.source.start_byte,
+                    item.source.end_byte,
+                    item.operation.value,
+                )
                 for item in self.signals
             )
             if valid_signals
@@ -435,7 +437,11 @@ def _scan_ecmascript_cwe400(
         raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.SOURCE_LIMIT)
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.ANALYSIS_UNAVAILABLE)
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -446,7 +452,11 @@ def _scan_ecmascript_cwe400(
         )
         if rebuilt != symbol_index:
             raise ValueError("symbol index mismatch")
-        grammar = _javascript_language() if expected_language == "javascript" else _typescript_language(tsx=symbol_index.path.endswith(".tsx"))
+        grammar = (
+            _javascript_language()
+            if expected_language == "javascript"
+            else _typescript_language(tsx=symbol_index.path.endswith(".tsx"))
+        )
         source = symbol_index.source
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
@@ -469,7 +479,7 @@ def _scan_ecmascript_cwe400(
             arguments = node.child_by_field_name("arguments")
             if arguments is None:
                 raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.INTEGRITY_FAILURE)
-            values = arguments.named_children
+            values = tuple(arguments.named_children)
             input_nodes = _input_nodes(node, values, operation, source)
             scope = _enclosing_scope(node, root)
             request_inputs: tuple[Node, ...] = ()
@@ -488,20 +498,36 @@ def _scan_ecmascript_cwe400(
                     sink_range = _range(node)
                     source_range = _range(source_node)
                     if not sink_range.contains(source_range):
-                        raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.INTEGRITY_FAILURE)
+                        raise EcmaScriptCwe400ScanError(
+                            EcmaScriptCwe400ScanErrorCode.INTEGRITY_FAILURE
+                        )
                     raw.add((source_range, sink_range, operation))
-            elif operation in {EcmaScriptCwe400Operation.FILE_READ, EcmaScriptCwe400Operation.FILE_READ_SYNC, EcmaScriptCwe400Operation.STREAM_READ} and _is_public_context(node, root, source):
-                if values:
-                    source_range = _range(values[0])
-                    sink_range = _range(node)
-                    if not sink_range.contains(source_range):
-                        raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.INTEGRITY_FAILURE)
-                    raw.add((source_range, sink_range, operation))
+            elif (
+                operation
+                in {
+                    EcmaScriptCwe400Operation.FILE_READ,
+                    EcmaScriptCwe400Operation.FILE_READ_SYNC,
+                    EcmaScriptCwe400Operation.STREAM_READ,
+                }
+                and _is_public_context(node, root, source)
+                and values
+            ):
+                source_range = _range(values[0])
+                sink_range = _range(node)
+                if not sink_range.contains(source_range):
+                    raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.INTEGRITY_FAILURE)
+                raw.add((source_range, sink_range, operation))
             if len(raw) > limits.max_signals:
                 raise EcmaScriptCwe400ScanError(EcmaScriptCwe400ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
-            key=lambda item: (item[1].start_byte, item[1].end_byte, item[0].start_byte, item[0].end_byte, item[2].value),
+            key=lambda item: (
+                item[1].start_byte,
+                item[1].end_byte,
+                item[0].start_byte,
+                item[0].end_byte,
+                item[2].value,
+            ),
         )
     except EcmaScriptCwe400ScanError:
         raise
@@ -564,7 +590,9 @@ def _bounded_nodes(root: Node, limits: EcmaScriptCwe400ScanLimits) -> tuple[Node
     return tuple(output)
 
 
-def _operation_for_call(node: Node, source: bytes, aliases: dict[str, str]) -> EcmaScriptCwe400Operation | None:
+def _operation_for_call(
+    node: Node, source: bytes, aliases: dict[str, str]
+) -> EcmaScriptCwe400Operation | None:
     function = node.child_by_field_name("function")
     if function is None:
         return None
@@ -577,16 +605,16 @@ def _operation_for_call(node: Node, source: bytes, aliases: dict[str, str]) -> E
     if canonical in {"JSON.parse", "json.parse"}:
         return EcmaScriptCwe400Operation.JSON_PARSE
     if method in _FILE_METHODS and (module in _FILE_MODULES or canonical in _FILE_METHODS):
-        return {
-            "readFile": EcmaScriptCwe400Operation.FILE_READ,
-            "readFileSync": EcmaScriptCwe400Operation.FILE_READ_SYNC,
-            "createReadStream": EcmaScriptCwe400Operation.STREAM_READ,
-        }[method]
+        return EcmaScriptCwe400Operation.STREAM_READ
     if method in _BODY_METHODS and (_is_body_receiver(canonical) or module in _BODY_MODULES):
         return EcmaScriptCwe400Operation.BODY_READ
-    if method in _DECOMPRESSION_METHODS and (module in _DECOMPRESSION_MODULES or method in _DECOMPRESSION_METHODS):
+    if method in _DECOMPRESSION_METHODS and (
+        module in _DECOMPRESSION_MODULES or method in _DECOMPRESSION_METHODS
+    ):
         return EcmaScriptCwe400Operation.DECOMPRESSION
-    if method in _ARCHIVE_METHODS and (module in _ARCHIVE_MODULES or _looks_like_archive(canonical)):
+    if method in _ARCHIVE_METHODS and (
+        module in _ARCHIVE_MODULES or _looks_like_archive(canonical)
+    ):
         return EcmaScriptCwe400Operation.ARCHIVE_EXTRACT
     if method in _XML_METHODS and (module in _XML_MODULES or _looks_like_xml(canonical)):
         return EcmaScriptCwe400Operation.XML_PARSE
@@ -600,21 +628,35 @@ def _operation_for_call(node: Node, source: bytes, aliases: dict[str, str]) -> E
 
 
 def _is_body_receiver(canonical: str) -> bool:
-    return canonical.split(".")[0] in _REQUEST_ROOTS or canonical.startswith(("response.", "request.", "req."))
+    return canonical.split(".")[0] in _REQUEST_ROOTS or canonical.startswith(
+        ("response.", "request.", "req.")
+    )
 
 
 def _looks_like_archive(canonical: str) -> bool:
-    return any(value in canonical.lower() for value in ("zip", "tar", "archive", "extract", "unzip"))
+    return any(
+        value in canonical.lower() for value in ("zip", "tar", "archive", "extract", "unzip")
+    )
 
 
 def _looks_like_xml(canonical: str) -> bool:
     return any(value in canonical.lower() for value in ("xml", "domparser", "sax"))
 
 
-def _input_nodes(node: Node, values: tuple[Node, ...], operation: EcmaScriptCwe400Operation, source: bytes) -> tuple[Node, ...]:
+def _input_nodes(
+    node: Node, values: tuple[Node, ...], operation: EcmaScriptCwe400Operation, source: bytes
+) -> tuple[Node, ...]:
     if not values:
         return ()
-    if operation in {EcmaScriptCwe400Operation.FILE_READ, EcmaScriptCwe400Operation.FILE_READ_SYNC, EcmaScriptCwe400Operation.STREAM_READ, EcmaScriptCwe400Operation.JSON_PARSE, EcmaScriptCwe400Operation.XML_PARSE, EcmaScriptCwe400Operation.ARCHIVE_EXTRACT, EcmaScriptCwe400Operation.DECOMPRESSION}:
+    if operation in {
+        EcmaScriptCwe400Operation.FILE_READ,
+        EcmaScriptCwe400Operation.FILE_READ_SYNC,
+        EcmaScriptCwe400Operation.STREAM_READ,
+        EcmaScriptCwe400Operation.JSON_PARSE,
+        EcmaScriptCwe400Operation.XML_PARSE,
+        EcmaScriptCwe400Operation.ARCHIVE_EXTRACT,
+        EcmaScriptCwe400Operation.DECOMPRESSION,
+    }:
         return (values[0],)
     if operation is EcmaScriptCwe400Operation.BODY_READ:
         return (values[0],) if values else ()
@@ -632,9 +674,7 @@ def _has_explicit_limit(node: Node, source: bytes, aliases: dict[str, str]) -> b
     if values and _bounded_expression(values[0], source, aliases):
         return True
     function = node.child_by_field_name("function")
-    if function is not None and _bounded_expression(function, source, aliases):
-        return True
-    return False
+    return function is not None and _bounded_expression(function, source, aliases)
 
 
 def _contains_limit_property(node: Node, source: bytes) -> bool:
@@ -654,11 +694,19 @@ def _bounded_expression(node: Node, source: bytes, aliases: dict[str, str]) -> b
         function = node.child_by_field_name("function") or node.child_by_field_name("constructor")
         arguments = node.child_by_field_name("arguments")
         canonical = _canonical_expression(function, source, aliases) if function is not None else ""
-        if canonical is not None and any(token in canonical.lower() for token in ("limit", "truncate", "slice", "subarray", "take", "bounded", "capped")):
+        if canonical is not None and any(
+            token in canonical.lower()
+            for token in ("limit", "truncate", "slice", "subarray", "take", "bounded", "capped")
+        ):
             return True
-        if arguments is not None and len(arguments.named_children) >= 2 and _static_number(arguments.named_children[1], source):
-            if canonical and canonical.endswith(("slice", "subarray", "substring", "substr")):
-                return True
+        if (
+            arguments is not None
+            and len(arguments.named_children) >= 2
+            and _static_number(arguments.named_children[1], source)
+            and canonical is not None
+            and canonical.endswith(("slice", "subarray", "substring", "substr"))
+        ):
+            return True
     if node.type in {"member_expression", "subscript_expression"}:
         value = _compact_text(source, node).lower()
         if any(token in value for token in (".slice", ".subarray", ".take", ".limit")):
@@ -673,10 +721,18 @@ def _static_number(node: Node, source: bytes) -> bool:
 def _is_public_context(node: Node, root: Node, source: bytes) -> bool:
     current: Node | None = node
     while current is not None:
-        if current.type in {"function_declaration", "function", "function_expression", "arrow_function", "method_definition"}:
+        if current.type in {
+            "function_declaration",
+            "function",
+            "function_expression",
+            "arrow_function",
+            "method_definition",
+        }:
             prefix = source[current.start_byte : min(current.end_byte, current.start_byte + 240)]
             text = _decode(prefix).lower()
-            if any(token in text for token in ("req", "request", "context", "ctx", "event", "handler")):
+            if any(
+                token in text for token in ("req", "request", "context", "ctx", "event", "handler")
+            ):
                 return True
         current = current.parent
     current = node.parent
@@ -685,7 +741,17 @@ def _is_public_context(node: Node, root: Node, source: bytes) -> bool:
             function = current.child_by_field_name("function")
             if function is not None:
                 name = _compact_text(source, function).lower()
-                if name.split(".")[-1] in {"get", "post", "put", "patch", "delete", "use", "route", "all", "handle"}:
+                if name.split(".")[-1] in {
+                    "get",
+                    "post",
+                    "put",
+                    "patch",
+                    "delete",
+                    "use",
+                    "route",
+                    "all",
+                    "handle",
+                }:
                     return True
         current = current.parent
     return False
@@ -712,8 +778,24 @@ def _resolve_source(
         bound = _latest_binding(scope, name, node.start_byte, source)
         if bound is None:
             return ()
-        return _resolve_source(bound, scope=scope, source=source, aliases=aliases, limits=limits, depth=depth + 1, visited=visited | {name})
-    if node.type in {"await_expression", "parenthesized_expression", "non_null_expression", "unary_expression", "as_expression", "satisfies_expression", "new_expression"}:
+        return _resolve_source(
+            bound,
+            scope=scope,
+            source=source,
+            aliases=aliases,
+            limits=limits,
+            depth=depth + 1,
+            visited=visited | {name},
+        )
+    if node.type in {
+        "await_expression",
+        "parenthesized_expression",
+        "non_null_expression",
+        "unary_expression",
+        "as_expression",
+        "satisfies_expression",
+        "new_expression",
+    }:
         return _resolve_children(node, scope, source, aliases, limits, depth + 1, visited)
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
@@ -721,20 +803,52 @@ def _resolve_source(
         if function is None or arguments is None:
             return ()
         canonical = _canonical_expression(function, source, aliases)
-        if canonical in _PRESERVING_CALLS or (canonical is not None and canonical.endswith((".toString", ".trim", ".slice", ".subarray", ".map", ".filter"))):
+        if canonical in _PRESERVING_CALLS or (
+            canonical is not None
+            and canonical.endswith((".toString", ".trim", ".slice", ".subarray", ".map", ".filter"))
+        ):
             return _resolve_children(arguments, scope, source, aliases, limits, depth + 1, visited)
         return ()
-    if node.type in {"binary_expression", "conditional_expression", "assignment_expression", "ternary_expression", "template_substitution", "template_string", "sequence_expression", "logical_expression", "object", "array"}:
+    if node.type in {
+        "binary_expression",
+        "conditional_expression",
+        "assignment_expression",
+        "ternary_expression",
+        "template_substitution",
+        "template_string",
+        "sequence_expression",
+        "logical_expression",
+        "object",
+        "array",
+    }:
         return _resolve_children(node, scope, source, aliases, limits, depth + 1, visited)
     if node.type in {"member_expression", "subscript_expression"}:
         return _resolve_children(node, scope, source, aliases, limits, depth + 1, visited)
     return ()
 
 
-def _resolve_children(node: Node, scope: Node, source: bytes, aliases: dict[str, str], limits: EcmaScriptCwe400ScanLimits, depth: int, visited: frozenset[str]) -> tuple[Node, ...]:
+def _resolve_children(
+    node: Node,
+    scope: Node,
+    source: bytes,
+    aliases: dict[str, str],
+    limits: EcmaScriptCwe400ScanLimits,
+    depth: int,
+    visited: frozenset[str],
+) -> tuple[Node, ...]:
     values: list[Node] = []
     for child in node.named_children:
-        values.extend(_resolve_source(child, scope=scope, source=source, aliases=aliases, limits=limits, depth=depth, visited=visited))
+        values.extend(
+            _resolve_source(
+                child,
+                scope=scope,
+                source=source,
+                aliases=aliases,
+                limits=limits,
+                depth=depth,
+                visited=visited,
+            )
+        )
     unique = {(value.start_byte, value.end_byte): value for value in values}
     return tuple(unique[key] for key in sorted(unique))
 
@@ -753,7 +867,13 @@ def _is_request_source(node: Node, source: bytes) -> bool:
         return False
     callee = _compact_text(source, function).replace("?.", ".")
     parts = callee.replace("[", ".[").split(".")
-    if parts and parts[0] in _REQUEST_ROOTS and callee.endswith((".get", ".param", ".header", ".text", ".json", ".arrayBuffer", ".formData")):
+    if (
+        parts
+        and parts[0] in _REQUEST_ROOTS
+        and callee.endswith(
+            (".get", ".param", ".header", ".text", ".json", ".arrayBuffer", ".formData")
+        )
+    ):
         return True
     return callee.endswith((".searchParams.get", ".query.get"))
 
@@ -761,7 +881,15 @@ def _is_request_source(node: Node, source: bytes) -> bool:
 def _enclosing_scope(node: Node, root: Node) -> Node:
     current = node.parent
     while current is not None:
-        if current.type in {"function_declaration", "function", "function_expression", "arrow_function", "generator_function", "generator_function_declaration", "method_definition"}:
+        if current.type in {
+            "function_declaration",
+            "function",
+            "function_expression",
+            "arrow_function",
+            "generator_function",
+            "generator_function_declaration",
+            "method_definition",
+        }:
             return current
         current = current.parent
     return root
@@ -778,7 +906,12 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             left, right = node.child_by_field_name("left"), node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier" and _text(source, left) == name:
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _text(source, left) == name
+        ):
             bound = right
     return bound
 
@@ -786,7 +919,15 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
 def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     output: list[Node] = []
     stack = [scope]
-    nested = {"function_declaration", "function", "function_expression", "arrow_function", "generator_function", "generator_function_declaration", "method_definition"}
+    nested = {
+        "function_declaration",
+        "function",
+        "function_expression",
+        "arrow_function",
+        "generator_function",
+        "generator_function_declaration",
+        "method_definition",
+    }
     first = True
     while stack:
         node = stack.pop()
@@ -807,7 +948,10 @@ def _collect_aliases(nodes: tuple[Node, ...], source: bytes) -> dict[str, str]:
             for declarator in node.named_children:
                 if declarator.type != "variable_declarator":
                     continue
-                name, value = declarator.child_by_field_name("name"), declarator.child_by_field_name("value")
+                name, value = (
+                    declarator.child_by_field_name("name"),
+                    declarator.child_by_field_name("value"),
+                )
                 if name is None or value is None:
                     continue
                 canonical = _canonical_expression(value, source, aliases)
@@ -834,6 +978,8 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
     if module is None:
         return
     module = _normalise_module(module)
+    if module is None:
+        return
     for clause in node.named_children:
         if clause.type != "import_clause":
             continue
@@ -853,9 +999,15 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
                         aliases[_text(source, names[-1])] = f"{module}.{_text(source, names[0])}"
 
 
-def _collect_pattern_aliases(pattern: Node, module: str, source: bytes, aliases: dict[str, str]) -> None:
+def _collect_pattern_aliases(
+    pattern: Node, module: str, source: bytes, aliases: dict[str, str]
+) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key = child.child_by_field_name("key") or child
         value = child.child_by_field_name("value") or key
@@ -868,7 +1020,10 @@ def _canonical_expression(node: Node | None, source: bytes, aliases: dict[str, s
     if node is None:
         return None
     if node.type == "call_expression":
-        function, arguments = node.child_by_field_name("function"), node.child_by_field_name("arguments")
+        function, arguments = (
+            node.child_by_field_name("function"),
+            node.child_by_field_name("arguments"),
+        )
         if function is None or arguments is None or _compact_text(source, function) != "require":
             return None
         values = arguments.named_children
@@ -883,11 +1038,20 @@ def _canonical_expression(node: Node | None, source: bytes, aliases: dict[str, s
 
 
 def _member_path(node: Node, source: bytes, aliases: dict[str, str]) -> tuple[str, ...] | None:
-    if node.type in {"identifier", "property_identifier", "private_property_identifier", "this", "super"}:
+    if node.type in {
+        "identifier",
+        "property_identifier",
+        "private_property_identifier",
+        "this",
+        "super",
+    }:
         value = _text(source, node)
         return (value,) if value and value != "#" else None
     if node.type in {"member_expression", "subscript_expression"}:
-        object_node, property_node = node.child_by_field_name("object"), node.child_by_field_name("property")
+        object_node, property_node = (
+            node.child_by_field_name("object"),
+            node.child_by_field_name("property"),
+        )
         property_node = property_node or node.child_by_field_name("index")
         if object_node is None or property_node is None:
             return None
@@ -947,21 +1111,85 @@ def _compact_text(source: bytes, node: Node) -> str:
 
 
 def _range(node: Node) -> SourceRange:
-    return SourceRange(node.start_byte, node.end_byte, SourcePoint(node.start_point.row, node.start_point.column), SourcePoint(node.end_point.row, node.end_point.column))
+    return SourceRange(
+        node.start_byte,
+        node.end_byte,
+        SourcePoint(node.start_point.row, node.start_point.column),
+        SourcePoint(node.end_point.row, node.end_point.column),
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:
-    return {"end_byte": location.end_byte, "end_column": location.end_point.column, "end_row": location.end_point.row, "start_byte": location.start_byte, "start_column": location.start_point.column, "start_row": location.start_point.row}
+    return {
+        "end_byte": location.end_byte,
+        "end_column": location.end_point.column,
+        "end_row": location.end_point.row,
+        "start_byte": location.start_byte,
+        "start_column": location.start_point.column,
+        "start_row": location.start_point.row,
+    }
 
 
-def _signal_id(repository_id: str, revision: str, path: str, content_sha256: str, source_size_bytes: int, source: SourceRange, sink: SourceRange, operation: EcmaScriptCwe400Operation) -> str:
-    value = {"content_sha256": content_sha256, "cwe": "CWE-400", "detector": _DETECTOR, "operation": operation.value, "path": path, "repository_id": repository_id, "revision": revision, "rule_id": _RULE_ID, "sink": _range_value(sink), "source": _range_value(source), "source_size_bytes": source_size_bytes}
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+def _signal_id(
+    repository_id: str,
+    revision: str,
+    path: str,
+    content_sha256: str,
+    source_size_bytes: int,
+    source: SourceRange,
+    sink: SourceRange,
+    operation: EcmaScriptCwe400Operation,
+) -> str:
+    value = {
+        "content_sha256": content_sha256,
+        "cwe": "CWE-400",
+        "detector": _DETECTOR,
+        "operation": operation.value,
+        "path": path,
+        "repository_id": repository_id,
+        "revision": revision,
+        "rule_id": _RULE_ID,
+        "sink": _range_value(sink),
+        "source": _range_value(source),
+        "source_size_bytes": source_size_bytes,
+    }
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
-def _scan_sha256(repository_id: str, revision: str, path: str, content_sha256: str, source_size_bytes: int, language: str, signals: tuple[EcmaScriptCwe400Signal, ...]) -> str:
-    value = {"content_sha256": content_sha256, "cwe": "CWE-400", "detector": _DETECTOR, "language": language, "path": path, "repository_id": repository_id, "revision": revision, "rule_id": _RULE_ID, "signals": [{"operation": signal.operation.value, "signal_id": signal.signal_id, "sink": _range_value(signal.sink), "source": _range_value(signal.source)} for signal in signals], "source_size_bytes": source_size_bytes}
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+def _scan_sha256(
+    repository_id: str,
+    revision: str,
+    path: str,
+    content_sha256: str,
+    source_size_bytes: int,
+    language: str,
+    signals: tuple[EcmaScriptCwe400Signal, ...],
+) -> str:
+    value = {
+        "content_sha256": content_sha256,
+        "cwe": "CWE-400",
+        "detector": _DETECTOR,
+        "language": language,
+        "path": path,
+        "repository_id": repository_id,
+        "revision": revision,
+        "rule_id": _RULE_ID,
+        "signals": [
+            {
+                "operation": signal.operation.value,
+                "signal_id": signal.signal_id,
+                "sink": _range_value(signal.sink),
+                "source": _range_value(signal.source),
+            }
+            for signal in signals
+        ],
+        "source_size_bytes": source_size_bytes,
+    }
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 scan_javascript_resource_exhaustion = scan_javascript_cwe400

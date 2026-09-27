@@ -94,6 +94,7 @@ class EgressProfileId(StrEnum):
 
 
 PositiveInt = Annotated[int, Field(strict=True, ge=1)]
+TokenUpperBound = Annotated[int, Field(strict=True, ge=1, le=1_000_000_000)]
 Port = Annotated[int, Field(strict=True, ge=1, le=65535)]
 CredentialRef = Annotated[
     str,
@@ -232,6 +233,7 @@ class ProviderProfile(ProviderConfigModel):
     execution_boundary: ExecutionBoundary
     model_id: Annotated[str, Field(min_length=1, max_length=256)]
     model_snapshot: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    protocol_framing_token_upper_bound: TokenUpperBound | None = None
     capabilities: ProviderCapabilities
     data_terms: ProviderDataTerms
     credential_ref: CredentialRef | None
@@ -267,6 +269,12 @@ class ProviderProfile(ProviderConfigModel):
         }[self.provider_kind]
         if self.api_dialect is not expected_dialect:
             raise ValueError("provider kind and API dialect are incompatible")
+
+        if self.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE:
+            if self.protocol_framing_token_upper_bound is None:
+                raise ValueError("remote compatible providers require a protocol token bound")
+        elif self.protocol_framing_token_upper_bound is not None:
+            raise ValueError("protocol token bound is only valid for remote compatible providers")
 
         hostname = self.endpoint.authority
         consumer_host = any(
@@ -342,4 +350,5 @@ __all__ = [
     "ProviderProfileId",
     "ProviderTrainingUse",
     "RepositoryTool",
+    "TokenUpperBound",
 ]

@@ -215,17 +215,21 @@ class ProductDiscoveryBackend(_ProductDiscoveryNativeCycle):
             or execution.result.model_call_status is not ModelCallStatus.SUCCEEDED
             or execution.payload is None
         ):
-            return ModelNativeDiscoveryPayload(
-                model_result=_result_with_calls(
-                    execution.result,
-                    tools.calls_used - before_calls,
-                    request=request,
-                    preflight=execution.preflight,
-                    elapsed_ms=self._executor.elapsed_since(started),
-                    budget_exhausted=ceiling_hit,
-                ),
-                candidates=(),
-            )
+            try:
+                return ModelNativeDiscoveryPayload(
+                    model_result=_result_with_calls(
+                        execution.result,
+                        tools.calls_used - before_calls,
+                        request=request,
+                        preflight=execution.preflight,
+                        elapsed_ms=self._executor.elapsed_since(started),
+                        budget_exhausted=ceiling_hit,
+                    ),
+                    candidates=(),
+                )
+            finally:
+                if execution.payload is not None:
+                    execution.payload.close()
         try:
             payload = execution.payload.reveal_for(request.request_id)
             wire = validator.parse(payload)

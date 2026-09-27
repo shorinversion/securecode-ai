@@ -5,7 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from securecode_ai.contracts import CoverageStatus, DiscoveryCandidate, ModelCallStatus
-from securecode_ai.core.classification import FindingSeverity
+from securecode_ai.core.classification import (
+    ClassificationError,
+    ClassificationErrorCode,
+    FindingSeverity,
+)
 from securecode_ai.core.finding_gate import (
     FindingGateDecision,
     FindingGateInput,
@@ -36,6 +40,7 @@ from .product_review_hashes import (
     _skeptic_receipt_sha256,
 )
 from .product_scan import ProductCandidateFlow, ProductCandidatePreparationFailure
+from .product_rule_catalogue import ProductRuleMappingError
 
 
 def run_product_candidate_review(
@@ -59,6 +64,11 @@ def run_product_candidate_review(
         or not callable(severity_for)
     ):
         raise ValueError("product review dependencies are invalid")
+    if (
+        flow.discovery.receipt.tenant_id != flow.graph.tenant_id
+        or flow.discovery.receipt.head_sha != flow.graph.head_sha
+    ):
+        raise ValueError("product discovery receipt identity is invalid")
     outcomes = tuple(
         _review_candidate(
             candidate,
@@ -165,6 +175,7 @@ def _review_candidate(
             auditor_status=ModelCallStatus.SUCCEEDED,
         )
     skeptic_receipt_sha256 = _skeptic_receipt_sha256(review)
+    failure: ProductReviewFailureCode | None = None
     try:
         severity = severity_for(candidate)
         gate_input = FindingGateInput.from_skeptic_review(
@@ -177,12 +188,22 @@ def _review_candidate(
             investigation_terminal_status=InvestigationTerminalStatus.COMPLETED,
         )
         decision = route_finding(gate_input)
+    except ProductRuleMappingError:
+        failure = ProductReviewFailureCode.RULE_MAPPING_UNSUPPORTED
+    except ClassificationError as exc:
+        failure = (
+            ProductReviewFailureCode.CLASSIFICATION_UNSUPPORTED
+            if exc.code is ClassificationErrorCode.UNSUPPORTED_CWE
+            else ProductReviewFailureCode.FINDING_GATE_INVALID
+        )
     except Exception:
+        failure = ProductReviewFailureCode.FINDING_GATE_INVALID
+    if failure is not None:
         return _outcome(
             candidate,
             skeptic_review=review,
             finding_gate=None,
-            failure=ProductReviewFailureCode.FINDING_GATE_INVALID,
+            failure=failure,
             auditor_receipt_sha256=auditor_receipt_sha256,
             skeptic_receipt_sha256=skeptic_receipt_sha256,
         )
@@ -200,7 +221,9 @@ def _same_candidate(
     candidate: DiscoveryCandidate, receipt: AuditorInvestigationReceipt, flow: ProductCandidateFlow
 ) -> bool:
     return (
-        receipt.candidate_id == candidate.candidate_id
+        candidate.tenant_id == flow.graph.tenant_id
+        and candidate.head_sha == flow.graph.head_sha
+        and receipt.candidate_id == candidate.candidate_id
         and receipt.candidate_version == candidate.candidate_version
         and receipt.tenant_id == flow.graph.tenant_id
         and receipt.head_sha == candidate.head_sha == flow.graph.head_sha

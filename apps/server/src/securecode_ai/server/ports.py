@@ -72,6 +72,7 @@ class ServiceResponse:
     status: int
     document: Mapping[str, object]
     headers: Mapping[str, str] | None = None
+    raw_body: bytes | None = None
 
 
 class ServiceUnavailableError(Exception):

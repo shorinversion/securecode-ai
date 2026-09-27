@@ -14,10 +14,12 @@ from typing import Protocol
 from .backup_repository import (
     BackupConflict,
     BackupRecord,
+    BackupRecoveryRecord,
     BackupRepository,
+    recovery_request_sha256,
     validate_backup_record,
 )
-from .residency_registry import ResidencyConflict, ResidencyGuard
+from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
 
 
 class BackupExecutorUnavailable(BackupConflict):
@@ -135,30 +137,86 @@ class BackupService:
                 request_sha256=request_hash,
             )
             if replay is not None:
-                return replay
+                return self._validated_transition_result(
+                    replay,
+                    tenant=tenant,
+                    backup=backup,
+                    expected=expected,
+                    operation="backup",
+                )
+            transition = self.repo.transition(
+                tenant_id=tenant,
+                backup_id=backup,
+                operation="backup",
+                expected_version=expected,
+                request_sha256=request_hash,
+            )
+            if transition is not None:
+                if transition[0] == "COMMITTED":
+                    assert transition[1] is not None
+                    return self._validated_transition_result(
+                        transition[1],
+                        tenant=tenant,
+                        backup=backup,
+                        expected=expected,
+                        operation="backup",
+                    )
+                item = self.repo.get(tenant, backup)
+                self._require_residency(item)
+                return self._recover_pending_transition(
+                    item,
+                    operation="backup",
+                    expected=expected,
+                    request_hash=request_hash,
+                    idempotency_key=idempotency_key,
+                )
             item = self.repo.get(tenant, backup)
+            _require_manifest(item)
             if item.state != "PLANNED" or item.version != expected:
                 raise BackupConflict("backup precondition failed")
             self._require_residency(item)
+            if not self.repo.claim_transition(
+                tenant_id=tenant,
+                backup_id=backup,
+                operation="backup",
+                expected_version=expected,
+                request_sha256=request_hash,
+            ):
+                return self._resolve_transition_race(
+                    item,
+                    operation="backup",
+                    expected=expected,
+                    request_hash=request_hash,
+                    idempotency_key=idempotency_key,
+                )
             observed = self._execute_backup(item)
             if not _matches_manifest(item, observed):
                 raise BackupConflict("backup content failed manifest verification")
+            # The executor may perform external I/O for an extended period.
+            # Re-check placement before recording the verified result so a
+            # residency change cannot be committed by a stale operation.
+            self._require_residency(item)
             updated = replace(
                 item,
                 version=item.version + 1,
                 state="BACKED_UP",
                 rpo_seconds=observed.rpo_seconds,
-                rto_seconds=observed.rto_seconds,
+                # A backup execution does not perform recovery. Persisting
+                # its wall-clock duration as RTO would claim a restore
+                # measurement that has never happened. Keep RTO unknown
+                # until complete_restore records the measured restore.
+                rto_seconds=None,
                 backup_verified=True,
                 restore_verified=False,
                 completed_at=self._now(),
             )
-            return self.repo.save(
+            self._persist_record(updated)
+            return self._commit_transition(
                 updated,
-                expected,
+                expected=expected,
+                operation="backup",
+                request_hash=request_hash,
                 idempotency_key=idempotency_key,
-                operation="complete-backup" if idempotency_key is not None else None,
-                request_sha256=request_hash if idempotency_key is not None else None,
             )
 
     def complete_restore(
@@ -179,14 +237,68 @@ class BackupService:
                 request_sha256=request_hash,
             )
             if replay is not None:
-                return replay
+                return self._validated_transition_result(
+                    replay,
+                    tenant=tenant,
+                    backup=backup,
+                    expected=expected,
+                    operation="restore",
+                )
+            transition = self.repo.transition(
+                tenant_id=tenant,
+                backup_id=backup,
+                operation="restore",
+                expected_version=expected,
+                request_sha256=request_hash,
+            )
+            if transition is not None:
+                if transition[0] == "COMMITTED":
+                    assert transition[1] is not None
+                    return self._validated_transition_result(
+                        transition[1],
+                        tenant=tenant,
+                        backup=backup,
+                        expected=expected,
+                        operation="restore",
+                    )
+                item = self.repo.get(tenant, backup)
+                self._require_residency(item)
+                return self._recover_pending_transition(
+                    item,
+                    operation="restore",
+                    expected=expected,
+                    request_hash=request_hash,
+                    idempotency_key=idempotency_key,
+                )
             item = self.repo.get(tenant, backup)
+            _require_manifest(item)
             if item.state != "BACKED_UP" or item.version != expected or not item.backup_verified:
                 raise BackupConflict("restore precondition failed")
             self._require_residency(item)
+            if self.repo.restore_recovery(
+                tenant_id=item.tenant_id,
+                backup_id=item.backup_id,
+                expected_version=expected,
+            ) is not None:
+                raise BackupConflict("restore was administratively resolved")
+            if not self.repo.claim_transition(
+                tenant_id=tenant,
+                backup_id=backup,
+                operation="restore",
+                expected_version=expected,
+                request_sha256=request_hash,
+            ):
+                return self._resolve_transition_race(
+                    item,
+                    operation="restore",
+                    expected=expected,
+                    request_hash=request_hash,
+                    idempotency_key=idempotency_key,
+                )
             observed = self._execute_restore(item)
             if not _matches_manifest(item, observed):
                 raise BackupConflict("restored content failed manifest verification")
+            self._require_residency(item)
             updated = replace(
                 item,
                 version=item.version + 1,
@@ -196,18 +308,71 @@ class BackupService:
                 restore_verified=True,
                 completed_at=self._now(),
             )
-            return self.repo.save(
+            self._persist_record(updated)
+            return self._commit_transition(
                 updated,
-                expected,
+                expected=expected,
+                operation="restore",
+                request_hash=request_hash,
                 idempotency_key=idempotency_key,
-                operation="complete-restore" if idempotency_key is not None else None,
-                request_sha256=request_hash if idempotency_key is not None else None,
+            )
+
+    def resolve_stuck_restore(
+        self,
+        tenant: str,
+        backup: str,
+        expected: int,
+        *,
+        actor_id: str,
+        reason: str,
+        evidence_ref: str,
+        idempotency_key: str,
+    ) -> BackupRecoveryRecord:
+        """Record an explicit admin resolution without applying the restore."""
+
+        _validate_transition_inputs(tenant, backup, expected)
+        _validate_recovery_text(actor_id, "actor_id", maximum=256)
+        _validate_recovery_text(reason, "reason", maximum=512)
+        _validate_recovery_identifier(evidence_ref, "evidence_ref")
+        _validate_recovery_text(idempotency_key, "idempotency_key", maximum=128)
+        with self._transition_lock(tenant, backup):
+            item = self.repo.get(tenant, backup)
+            _require_manifest(item)
+            if (
+                item.state != "BACKED_UP"
+                or item.version != expected
+                or not item.backup_verified
+            ):
+                raise BackupConflict("restore resolution precondition failed")
+            self._require_residency(item)
+            restore_request_hash = _transition_hash("restore", tenant, backup, expected)
+            resolution_request_hash = recovery_request_sha256(
+                tenant_id=tenant,
+                backup_id=backup,
+                expected_version=expected,
+                restore_request_sha256=restore_request_hash,
+                idempotency_key=idempotency_key,
+                actor_id=actor_id,
+                reason=reason,
+                evidence_ref=evidence_ref,
+            )
+            return self.repo.resolve_stuck_restore(
+                tenant_id=tenant,
+                backup_id=backup,
+                expected_version=expected,
+                restore_request_sha256=restore_request_hash,
+                resolution_request_sha256=resolution_request_hash,
+                idempotency_key=idempotency_key,
+                actor_id=actor_id,
+                reason=reason,
+                evidence_ref=evidence_ref,
+                resolved_at=self._now(),
             )
 
     def receipt(self, *, tenant_id: str, backup_id: str) -> BackupReceipt:
         item = self.repo.get(tenant_id, backup_id)
-        if item.manifest_sha256 is None:
-            raise BackupConflict("backup manifest is missing")
+        self._require_residency(item)
+        _require_manifest(item)
         return BackupReceipt(
             tenant_id=item.tenant_id,
             backup_id=item.backup_id,
@@ -236,6 +401,260 @@ class BackupService:
             raise BackupExecutorUnavailable("restore executor failed") from error
         return _validated_result(result)
 
+    def _persist_record(self, item: BackupRecord) -> None:
+        persist = getattr(self.executor, "persist_record", None)
+        if not callable(persist):
+            return
+        try:
+            persist(item)
+        except Exception as error:
+            raise BackupExecutorUnavailable("backup record storage failed") from error
+
+    def _commit_transition(
+        self,
+        value: BackupRecord,
+        *,
+        expected: int,
+        operation: str,
+        request_hash: str,
+        idempotency_key: str | None,
+    ) -> BackupRecord:
+        """Commit a verified result and reconcile a concurrent durable commit.
+
+        The executor may already have persisted the result before SQLite commits.
+        If the local commit fails, a retry must be able to observe the transition
+        journal instead of leaking a raw database exception to the control plane.
+        """
+
+        try:
+            self._require_residency(value)
+            saved = self.repo.save(
+                value,
+                expected,
+                idempotency_key=idempotency_key,
+                operation=(
+                    "complete-backup" if operation == "backup" else "complete-restore"
+                )
+                if idempotency_key is not None
+                else None,
+                request_sha256=request_hash if idempotency_key is not None else None,
+                transition_operation=operation,
+                transition_expected=expected,
+                transition_request_sha256=request_hash,
+            )
+            return self._validated_transition_result(
+                saved,
+                tenant=value.tenant_id,
+                backup=value.backup_id,
+                expected=expected,
+                operation=operation,
+            )
+        except BackupConflict:
+            raise
+        except Exception as error:
+            try:
+                transition = self.repo.transition(
+                    tenant_id=value.tenant_id,
+                    backup_id=value.backup_id,
+                    operation=operation,
+                    expected_version=expected,
+                    request_sha256=request_hash,
+                )
+            except Exception:
+                transition = None
+            if transition is not None and transition[0] == "COMMITTED":
+                assert transition[1] is not None
+                return self._validated_transition_result(
+                    transition[1],
+                    tenant=value.tenant_id,
+                    backup=value.backup_id,
+                    expected=expected,
+                    operation=operation,
+                )
+            raise BackupExecutorUnavailable(
+                "backup transition could not be committed"
+            ) from error
+
+    def _resolve_transition_race(
+        self,
+        item: BackupRecord,
+        *,
+        operation: str,
+        expected: int,
+        request_hash: str,
+        idempotency_key: str | None,
+    ) -> BackupRecord:
+        transition = self.repo.transition(
+            tenant_id=item.tenant_id,
+            backup_id=item.backup_id,
+            operation=operation,
+            expected_version=expected,
+            request_sha256=request_hash,
+        )
+        if transition is None:
+            raise BackupExecutorUnavailable("backup transition claim was lost")
+        if transition[0] == "COMMITTED":
+            assert transition[1] is not None
+            return self._validated_transition_result(
+                transition[1],
+                tenant=item.tenant_id,
+                backup=item.backup_id,
+                expected=expected,
+                operation=operation,
+            )
+        if operation == "restore" and self.repo.restore_recovery(
+            tenant_id=item.tenant_id,
+            backup_id=item.backup_id,
+            expected_version=expected,
+        ) is not None:
+            raise BackupConflict("restore was administratively resolved")
+        return self._recover_pending_transition(
+            item,
+            operation=operation,
+            expected=expected,
+            request_hash=request_hash,
+            idempotency_key=idempotency_key,
+        )
+
+    def _recover_pending_transition(
+        self,
+        item: BackupRecord,
+        *,
+        operation: str,
+        expected: int,
+        request_hash: str,
+        idempotency_key: str | None,
+    ) -> BackupRecord:
+        transition = self.repo.transition(
+            tenant_id=item.tenant_id,
+            backup_id=item.backup_id,
+            operation=operation,
+            expected_version=expected,
+            request_sha256=request_hash,
+        )
+        if transition is None:
+            raise BackupExecutorUnavailable("backup transition claim was lost")
+        if transition[0] == "COMMITTED":
+            assert transition[1] is not None
+            return self._validated_transition_result(
+                transition[1],
+                tenant=item.tenant_id,
+                backup=item.backup_id,
+                expected=expected,
+                operation=operation,
+            )
+        if operation == "restore" and self.repo.restore_recovery(
+            tenant_id=item.tenant_id,
+            backup_id=item.backup_id,
+            expected_version=expected,
+        ) is not None:
+            raise BackupConflict("restore was administratively resolved")
+        recover = getattr(self.executor, "recover_transition", None)
+        if not callable(recover):
+            raise BackupExecutorUnavailable("backup transition outcome is indeterminate")
+        try:
+            recovered = recover(item, operation=operation)
+            if recovered is None:
+                raise BackupExecutorUnavailable(
+                    "backup transition outcome is indeterminate"
+                )
+            validate_backup_record(recovered)
+            _require_manifest(recovered)
+            expected_state = "BACKED_UP" if operation == "backup" else "RESTORED"
+            if (
+                recovered.tenant_id != item.tenant_id
+                or recovered.backup_id != item.backup_id
+                or recovered.version != expected + 1
+                or recovered.state != expected_state
+                or recovered.component_hashes != item.component_hashes
+                or recovered.region != item.region
+                or recovered.encryption_key_ref != item.encryption_key_ref
+                or recovered.manifest_sha256 != item.manifest_sha256
+                or not recovered.backup_verified
+                or (operation == "backup" and recovered.rto_seconds is not None)
+                or (operation == "restore" and not recovered.restore_verified)
+            ):
+                raise BackupExecutorUnavailable(
+                    "stored backup transition does not match its intent"
+                )
+            self._require_residency(recovered)
+        except BackupExecutorUnavailable:
+            raise
+        except Exception as error:
+            raise BackupExecutorUnavailable(
+                "backup transition outcome is indeterminate"
+            ) from error
+        try:
+            saved = self.repo.save(
+                recovered,
+                expected,
+                idempotency_key=idempotency_key,
+                operation=(
+                    "complete-backup" if operation == "backup" else "complete-restore"
+                )
+                if idempotency_key is not None
+                else None,
+                request_sha256=request_hash if idempotency_key is not None else None,
+                transition_operation=operation,
+                transition_expected=expected,
+                transition_request_sha256=request_hash,
+            )
+            return self._validated_transition_result(
+                saved,
+                tenant=item.tenant_id,
+                backup=item.backup_id,
+                expected=expected,
+                operation=operation,
+            )
+        except Exception as error:
+            try:
+                transition = self.repo.transition(
+                    tenant_id=item.tenant_id,
+                    backup_id=item.backup_id,
+                    operation=operation,
+                    expected_version=expected,
+                    request_sha256=request_hash,
+                )
+            except Exception:
+                transition = None
+            if transition is not None and transition[0] == "COMMITTED":
+                assert transition[1] is not None
+                return self._validated_transition_result(
+                    transition[1],
+                    tenant=item.tenant_id,
+                    backup=item.backup_id,
+                    expected=expected,
+                    operation=operation,
+                )
+            raise BackupExecutorUnavailable(
+                "recovered backup transition could not be committed"
+            ) from error
+
+    def _validated_transition_result(
+        self,
+        value: BackupRecord,
+        *,
+        tenant: str,
+        backup: str,
+        expected: int,
+        operation: str,
+    ) -> BackupRecord:
+        expected_state = "BACKED_UP" if operation == "backup" else "RESTORED"
+        try:
+            validate_backup_record(value)
+        except (BackupConflict, TypeError, ValueError) as error:
+            raise BackupConflict("backup transition result is invalid") from error
+        if (
+            value.tenant_id != tenant
+            or value.backup_id != backup
+            or value.version != expected + 1
+            or value.state != expected_state
+        ):
+            raise BackupConflict("backup transition result scope is invalid")
+        _require_manifest(value)
+        self._require_residency(value)
+        return value
+
     def _now(self) -> int:
         value = self._clock()
         if type(value) is not int or value < 0:
@@ -250,8 +669,11 @@ class BackupService:
             decision = guard.require_region(tenant_id=item.tenant_id, region=item.region)
         except ResidencyConflict as error:
             raise BackupConflict("backup region is not permitted by residency policy") from error
+        except Exception as error:
+            raise BackupConflict("backup residency check failed") from error
         if (
-            decision.tenant_id != item.tenant_id
+            type(decision) is not ResidencyDecision
+            or decision.tenant_id != item.tenant_id
             or decision.source_region != item.region
             or decision.destination_region != item.region
             or not decision.same_region
@@ -304,7 +726,7 @@ def manifest_sha256(record: BackupRecord) -> str:
 
 
 def _validated_result(result: object) -> BackupExecutionResult:
-    if not isinstance(result, BackupExecutionResult):
+    if type(result) is not BackupExecutionResult:
         raise BackupConflict("executor returned an unverifiable result")
     _validate_execution_result(result)
     return result
@@ -323,7 +745,7 @@ def _validate_execution_result(result: BackupExecutionResult) -> None:
     if (
         type(result.component_hashes) is not tuple
         or not result.component_hashes
-        or len(set(result.component_hashes)) != len(result.component_hashes)
+        or len(result.component_hashes) > 10_000
     ):
         raise BackupConflict("executor returned invalid component hashes")
     for digest in result.component_hashes:
@@ -333,14 +755,22 @@ def _validate_execution_result(result: BackupExecutionResult) -> None:
             or any(char not in "0123456789abcdef" for char in digest)
         ):
             raise BackupConflict("executor returned an invalid component digest")
+    if len(set(result.component_hashes)) != len(result.component_hashes):
+        raise BackupConflict("executor returned invalid component hashes")
 
 
 def _matches_manifest(item: BackupRecord, result: BackupExecutionResult) -> bool:
     return (
         item.manifest_sha256 is not None
+        and item.manifest_sha256 == manifest_sha256(item)
         and result.manifest_sha256 == item.manifest_sha256
         and result.component_hashes == item.component_hashes
     )
+
+
+def _require_manifest(record: BackupRecord) -> None:
+    if record.manifest_sha256 != manifest_sha256(record):
+        raise BackupConflict("backup manifest is invalid")
 
 
 def _transition_hash(operation: str, tenant: str, backup: str, expected: int) -> str:

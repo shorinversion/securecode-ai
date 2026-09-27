@@ -234,13 +234,14 @@ def provider_target(request: SCMRunAdmissionRequest) -> tuple[str, str, str]:
 
 
 def admission_hash(request: SCMRunAdmissionRequest) -> str:
-    return material_hash(
-        {
-            "authorized_head_sha": request.authorized_head_sha,
-            "execution_identity": request.execution_identity.model_dump(mode="json"),
-            "installation_id": request.installation_id,
-        }
-    )
+    material: dict[str, object] = {
+        "authorized_head_sha": request.authorized_head_sha,
+        "execution_identity": request.execution_identity.model_dump(mode="json"),
+        "installation_id": request.installation_id,
+    }
+    if request.delivery_sha256 is not None:
+        material["delivery_sha256"] = request.delivery_sha256
+    return material_hash(material)
 
 
 def run_id(semantic: tuple[str, str, str, str]) -> str:

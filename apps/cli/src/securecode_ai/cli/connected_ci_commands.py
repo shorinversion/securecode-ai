@@ -17,6 +17,7 @@ from .connected import (
     ConnectedCliErrorCode,
     ConnectedRunReceipt,
     parse_connected_arguments,
+    parse_connected_arguments_with_operation,
     run_connected,
     settings_from_environment,
 )
@@ -36,8 +37,8 @@ def run_connect_command(
     """Submit one exact revision to the control plane and print its reference."""
 
     try:
-        target, wait, fresh = parse_connected_arguments(tokens[1:])
-        settings = settings_from_environment(environment, fresh=fresh)
+        target, wait, fresh, operation = parse_connected_arguments_with_operation(tokens[1:])
+        settings = settings_from_environment(environment, fresh=fresh, operation=operation)
         if target is not None:
             _require_target_head(target, settings.head_sha)
         execute = run_connected if run_executor is None else run_executor
@@ -50,6 +51,9 @@ def run_connect_command(
     except ConnectedCliError as error:
         stderr.write("connected run was rejected (" + error.code.value + ")" + chr(10))
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except KeyboardInterrupt:
+        stderr.write("connected run cancelled" + chr(10))
+        return int(CliExitCode.CANCELLED_OR_SUPERSEDED)
     except Exception:
         stderr.write("connected run failed" + chr(10))
         return int(CliExitCode.OPERATIONAL_ERROR)

@@ -124,14 +124,17 @@ class SecretOperationsHandler:
             return FORBIDDEN
         if (
             not self._provider_available
-            and request.action in {"secrets.grant", "secrets.rotate", "secrets.revoke"}
+            and request.action in {"secrets.grant", "secrets.rotate"}
         ):
             return _provider_unavailable()
         if self._provider_available and request.action.startswith("secrets."):
             try:
                 self._service.expire(tenant_id=request.identity.tenant_id)
-            except SecretDenied:
-                if request.action != "secrets.read":
+            except SecretDenied as failure:
+                if (
+                    request.action != "secrets.read"
+                    and failure.code != "PROVIDER_UNAVAILABLE"
+                ):
                     return _provider_unavailable()
         handlers = {
             "secrets.grant": self._grant,

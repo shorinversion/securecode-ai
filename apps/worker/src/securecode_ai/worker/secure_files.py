@@ -86,7 +86,11 @@ def read_ascii_secret(path: Path, *, minimum: int, maximum: int) -> str:
             or not _same_file_state(details, final_details)
         ):
             raise ValueError("worker secret file is invalid")
-        value = raw.rstrip(b"\r\n").decode("ascii")
+        if raw.endswith(b"\r\n"):
+            raw = raw[:-2]
+        elif raw.endswith((b"\r", b"\n")):
+            raw = raw[:-1]
+        value = raw.decode("ascii")
     except (OSError, UnicodeDecodeError):
         raise ValueError("worker secret file is invalid") from None
     finally:

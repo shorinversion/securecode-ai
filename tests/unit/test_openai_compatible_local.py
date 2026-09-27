@@ -17,6 +17,7 @@ from securecode_ai.adapters import (
 )
 from securecode_ai.adapters.model import ModelBoundaryExecution, ProviderAttemptBinding
 from securecode_ai.adapters.openai_compatible_local import OpenAICompatibleLocalHttpConnector
+from securecode_ai.adapters.remote_provider_budget import RemoteProviderCallContext
 from securecode_ai.contracts import (
     DataClass,
     ModelCallStatus,
@@ -53,7 +54,11 @@ def _success_body(*, refusal: str | None = None) -> bytes:
     ).encode()
 
 
-def _ollama_success_body(*, extra_choice_control: bool = False) -> bytes:
+def _ollama_success_body(
+    *,
+    extra_choice_control: bool = False,
+    prompt_tokens_details: dict[str, object] | None = None,
+) -> bytes:
     choice: dict[str, object] = {
         "index": 0,
         "message": {"role": "assistant", "content": '{"candidates":[]}'},
@@ -61,6 +66,13 @@ def _ollama_success_body(*, extra_choice_control: bool = False) -> bytes:
     }
     if extra_choice_control:
         choice["logprobs"] = None
+    usage: dict[str, object] = {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+    }
+    if prompt_tokens_details is not None:
+        usage["prompt_tokens_details"] = prompt_tokens_details
     return json.dumps(
         {
             "id": "chatcmpl-ollama-safe-id",
@@ -69,11 +81,7 @@ def _ollama_success_body(*, extra_choice_control: bool = False) -> bytes:
             "model": "approved-local-model",
             "system_fingerprint": "fp_ollama",
             "choices": [choice],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "total_tokens": 15,
-            },
+            "usage": usage,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -95,6 +103,17 @@ def _native_no_tool_body(*, finish_reason: str = "stop") -> bytes:
         separators=(",", ":"),
         sort_keys=True,
     ).encode()
+
+
+def _call_budget() -> RemoteProviderCallContext:
+    return RemoteProviderCallContext(
+        run_id="local-transport-test",
+        tenant_id="local-transport-tenant",
+        request_id="local-transport-request",
+        attempt=1,
+        max_input_tokens=4096,
+        max_output_tokens=4096,
+    )
 
 
 class _ScriptedSocket:
@@ -359,10 +378,13 @@ def test_http_200_refusal_stays_a_typed_non_success(
     assert outcome.payload is None
 
 
-def test_ollama_0162_envelope_is_canonicalized_before_normalization(
+def test_ollama_envelope_with_cached_token_usage_is_canonicalized(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    endpoint = _LocalEndpoint(status=200, body=_ollama_success_body())
+    endpoint = _LocalEndpoint(
+        status=200,
+        body=_ollama_success_body(prompt_tokens_details={"cached_tokens": 8}),
+    )
     endpoint.install(monkeypatch)
     profile = _profile_for(endpoint.port)
     outcome, _ = _execute(
@@ -371,6 +393,34 @@ def test_ollama_0162_envelope_is_canonicalized_before_normalization(
     )
     assert outcome.result is not None
     assert outcome.result.status is ModelCallStatus.SUCCEEDED
+
+
+@pytest.mark.parametrize(
+    "prompt_tokens_details",
+    [
+        {"cached_tokens": True},
+        {"cached_tokens": -1},
+        {"cached_tokens": 11},
+        {"cached_tokens": 1, "unexpected": 0},
+    ],
+)
+def test_ollama_cached_token_usage_is_strictly_validated(
+    monkeypatch: pytest.MonkeyPatch,
+    prompt_tokens_details: dict[str, object],
+) -> None:
+    endpoint = _LocalEndpoint(
+        status=200,
+        body=_ollama_success_body(prompt_tokens_details=prompt_tokens_details),
+    )
+    endpoint.install(monkeypatch)
+    profile = _profile_for(endpoint.port)
+    outcome, _ = _execute(
+        profile=profile,
+        connector=OpenAICompatibleLocalHttpConnector(profile=profile),
+    )
+    assert outcome.result is not None
+    assert outcome.result.status is ModelCallStatus.PROVIDER_ERROR
+    assert outcome.payload is None
 
 
 @pytest.mark.parametrize(
@@ -468,6 +518,7 @@ def test_ollama_envelope_drift_is_rejected_without_retaining_native_body(
         model_id=profile.model_id,
         timeout_ms=1000,
         binding=_binding(),
+        call_budget=_call_budget(),
     )
     assert attempt.response_bytes is None
     assert attempt.transport_failure is not None
@@ -499,6 +550,7 @@ def test_cancelled_transport_returns_cancelled_without_a_http_request(
         model_id=profile.model_id,
         timeout_ms=1000,
         binding=_binding(),
+        call_budget=_call_budget(),
     )
     assert attempt.transport_failure is not None
     assert attempt.transport_failure.value == "CANCELLED"
@@ -528,6 +580,7 @@ def test_timeout_and_redirect_are_non_success_without_followup_requests(
             model_id=profile.model_id,
             timeout_ms=50,
             binding=_binding(),
+            call_budget=_call_budget(),
         )
     assert timeout.transport_failure is not None
     assert timeout.transport_failure.value == "TIMEOUT"
@@ -550,6 +603,7 @@ def test_timeout_and_redirect_are_non_success_without_followup_requests(
         model_id=profile.model_id,
         timeout_ms=1000,
         binding=_binding(),
+        call_budget=_call_budget(),
     )
     assert redirect.redirected is True
     assert len(redirect_endpoint.requests) == 1
@@ -575,6 +629,7 @@ def test_oversized_response_is_rejected_without_retaining_its_body(
         model_id=profile.model_id,
         timeout_ms=1000,
         binding=_binding(),
+        call_budget=_call_budget(),
     )
     assert attempt.response_bytes is None
     assert attempt.transport_failure is not None

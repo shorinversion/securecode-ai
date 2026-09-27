@@ -26,17 +26,21 @@ COMMAND_DESCRIPTIONS: Final = MappingProxyType(
         "status": "read one run's current durable state from the control plane",
         "cancel": "request cancellation of one run with an exact state precondition",
         "results": "read one run's findings, artifacts or events from the control plane",
+        "download": "download one committed run artifact without JSON encoding",
+        "repair-download": "download and re-import one exact validated repair patch",
         "approvals": "open, read or decide a control-plane approval request",
         "finding": "read one finding from the control plane",
-        "policies": "read the control plane's effective policy documents",
+        "policies": "list or administer tenant-scoped policy profiles",
         "health": "check readiness or liveness of the configured control plane",
         "decisions": "record an operator decision on one finding",
         "secrets": _GRANT_HELP,
         "events": "read one page of a run's event feed from the control plane",
-        "backups": "create, read, execute or restore a backup through the control plane",
+        "audit": "read a verified page of one run's immutable audit chain",
+        "backups": "create, read, execute, restore or resolve a backup through the control plane",
         "deletions": "open, approve, hold, execute or read an erasure request",
+        "waivers": "grant, read or revoke an exact finding waiver",
         "feedback": "submit a pilot review or read aggregated feedback metrics",
-        "assurance": "append or read assurance records for one repository",
+        "assurance": "append, read or render assurance records for one repository",
     }
 )
 
@@ -90,6 +94,7 @@ def _command_help(command: str) -> str:
             parser.add_argument("--capability", required=True)
             parser.add_argument("--approval-id", required=True)
             parser.add_argument("--approver-id", required=True)
+            parser.add_argument("--execution-identity-hash")
     elif command == "release":
         parser.add_argument("--config", required=True)
         parser.add_argument("--publish", action="store_true")
@@ -106,6 +111,12 @@ def _command_help(command: str) -> str:
             action="store_true",
             help="open a new run instead of resuming the recorded one for this revision",
         )
+        parser.add_argument(
+            "--operation",
+            choices=("SCAN", "REPAIR"),
+            default="SCAN",
+            help="run intent forwarded to the worker lease",
+        )
     elif command == "ci":
         parser.add_argument(
             "--new-run",
@@ -115,11 +126,18 @@ def _command_help(command: str) -> str:
     elif command == "finding":
         parser.add_argument("finding_id", help="control plane finding identifier")
     elif command == "policies":
-        pass
+        parser.add_argument(
+            "action",
+            nargs="?",
+            choices=("list", "create", "activate", "assign", "default"),
+            default="list",
+            help="list or administer tenant-scoped policy profiles",
+        )
+        parser.add_argument("args", nargs=argparse.REMAINDER, help="policy operation arguments")
     elif command == "assurance":
         parser.add_argument(
             "action",
-            choices=("append", "show"),
+            choices=("append", "show", "report"),
             help="assurance operation to perform",
         )
         parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
@@ -137,19 +155,34 @@ def _command_help(command: str) -> str:
             help="erasure operation to perform",
         )
         parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
+    elif command == "waivers":
+        parser.add_argument(
+            "action",
+            choices=("create", "show", "revoke"),
+            help="waiver operation to perform",
+        )
+        parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "backups":
         parser.add_argument(
             "action",
-            choices=("create", "show", "execute", "restore"),
+            choices=("create", "show", "execute", "restore", "resolve"),
             help="backup operation to perform",
         )
         parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "events":
         parser.add_argument("run_id", help="control plane run identifier")
         parser.add_argument("--cursor", help="server-issued page cursor")
-        parser.add_argument("--limit", type=int, help="page size (1-500)")
+        parser.add_argument("--limit", type=int, help="page size (1-100)")
+    elif command == "audit":
+        parser.add_argument("run_id", help="control plane run identifier")
+        parser.add_argument("--start", type=int, default=1, help="first audit sequence")
+        parser.add_argument("--end", type=int, help="last audit sequence, inclusive")
     elif command == "secrets":
-        parser.add_argument("action", choices=("grant", "show"), help="secret operation")
+        parser.add_argument(
+            "action",
+            choices=("grant", "show", "rotate", "revoke"),
+            help="secret operation",
+        )
         parser.add_argument("args", nargs=argparse.REMAINDER, help="operation arguments")
     elif command == "decisions":
         parser.add_argument("finding_id", help="control plane finding identifier")
@@ -180,6 +213,37 @@ def _command_help(command: str) -> str:
             choices=("findings", "artifacts", "events"),
             default="findings",
             help="which run collection to read",
+        )
+        parser.add_argument(
+            "--cursor",
+            help="opaque cursor returned by the previous page",
+        )
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=50,
+            help="page size from 1 to 100",
+        )
+        parser.add_argument(
+            "--content-sha256",
+            help="read one committed artifact payload by its SHA-256 digest",
+        )
+    elif command == "download":
+        parser.add_argument("run_id", help="control plane run identifier")
+        parser.add_argument("content_sha256", help="committed artifact SHA-256 digest")
+        parser.add_argument(
+            "--output",
+            required=True,
+            help="create a new local file for the binary artifact",
+        )
+    elif command == "repair-download":
+        parser.add_argument("run_id", help="control plane run identifier")
+        parser.add_argument("finding_id", help="exact finding identifier bound to the patch")
+        parser.add_argument("patch_sha256", help="exact patch SHA-256 digest")
+        parser.add_argument(
+            "--target",
+            required=True,
+            help="existing checkout used to validate and store the imported patch",
         )
     elif command in {"status", "cancel"}:
         parser.add_argument("run_id", help="control plane run identifier")

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-from .ports import ServiceRequest, ServiceResponse
+from .ports import ServiceRequest, ServiceResponse, ServiceUnavailableError
 
 
 class Handler(Protocol):
@@ -44,6 +44,20 @@ class CompositeService:
             )
         return await handler.dispatch(request)
 
+    def preflight_artifact_upload(self, request: ServiceRequest) -> str:
+        """Authenticate the signed artifact route before tenant charging."""
+
+        if request.action != "artifacts.upload":
+            raise ServiceUnavailableError()
+        handler = self._optional.get(request.action)
+        preflight = getattr(handler, "preflight_artifact_upload", None)
+        if not callable(preflight):
+            raise ServiceUnavailableError()
+        tenant_id = preflight(request)
+        if type(tenant_id) is not str or not tenant_id:
+            raise ServiceUnavailableError()
+        return tenant_id
+
     def _select(self, request: ServiceRequest) -> Handler | None:
         if request.action.startswith("worker_sessions."):
             return self._worker
@@ -65,10 +79,16 @@ _CORE_ACTIONS = frozenset(
         "runs.events.read",
         "runs.findings.read",
         "runs.artifacts.read",
+        "runs.artifacts.content",
+        "runs.repair_patches.content",
         "findings.read",
         "findings.evidence.read",
         "findings.decide",
         "policies.read",
+        "policies.create",
+        "policies.activate",
+        "policies.assign",
+        "policies.default",
     }
 )
 

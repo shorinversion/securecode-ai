@@ -72,6 +72,8 @@ from .dependency_scanning import (
     parse_python_requirements,
     scan_dependency_advisories,
 )
+from .dependency_scanning_manifests import parse_dependency_manifest
+from .dependency_scanning_osv import BoundedOsvScanner
 from .endpoint import (
     EndpointAuthorization,
     EndpointAuthorizationIssuer,
@@ -160,6 +162,7 @@ __all__ = [
     "DEFAULT_SECRET_DETECTION_LIMITS",
     "ApprovedExternalSecretScanner",
     "ApprovedOsvScanner",
+    "BoundedOsvScanner",
     "AuthorizedProviderHarness",
     "BinaryStreamTelemetrySink",
     "ConfigDiagnostic",
@@ -265,6 +268,7 @@ __all__ = [
     "open_python_ast",
     "parse_model_call_result",
     "parse_model_request",
+    "parse_dependency_manifest",
     "parse_provider_profile",
     "parse_python_requirements",
     "portfolio_signals_to_raw_signals",

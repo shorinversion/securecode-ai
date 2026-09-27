@@ -122,6 +122,7 @@ _SENSITIVE_NAME_MARKERS = frozenset(
         "token",
         "verification",
     }
+)
 _SENSITIVE_LITERAL_MARKERS = frozenset(
     {
         "access-key",
@@ -150,6 +151,7 @@ _SENSITIVE_LITERAL_MARKERS = frozenset(
         "token",
         "verification",
     }
+)
 _GO_SCOPES = frozenset({"function_declaration", "method_declaration", "func_literal"})
 _KEY_PACKAGES = frozenset({"crypto/aes", "crypto/des", "crypto/hmac"})
 _JWT_PACKAGES = frozenset(
@@ -343,9 +345,7 @@ class GoCwe338Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is GoCwe338Operation
+            if valid_identity and valid_ranges and type(self.operation) is GoCwe338Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -518,9 +518,7 @@ def scan_go_cwe338(
                     if bindings and _is_sensitive_sink(node, source, imports):
                         _add_facts(raw, bindings, _range(node), limits)
                 elif node.type == "return_statement":
-                    bindings = _bindings_from_children(
-                        node, environment, source, imports, limits
-                    )
+                    bindings = _bindings_from_children(node, environment, source, imports, limits)
                     if bindings and sensitive_scope:
                         _add_facts(raw, bindings, _range(node), limits)
                 if node.type in {"short_var_declaration", "assignment_statement", "var_spec"}:
@@ -606,14 +604,18 @@ def _validate_request(symbol_index: SymbolIndex, limits: GoCwe338ScanLimits) -> 
 
 def _import_aliases(root: Node, source: bytes) -> dict[str, str]:
     aliases: dict[str, str] = {}
-    relevant = _MATH_RAND_PACKAGES | _CSPRNG_PACKAGES | {
-        _CRYPTO_RAND_PACKAGE,
-        *_KEY_PACKAGES,
-        *_JWT_PACKAGES,
-        "net/http",
-        "net/url",
-        "os",
-    }
+    relevant = (
+        _MATH_RAND_PACKAGES
+        | _CSPRNG_PACKAGES
+        | {
+            _CRYPTO_RAND_PACKAGE,
+            *_KEY_PACKAGES,
+            *_JWT_PACKAGES,
+            "net/http",
+            "net/url",
+            "os",
+        }
+    )
     for node in _preorder(root):
         if node.type != "import_spec":
             continue
@@ -625,9 +627,7 @@ def _import_aliases(root: Node, source: bytes) -> dict[str, str]:
             continue
         name_node = node.child_by_field_name("name")
         alias = (
-            _text(source, name_node)
-            if name_node is not None
-            else _default_import_alias(package)
+            _text(source, name_node) if name_node is not None else _default_import_alias(package)
         )
         if alias not in {".", "_"}:
             aliases[alias] = package
@@ -688,7 +688,7 @@ def _capture_assignment_sinks(
         if not binding.flows:
             continue
         text = _binding_name(name, source) or _compact_text(source, name)
-        if _is_sensitive_name(text) or _is_sensitive_literal(text):
+        if _is_sensitive_name(text) or _has_sensitive_literal(values[index], source):
             _add_facts(raw, binding, _range(node), limits)
 
 
@@ -929,8 +929,6 @@ def _merge_bindings(bindings: Iterable[_Binding]) -> _Binding:
     output: dict[tuple[int, int, str], _Flow] = {}
     weak_generator = False
     for value in bindings:
-        if not isinstance(value, _Binding):
-            continue
         weak_generator = weak_generator or value.weak_generator
         for flow in value.flows:
             output[(flow.source.start_byte, flow.source.end_byte, flow.operation.value)] = flow
@@ -1066,12 +1064,12 @@ Cwe338Signal = GoCwe338Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE338_SCAN_LIMITS",
     "Cwe338ScanError",
     "Cwe338ScanErrorCode",
     "Cwe338ScanLimits",
     "Cwe338ScanResult",
     "Cwe338Signal",
-    "DEFAULT_GO_CWE338_SCAN_LIMITS",
     "GoCwe338Operation",
     "GoCwe338ScanError",
     "GoCwe338ScanErrorCode",

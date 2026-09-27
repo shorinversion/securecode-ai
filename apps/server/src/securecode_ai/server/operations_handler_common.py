@@ -18,7 +18,11 @@ def document(
     optional: frozenset[str] = frozenset(),
 ) -> Mapping[str, object] | None:
     value = request.document
-    if value is None or set(value) - required - optional or not required.issubset(value):
+    if (
+        not isinstance(value, Mapping)
+        or set(value) - required - optional
+        or not required.issubset(value)
+    ):
         return None
     return value
 
@@ -29,6 +33,8 @@ def string(
     *,
     maximum: int = 256,
 ) -> str | None:
+    if not isinstance(value, Mapping):
+        return None
     item = value.get(name)
     if (
         type(item) is not str
@@ -59,11 +65,15 @@ def path_identifier(value: Mapping[str, object], name: str) -> str | None:
 
 
 def boolean(value: Mapping[str, object], name: str) -> bool | None:
+    if not isinstance(value, Mapping):
+        return None
     item = value.get(name)
     return item if type(item) is bool else None
 
 
 def integer(value: Mapping[str, object], name: str) -> int | None:
+    if not isinstance(value, Mapping):
+        return None
     item = value.get(name)
     return item if type(item) is int else None
 
@@ -83,7 +93,7 @@ def utc_datetime(value: Mapping[str, object], name: str) -> datetime | None:
 
 def expected_version(request: ServiceRequest) -> int | None:
     value = request.precondition
-    if value is None:
+    if type(value) is not str:
         return None
     if value.startswith('W/"') and value.endswith('"'):
         value = value[3:-1]
@@ -96,8 +106,10 @@ def expected_version(request: ServiceRequest) -> int | None:
 
 
 def query_value(request: ServiceRequest, name: str) -> str | None:
+    if not isinstance(request.query, Mapping):
+        return None
     raw = request.query.get(name)
-    if raw is None or len(raw) != 1:
+    if type(raw) is not tuple or len(raw) != 1:
         return None
     value = raw[0]
     if type(value) is not str or not value or value != value.strip():
@@ -106,6 +118,8 @@ def query_value(request: ServiceRequest, name: str) -> str | None:
 
 
 def path_value(request: ServiceRequest, name: str) -> str | None:
+    if not isinstance(request.path_params, Mapping):
+        return None
     value = request.path_params.get(name)
     return value if type(value) is str and value else None
 

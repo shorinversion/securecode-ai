@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from threading import RLock
 import unicodedata
 from dataclasses import dataclass
 from enum import StrEnum
@@ -195,9 +196,9 @@ class RepositoryToolBudget:
 
     def __post_init__(self) -> None:
         if any(
-            type(value) is not int or value <= 0
+            type(value) is not int or value < 0
             for value in (self.max_calls, self.max_bytes, self.max_tokens)
-        ):
+        ) or self.max_bytes == 0 or self.max_tokens == 0:
             raise ValueError("repository tool budget is invalid")
 
 
@@ -293,7 +294,7 @@ _ARGUMENT_TYPES: Final = {
 class RepositoryToolGuard:
     """Authorize and meter one immutable RepositoryView scope."""
 
-    __slots__ = ("_budget", "_bytes", "_calls", "_scope", "_sequence", "_tokens")
+    __slots__ = ("_budget", "_bytes", "_calls", "_lock", "_scope", "_sequence", "_tokens")
 
     def __init__(self, *, scope: RepositoryToolScope, budget: RepositoryToolBudget) -> None:
         self._scope = scope
@@ -302,6 +303,7 @@ class RepositoryToolGuard:
         self._bytes = 0
         self._tokens = 0
         self._sequence = 0
+        self._lock = RLock()
 
     def _receipt(
         self,
@@ -362,6 +364,13 @@ class RepositoryToolGuard:
             )
 
     def dispatch(self, request: object, backend: RepositoryView) -> GuardedToolResult:
+        # Tool sessions may receive concurrent model actions. Serialize policy
+        # decisions and backend reads so calls, byte and token budgets share one
+        # atomic accounting sequence.
+        with self._lock:
+            return self._dispatch_locked(request, backend)
+
+    def _dispatch_locked(self, request: object, backend: RepositoryView) -> GuardedToolResult:
         if type(request) is not RepositoryToolRequest:
             return self._receipt(
                 tool="unknown",
@@ -437,6 +446,13 @@ class RepositoryToolGuard:
                 reason=ToolReason.BACKEND_FAILURE,
             )
         if type(output) is not RepositoryToolOutput:
+            return self._receipt(
+                tool=tool.value,
+                decision=ToolDecision.ALLOW,
+                outcome=ToolOutcome.NON_SUCCESS,
+                reason=ToolReason.INVALID_RESULT,
+            )
+        if isinstance(arguments, ListPathsArguments) and output.item_count > arguments.max_entries:
             return self._receipt(
                 tool=tool.value,
                 decision=ToolDecision.ALLOW,

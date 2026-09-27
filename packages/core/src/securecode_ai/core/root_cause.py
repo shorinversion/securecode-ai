@@ -17,7 +17,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from securecode_ai.contracts import EvidenceKind, FindingCase, FindingVerdict
+from securecode_ai.contracts import (
+    CommandOperationEvidence,
+    EvidenceKind,
+    FindingCase,
+    FindingVerdict,
+)
 
 from .evidence_graph import EvidenceGraph
 
@@ -55,6 +60,9 @@ class RootCauseLocalizationReason(StrEnum):
     EVIDENCE_KIND_MISMATCH = "EVIDENCE_KIND_MISMATCH"
     EVIDENCE_LOCATION_MISSING = "EVIDENCE_LOCATION_MISSING"
     CAUSAL_ROLE_CONFLICT = "CAUSAL_ROLE_CONFLICT"
+    COMMAND_EVIDENCE_MISSING = "COMMAND_EVIDENCE_MISSING"
+    COMMAND_EVIDENCE_AMBIGUOUS = "COMMAND_EVIDENCE_AMBIGUOUS"
+    COMMAND_EVIDENCE_MISMATCH = "COMMAND_EVIDENCE_MISMATCH"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +101,7 @@ class RootCauseRecord:
     evidence_graph_id: str
     evidence_graph_sha256: str
     evidence: RootCauseEvidenceRefs
+    command_operation_evidence: tuple[CommandOperationEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         identifiers = (
@@ -115,6 +124,18 @@ class RootCauseRecord:
                 for value in (self.root_cause_fingerprint, self.evidence_graph_sha256)
             )
             or type(self.evidence) is not RootCauseEvidenceRefs
+            or type(self.command_operation_evidence) is not tuple
+            or any(
+                type(value) is not CommandOperationEvidence
+                for value in self.command_operation_evidence
+            )
+            or len(self.command_operation_evidence) > 1
+            or any(
+                value.source_evidence_id != self.evidence.source_evidence_id
+                or value.sink_evidence_id != self.evidence.sink_evidence_id
+                or value.flow_evidence_id != self.evidence.propagation_evidence_id
+                for value in self.command_operation_evidence
+            )
             or self.record_id
             != _record_id(
                 finding_id=self.finding_id,
@@ -127,6 +148,7 @@ class RootCauseRecord:
                 evidence_graph_id=self.evidence_graph_id,
                 evidence_graph_sha256=self.evidence_graph_sha256,
                 evidence=self.evidence,
+                command_operation_evidence=self.command_operation_evidence,
             )
         ):
             raise RootCauseContractError()
@@ -275,6 +297,35 @@ def localize_root_cause(
     if source.location == sink.location:
         return _non_confirming(receipt_identity, RootCauseLocalizationReason.CAUSAL_ROLE_CONFLICT)
 
+    command_operation_evidence: tuple[CommandOperationEvidence, ...] = ()
+    if copied_finding.cwe_id == "CWE-78":
+        matches = tuple(
+            item
+            for item in copied_finding.command_operation_evidence
+            if item.source_evidence_id == evidence.source_evidence_id
+            and item.sink_evidence_id == evidence.sink_evidence_id
+            and item.flow_evidence_id == evidence.propagation_evidence_id
+            and item.scanner_signal_id in copied_finding.evidence_ids
+            and (
+                (scanner := evidence_by_id.get(item.scanner_signal_id)) is not None
+                and scanner.evidence_kind is EvidenceKind.SCANNER_SIGNAL
+                and scanner.location == sink.location
+            )
+        )
+        if not copied_finding.command_operation_evidence:
+            return _non_confirming(
+                receipt_identity, RootCauseLocalizationReason.COMMAND_EVIDENCE_MISSING
+            )
+        if not matches:
+            return _non_confirming(
+                receipt_identity, RootCauseLocalizationReason.COMMAND_EVIDENCE_MISMATCH
+            )
+        if len(matches) != 1:
+            return _non_confirming(
+                receipt_identity, RootCauseLocalizationReason.COMMAND_EVIDENCE_AMBIGUOUS
+            )
+        command_operation_evidence = (matches[0],)
+
     record = RootCauseRecord(
         record_id=_record_id(
             finding_id=copied_finding.finding_id,
@@ -287,6 +338,7 @@ def localize_root_cause(
             evidence_graph_id=copied_graph.graph_id,
             evidence_graph_sha256=copied_graph.graph_sha256,
             evidence=evidence,
+            command_operation_evidence=command_operation_evidence,
         ),
         schema_version=_SCHEMA_VERSION,
         finding_id=copied_finding.finding_id,
@@ -299,6 +351,7 @@ def localize_root_cause(
         evidence_graph_id=copied_graph.graph_id,
         evidence_graph_sha256=copied_graph.graph_sha256,
         evidence=evidence,
+        command_operation_evidence=command_operation_evidence,
     )
     return RootCauseLocalizationReceipt(
         *receipt_identity,
@@ -385,6 +438,7 @@ def _record_id(
     evidence_graph_id: str,
     evidence_graph_sha256: str,
     evidence: RootCauseEvidenceRefs,
+    command_operation_evidence: tuple[CommandOperationEvidence, ...] = (),
 ) -> str:
     material = {
         "candidate_id": candidate_id,
@@ -403,6 +457,10 @@ def _record_id(
         "schema_version": _SCHEMA_VERSION,
         "tenant_id": tenant_id,
     }
+    if command_operation_evidence:
+        material["command_operation_evidence"] = [
+            item.model_dump(mode="json") for item in command_operation_evidence
+        ]
     digest = hashlib.sha256(
         json.dumps(
             material,

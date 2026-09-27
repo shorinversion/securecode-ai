@@ -10,15 +10,18 @@ from __future__ import annotations
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     CandidateInterpretationReceipt,
+    CommandOperationEvidence,
     CoverageUnit,
     DiscoveryCandidate,
     Evidence,
+    EvidenceKind,
     FindingCase,
     FindingGateState,
 )
 from securecode_ai.core.classification import (
     classify_product_cwe,
 )
+from securecode_ai.core.evidence_graph import EvidenceEdgeKind, EvidenceGraph, EvidenceNodeKind
 from securecode_ai.core.finding_gate import FindingGateDecision
 from securecode_ai.core.normalization import root_cause_location_fingerprint
 from securecode_ai.core.reports import (
@@ -31,6 +34,7 @@ from .product_audit_types import (
     ProductAuditFindingMetadata,
     ProductAuditHostInputs,
 )
+from .product_execution import ProductDeterministicExecution
 from .product_review import ProductReviewResult
 from .product_scan import (
     ProductCandidateFlow,
@@ -66,6 +70,7 @@ def _findings(
             type(decision) is not FindingGateDecision
             or decision.finding_gate_state is not FindingGateState.BLOCKING
             or metadata_item.evidence_graph_ref.tenant_id != candidate.tenant_id
+            or metadata_item.evidence_graph_ref.content_id != flow.graph.graph_id
             or metadata_item.evidence_graph_ref.content_sha256 != flow.graph.graph_sha256
         ):
             raise ValueError
@@ -82,6 +87,7 @@ def _findings(
         )
         if not locations:
             raise ValueError
+        command_evidence = _bind_command_operation_evidence(candidate, flow.graph)
         finding = FindingCase(
             schema_version=CONTRACT_SCHEMA_VERSION,
             finding_id=metadata_item.finding_id,
@@ -99,6 +105,7 @@ def _findings(
             finding_verdict=decision.auditor_verdict,
             verdict_evidence_ids=decision.auditor_cited_evidence_ids,
             blocking=True,
+            command_operation_evidence=command_evidence,
         )
         classification = classify_product_cwe(metadata_item.cwe_id)
         _validate_product_finding_metadata(metadata_item, candidate, records)
@@ -139,6 +146,63 @@ def _validate_product_finding_metadata(
         raise ValueError
 
 
+def _bind_command_operation_evidence(
+    candidate: DiscoveryCandidate, graph: EvidenceGraph
+) -> tuple[CommandOperationEvidence, ...]:
+    """Bind scanner operation facts to one exact graph flow and its endpoints."""
+
+    if not candidate.command_operation_evidence:
+        return ()
+    records = {item.evidence_id: item for item in graph.evidence}
+    graph_edges = tuple(graph.edges)
+    output: list[CommandOperationEvidence] = []
+    for command in candidate.command_operation_evidence:
+        matches: list[tuple[str, str, str]] = []
+        for flow in graph.evidence:
+            if flow.evidence_kind is not EvidenceKind.DATA_FLOW:
+                continue
+            targets = {
+                edge.target.node_id
+                for edge in graph_edges
+                if edge.kind is EvidenceEdgeKind.EVIDENCE_DERIVED_FROM
+                and edge.source.node_id == flow.evidence_id
+                and edge.source.kind is EvidenceNodeKind.EVIDENCE
+                and edge.target.kind is EvidenceNodeKind.EVIDENCE
+            }
+            if command.scanner_signal_id not in targets:
+                continue
+            source_ids = tuple(
+                item_id
+                for item_id in targets
+                if (item := records.get(item_id)) is not None
+                and item.evidence_kind is EvidenceKind.SOURCE_LOCATION
+                and item.location == command.source
+            )
+            sink_ids = tuple(
+                item_id
+                for item_id in targets
+                if (item := records.get(item_id)) is not None
+                and item.evidence_kind is EvidenceKind.SOURCE_LOCATION
+                and item.location == command.sink
+            )
+            for source_id in source_ids:
+                for sink_id in sink_ids:
+                    matches.append((source_id, sink_id, flow.evidence_id))
+        if len(matches) != 1:
+            raise ValueError("CWE-78 command operation binding is missing or ambiguous")
+        source_id, sink_id, flow_id = matches[0]
+        output.append(
+            command.model_copy(
+                update={
+                    "source_evidence_id": source_id,
+                    "sink_evidence_id": sink_id,
+                    "flow_evidence_id": flow_id,
+                }
+            )
+        )
+    return tuple(sorted(output, key=lambda item: item.scanner_signal_id))
+
+
 def _recognized_product_root(
     candidate: DiscoveryCandidate, records: dict[str, Evidence]
 ) -> tuple[str, str] | None:
@@ -150,22 +214,29 @@ def _recognized_product_root(
         location = getattr(record, "location", None)
         if location is None:
             continue
-        for cwe_id, rule_id in _PRODUCT_CWE_RULES.items():
-            if (
-                root_cause_location_fingerprint(
-                    tenant_id=candidate.tenant_id,
-                    rule_id=rule_id,
-                    location=location,
-                )
-                == candidate.root_cause_fingerprint
-            ):
-                matches.add((cwe_id, rule_id))
+        for cwe_id, rule_ids in _PRODUCT_CWE_RULES.items():
+            for rule_id in rule_ids:
+                if (
+                    root_cause_location_fingerprint(
+                        tenant_id=candidate.tenant_id,
+                        rule_id=rule_id,
+                        location=location,
+                    )
+                    == candidate.root_cause_fingerprint
+                ):
+                    matches.add((cwe_id, rule_id))
     if len(matches) > 1:
         raise ValueError
     return next(iter(matches), None)
 
 
-def _gate_state(review: ProductReviewResult) -> FindingGateState:
+def _gate_state(
+    review: ProductReviewResult,
+    *,
+    flow: ProductCandidateFlow | None = None,
+    host: ProductAuditHostInputs | None = None,
+    coverage_units: tuple[CoverageUnit, ...] | list[CoverageUnit] | None = None,
+) -> FindingGateState:
     if review.has_known_blocking_finding:
         return FindingGateState.BLOCKING
     if review.outcomes and all(
@@ -174,7 +245,78 @@ def _gate_state(review: ProductReviewResult) -> FindingGateState:
         for outcome in review.outcomes
     ):
         return FindingGateState.CLEAN
+    if (
+        not review.outcomes
+        and flow is not None
+        and host is not None
+        and coverage_units is not None
+        and _zero_candidate_clean(review, flow, host, tuple(coverage_units))
+    ):
+        return FindingGateState.CLEAN
     return FindingGateState.INCONCLUSIVE
+
+
+def _zero_candidate_clean(
+    review: ProductReviewResult,
+    flow: ProductCandidateFlow,
+    host: ProductAuditHostInputs,
+    coverage_units: tuple[CoverageUnit, ...],
+) -> bool:
+    """Require independent proof before routing a completed-zero run as clean."""
+
+    revision = host.execution_identity.repository_revision
+    receipt = flow.discovery.receipt
+    deterministic_execution = host.deterministic_execution
+    if type(deterministic_execution) is not ProductDeterministicExecution:
+        return False
+    if not deterministic_execution.is_complete:
+        return False
+    if (
+        host.operation != "scan"
+        or flow.required_terminal_outcome is not None
+        or flow.deterministic_failed
+        or review.upstream_incomplete
+        or review.discovery != flow.discovery
+        or review.outcomes
+        or flow.graph.candidates
+        or flow.graph.evidence
+        or flow.graph.edges
+        or not flow.discovery.is_completed_zero
+        or receipt.tenant_id != revision.tenant_id
+        or receipt.head_sha != revision.head_sha
+        or flow.graph.tenant_id != revision.tenant_id
+        or flow.graph.head_sha != revision.head_sha
+        or host.source_catalogue.snapshot.head_sha != revision.head_sha
+        or any(
+            index.repository_id != revision.repository_id
+            or index.revision != revision.head_sha
+            for index in host.source_catalogue.indexes
+        )
+        or any(
+            anchor.tenant_id != revision.tenant_id
+            or anchor.head_sha != revision.head_sha
+            for anchor in host.source_catalogue.anchors
+        )
+    ):
+        return False
+
+    required_units = tuple(unit for unit in coverage_units if unit.required)
+    expected_units = frozenset(
+        (stage_id, None)
+        for stage_id in (
+            "intake",
+            "language_discovery",
+            "deterministic_analysis",
+            "model_native_discovery",
+            "normalization",
+            "coverage_guard",
+            "reporting",
+        )
+    )
+    return (
+        {(unit.stage_id, unit.subject_id) for unit in required_units} == expected_units
+        and all(unit.satisfies_required_coverage for unit in required_units)
+    )
 
 
 def _unresolved_units(units: list[CoverageUnit]) -> tuple[str, ...]:

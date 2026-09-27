@@ -17,6 +17,7 @@ from securecode_ai.core.discovery import (
     discover_repository,
 )
 from securecode_ai.core.repository import RepositoryInventory, repository_tree_sha256
+from securecode_ai.core.program_graph import ProgramGraph
 from securecode_ai.core.scanning import ScannerIsolationMode, ScannerRunStatus
 
 from .dependency_scanning import (
@@ -116,15 +117,12 @@ def execute_dependency_stage(
     )
     discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
     selected = discovery.dependency_manifests
-    if selected and scanner is None:
-        raise ValueError("PRODUCT_DEPENDENCY_PORT_UNAVAILABLE")
     contents = {f.path: f for f in snapshot.files}
     metadata = {f.path: f for f in files}
     manifest_contents = {manifest.path: contents[manifest.path].content for manifest in selected}
     scanned, bindings = dependency_manifest_plan(selected, manifest_contents)
     results = []
     for manifest in scanned:
-        assert scanner is not None
         try:
             parsed = parse_dependency_manifest(
                 repository_id=repository_id,
@@ -151,7 +149,7 @@ def execute_dependency_stage(
             )
             for item in bindings
         ],
-        [r.scan_sha256 for r in results],
+        [(r.scan_sha256, r.inventory_sha256) for r in results],
     ]
     digest = hashlib.sha256(json.dumps(material, separators=(",", ":")).encode()).hexdigest()
     return ProductDependencyStageResult(
@@ -183,6 +181,42 @@ class ProductDeterministicExecution:
     def is_complete(self) -> bool:
         try:
             if self.obstacles or not self.scan.is_complete:
+                return False
+            program_graph = self.scan.program_graph
+            if self.scan.repository_id != self.repository_id:
+                return False
+            if self.catalogue.indexes:
+                if (
+                    type(program_graph) is not ProgramGraph
+                    or program_graph.repository_id != self.repository_id
+                    or program_graph.revision != self.catalogue.snapshot.head_sha
+                    or any(
+                        index.repository_id != program_graph.repository_id
+                        or index.revision != program_graph.revision
+                        for index in self.catalogue.indexes
+                    )
+                    or not {
+                        (index.path, index.content_sha256, index.language)
+                        for index in self.catalogue.indexes
+                    }.issubset(
+                        {
+                            (node.path, node.content_sha256, node.language)
+                            for node in program_graph.nodes
+                        }
+                    )
+                ):
+                    return False
+            elif (
+                program_graph is not None
+                or self.scan.repository_id != self.repository_id
+                or self.scan.graph.head_sha != self.catalogue.snapshot.head_sha
+                or self.scan.receipts
+                or self.scan.source_bindings
+                or self.scan.source_aliases
+                or self.scan.graph.candidates
+                or self.scan.graph.evidence
+                or self.scan.graph.edges
+            ):
                 return False
             self.catalogue.repository_view()
             self.scan.repository_view(self.catalogue)
@@ -221,7 +255,9 @@ class ProductDeterministicExecution:
                     )
                 ):
                     return False
-            if not scanner_facts_match_receipts(self.catalogue, self.scan):
+            if not scanner_facts_match_receipts(
+                self.catalogue, self.scan, repository_id=self.repository_id
+            ):
                 return False
             snapshot = self.catalogue.snapshot
             files = tuple(
@@ -231,13 +267,26 @@ class ProductDeterministicExecution:
                 files, sum(f.size_bytes for f in files), repository_tree_sha256(files)
             )
             discovery = discover_repository(inventory, IgnorePolicy("product-execution", "1.0.0"))
+            discovered_language_files = {
+                (entry.language.value, item.path, item.content_sha256)
+                for entry in discovery.languages
+                for item in entry.files
+            }
+            indexed_language_files = {
+                (index.language, index.path, index.content_sha256)
+                for index in self.catalogue.indexes
+            }
+            if discovered_language_files != indexed_language_files:
+                return False
+            if not self.catalogue.indexes and discovery.languages:
+                return False
             python = any(entry.language is LanguageId.PYTHON for entry in discovery.languages)
             manifests = discovery.dependency_manifests
             expected_ids = tuple(
                 stage
                 for stage, applicable in (
                     ("python_parse_symbols", python),
-                    ("secret_scan", bool(discovery.languages)),
+                    ("secret_scan", bool(snapshot.files)),
                     ("dependency_scan", bool(manifests)),
                     ("cwe89_scan", python),
                 )
@@ -256,8 +305,11 @@ class ProductDeterministicExecution:
                     for index in self.catalogue.indexes
                     if index.path.endswith((".py", ".pyi"))
                 )
-                expected["cwe89_scan"] = (self.scan.graph.graph_sha256,)
-            if discovery.languages:
+                expected["cwe89_scan"] = (
+                    self.scan.graph.graph_sha256,
+                    program_graph.graph_sha256,
+                )
+            if snapshot.files:
                 secrets = self.secrets
                 if (
                     secrets is None
@@ -292,7 +344,10 @@ class ProductDeterministicExecution:
                 ).hexdigest()
                 if secrets.output_sha256 != digest:
                     return False
-                expected["secret_scan"] = (digest,)
+                expected["secret_scan"] = (
+                    digest,
+                    *_program_graph_language_bindings(self.catalogue, program_graph),
+                )
             if manifests:
                 dependencies = self.dependencies
                 contents = {f.path: f.content for f in snapshot.files}
@@ -311,6 +366,7 @@ class ProductDeterministicExecution:
                     return False
                 metadata = {f.path: f for f in files}
                 for manifest, result in zip(scanned, dependencies.results, strict=True):
+                    result.__post_init__()
                     parsed = parse_dependency_manifest(
                         repository_id=self.repository_id,
                         revision=snapshot.head_sha,
@@ -318,7 +374,10 @@ class ProductDeterministicExecution:
                         file=metadata[manifest.path],
                         source=contents[manifest.path],
                     )
-                    if result.manifest_scan_sha256 != parsed.manifest_scan_sha256:
+                    if (
+                        result.manifest_scan_sha256 != parsed.manifest_scan_sha256
+                        or result.coordinates != parsed.dependencies
+                    ):
                         return False
                 material = [
                     "product-dependency-stage-v1",
@@ -334,7 +393,7 @@ class ProductDeterministicExecution:
                         )
                         for item in bindings
                     ],
-                    [r.scan_sha256 for r in dependencies.results],
+                    [(r.scan_sha256, r.inventory_sha256) for r in dependencies.results],
                 ]
                 digest = hashlib.sha256(
                     json.dumps(material, separators=(",", ":")).encode()
@@ -347,3 +406,31 @@ class ProductDeterministicExecution:
             ) and all(hashes for hashes in expected.values())
         except Exception:
             return False
+
+
+def _program_graph_language_bindings(
+    catalogue: NativeSourceCatalogue, program_graph: ProgramGraph | None
+) -> tuple[str, ...]:
+    if type(program_graph) is not ProgramGraph:
+        raise ValueError("program graph language binding is unavailable")
+    grouped: dict[str, list[tuple[str, str, str]]] = {}
+    for index in catalogue.indexes:
+        grouped.setdefault(index.language, []).append(
+            (index.path, index.content_sha256, index.index_sha256)
+        )
+    return tuple(
+        hashlib.sha256(
+            json.dumps(
+                [
+                    "product-program-graph-language-stage-v1",
+                    program_graph.repository_id,
+                    program_graph.revision,
+                    program_graph.graph_sha256,
+                    language,
+                    sorted(files),
+                ],
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        for language, files in sorted(grouped.items())
+    )

@@ -20,7 +20,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
-from securecode_ai.contracts import FindingCase, ProducerRef
+from securecode_ai.contracts import CommandOperationEvidence, FindingCase, ProducerRef
 from securecode_ai.core.architect import (
     ArchitectPatchResult,
     PatchRationaleReceipt,
@@ -182,6 +182,7 @@ class PatchArtifactStore:
     def load(self, selector: str) -> StoredPatchArtifact:
         digest = selector_digest(selector)
         directory = self._root / digest[:2]
+        _assert_store_directory(directory, self._root)
         patch_path = directory / f"{digest}.patch"
         manifest_path = directory / f"{digest}.json"
         _assert_regular_leaf(patch_path)
@@ -257,8 +258,9 @@ class PatchArtifactStore:
 
         digest = selector_digest(selector)
         directory = self._root / digest[:2]
-        if not directory.exists():
+        if not directory.exists() and not directory.is_symlink():
             return
+        _assert_store_directory(directory, self._root)
         status_lock = directory / ".status.lock"
         try:
             with status_file_lock(status_lock):
@@ -310,14 +312,29 @@ def _mapping(value: object) -> dict[str, Any]:
 
 def _root_cause(value: dict[str, Any]) -> RootCauseRecord:
     evidence = _mapping(value.pop("evidence", None))
+    raw_command = value.pop("command_operation_evidence", None)
+    if raw_command is None:
+        command = ()
+    elif type(raw_command) is list:
+        command = tuple(CommandOperationEvidence.model_validate(item) for item in raw_command)
+    else:
+        raise PatchArtifactError()
     return RootCauseRecord(
         **value,
         evidence=RootCauseEvidenceRefs(**evidence),
+        command_operation_evidence=command,
     )
 
 
 def _invariant(value: dict[str, Any]) -> SecurityInvariant:
     value["required_evidence_ids"] = tuple(value.get("required_evidence_ids", ()))
+    raw_command = value.get("command_operation_evidence", ())
+    if type(raw_command) is list:
+        value["command_operation_evidence"] = tuple(
+            CommandOperationEvidence.model_validate(item) for item in raw_command
+        )
+    elif type(raw_command) is not tuple:
+        raise PatchArtifactError()
     return SecurityInvariant(**value)
 
 
@@ -440,6 +457,22 @@ def _is_within(path: Path, parent: Path) -> bool:
 def _assert_regular_leaf(path: Path) -> None:
     if _is_link(path) or not path.is_file():
         raise PatchArtifactError("PATCH_ARTIFACT_NOT_FOUND")
+
+
+def _assert_store_directory(path: Path, root: Path) -> None:
+    current = path
+    while True:
+        if _is_link(current) or not current.is_dir():
+            raise PatchArtifactError("PATCH_ARTIFACT_NOT_FOUND")
+        if current == root:
+            break
+        if current.parent == current:
+            raise PatchArtifactError("PATCH_ARTIFACT_NOT_FOUND")
+        current = current.parent
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (OSError, ValueError):
+        raise PatchArtifactError("PATCH_ARTIFACT_NOT_FOUND") from None
 
 
 def _write_once(path: Path, content: bytes) -> bool:

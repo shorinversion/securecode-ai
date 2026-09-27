@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import cast
 
+from .assurance_reports import (
+    AssurancePinsProvider,
+    AssuranceReportError,
+    UnavailableAssurancePinsProvider,
+)
 from .assurance_repository import AssuranceConflict, AssuranceRecord
 from .assurance_service import AssuranceService
 from .assurance_verifiers import (
@@ -140,13 +145,22 @@ class AssuranceOperationsHandler:
         self,
         service: AssuranceService,
         verifiers: AssuranceVerifierRegistry | None = None,
+        pins_provider: AssurancePinsProvider | None = None,
     ) -> None:
         if type(service) is not AssuranceService or (
             verifiers is not None and type(verifiers) is not AssuranceVerifierRegistry
+        ) or (
+            pins_provider is not None
+            and not callable(getattr(pins_provider, "resolve", None))
         ):
             raise TypeError("assurance handler configuration is invalid")
         self._service = service
         self._verifiers = AssuranceVerifierRegistry.deny_all() if verifiers is None else verifiers
+        self._pins_provider = (
+            UnavailableAssurancePinsProvider()
+            if pins_provider is None
+            else pins_provider
+        )
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
         if request.action == "assurance.append":
@@ -234,14 +248,37 @@ class AssuranceOperationsHandler:
         return response(201, self._record_view(stored), version=stored.sequence)
 
     def _read(self, request: ServiceRequest) -> ServiceResponse:
-        if set(request.query) != {"repository_id", "execution_identity_hash"}:
+        if set(request.query) not in (
+            {"repository_id", "execution_identity_hash"},
+            {"repository_id", "execution_identity_hash", "view"},
+        ):
             return INVALID_REQUEST
         repository_id = query_value(request, "repository_id")
         identity_hash = query_value(request, "execution_identity_hash")
         if repository_id is None or identity_hash is None:
             return INVALID_REQUEST
+        view = query_value(request, "view")
+        if view is not None and view != "report":
+            return INVALID_REQUEST
         if not repository_allowed(request.identity, repository_id):
             return FORBIDDEN
+        if view == "report":
+            try:
+                report = self._service.report(
+                    tenant_id=request.identity.tenant_id,
+                    repository_id=repository_id,
+                    execution_identity_hash=identity_hash,
+                    pins_provider=self._pins_provider,
+                )
+            except (AssuranceReportError, TypeError, ValueError):
+                return error(
+                    503,
+                    "ASSURANCE_PINS_UNAVAILABLE",
+                    "authoritative assurance pins are unavailable",
+                )
+            except AssuranceConflict:
+                return CONFLICT
+            return response(200, asdict(report))
         try:
             report = self._service.report_inputs(
                 tenant_id=request.identity.tenant_id,
@@ -249,6 +286,13 @@ class AssuranceOperationsHandler:
                 execution_identity_hash=identity_hash,
             )
         except (AssuranceConflict, TypeError, ValueError):
+            return CONFLICT
+        if not _report_matches_scope(
+            report,
+            tenant_id=request.identity.tenant_id,
+            repository_id=repository_id,
+            execution_identity_hash=identity_hash,
+        ):
             return CONFLICT
         sequence = report.get("denominator")
         return response(200, report, version=sequence if type(sequence) is int else None)
@@ -268,6 +312,30 @@ class AssuranceOperationsHandler:
             "previous_hash": value.previous_hash,
             "record_hash": value.record_hash,
         }
+
+
+def _report_matches_scope(
+    value: object,
+    *,
+    tenant_id: str,
+    repository_id: str,
+    execution_identity_hash: str,
+) -> bool:
+    """Reject a service response that is not bound to the requested scope."""
+
+    return (
+        type(value) is dict
+        and value.get("tenant_id") == tenant_id
+        and value.get("repository_id") == repository_id
+        and value.get("execution_identity_hash") == execution_identity_hash
+        and type(value.get("records")) is tuple
+        and type(value.get("denominator")) is int
+        and type(value.get("successful")) is int
+        and type(value.get("failed_or_incomplete")) is int
+        and type(value.get("ledger_head_sha256")) is str
+        and type(value.get("complete")) is bool
+        and value.get("authority") == "SUPPORTING_EVIDENCE_ONLY"
+    )
 
 
 __all__ = ["AssuranceOperationsHandler", "FeedbackOperationsHandler"]

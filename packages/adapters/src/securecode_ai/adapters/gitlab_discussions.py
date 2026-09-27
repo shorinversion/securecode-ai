@@ -5,12 +5,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Final, Protocol
 
 from securecode_ai.contracts import FindingCase, FindingVerdict, RunExecutionIdentity
 from securecode_ai.core.scm_run_state import PublicationDisposition, SCMRunPublicationReceipt
 
-from .gitlab_ci import GitlabCIAdapter, GitlabCIError
+from .gitlab_ci import GitlabCIError
 
 MAX_GITLAB_DISCUSSIONS: Final = 50
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -127,21 +127,34 @@ class GitlabDiscussionReceipt:
     suppressions: tuple[GitlabDiscussionSuppressionReceipt, ...]
 
 
+class GitlabPublicationAuthorizer(Protocol):
+    def authorize_publication(self, run_id: str) -> SCMRunPublicationReceipt: ...
+
+
 class GitlabDiscussionPublisher:
-    __slots__ = ("_adapter",)
+    __slots__ = ("_authorize",)
 
-    def __init__(self, adapter: GitlabCIAdapter) -> None:
-        if type(adapter) is not GitlabCIAdapter:
+    def __init__(self, adapter: GitlabPublicationAuthorizer) -> None:
+        authorize = getattr(adapter, "authorize_publication", None)
+        if not callable(authorize):
             raise GitlabDiscussionError()
-        self._adapter = adapter
+        self._authorize = authorize
 
-    def project(self, request: GitlabDiscussionRequest) -> GitlabDiscussionReceipt:
+    def project(
+        self,
+        request: GitlabDiscussionRequest,
+        *,
+        publication_receipt: SCMRunPublicationReceipt | None = None,
+    ) -> GitlabDiscussionReceipt:
         if type(request) is not GitlabDiscussionRequest:
             raise GitlabDiscussionError()
-        try:
-            publication = self._adapter.authorize_publication(request.scm_run_id)
-        except GitlabCIError as error:
-            raise GitlabDiscussionError() from error
+        if publication_receipt is None:
+            try:
+                publication = self._authorize(request.scm_run_id)
+            except GitlabCIError as error:
+                raise GitlabDiscussionError() from error
+        else:
+            publication = publication_receipt
         if publication.disposition is PublicationDisposition.SUPERSEDED:
             return GitlabDiscussionReceipt(
                 publication=publication,
@@ -156,7 +169,13 @@ class GitlabDiscussionPublisher:
             )
         identity = request.execution_identity
         if (
-            publication.disposition is not PublicationDisposition.AUTHORIZED
+            publication.disposition
+            not in {
+                PublicationDisposition.AUTHORIZED,
+                PublicationDisposition.COMPLETED,
+                PublicationDisposition.DUPLICATE,
+            }
+            or publication.run_id != request.scm_run_id
             or publication.execution_identity_hash != identity.execution_identity_hash
             or publication.head_sha != identity.repository_revision.head_sha
             or publication.current_head_sha != publication.head_sha
@@ -261,6 +280,7 @@ __all__ = [
     "GitlabChangedLine",
     "GitlabDiscussionCandidate",
     "GitlabDiscussionError",
+    "GitlabPublicationAuthorizer",
     "GitlabDiscussionProjection",
     "GitlabDiscussionPublisher",
     "GitlabDiscussionReceipt",

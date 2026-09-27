@@ -15,6 +15,7 @@ from securecode_ai.contracts import (
     CandidateOrigin,
     ComponentPin,
     CoverageUnit,
+    DiscoveryCandidate,
     ModelCallStatus,
     ModelPurpose,
     ModelRequest,
@@ -23,10 +24,12 @@ from securecode_ai.contracts import (
 )
 from securecode_ai.contracts.domain_primitives import ACCEPTED_STAGE_CATALOGUE_PIN
 from securecode_ai.core.evidence_package import EvidenceContextRef, EvidencePackage
+from securecode_ai.core.finding_gate import FindingGateDecision
 from securecode_ai.core.investigation import (
     AuditorAttemptReceipt,
     AuditorInvestigationReceipt,
 )
+from securecode_ai.core.skeptic import SkepticReview
 
 from .native_sources import NativeSourceCatalogue
 from .product_audit_common import _receipt_id, _request_sha256, _terminal_output_sha256
@@ -40,6 +43,8 @@ from .product_audit_types import (
 )
 from .product_model import AUDITOR_WIRE_PIN
 from .product_review import ProductReviewResult
+from .product_review_contracts import ProductCandidateReviewOutcome
+from .product_review_hashes import _auditor_receipt_sha256, _skeptic_receipt_sha256
 from .product_runtime import PRODUCT_AUDITOR_PROMPT_PIN, ProductAuditorInvocationObservation
 from .product_scan import (
     ProductCandidateFlow,
@@ -287,6 +292,97 @@ def _validate_review(flow: ProductCandidateFlow, review: ProductReviewResult) ->
     if actual != expected or any(
         outcome.tenant_id != flow.graph.tenant_id or outcome.head_sha != flow.graph.head_sha
         for outcome in review.outcomes
+    ):
+        raise ValueError
+    for candidate, investigation, outcome in zip(
+        flow.graph.candidates, flow.investigations, review.outcomes, strict=True
+    ):
+        _validate_review_outcome(candidate, investigation, outcome)
+
+
+def _validate_review_outcome(
+    candidate: DiscoveryCandidate,
+    investigation: AuditorInvestigationReceipt | ProductCandidatePreparationFailure,
+    outcome: ProductCandidateReviewOutcome,
+) -> None:
+    """Bind Skeptic and gate metadata to the exact Auditor candidate.
+
+    ``ProductReviewResult`` is host supplied at the composition boundary.  Its
+    immutable value objects are individually valid, but validity alone does not
+    prove they belong to this flow.  Keep the downstream finding projection
+    fail-closed by checking candidate identity and every retained evidence
+    reference before it can consume a gate decision.
+    """
+
+    if (
+        type(candidate) is not DiscoveryCandidate
+        or type(outcome) is not ProductCandidateReviewOutcome
+        or outcome.candidate_id != candidate.candidate_id
+        or outcome.candidate_version != candidate.candidate_version
+        or outcome.tenant_id != candidate.tenant_id
+        or outcome.head_sha != candidate.head_sha
+        or type(outcome.coverage_units) is not tuple
+        or any(type(unit) is not CoverageUnit for unit in outcome.coverage_units)
+        or (
+            outcome.skeptic_review is not None
+            and type(outcome.skeptic_review) is not SkepticReview
+        )
+        or (
+            outcome.finding_gate is not None
+            and type(outcome.finding_gate) is not FindingGateDecision
+        )
+    ):
+        raise ValueError
+    evidence_ids = set(candidate.evidence_ids)
+    skeptic_review = outcome.skeptic_review
+    if skeptic_review is not None:
+        if (
+            skeptic_review.candidate_id != candidate.candidate_id
+            or skeptic_review.candidate_version != candidate.candidate_version
+            or skeptic_review.head_sha != candidate.head_sha
+            or not set(skeptic_review.cited_evidence_ids).issubset(evidence_ids)
+            or any(
+                not set(objection.evidence_ids).issubset(evidence_ids)
+                for objection in skeptic_review.objections
+            )
+        ):
+            raise ValueError
+    decision = outcome.finding_gate
+    if decision is None:
+        if outcome.failure_code is None:
+            raise ValueError
+        return
+    if outcome.failure_code is not None:
+        raise ValueError
+    if (
+        type(investigation) is not AuditorInvestigationReceipt
+        or decision.candidate_id != candidate.candidate_id
+        or decision.candidate_version != candidate.candidate_version
+        or decision.head_sha != candidate.head_sha
+        or tuple(decision.known_evidence_ids) != tuple(sorted(candidate.evidence_ids))
+        or not set(decision.auditor_cited_evidence_ids).issubset(evidence_ids)
+        or not set(decision.skeptic_cited_evidence_ids).issubset(evidence_ids)
+        or skeptic_review is None
+        or decision.auditor_identity != skeptic_review.auditor_identity
+        or decision.auditor_verdict is not skeptic_review.auditor_verdict
+        or decision.skeptic_identity != skeptic_review.skeptic_identity
+        or decision.skeptic_verdict is not skeptic_review.skeptic_verdict
+        or decision.skeptic_effective_verdict is not skeptic_review.effective_verdict
+        or decision.skeptic_model_call_status is not skeptic_review.model_call_status
+        or decision.skeptic_objections != skeptic_review.objections
+        or decision.skeptic_cited_evidence_ids != skeptic_review.cited_evidence_ids
+        or decision.skeptic_receipt_sha256 != _skeptic_receipt_sha256(skeptic_review)
+        or not investigation.attempts
+        or investigation.final_model_call_status is not ModelCallStatus.SUCCEEDED
+        or investigation.finding_verdict is not investigation.attempts[-1].finding_verdict
+        or investigation.attempts[-1].model_call_status is not ModelCallStatus.SUCCEEDED
+        or not investigation.attempts[-1].schema_valid_result
+        or investigation.attempts[-1].rationale_sha256 is None
+        or investigation.final_selection_sha256 != investigation.attempts[-1].selection_sha256
+        or decision.auditor_receipt_sha256 != _auditor_receipt_sha256(investigation)
+        or decision.auditor_cited_evidence_ids != investigation.attempts[-1].cited_evidence_ids
+        or decision.auditor_verdict is not investigation.finding_verdict
+        or decision.auditor_model_call_status is not ModelCallStatus.SUCCEEDED
     ):
         raise ValueError
 

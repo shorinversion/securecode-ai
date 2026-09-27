@@ -1,0 +1,18 @@
+{
+  "full_hybrid_new_remote_calls": 0,
+  "full_hybrid_reused_predictions": 1800,
+  "inputs_sha256": {
+    "cvefixes-manifest.json": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+    "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
+    "deterministic-600x1.json": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf"
+  },
+  "method": "paired post-hoc composition; no additional model request was made",
+  "output_sha256": {
+    "full_hybrid": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
+    "scanner_seeded": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8"
+  },
+  "scanner_failed_cases": 253,
+  "scanner_seeded_new_remote_calls": 0,
+  "scanner_seeded_reused_predictions": 120,
+  "schema_version": "securecode.submission-benchmark-lane-composition.v1"
+}

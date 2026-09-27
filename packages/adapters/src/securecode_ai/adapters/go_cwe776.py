@@ -33,7 +33,7 @@ from tree_sitter import Language, Node, Parser
 from .cst import build_go_symbol_index
 from .cst_go import _go_language
 
-_MAX_LIMITS = (2_000_000, 2_048, 64)
+_MAX_LIMITS = (2_000_000, 2_048, 64, 2_048)
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _RULE_ID = "securecode-go-cwe776"
@@ -54,12 +54,16 @@ _HELIUM_PACKAGES = frozenset(
         "github.com/lestrrat-go/helium/parser",
     }
 )
-_XML_PARSER_PACKAGES = _LIBXML2_PACKAGES | _HELIUM_PACKAGES | frozenset(
-    {
-        "github.com/antchfx/xmlquery",
-        "github.com/beevik/etree",
-        "github.com/tamerh/xml-stream-parser",
-    }
+_XML_PARSER_PACKAGES = (
+    _LIBXML2_PACKAGES
+    | _HELIUM_PACKAGES
+    | frozenset(
+        {
+            "github.com/antchfx/xmlquery",
+            "github.com/beevik/etree",
+            "github.com/tamerh/xml-stream-parser",
+        }
+    )
 )
 _ENTITY_OPTION_NAMES = frozenset(
     {
@@ -179,9 +183,15 @@ class GoCwe776ScanLimits:
     max_source_bytes: int = _MAX_LIMITS[0]
     max_nodes: int = _MAX_LIMITS[1]
     max_tree_depth: int = _MAX_LIMITS[2]
+    max_signals: int = _MAX_LIMITS[3]
 
     def __post_init__(self) -> None:
-        values = (self.max_source_bytes, self.max_nodes, self.max_tree_depth)
+        values = (
+            self.max_source_bytes,
+            self.max_nodes,
+            self.max_tree_depth,
+            self.max_signals,
+        )
         if any(
             type(value) is not int or value < 1 or value > ceiling
             for value, ceiling in zip(values, _MAX_LIMITS, strict=True)
@@ -282,9 +292,7 @@ class GoCwe776Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is GoCwe776Operation
+            if valid_identity and valid_ranges and type(self.operation) is GoCwe776Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -610,14 +618,14 @@ def _binding_pairs(node: Node) -> tuple[tuple[Node, Node], ...]:
         if name is None or value is None:
             return ()
         names = name.named_children or (name,)
-        values = value.named_children or (value,)
+        values = tuple(value.named_children) or (value,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return ()
         names = left.named_children or (left,)
-        values = right.named_children or (right,)
+        values = tuple(right.named_children) or (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     return tuple(zip(names, values, strict=False))
@@ -652,17 +660,13 @@ def _entity_assignments(
             continue
         if entity_target == "map":
             if _nonempty_entity_map(right, source, nonempty_maps):
-                results.append(
-                    (right, node, GoCwe776Operation.XML_DECODER_ENTITY_ASSIGNMENT)
-                )
+                results.append((right, node, GoCwe776Operation.XML_DECODER_ENTITY_ASSIGNMENT))
         else:
             results.append((right, node, GoCwe776Operation.ENTITY_MAP_ENTRY_ASSIGNMENT))
     return tuple(results)
 
 
-def _entity_target(
-    node: Node, source: bytes, decoder_names: frozenset[str]
-) -> str | None:
+def _entity_target(node: Node, source: bytes, decoder_names: frozenset[str]) -> str | None:
     current = _unwrap(node)
     if current.type == "selector_expression":
         field = current.child_by_field_name("field")
@@ -680,9 +684,7 @@ def _entity_target(
     return None
 
 
-def _nonempty_entity_map(
-    node: Node, source: bytes, known_names: frozenset[str] | set[str]
-) -> bool:
+def _nonempty_entity_map(node: Node, source: bytes, known_names: frozenset[str] | set[str]) -> bool:
     current = _unwrap(node)
     if current.type == "identifier":
         return _text(source, current) in known_names
@@ -690,7 +692,9 @@ def _nonempty_entity_map(
         return False
     literal = current.child_by_field_name("body")
     if literal is None:
-        literal = next((child for child in current.named_children if child.type == "literal_value"), None)
+        literal = next(
+            (child for child in current.named_children if child.type == "literal_value"), None
+        )
     return literal is not None and bool(literal.named_children)
 
 
@@ -711,9 +715,7 @@ def _parser_fact(
     if option is not None:
         parent = node.parent
         while parent is not None:
-            if parent.type == "call_expression" and _is_parser_constructor(
-                parent, source, imports
-            ):
+            if parent.type == "call_expression" and _is_parser_constructor(parent, source, imports):
                 return None
             if parent.type in _GO_SCOPES:
                 break
@@ -746,7 +748,7 @@ def _helium_setting_fact(
         return None
     key = node.child_by_field_name("key")
     value = node.child_by_field_name("value")
-    if key is None or value is None or not _literal_text(value, source) == "true":
+    if key is None or value is None or _literal_text(value, source) != "true":
         return None
     name = _text(source, key)
     operation = {
@@ -758,9 +760,7 @@ def _helium_setting_fact(
     return value, node, operation
 
 
-def _is_helium_settings(
-    node: Node | None, source: bytes, imports: dict[str, str]
-) -> bool:
+def _is_helium_settings(node: Node | None, source: bytes, imports: dict[str, str]) -> bool:
     current = node
     while current is not None and current.type != "composite_literal":
         current = current.parent
@@ -855,9 +855,7 @@ def _helium_receiver(node: Node, source: bytes, imports: dict[str, str]) -> bool
     return False
 
 
-def _contains_helium_call(
-    node: Node, source: bytes, imports: dict[str, str], name: str
-) -> bool:
+def _contains_helium_call(node: Node, source: bytes, imports: dict[str, str], name: str) -> bool:
     for child in _preorder(node):
         if child.type != "call_expression":
             continue
@@ -881,9 +879,7 @@ def _literal_text(node: Node, source: bytes) -> str:
     return _compact_text(source, node)
 
 
-def _qualified_call(
-    node: Node, source: bytes, imports: dict[str, str]
-) -> tuple[str, str] | None:
+def _qualified_call(node: Node, source: bytes, imports: dict[str, str]) -> tuple[str, str] | None:
     if node.type != "call_expression":
         return None
     function = node.child_by_field_name("function")
@@ -945,7 +941,7 @@ def _ignored_path(path: str) -> bool:
 
 
 def _ignored_scope(node: Node, source: bytes) -> bool:
-    current = node
+    current: Node | None = node
     while current is not None:
         if current.type in _GO_SCOPES:
             name = current.child_by_field_name("name")
@@ -1077,12 +1073,12 @@ Cwe776Signal = GoCwe776Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE776_SCAN_LIMITS",
     "Cwe776ScanError",
     "Cwe776ScanErrorCode",
     "Cwe776ScanLimits",
     "Cwe776ScanResult",
     "Cwe776Signal",
-    "DEFAULT_GO_CWE776_SCAN_LIMITS",
     "GoCwe776Operation",
     "GoCwe776ScanError",
     "GoCwe776ScanErrorCode",

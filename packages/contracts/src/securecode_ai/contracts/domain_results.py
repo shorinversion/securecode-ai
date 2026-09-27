@@ -22,7 +22,7 @@ from .domain_coverage import (
     RunExecutionIdentity,
     SourceLocation,
 )
-from .domain_discovery import _validate_origin
+from .domain_discovery import CommandOperationEvidence, _validate_origin
 from .domain_primitives import (
     AnalysisHealth,
     AuditRunOutcome,
@@ -58,6 +58,9 @@ class FindingCase(WireModel):
     finding_verdict: FindingVerdict
     verdict_evidence_ids: tuple[OpaqueId, ...] = Field(default=(), max_length=4096)
     blocking: bool
+    command_operation_evidence: tuple[CommandOperationEvidence, ...] = Field(
+        default=(), max_length=64
+    )
 
     @model_validator(mode="after")
     def _validate_finding(self) -> Self:
@@ -73,6 +76,25 @@ class FindingCase(WireModel):
             raise ValueError("finding evidence_ids must be unique")
         if not set(self.verdict_evidence_ids).issubset(self.evidence_ids):
             raise ValueError("verdict evidence must reference finding evidence_ids")
+        command_ids = tuple(item.scanner_signal_id for item in self.command_operation_evidence)
+        if len(command_ids) != len(set(command_ids)):
+            raise ValueError("finding command operation evidence must be unique")
+        if self.command_operation_evidence and self.cwe_id != "CWE-78":
+            raise ValueError("command operation evidence requires CWE-78")
+        if not set(command_ids).issubset(self.evidence_ids):
+            raise ValueError("command operation evidence must cite finding evidence")
+        bound_ids = tuple(
+            value
+            for item in self.command_operation_evidence
+            for value in (
+                item.source_evidence_id,
+                item.sink_evidence_id,
+                item.flow_evidence_id,
+            )
+            if value is not None
+        )
+        if not set(bound_ids).issubset(self.evidence_ids):
+            raise ValueError("bound command operation evidence must cite finding evidence")
         if (
             self.finding_verdict
             in {

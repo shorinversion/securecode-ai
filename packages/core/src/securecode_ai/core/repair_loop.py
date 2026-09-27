@@ -214,7 +214,11 @@ def run_repair_loop(
         total = _sum_usage(total, usage)
         progress = _progress_hash(patch, result)
         feedback = _feedback(result, patch)
-        if _budget_exhausted(total, effective_budget):
+        if result.validation.validation_outcome is ValidationOutcome.INDETERMINATE:
+            # Preserve the primary security-gate disposition even when the
+            # same attempt also exhausts a resource budget.
+            state, stop = RepairState.HUMAN_ESCALATION, RepairStopReason.INDETERMINATE
+        elif _budget_exhausted(total, effective_budget):
             state, stop = RepairState.HUMAN_ESCALATION, RepairStopReason.BUDGET_EXHAUSTED
         elif result.validation.validation_outcome is ValidationOutcome.VALIDATED:
             state, stop = RepairState.VALIDATED_CANDIDATE, RepairStopReason.VALIDATED
@@ -273,10 +277,14 @@ def run_repair_loop(
 
 
 def _feedback(result: ValidationLadderResult, patch: ArchitectPatchResult) -> RetryFeedback | None:
+    if result.validation.validation_outcome is not ValidationOutcome.FAILED:
+        return None
     failed: list[tuple[int, str, str]] = []
     for stage in result.stages:
         gate = stage.gate
         if stage.authoritative and gate.gate_outcome is not ValidationGateOutcome.PASSED:
+            if gate.gate_outcome is not ValidationGateOutcome.FAILED:
+                return None
             if gate.reason_code is None:
                 return None
             failed.append((gate.ordinal, gate.gate_id, gate.reason_code))
@@ -314,9 +322,9 @@ def _validation_usage(result: ValidationLadderResult) -> AttemptUsage:
 
 def _budget_exhausted(usage: AttemptUsage, budget: RepairBudget) -> bool:
     return (
-        usage.tokens_used > budget.max_tokens
-        or usage.tool_calls > budget.max_tool_calls
-        or usage.elapsed_ms > budget.max_elapsed_ms
+        usage.tokens_used >= budget.max_tokens
+        or usage.tool_calls >= budget.max_tool_calls
+        or usage.elapsed_ms >= budget.max_elapsed_ms
     )
 
 

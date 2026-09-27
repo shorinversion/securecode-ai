@@ -379,6 +379,131 @@ class SymbolIndex:
             raise ValueError("symbol index is invalid")
 
 
+@dataclass(frozen=True, slots=True)
+class SymbolReference:
+    """An exact spelling anchored to a source-file byte range."""
+
+    path: str
+    location: SourceRange
+    spelling: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.path) is not str
+            or not _valid_path(self.path)
+            or type(self.location) is not SourceRange
+            or type(self.spelling) is not str
+            or not self.spelling
+            or len(self.spelling.encode("utf-8")) > 8192
+            or unicodedata.normalize("NFC", self.spelling) != self.spelling
+            or any(ord(character) < 32 or ord(character) == 127 for character in self.spelling)
+        ):
+            raise ValueError("symbol reference is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolTarget:
+    """A symbol declaration selected from one exact source index."""
+
+    path: str
+    index_sha256: str
+    symbol: Symbol
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.path) is not str
+            or not _valid_path(self.path)
+            or type(self.index_sha256) is not str
+            or _SHA256.fullmatch(self.index_sha256) is None
+            or type(self.symbol) is not Symbol
+        ):
+            raise ValueError("symbol target is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolResolution:
+    """Exact candidates for a reference; only one candidate is unambiguous."""
+
+    reference: SymbolReference
+    targets: tuple[SymbolTarget, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.reference) is not SymbolReference
+            or type(self.targets) is not tuple
+            or any(type(target) is not SymbolTarget for target in self.targets)
+            or self.targets
+            != tuple(
+                sorted(
+                    self.targets,
+                    key=lambda item: (item.path, item.symbol.declaration.start_byte),
+                )
+            )
+        ):
+            raise ValueError("symbol resolution is invalid")
+
+    @property
+    def target(self) -> SymbolTarget | None:
+        return self.targets[0] if len(self.targets) == 1 else None
+
+
+def resolve_symbol_reference(
+    reference: SymbolReference, indexes: tuple[SymbolIndex, ...]
+) -> SymbolResolution:
+    """Resolve a byte-anchored reference by exact spelling within one revision."""
+
+    if (
+        type(reference) is not SymbolReference
+        or type(indexes) is not tuple
+        or not indexes
+        or len(indexes) > 4096
+        or any(type(index) is not SymbolIndex for index in indexes)
+    ):
+        raise ValueError("symbol resolution request is invalid")
+    identity: tuple[str, str] | None = None
+    by_path: dict[str, SymbolIndex] = {}
+    symbol_count = 0
+    for index in indexes:
+        index.__post_init__()
+        current = (index.repository_id, index.revision)
+        if (identity is not None and identity != current) or index.path in by_path:
+            raise ValueError("symbol resolution catalogue is invalid")
+        identity = current
+        by_path[index.path] = index
+        symbol_count += len(index.symbols)
+        if symbol_count > 100_000:
+            raise ValueError("symbol resolution catalogue exceeds budget")
+    source_index = by_path.get(reference.path)
+    if source_index is None or reference.location.end_byte > source_index.source_byte_length:
+        raise ValueError("symbol reference source is unavailable")
+    line_starts = (
+        0,
+        *(offset + 1 for offset, value in enumerate(source_index.source) if value == 10),
+    )
+    if not _range_matches_source(source_index.source, reference.location, line_starts):
+        raise ValueError("symbol reference location is invalid")
+    try:
+        actual = source_index.source[
+            reference.location.start_byte : reference.location.end_byte
+        ].decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        raise ValueError("symbol reference source is invalid") from None
+    if actual != reference.spelling:
+        raise ValueError("symbol reference does not match source")
+    targets = tuple(
+        sorted(
+            (
+                SymbolTarget(index.path, index.index_sha256, symbol)
+                for index in indexes
+                for symbol in index.symbols
+                if reference.spelling in (symbol.name, symbol.qualified_name)
+            ),
+            key=lambda item: (item.path, item.symbol.declaration.start_byte),
+        )
+    )
+    return SymbolResolution(reference=reference, targets=targets)
+
+
 def symbol_index_sha256(index: SymbolIndex) -> str:
     return _canonical_hash(
         {
@@ -526,6 +651,10 @@ __all__ = [
     "Symbol",
     "SymbolIndex",
     "SymbolKind",
+    "SymbolReference",
+    "SymbolResolution",
+    "SymbolTarget",
+    "resolve_symbol_reference",
     "stable_symbol_id",
     "symbol_index_sha256",
 ]

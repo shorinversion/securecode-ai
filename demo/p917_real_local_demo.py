@@ -63,7 +63,7 @@ _POLICY_PATH = (
     _ROOT / "specs" / "contracts" / "policy" / "fixtures" / "egress.valid.private-model-source.json"
 )
 _MODEL_ID = "qwen2.5-coder:7b-instruct-q4_K_M"
-_OLLAMA_VERSION = "0.16.2"
+_OLLAMA_VERSION = "0.34.4"
 _MODEL_DIGEST = "\x64\x61\x65\x31\x36\x31\x65\x32\x37\x62\x30\x65\x39\x30\x64\x64\x31\x38\x35\x36\x63\x38\x62\x62\x33\x32\x30\x39\x32\x30\x31\x66\x64\x36\x37\x33\x36\x64\x38\x65\x62\x36\x36\x32\x39\x38\x65\x37\x35\x65\x64\x38\x37\x35\x37\x31\x34\x38\x36\x66\x34\x33\x36\x34"
 _MODEL_QUANTIZATION = "Q4_K_M"
 _METADATA_BYTES = 65_536
@@ -163,14 +163,20 @@ def _observe_runtime_identity() -> dict[str, Any]:
         raise DemoError("local model metadata is invalid")
     matches: list[dict[str, Any]] = []
     for model in models:
-        if type(model) is not dict or set(model) != {
+        required_model_keys = {
             "name",
             "model",
             "modified_at",
             "size",
             "digest",
             "details",
-        }:
+        }
+        optional_model_keys = {"capabilities"}
+        if (
+            type(model) is not dict
+            or not required_model_keys.issubset(model)
+            or set(model) - required_model_keys - optional_model_keys
+        ):
             raise DemoError("local model metadata is invalid")
         if (
             any(
@@ -182,14 +188,24 @@ def _observe_runtime_identity() -> dict[str, Any]:
         ):
             raise DemoError("local model metadata is invalid")
         details = model["details"]
-        if type(details) is not dict or set(details) != {
+        required_detail_keys = {
             "parent_model",
             "format",
             "family",
             "families",
             "parameter_size",
             "quantization_level",
-        }:
+        }
+        optional_detail_keys = {"context_length", "embedding_length"}
+        if (
+            type(details) is not dict
+            or not required_detail_keys.issubset(details)
+            or set(details) - required_detail_keys - optional_detail_keys
+            or (
+                any(key in details for key in optional_detail_keys)
+                and not optional_detail_keys.issubset(details)
+            )
+        ):
             raise DemoError("local model details are invalid")
         if (
             any(
@@ -206,6 +222,20 @@ def _observe_runtime_identity() -> dict[str, Any]:
             or any(type(item) is not str for item in details["families"])
         ):
             raise DemoError("local model details are invalid")
+        if any(
+            type(details[key]) is not int or not 1 <= details[key] <= 1_000_000
+            for key in optional_detail_keys
+            if key in details
+        ):
+            raise DemoError("local model details are invalid")
+        if "capabilities" in model:
+            capabilities = model["capabilities"]
+            if (
+                type(capabilities) is not list
+                or not 1 <= len(capabilities) <= 32
+                or any(type(item) is not str or not 1 <= len(item) <= 128 for item in capabilities)
+            ):
+                raise DemoError("local model metadata is invalid")
         if model["name"] == _MODEL_ID or model["model"] == _MODEL_ID:
             matches.append(model)
     if len(matches) != 1:
@@ -1257,6 +1287,12 @@ def _recover_single_line_model_patch(
         if line.startswith("+") and not line.startswith("+++") and line[1:].strip()
     ]
     safe = [line for line in additions if _is_parameterized_execute_line(line)]
+    if not safe:
+        safe = [
+            line.rstrip("\r\n")
+            for line in value.splitlines(keepends=True)
+            if _is_parameterized_execute_line(line)
+        ]
     if len(safe) != 1:
         return None
     source = next((item["bytes"] for item in _files(snapshot) if item["path"] == path), None)

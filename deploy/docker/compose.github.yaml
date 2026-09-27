@@ -1,0 +1,21 @@
+services:
+  securecode-server:
+    environment:
+      SECURECODE_GITHUB_API_URL: ${SECURECODE_GITHUB_API_URL:?Set the GitHub API URL}
+      SECURECODE_GITHUB_INSTALLATION_ID: ${SECURECODE_GITHUB_INSTALLATION_ID:?Set the GitHub App installation ID}
+      SECURECODE_GITHUB_SARIF_ENABLED: ${SECURECODE_GITHUB_SARIF_ENABLED:-0}
+      SECURECODE_GITHUB_TOKEN_FILE: /run/secrets/securecode_github_token
+      SECURECODE_GITHUB_WEBHOOK_SECRET_FILE: /run/secrets/securecode_github_webhook_secret
+      SECURECODE_SCM_PINS_FILE: /run/secrets/securecode_scm_pins
+    secrets:
+      - securecode_github_token
+      - securecode_github_webhook_secret
+      - securecode_scm_pins
+
+secrets:
+  securecode_github_token:
+    file: ${SECURECODE_GITHUB_TOKEN_SOURCE:?Set the GitHub installation token file}
+  securecode_github_webhook_secret:
+    file: ${SECURECODE_GITHUB_WEBHOOK_SECRET_SOURCE:?Set the GitHub webhook secret file}
+  securecode_scm_pins:
+    file: ${SECURECODE_SCM_PINS_SOURCE:?Set the SCM execution pins file}

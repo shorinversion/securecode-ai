@@ -260,12 +260,22 @@ def _run_stage(
             sandbox_receipt = run_in_sandbox(profile, SandboxCommand(stage.value), capturing_driver)
         except SandboxError:
             reason = "SANDBOX_CONTRACT_FAILURE"
+            gate_outcome = ValidationGateOutcome.INDETERMINATE
+        except Exception:
+            # A driver is an untrusted integration boundary.  Do not let an
+            # adapter exception escape as a successful or partially recorded
+            # validation; preserve a bounded fail-closed gate instead.
+            reason = "SANDBOX_CONTRACT_FAILURE"
+            gate_outcome = ValidationGateOutcome.INDETERMINATE
         else:
             observation = capturing_driver.observation
             if observation is not None:
                 resource = observation.resource_usage
+                if reason is None:
+                    reason = _resource_reason(resource, profile)
             if sandbox_receipt.reason_code is not None or not sandbox_receipt.teardown.completed:
                 reason = "SANDBOX_NON_SUCCESS"
+                gate_outcome = ValidationGateOutcome.INDETERMINATE
             elif sandbox_receipt.outcome is SandboxOutcome.INDETERMINATE:
                 reason = (
                     "VALIDATION_DEPENDENCIES_UNAVAILABLE"
@@ -275,10 +285,13 @@ def _run_stage(
                 gate_outcome = ValidationGateOutcome.INDETERMINATE
             elif sandbox_receipt.outcome is not SandboxOutcome.SUCCEEDED:
                 reason = "SANDBOX_NON_SUCCESS"
+                gate_outcome = ValidationGateOutcome.INDETERMINATE
             elif observation is None:
                 reason = "OBSERVATION_EVIDENCE_MISSING"
+                gate_outcome = ValidationGateOutcome.INDETERMINATE
             elif sandbox_receipt.observation_sha256 != observation.observation_sha256:
                 reason = "OBSERVATION_EVIDENCE_MISMATCH"
+                gate_outcome = ValidationGateOutcome.INDETERMINATE
     if (
         reason is None
         and stage

@@ -28,8 +28,8 @@ from .python_ast import (
 )
 
 _MAX_LIMIT_VALUES = (2_000_000, 10_000, 64)
-_SHA1 = re.compile(r"[0-9a-f]{40}\\Z")
-_SHA256 = re.compile(r"[0-9a-f]{64}\\Z")
+_SHA1 = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _RULE_ID = "securecode-python-cwe732"
 _DETECTOR = "securecode-python-cwe732@1.0"
 

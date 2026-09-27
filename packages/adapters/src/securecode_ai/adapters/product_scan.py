@@ -40,7 +40,7 @@ from .product_execution import (
     RestrictedProductDiscoveryView,
     execution_fact_graph,
 )
-from .product_scanner import ProductDeterministicScanResult
+from .product_scanner import ProductDeterministicScanResult, scanner_facts_match_receipts
 
 
 def _snapshot_graph(graph: EvidenceGraph) -> EvidenceGraph:
@@ -54,6 +54,23 @@ def _snapshot_graph(graph: EvidenceGraph) -> EvidenceGraph:
         evidence=graph.evidence,
         edges=graph.edges,
         schema_version=graph.schema_version,
+    )
+
+
+def _deterministic_completion_is_bound(
+    catalogue: NativeSourceCatalogue,
+    result: ProductDeterministicScanResult,
+    *,
+    repository_id: str,
+) -> bool:
+    """Accept completion only with the scanner's source-free receipt proof."""
+
+    if type(result) is not ProductDeterministicScanResult or result.is_complete is not True:
+        return False
+    return scanner_facts_match_receipts(
+        catalogue,
+        result,
+        repository_id=repository_id,
     )
 
 
@@ -214,13 +231,25 @@ def run_product_candidate_flow(
         type(catalogue) is not NativeSourceCatalogue
         or type(model_plan) is not ModelNativeDiscoveryPlan
         or type(investigation_budget) is not InvestigationBudget
-        or catalogue.snapshot.head_sha != model_plan.request.head_sha
+    ):
+        raise ValueError("product scan bindings are invalid")
+    expected_repository_id = (
+        model_plan.request.execution_identity.repository_revision.repository_id
+    )
+    if (
+        catalogue.snapshot.head_sha != model_plan.request.head_sha
+        or any(
+            index.repository_id != expected_repository_id
+            or index.revision != model_plan.request.head_sha
+            for index in catalogue.indexes
+        )
         or any(anchor.tenant_id != model_plan.request.tenant_id for anchor in catalogue.anchors)
     ):
         raise ValueError("product scan bindings are invalid")
     if deterministic_execution is not None and (
         type(deterministic_execution) is not ProductDeterministicExecution
         or deterministic_execution.catalogue.snapshot != catalogue.snapshot
+        or deterministic_execution.repository_id != expected_repository_id
     ):
         raise ValueError("product discovery execution binding is invalid")
     discovery = run_model_native_discovery(
@@ -249,9 +278,17 @@ def run_product_candidate_flow(
         if type(lane_result) is ProductDeterministicScanResult:
             if type(lane_result.is_complete) is not bool:
                 raise ValueError("deterministic completion is invalid")
-            deterministic_failed = not lane_result.is_complete
+            deterministic_failed = not _deterministic_completion_is_bound(
+                catalogue,
+                lane_result,
+                repository_id=expected_repository_id,
+            )
             deterministic = _snapshot_graph(lane_result.graph)
         elif isinstance(lane_result, EvidenceGraph):
+            # Only the explicit execution path carries a separately validated
+            # completion receipt; arbitrary bare graphs remain indeterminate.
+            if deterministic_execution is None:
+                deterministic_failed = True
             deterministic = _snapshot_graph(lane_result)
         else:
             raise ValueError("deterministic lane result is invalid")

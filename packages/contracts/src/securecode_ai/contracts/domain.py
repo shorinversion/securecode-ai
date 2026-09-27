@@ -18,6 +18,8 @@ from .domain_coverage import (
 )
 from .domain_discovery import (
     CandidateInterpretationReceipt,
+    CommandOperation,
+    CommandOperationEvidence,
     DiscoveryCandidate,
     Evidence,
     ModelBudgetUsage,
@@ -62,6 +64,7 @@ _domain_types_namespace = globals()
 for _model in (
     CoverageManifest,
     RawSignal,
+    CommandOperationEvidence,
     DiscoveryCandidate,
     ModelDiscoveryReceipt,
     CandidateInterpretationReceipt,
@@ -95,6 +98,7 @@ for _domain_type in (
     CoverageUnit,
     CoverageManifest,
     RawSignal,
+    CommandOperationEvidence,
     DiscoveryCandidate,
     ModelBudgetUsage,
     ModelDiscoveryReceipt,
@@ -127,6 +131,8 @@ __all__ = [
     "AuditRunOutcome",
     "CandidateInterpretationReceipt",
     "CandidateOrigin",
+    "CommandOperation",
+    "CommandOperationEvidence",
     "ComponentPin",
     "CoverageManifest",
     "CoverageStatus",

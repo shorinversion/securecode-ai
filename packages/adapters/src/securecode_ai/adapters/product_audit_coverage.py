@@ -114,7 +114,7 @@ def _child_execution_units(host: ProductAuditHostInputs) -> list[CoverageUnit]:
         stage
         for stage, applies in (
             ("python_parse_symbols", python),
-            ("secret_scan", bool(discovery.languages)),
+            ("secret_scan", bool(execution.catalogue.snapshot.files)),
             ("dependency_scan", manifests),
             ("cwe89_scan", python),
         )

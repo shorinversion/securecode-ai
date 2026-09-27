@@ -138,13 +138,23 @@ class GithubAnnotationPublisher:
             raise GithubAnnotationError()
         self._authorize: Callable[[str], SCMRunPublicationReceipt] = authorize
 
-    def project(self, request: GithubAnnotationRequest) -> GithubAnnotationReceipt:
+    def project(
+        self,
+        request: GithubAnnotationRequest,
+        *,
+        publication_receipt: SCMRunPublicationReceipt | None = None,
+    ) -> GithubAnnotationReceipt:
         if type(request) is not GithubAnnotationRequest:
             raise GithubAnnotationError()
-        try:
-            publication = self._authorize(request.scm_run_id)
-        except GithubAppError as error:
-            raise GithubAnnotationError() from error
+        if publication_receipt is None:
+            try:
+                publication = self._authorize(request.scm_run_id)
+            except GithubAppError as error:
+                raise GithubAnnotationError() from error
+        elif type(publication_receipt) is SCMRunPublicationReceipt:
+            publication = publication_receipt
+        else:
+            raise GithubAnnotationError()
         if publication.disposition is PublicationDisposition.SUPERSEDED:
             return GithubAnnotationReceipt(
                 publication=publication,
@@ -159,9 +169,16 @@ class GithubAnnotationPublisher:
             )
         identity = request.execution_identity
         if (
-            publication.disposition is not PublicationDisposition.AUTHORIZED
+            publication.disposition
+            not in {
+                PublicationDisposition.AUTHORIZED,
+                PublicationDisposition.COMPLETED,
+                PublicationDisposition.DUPLICATE,
+            }
+            or publication.run_id != request.scm_run_id
             or publication.execution_identity_hash != identity.execution_identity_hash
             or publication.head_sha != identity.repository_revision.head_sha
+            or publication.current_head_sha != publication.head_sha
         ):
             raise GithubAnnotationError()
         changed = {(item.path, item.line): item.content_sha256 for item in request.changed_lines}

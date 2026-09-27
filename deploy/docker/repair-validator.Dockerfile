@@ -51,8 +51,9 @@ RUN apt-get update \
         git \
         libatomic1 \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /workspace /scratch \
-    && chown 65532:65532 /workspace /scratch
+    && mkdir -p /workspace /scratch /run/securecode/validator /srv/securecode/validator-bundles \
+    && chown 65532:65532 /workspace /scratch /run/securecode/validator /srv/securecode/validator-bundles \
+    && chmod 0770 /run/securecode/validator
 
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules

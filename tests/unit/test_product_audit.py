@@ -150,6 +150,9 @@ def _actual_flow(
     )
     policy = EgressPolicyDocument.model_validate_json(json.dumps(values))
     base = _bind_head(_request(profile, policy, ModelPurpose.MODEL_NATIVE_DISCOVERY), head)
+    base_data = base.model_dump(mode="json")
+    base_data["budget"]["max_repository_calls"] = 16
+    base = ModelRequest.model_validate_json(json.dumps(base_data))
     fields = {name: getattr(base.execution_identity, name) for name in IDENTITY_FIELDS}
     fields["stage_catalogue"] = ComponentPin(
         schema_version="0.2.0",
@@ -176,7 +179,7 @@ def _actual_flow(
     scan = scan_product_sources(catalogue, tenant_id=request.tenant_id)
     assert scan.is_complete
     roots, rule = catalogue.anchors[:count], "rule-sqli"
-    if cwe_id in {"CWE-78", "CWE-22", "CWE-918", "CWE-862"}:
+    if cwe_id in {"CWE-78", "CWE-22", "CWE-639", "CWE-918", "CWE-862"}:
         rule = "portfolio-" + cwe_id.lower()
     if hybrid:
         assert len(scan.graph.candidates) == 1
@@ -373,7 +376,7 @@ def _actual_flow(
     graph_ref = ArtifactRef(
         schema_version="0.2.0",
         tenant_id=request.tenant_id,
-        content_id="product-graph-receipt",
+        content_id=flow.graph.graph_id,
         content_sha256=flow.graph.graph_sha256,
         size_bytes=0,
         data_class=DataClass.INTERNAL_METADATA,
@@ -400,10 +403,12 @@ def _actual_flow(
                 finding_id="finding-" + str(index),
                 cwe_id=cwe_id or "CWE-89",
                 evidence_graph_ref=graph_ref,
-                rule_id=rule if cwe_id in {"CWE-78", "CWE-22", "CWE-918", "CWE-862"} else None,
+                rule_id=rule
+                if cwe_id in {"CWE-78", "CWE-22", "CWE-639", "CWE-918", "CWE-862"}
+                else None,
                 root_cause_fingerprint=(
                     flow.graph.candidates[index].root_cause_fingerprint
-                    if cwe_id in {"CWE-78", "CWE-22", "CWE-918", "CWE-862"}
+                    if cwe_id in {"CWE-78", "CWE-22", "CWE-639", "CWE-918", "CWE-862"}
                     else None
                 ),
             )
@@ -490,7 +495,7 @@ def test_unknown_product_cwe_remains_a_closed_classification_obstacle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow, review, host, _, _ = _actual_flow(monkeypatch, hybrid=True, ssrf=True)
-    metadata = replace(host.finding_metadata[0], cwe_id="CWE-79")
+    metadata = replace(host.finding_metadata[0], cwe_id="CWE-9999")
 
     result = compose_product_audit(flow, review, host=replace(host, finding_metadata=(metadata,)))
     assert type(result) is ProductAuditObstacle

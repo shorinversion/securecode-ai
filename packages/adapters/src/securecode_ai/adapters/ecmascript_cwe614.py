@@ -89,6 +89,7 @@ _SENSITIVE_NAMES = frozenset(
         "sid",
         "token",
     }
+)
 _SENSITIVE_NAME_RE = re.compile(
     r"(?:^|[_./:-])(?:access|auth|credential|csrf|id.?token|identity|jwt|login|oauth|refresh|remember|session|sid|token)(?:$|[_./:-])",
     re.IGNORECASE,

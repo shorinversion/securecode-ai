@@ -15,10 +15,12 @@ from .connected import (
     DeletionDraft,
     FeedbackDraft,
     SecretGrantDraft,
+    WaiverDraft,
     append_assurance,
     approve_deletion,
     create_backup,
     create_deletion,
+    create_waiver,
     decide_finding,
     execute_deletion,
     grant_secret,
@@ -26,10 +28,16 @@ from .connected import (
     parse_approval_arguments,
     parse_payload,
     read_assurance,
+    read_assurance_report,
     read_backup,
     read_deletion,
     read_feedback_metrics,
     read_secret_grant,
+    read_waiver,
+    resolve_backup,
+    revoke_secret,
+    revoke_waiver,
+    rotate_secret,
     settings_from_environment,
     submit_feedback,
     transition_backup,
@@ -52,7 +60,7 @@ def run_connected_secrets(
         if action == "grant":
             fields = parse_approval_arguments(tokens[2:])
             required = {"repository", "workload", "reference", "purpose"}
-            if not required.issubset(fields):
+            if set(fields) != required:
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
             settings = settings_from_environment(environment)
             collection = grant_secret(
@@ -70,6 +78,26 @@ def run_connected_secrets(
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
             settings = settings_from_environment(environment)
             collection = read_secret_grant(settings, fields["grant-id"])
+        elif action == "rotate":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {"grant-id", "workload", "reference", "purpose", "if-match"}
+            if set(fields) != required:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            settings = settings_from_environment(environment)
+            collection = rotate_secret(
+                settings,
+                fields["grant-id"],
+                workload_id=fields["workload"],
+                reference=fields["reference"],
+                purpose=fields["purpose"],
+                if_match=fields["if-match"],
+            )
+        elif action == "revoke":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"grant-id", "if-match"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            settings = settings_from_environment(environment)
+            collection = revoke_secret(settings, fields["grant-id"], if_match=fields["if-match"])
         else:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     except ConnectedCliError as error:
@@ -97,7 +125,7 @@ def run_connected_decision(
         finding_id = tokens[1]
         fields = parse_approval_arguments(tokens[2:])
         required = {"if-match", "run", "revision", "decision", "reason"}
-        if not required.issubset(fields):
+        if set(fields) != required:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         settings = settings_from_environment(environment)
         collection = decide_finding(
@@ -138,19 +166,21 @@ def run_connected_assurance(
             required = {
                 "repository",
                 "identity-hash",
+                "verifier-sha256",
                 "record-id",
                 "kind",
                 "outcome",
                 "payload",
                 "if-match",
             }
-            if not required.issubset(fields):
+            if set(fields) != required:
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
             collection = append_assurance(
                 settings,
                 AssuranceDraft(
                     repository_id=fields["repository"],
                     identity_hash=fields["identity-hash"],
+                    verifier_sha256=fields["verifier-sha256"],
                     record_id=fields["record-id"],
                     kind=fields["kind"],
                     outcome=fields["outcome"],
@@ -160,9 +190,22 @@ def run_connected_assurance(
             )
         elif action == "show":
             fields = parse_approval_arguments(tokens[2:])
-            if set(fields) - {"repository"}:
+            if set(fields) != {"repository", "identity-hash"}:
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
-            collection = read_assurance(settings, repository_id=fields.get("repository"))
+            collection = read_assurance(
+                settings,
+                repository_id=fields["repository"],
+                execution_identity_hash=fields["identity-hash"],
+            )
+        elif action == "report":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"repository", "identity-hash"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = read_assurance_report(
+                settings,
+                repository_id=fields["repository"],
+                execution_identity_hash=fields["identity-hash"],
+            )
         else:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     except ConnectedCliError as error:
@@ -204,7 +247,7 @@ def run_connected_feedback(
                 "rationale",
                 "if-match",
             }
-            if not required.issubset(fields):
+            if set(fields) - required - {"incident-id"} or not required.issubset(fields):
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
             collection = submit_feedback(
                 settings,
@@ -257,7 +300,7 @@ def run_connected_deletions(
         if action == "create":
             fields = parse_approval_arguments(tokens[2:])
             required = {"deletion-id", "repository", "content-hash", "identity-hash"}
-            if not required.issubset(fields):
+            if set(fields) - required - {"data-class"} or not required.issubset(fields):
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
             collection = create_deletion(
                 settings,
@@ -266,6 +309,7 @@ def run_connected_deletions(
                     repository_id=fields["repository"],
                     content_sha256=fields["content-hash"],
                     identity_hash=fields["identity-hash"],
+                    data_class=fields.get("data-class", "artifact"),
                 ),
             )
         elif action == "show":
@@ -334,7 +378,7 @@ def run_connected_backups(
         if action == "create":
             fields = parse_approval_arguments(tokens[2:])
             required = {"backup-id", "repository", "region", "key-ref", "components"}
-            if not required.issubset(fields):
+            if set(fields) != required:
                 raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
             collection = create_backup(
                 settings,
@@ -363,6 +407,17 @@ def run_connected_backups(
                 restore=action == "restore",
                 if_match=fields["if-match"],
             )
+        elif action == "resolve":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"backup-id", "if-match", "evidence-ref", "reason"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = resolve_backup(
+                settings,
+                fields["backup-id"],
+                evidence_ref=fields["evidence-ref"],
+                reason=fields["reason"],
+                if_match=fields["if-match"],
+            )
         else:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     except ConnectedCliError as error:
@@ -370,6 +425,72 @@ def run_connected_backups(
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
     except Exception:
         stderr.write("connected backup operation failed" + chr(10))
+        return int(CliExitCode.OPERATIONAL_ERROR)
+    stdout.write(collection.render() + chr(10))
+    return int(CliExitCode.COMPLETED)
+
+
+def run_connected_waivers(
+    tokens: tuple[str, ...],
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    environment: Mapping[str, str],
+) -> int:
+    """Grant, read or revoke one exact finding waiver."""
+
+    try:
+        if len(tokens) < 2:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        action = tokens[1]
+        settings = settings_from_environment(environment)
+        if action == "create":
+            fields = parse_approval_arguments(tokens[2:])
+            required = {
+                "finding",
+                "waiver-id",
+                "approval-id",
+                "repository",
+                "run",
+                "identity-hash",
+                "expires-at",
+            }
+            if set(fields) - required - {"policy-scope"} or not required.issubset(fields):
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = create_waiver(
+                settings,
+                fields["finding"],
+                WaiverDraft(
+                    waiver_id=fields["waiver-id"],
+                    approval_id=fields["approval-id"],
+                    repository_id=fields["repository"],
+                    run_id=fields["run"],
+                    execution_identity_hash=fields["identity-hash"],
+                    expires_at=fields["expires-at"],
+                    policy_scope=fields.get("policy-scope"),
+                ),
+            )
+        elif action == "show":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"waiver-id"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = read_waiver(settings, fields["waiver-id"])
+        elif action == "revoke":
+            fields = parse_approval_arguments(tokens[2:])
+            if set(fields) != {"waiver-id", "if-match"}:
+                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+            collection = revoke_waiver(
+                settings,
+                fields["waiver-id"],
+                if_match=fields["if-match"],
+            )
+        else:
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+    except ConnectedCliError as error:
+        stderr.write("connected waiver operation was rejected (" + error.code.value + ")" + chr(10))
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    except Exception:
+        stderr.write("connected waiver operation failed" + chr(10))
         return int(CliExitCode.OPERATIONAL_ERROR)
     stdout.write(collection.render() + chr(10))
     return int(CliExitCode.COMPLETED)

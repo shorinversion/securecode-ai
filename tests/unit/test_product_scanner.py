@@ -1,11 +1,13 @@
 """Host scanner binding and exact source evidence without spawning a worker."""
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from securecode_ai.adapters import product_scanner
 from securecode_ai.adapters.scanner_plugin import ScannerPluginBinding
+from securecode_ai.contracts import EvidenceKind
 from securecode_ai.core.scanning import (
     ScannerBudget,
     ScannerExecution,
@@ -61,19 +63,30 @@ def scripted_worker(
 def test_detector_graph_has_exact_guarded_source_and_host_provenance(
     monkeypatch: pytest.MonkeyPatch, path: str, source: bytes
 ) -> None:
+    from securecode_ai.contracts import EvidenceKind
+
     monkeypatch.setattr(product_scanner, "run_scanner_plugin", scripted_worker)
     reader, head, blob = repository(path, source)
     catalogue = build(reader, head)
     reader.contents[("blob", blob)] = b"mutated checkout equivalent"
     result = product_scanner.scan_product_sources(catalogue, tenant_id="tenant-a")
     assert result.is_complete
-    assert len(result.graph.candidates) == len(result.graph.evidence) == 1
-    record = result.graph.evidence[0]
+    assert len(result.graph.candidates) == 1
+    scanner_records = tuple(
+        record
+        for record in result.graph.evidence
+        if record.evidence_kind is EvidenceKind.SCANNER_SIGNAL
+    )
+    assert scanner_records
+    assert {record.evidence_id for record in scanner_records} <= set(
+        result.graph.candidates[0].evidence_ids
+    )
+    record = scanner_records[0]
     assert record.location is not None
     assert record.artifact_ref is not None
     assert record.location.content_sha256 == hashlib.sha256(source).hexdigest()
     assert record.producer == product_scanner.first_party_scanner_producer()
-    assert result.graph.candidates[0].evidence_ids == (record.evidence_id,)
+    assert record.evidence_id in result.graph.candidates[0].evidence_ids
     output = result.repository_view(catalogue).read_evidence(
         ReadEvidenceArguments(
             TOOL_ARGUMENT_SCHEMA_VERSION,
@@ -146,7 +159,9 @@ def test_invalid_global_budget_rejects_before_workers(budget: int) -> None:
     reader, head, _ = repository(*SOURCES[0])
     with pytest.raises(ValueError, match="request"):
         product_scanner.scan_product_sources(
-            build(reader, head), tenant_id="tenant-a", total_budget_ns=budget
+            build(reader, head),
+            tenant_id="tenant-a",
+            total_budget_ns=budget,
         )
 
 
@@ -165,7 +180,9 @@ def test_final_worker_or_projection_overrun_retains_candidates_and_is_incomplete
     monkeypatch.setattr(product_scanner, "run_scanner_plugin", scripted_worker)
     reader, head, _ = repository(*SOURCES[0])
     result = product_scanner.scan_product_sources(
-        build(reader, head), tenant_id="tenant-a", total_budget_ns=10
+        build(reader, head),
+        tenant_id="tenant-a",
+        total_budget_ns=10,
     )
     assert not result.is_complete
     assert len(result.graph.candidates) == len(result.receipts) == 1
@@ -175,8 +192,6 @@ def test_final_worker_or_projection_overrun_retains_candidates_and_is_incomplete
 def test_source_view_rejects_different_head_and_tampered_alias_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from dataclasses import replace
-
     monkeypatch.setattr(product_scanner, "run_scanner_plugin", scripted_worker)
     reader, head, _ = repository(*SOURCES[0])
     catalogue = build(reader, head)
@@ -184,10 +199,95 @@ def test_source_view_rejects_different_head_and_tampered_alias_bytes(
     other, other_head, _ = repository("a.py", b"x = 1\n")
     with pytest.raises(ValueError, match="binding"):
         result.repository_view(build(other, other_head))
-    alias = result.source_aliases[0]
-    tampered = replace(result, source_aliases=((alias[0], b"forged source", alias[2]),))
+    signal = next(
+        item for item in result.graph.evidence if item.evidence_kind is EvidenceKind.SCANNER_SIGNAL
+    )
+    alias_index = next(
+        index for index, item in enumerate(result.source_aliases) if item[0] == signal.evidence_id
+    )
+    alias = result.source_aliases[alias_index]
+    aliases = list(result.source_aliases)
+    aliases[alias_index] = (alias[0], b"forged source", alias[2])
+    tampered = replace(result, source_aliases=tuple(aliases))
     with pytest.raises(ValueError, match="bytes"):
         tampered.repository_view(catalogue)
+
+
+def test_command_flow_artifact_is_read_as_source_free_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from securecode_ai.contracts import EvidenceKind
+
+    monkeypatch.setattr(product_scanner, "run_scanner_plugin", scripted_worker)
+    source = (
+        b"import subprocess\n"
+        b"def run(request):\n"
+        b" subprocess.run(request.args.get('cmd'), shell=True)\n"
+    )
+    reader, head, _ = repository("command.py", source)
+    catalogue = build(reader, head)
+    result = product_scanner.scan_product_sources(catalogue, tenant_id="tenant-a")
+    flow = next(
+        record
+        for record in result.graph.evidence
+        if record.evidence_kind is EvidenceKind.DATA_FLOW
+        and record.location is None
+        and record.artifact_ref is not None
+    )
+
+    output = result.repository_view(catalogue).read_evidence(
+        ReadEvidenceArguments(TOOL_ARGUMENT_SCHEMA_VERSION, head, flow.evidence_id),
+        window=RepositoryToolWindow(4096, 4096),
+    )
+
+    assert output.content
+    assert source.decode("utf-8") not in output.content
+
+
+def test_portfolio_flow_evidence_is_selectable_as_source_free_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from securecode_ai.contracts import EgressContentRef, EvidenceKind
+    from securecode_ai.core.evidence_package import build_evidence_package
+
+    monkeypatch.setattr(product_scanner, "run_scanner_plugin", scripted_worker)
+    source = (
+        b"import subprocess\n"
+        b"def run(request):\n"
+        b" subprocess.run(request.args.get('cmd'), shell=True)\n"
+    )
+    reader, head, _ = repository("command.py", source)
+    catalogue = build(reader, head)
+    result = product_scanner.scan_product_sources(catalogue, tenant_id="tenant-a")
+    candidate = result.graph.candidates[0]
+    evidence_by_id = {item.evidence_id: item for item in result.graph.evidence}
+    metadata_ids = {
+        evidence_id
+        for evidence_id in candidate.evidence_ids
+        if evidence_by_id[evidence_id].evidence_kind
+        in (EvidenceKind.DATA_FLOW, EvidenceKind.SOURCE_LOCATION)
+    }
+
+    package = build_evidence_package(result.graph, candidate.candidate_id)
+    selected_ids = {item.evidence_id for item in package.selected}
+    aliases = {evidence_id: content for evidence_id, content, _ in result.source_aliases}
+
+    assert metadata_ids
+    assert metadata_ids <= selected_ids
+    assert all(evidence_by_id[evidence_id].artifact_ref is not None for evidence_id in metadata_ids)
+    assert all(source not in aliases[evidence_id] for evidence_id in metadata_ids)
+    egress_refs = []
+    for evidence_id in metadata_ids:
+        artifact = evidence_by_id[evidence_id].artifact_ref
+        assert artifact is not None
+        egress_refs.append(
+            EgressContentRef(
+                schema_version="0.2.0",
+                content_id=artifact.content_id,
+                data_class=artifact.data_class,
+            )
+        )
+    assert len(egress_refs) == len(metadata_ids)
 
 
 def test_auditor_rejects_unadmitted_scanner_alias_before_tool_dispatch(

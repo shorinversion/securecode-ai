@@ -52,6 +52,7 @@ class RemoteBudget:
 
     ledger: Path
     phase: str
+    total_cap_micro_usd: int
     candidate_sha: str
     profile_sha256: str
     max_input_tokens: int
@@ -59,22 +60,53 @@ class RemoteBudget:
     input_micro_usd_per_million: int
     output_micro_usd_per_million: int
 
-    def reserve(self, case: Case, lane: Configuration, repetition: int) -> bool:
+    def __post_init__(self) -> None:
+        phase_cap = {"development": 10_000_000, "final": 40_000_000}.get(self.phase)
+        if (
+            phase_cap is None
+            or type(self.total_cap_micro_usd) is not int
+            or not 1 <= self.total_cap_micro_usd <= phase_cap
+        ):
+            raise ValueError("remote total budget is invalid")
+
+    def reserve(
+        self, case: Case, lane: Configuration, repetition: int, *, input_token_bound: int
+    ) -> AttemptQuote | None:
+        if (
+            type(input_token_bound) is not int
+            or not 1 <= input_token_bound <= self.max_input_tokens
+        ):
+            raise RemoteBudgetError()
         identity = hashlib.sha256(f"{case.case_id}:{lane.value}:{repetition}".encode()).hexdigest()
         quote = AttemptQuote(
             attempt_id=f"release-{identity}",
             phase=self.phase,
             candidate_sha=self.candidate_sha,
             profile_sha256=self.profile_sha256,
-            max_input_tokens=self.max_input_tokens,
+            max_input_tokens=input_token_bound,
             max_output_tokens=self.max_output_tokens,
             input_micro_usd_per_million=self.input_micro_usd_per_million,
             output_micro_usd_per_million=self.output_micro_usd_per_million,
         )
         try:
-            return BenchmarkSpendGuard(self.ledger).reserve(quote)
+            return (
+                quote
+                if BenchmarkSpendGuard(
+                    self.ledger, total_cap_micro_usd=self.total_cap_micro_usd
+                ).reserve(quote)
+                else None
+            )
         except SpendGuardError as error:
             raise RemoteBudgetError() from error
+
+    def settle(self, quote: AttemptQuote, *, input_tokens: int, output_tokens: int) -> int:
+        try:
+            BenchmarkSpendGuard(self.ledger, total_cap_micro_usd=self.total_cap_micro_usd).settle(
+                quote, input_tokens=input_tokens, output_tokens=output_tokens
+            )
+        except SpendGuardError as error:
+            raise RemoteBudgetError() from error
+        return quote.cost(input_tokens, output_tokens)
 
 
 class RemoteBudgetError(ValueError):
@@ -85,7 +117,9 @@ def _sha256(source: str) -> str:
     return "sha256:" + hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
-def _load_cases(manifest: Path, limit: int | None) -> tuple[Case, ...]:
+def _load_cases(manifest: Path, limit: int | None, *, offset: int = 0) -> tuple[Case, ...]:
+    if type(offset) is not int or offset < 0:
+        raise ValueError("case offset is invalid")
     document = json.loads(manifest.read_text(encoding="utf-8"))
     datasets = document.get("datasets")
     if type(datasets) is not list or len(datasets) != 1:
@@ -109,6 +143,7 @@ def _load_cases(manifest: Path, limit: int | None) -> tuple[Case, ...]:
             raise ValueError("manifest case identity is invalid")
         cases.append(Case(*(str(value) for value in values)))
     selected = tuple(sorted(cases, key=lambda item: item.case_id))
+    selected = selected[offset:]
     if limit is not None:
         selected = selected[:limit]
     if not selected:
@@ -149,7 +184,9 @@ def _deterministic(case: Case, source: str) -> bool:
     return bool(FirstPartyStaticWorker().scan(request).signals)
 
 
-def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool, int]:
+def _remote_prediction(
+    case: Case, source: str, *, one_shot: bool, max_output_tokens: int = 64
+) -> tuple[bool, int, int, int]:
     key = os.environ.get("DEEPSEEK_API_KEY")
     endpoint = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
     model = os.environ.get("DEEPSEEK_MODEL", "deepseek-flash")
@@ -157,7 +194,7 @@ def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool
         raise ValueError("DEEPSEEK_API_KEY is required for remote lanes")
     example = '\nExample: {"vulnerable": false}\n' if one_shot else ""
     prompt = (
-        'Classify this public CVEfixes source only. Return strict JSON {"vulnerable":boolean}. '
+        'Classify this public CVEfixes source only. Return strict json {"vulnerable":boolean}. '
         "Do not explain.\nLanguage: " + case.language + example + "\nSource:\n" + source
     )
     payload = {
@@ -167,6 +204,7 @@ def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool
         "temperature": 0,
         "thinking": {"type": "disabled"},
         "reasoning_effort": "none",
+        "max_tokens": max_output_tokens,
     }
     request = urllib.request.Request(
         endpoint + "/chat/completions",
@@ -180,13 +218,21 @@ def _remote_prediction(case: Case, source: str, *, one_shot: bool) -> tuple[bool
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
         raise ValueError("remote model request failed") from error
     try:
+        usage = frame["usage"]
+        input_tokens = int(usage["prompt_tokens"])
+        output_tokens = int(usage["completion_tokens"])
         value = json.loads(frame["choices"][0]["message"]["content"])["vulnerable"]
-        tokens = int(frame.get("usage", {}).get("total_tokens", 0))
+        tokens = int(usage["total_tokens"])
     except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise ValueError("remote model response is invalid") from error
-    if type(value) is not bool or tokens < 0:
+    if (
+        type(value) is not bool
+        or min(input_tokens, output_tokens, tokens) < 0
+        or tokens != input_tokens + output_tokens
+        or output_tokens > max_output_tokens
+    ):
         raise ValueError("remote model response is invalid")
-    return value, tokens
+    return value, tokens, input_tokens, output_tokens
 
 
 def _semgrep_prediction(
@@ -329,6 +375,8 @@ def _cell(
     latency_ms: int,
     tokens: int,
     status: str = "completed",
+    source_lines: int = 0,
+    cost_microunits: int = 0,
 ) -> BenchmarkCell:
     vulnerable = case.expected_label == "vulnerable"
     return BenchmarkCell(
@@ -342,9 +390,10 @@ def _cell(
         fp=int(predicted and not vulnerable),
         tn=int(not predicted and not vulnerable),
         fn=int(not predicted and vulnerable),
-        kloc=len(case.case_id) / 1000,
+        kloc=max(source_lines, 0) / 1000,
         latency_ms=latency_ms,
         tokens=tokens,
+        cost_microunits=cost_microunits,
     )
 
 
@@ -374,12 +423,31 @@ def run(
                 )
             except ValueError:
                 return tuple(
-                    _cell(case, lane, repetition, False, 0, 0, "semgrep-failed")
-                    for case, _source in sources
+                    _cell(
+                        case,
+                        lane,
+                        repetition,
+                        False,
+                        0,
+                        0,
+                        "semgrep-failed",
+                        len(source.splitlines()),
+                    )
+                    for case, source in sources
                     for repetition in range(1, repetitions + 1)
                 )
+            source_lines = {case.case_id: len(source.splitlines()) for case, source in sources}
             return tuple(
-                _cell(case, lane, repetition, predicted, latency, 0, status)
+                _cell(
+                    case,
+                    lane,
+                    repetition,
+                    predicted,
+                    latency,
+                    0,
+                    status,
+                    source_lines[case.case_id],
+                )
                 for case, predicted, latency, status in predictions
                 for repetition in range(1, repetitions + 1)
             )
@@ -390,42 +458,101 @@ def run(
             if lane in {Configuration.DETERMINISTIC, Configuration.SCANNER, Configuration.HYBRID}:
                 try:
                     scanner = _deterministic(case, source)
-                except (TypeError, ValueError, RuntimeError):
+                except Exception:
                     scanner_failed = True
                     if lane is not Configuration.HYBRID:
                         for repetition in range(1, repetitions + 1):
                             cells.append(
-                                _cell(case, lane, repetition, False, 0, 0, "scanner-failed")
+                                _cell(
+                                    case,
+                                    lane,
+                                    repetition,
+                                    False,
+                                    0,
+                                    0,
+                                    "scanner-failed",
+                                    len(source.splitlines()),
+                                )
                             )
                         continue
             for repetition in range(1, repetitions + 1):
                 started = time.monotonic_ns()
                 tokens = 0
+                input_tokens = 0
+                output_tokens = 0
+                cost_microunits = 0
+                budget_quote: AttemptQuote | None = None
                 try:
                     if (
                         lane in MODEL_LANES
                         and (lane is not Configuration.SCANNER or bool(scanner))
                         and remote_budget is not None
-                        and not remote_budget.reserve(case, lane, repetition)
                     ):
-                        raise RemoteBudgetError()
+                        budget_quote = remote_budget.reserve(
+                            case,
+                            lane,
+                            repetition,
+                            input_token_bound=len(source.encode("utf-8")) + 2048,
+                        )
+                        if budget_quote is None:
+                            raise RemoteBudgetError()
                     if lane is Configuration.DETERMINISTIC:
                         predicted = bool(scanner)
                     elif lane is Configuration.SCANNER:
-                        predicted, tokens = (
-                            _remote_prediction(case, source, one_shot=False)
-                            if scanner
-                            else (False, 0)
-                        )
+                        if scanner:
+                            prediction = _remote_prediction(
+                                case,
+                                source,
+                                one_shot=False,
+                                max_output_tokens=(
+                                    remote_budget.max_output_tokens
+                                    if remote_budget is not None
+                                    else 64
+                                ),
+                            )
+                            predicted, tokens, input_tokens, output_tokens = prediction
+                        else:
+                            predicted = False
                     elif lane is Configuration.MODEL:
-                        predicted, tokens = _remote_prediction(case, source, one_shot=False)
+                        prediction = _remote_prediction(
+                            case,
+                            source,
+                            one_shot=False,
+                            max_output_tokens=(
+                                remote_budget.max_output_tokens if remote_budget else 64
+                            ),
+                        )
+                        predicted, tokens, input_tokens, output_tokens = prediction
                     elif lane is Configuration.ONE_SHOT:
-                        predicted, tokens = _remote_prediction(case, source, one_shot=True)
+                        prediction = _remote_prediction(
+                            case,
+                            source,
+                            one_shot=True,
+                            max_output_tokens=(
+                                remote_budget.max_output_tokens if remote_budget else 64
+                            ),
+                        )
+                        predicted, tokens, input_tokens, output_tokens = prediction
                     elif lane is Configuration.HYBRID:
-                        model, tokens = _remote_prediction(case, source, one_shot=False)
+                        prediction = _remote_prediction(
+                            case,
+                            source,
+                            one_shot=False,
+                            max_output_tokens=(
+                                remote_budget.max_output_tokens if remote_budget else 64
+                            ),
+                        )
+                        model, tokens, input_tokens, output_tokens = prediction
                         predicted = bool(scanner) or model
                     else:
                         raise ValueError("unsupported benchmark configuration")
+                    if budget_quote is not None:
+                        assert remote_budget is not None
+                        cost_microunits = remote_budget.settle(
+                            budget_quote,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                        )
                 except RemoteBudgetError:
                     cells.append(_cell(case, lane, repetition, False, 0, 0, "budget-rejected"))
                     continue
@@ -441,6 +568,8 @@ def run(
                         (time.monotonic_ns() - started) // 1_000_000,
                         tokens,
                         "scanner-failed" if scanner_failed else "completed",
+                        len(source.splitlines()),
+                        cost_microunits,
                     )
                 )
     return tuple(cells)
@@ -457,12 +586,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--repetitions", type=int, default=1)
     parser.add_argument("--allow-public-remote", action="store_true")
     parser.add_argument("--semgrep-command", default="semgrep")
     parser.add_argument("--semgrep-config", type=Path)
     parser.add_argument("--spend-ledger", type=Path)
     parser.add_argument("--budget-phase", choices=("development", "final"))
+    parser.add_argument("--total-budget-microusd", type=int)
     parser.add_argument("--candidate-sha")
     parser.add_argument("--profile-sha256")
     parser.add_argument("--max-input-tokens", type=int)
@@ -472,15 +603,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         if (
-            arguments.limit is not None and arguments.limit < 1
+            (arguments.limit is not None and arguments.limit < 1) or arguments.offset < 0
         ) or not 1 <= arguments.repetitions <= 3:
-            raise ValueError("limit and repetitions are invalid")
+            raise ValueError("limit, offset and repetitions are invalid")
         lane = Configuration(arguments.configuration)
         remote_budget: RemoteBudget | None = None
         if lane in MODEL_LANES:
             values = (
                 arguments.spend_ledger,
                 arguments.budget_phase,
+                arguments.total_budget_microusd,
                 arguments.candidate_sha,
                 arguments.profile_sha256,
                 arguments.max_input_tokens,
@@ -492,6 +624,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 raise ValueError("remote lanes require an explicit spend budget")
             assert arguments.spend_ledger is not None
             assert arguments.budget_phase is not None
+            assert arguments.total_budget_microusd is not None
             assert arguments.candidate_sha is not None
             assert arguments.profile_sha256 is not None
             assert arguments.max_input_tokens is not None
@@ -501,6 +634,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             remote_budget = RemoteBudget(
                 arguments.spend_ledger,
                 arguments.budget_phase,
+                arguments.total_budget_microusd,
                 arguments.candidate_sha,
                 arguments.profile_sha256,
                 arguments.max_input_tokens,
@@ -509,7 +643,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 arguments.output_microusd_per_million,
             )
         cells = run(
-            _load_cases(arguments.manifest.resolve(strict=True), arguments.limit),
+            _load_cases(
+                arguments.manifest.resolve(strict=True), arguments.limit, offset=arguments.offset
+            ),
             arguments.database,
             lane,
             arguments.repetitions,

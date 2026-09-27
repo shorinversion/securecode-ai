@@ -120,6 +120,14 @@ SECRET_SCHEMA_STATEMENTS: Final = (
         completed_at INTEGER,
         PRIMARY KEY (tenant_id, grant_id)
     )""",
+    """CREATE TABLE IF NOT EXISTS secret_grant_consumptions (
+        tenant_id TEXT NOT NULL,
+        grant_id TEXT NOT NULL,
+        consumed_at INTEGER NOT NULL,
+        PRIMARY KEY (tenant_id, grant_id),
+        FOREIGN KEY (tenant_id, grant_id)
+            REFERENCES secret_grants (tenant_id, grant_id)
+    )""",
     """CREATE INDEX IF NOT EXISTS secret_provider_revocations_due_idx
        ON secret_provider_revocations (tenant_id, completed_at, next_attempt_at)""",
 )
@@ -197,7 +205,7 @@ class SecretService:
         _validate_request(tenant_id, workload_id, reference, purpose, idempotency_key)
         request_hash = _request_hash(workload_id, reference, purpose)
         cache_key = (tenant_id, idempotency_key)
-        with self._transaction() as cursor:
+        with self._revoke_provider_on_failure() as cleanup, self._transaction() as cursor:
             replay = cursor.execute(
                 """SELECT operation, request_sha256, grant_id
                    FROM secret_grant_idempotency
@@ -224,6 +232,7 @@ class SecretService:
             handle_hash = _hash_text(lease.handle)
             issued_at = self._now()
             self._require_live_lease(lease, issued_at, grant_id)
+            cleanup.append(grant_id)
             receipt = SecretReceipt(
                 tenant_id=tenant_id,
                 workload_id=workload_id,
@@ -262,7 +271,6 @@ class SecretService:
                     (tenant_id, idempotency_key, request_hash, grant_id),
                 )
             except sqlite3.IntegrityError as error:
-                self._best_effort_revoke(grant_id)
                 raise SecretDenied("GRANT_CONFLICT") from error
             return grant, receipt
 
@@ -360,7 +368,7 @@ class SecretService:
         rotated_grant: SecretGrant | None = None
         rotated_receipt: SecretReceipt | None = None
         replayed_receipt: SecretReceipt | None = None
-        with self._transaction() as cursor:
+        with self._revoke_provider_on_failure() as cleanup, self._transaction() as cursor:
             replay = self._operation_replay(
                 cursor,
                 tenant_id=tenant_id,
@@ -378,13 +386,13 @@ class SecretService:
                 )
             else:
                 old = self._find_grant(cursor, previous_grant_id, tenant_id)
-                issued_at = self._now()
+                precondition_at = self._now()
                 if (
                     old["workload_id"] != workload_id
                     or old["purpose"] != purpose
                     or old["state"] != "ACTIVE"
                     or old["version"] != expected_version
-                    or old["expires_at"] <= issued_at
+                    or old["expires_at"] <= precondition_at
                 ):
                     raise SecretDenied("ROTATION_PRECONDITION_FAILED")
                 grant_id = (
@@ -400,7 +408,9 @@ class SecretService:
                     grant_id,
                 )
                 handle_hash = _hash_text(lease.handle)
+                issued_at = self._now()
                 self._require_live_lease(lease, issued_at, grant_id)
+                cleanup.append(grant_id)
                 try:
                     cursor.execute(
                         """INSERT INTO secret_grants (
@@ -444,7 +454,6 @@ class SecretService:
                         grant_id=grant_id,
                     )
                 except Exception:
-                    self._best_effort_revoke(grant_id)
                     raise
                 rotated_grant = SecretGrant(lease.handle, grant_id, 1)
                 rotated_receipt = SecretReceipt(
@@ -479,6 +488,56 @@ class SecretService:
         if row is None:
             raise SecretDenied("GRANT_UNKNOWN")
         return self._receipt_at_now(row)
+
+    def retrieve(
+        self,
+        *,
+        tenant_id: str,
+        workload_id: str,
+        grant_id: str,
+    ) -> SecretGrant:
+        """Consume an active grant once and return its lease to a trusted consumer."""
+
+        _require_identifier(tenant_id, "tenant_id")
+        _require_identifier(workload_id, "workload_id")
+        _require_identifier(grant_id, "grant_id")
+        with self._transaction() as cursor:
+            row = self._find_grant(cursor, grant_id, tenant_id)
+            receipt = _receipt(row)
+            if receipt.workload_id != workload_id:
+                raise SecretDenied("GRANT_SCOPE_DENIED")
+            consumed_at = self._now()
+            if receipt.state != "ACTIVE" or receipt.expires_at <= consumed_at:
+                raise SecretDenied("GRANT_NOT_ACTIVE")
+            consumed = cursor.execute(
+                """SELECT 1 FROM secret_grant_consumptions
+                   WHERE tenant_id=? AND grant_id=?""",
+                (tenant_id, grant_id),
+            ).fetchone()
+            if consumed is not None:
+                raise SecretDenied("GRANT_ALREADY_CONSUMED")
+            try:
+                cursor.execute(
+                    """INSERT INTO secret_grant_consumptions (
+                           tenant_id, grant_id, consumed_at
+                       ) VALUES (?, ?, ?)""",
+                    (tenant_id, grant_id, consumed_at),
+                )
+            except sqlite3.IntegrityError:
+                raise SecretDenied("GRANT_CONSUMPTION_FAILED") from None
+        try:
+            lease = self.p.retrieve(grant_id)
+        except Exception:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from None
+        if not isinstance(lease, OpaqueSecretLease):
+            raise SecretDenied("INVALID_PROVIDER_LEASE")
+        if (
+            lease.expires_at != receipt.expires_at
+            or lease.expires_at <= self._now()
+            or _hash_text(lease.handle) != receipt.handle_sha256
+        ):
+            raise SecretDenied("PROVIDER_LEASE_MISMATCH")
+        return SecretGrant(lease.handle, grant_id, receipt.version)
 
     def expire(self, *, tenant_id: str, now: int | None = None) -> int:
         expired = self.expire_due_grants(tenant_id=tenant_id, now=now)
@@ -697,8 +756,8 @@ class SecretService:
     def _issue(self, reference: str, purpose: str, grant_id: str) -> OpaqueSecretLease:
         try:
             lease = self.p.issue(reference, purpose=purpose, grant_id=grant_id)
-        except Exception as error:
-            raise SecretDenied("PROVIDER_UNAVAILABLE") from error
+        except Exception:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from None
         if not isinstance(lease, OpaqueSecretLease):
             raise SecretDenied("INVALID_PROVIDER_LEASE")
         return lease
@@ -717,8 +776,8 @@ class SecretService:
                 previous_grant_id=previous_grant_id,
                 grant_id=grant_id,
             )
-        except Exception as error:
-            raise SecretDenied("PROVIDER_UNAVAILABLE") from error
+        except Exception:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from None
         if not isinstance(lease, OpaqueSecretLease):
             raise SecretDenied("INVALID_PROVIDER_LEASE")
         return lease
@@ -726,8 +785,18 @@ class SecretService:
     def _revoke_provider(self, grant_id: str) -> None:
         try:
             self.p.revoke(grant_id)
-        except Exception as error:
-            raise SecretDenied("PROVIDER_UNAVAILABLE") from error
+        except Exception:
+            raise SecretDenied("PROVIDER_UNAVAILABLE") from None
+
+    @contextmanager
+    def _revoke_provider_on_failure(self) -> Iterator[list[str]]:
+        issued_grants: list[str] = []
+        try:
+            yield issued_grants
+        except Exception:
+            for grant_id in issued_grants:
+                self._best_effort_revoke(grant_id)
+            raise
 
     def _best_effort_revoke(self, grant_id: str) -> None:
         try:

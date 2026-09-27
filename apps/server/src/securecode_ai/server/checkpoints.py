@@ -6,6 +6,8 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
+from .migrations import apply_schema
+
 
 class CheckpointConflict(Exception):
     pass
@@ -24,11 +26,7 @@ class WorkflowCheckpoint:
 class SqliteCheckpointStore:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self._connection = connection
-        self._connection.execute("""CREATE TABLE IF NOT EXISTS workflow_checkpoints (
-            tenant_id TEXT NOT NULL, run_id TEXT NOT NULL, identity_hash TEXT NOT NULL,
-            state TEXT NOT NULL, version INTEGER NOT NULL, metadata_json TEXT NOT NULL,
-            PRIMARY KEY (tenant_id, run_id))""")
-        self._connection.commit()
+        apply_schema(connection)
 
     @classmethod
     def in_memory(cls) -> SqliteCheckpointStore:

@@ -11,7 +11,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from .data_lifecycle import LifecycleLedger
-from .data_lifecycle_models import LifecycleConflict, require_identifier
+from .data_lifecycle_models import (
+    LifecycleConflict,
+    require_identifier,
+    require_sha256,
+    require_version,
+)
 
 LIFECYCLE_SCHEDULER_SCHEMA_STATEMENTS: Final = (
     """CREATE TABLE IF NOT EXISTS lifecycle_scheduler_claims (
@@ -26,6 +31,8 @@ LIFECYCLE_SCHEDULER_SCHEMA_STATEMENTS: Final = (
         PRIMARY KEY (tenant_id, deletion_id)
     )""",
 )
+_CLAIM_PURGE_SAVEPOINT: Final = "securecode_scheduler_claim_purge"
+_MAX_PURGE_ITEMS: Final = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +61,8 @@ class ApprovedDeletionScheduler:
             raise TypeError("connection must be a sqlite3 connection")
         if type(ledger) is not LifecycleLedger:
             raise TypeError("ledger must be a LifecycleLedger")
+        if getattr(ledger, "_connection", None) is not connection:
+            raise ValueError("scheduler and lifecycle ledger must share a connection")
         require_identifier(owner_id, "owner_id")
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
             raise ValueError("scheduler lease is invalid")
@@ -73,6 +82,7 @@ class ApprovedDeletionScheduler:
         require_identifier(tenant_id, "tenant_id")
         if type(max_items) is not int or not 1 <= max_items <= 256:
             raise ValueError("scheduler batch size is invalid")
+        self._ledger.require_residency(tenant_id)
         rows = self._db.execute(
             """SELECT d.deletion_id, d.identity_hash, d.version
                FROM lifecycle_deletions AS d
@@ -88,9 +98,12 @@ class ApprovedDeletionScheduler:
         ).fetchall()
         outcomes: list[ScheduledDeletionResult] = []
         for row in rows:
-            deletion_id = str(row["deletion_id"])
-            identity_hash = str(row["identity_hash"])
-            version = int(row["version"])
+            deletion_id = row["deletion_id"]
+            identity_hash = row["identity_hash"]
+            version = row["version"]
+            require_identifier(deletion_id, "deletion_id")
+            require_sha256(identity_hash, "identity_hash")
+            require_version(version)
             token = self._claim(
                 tenant_id=tenant_id,
                 deletion_id=deletion_id,
@@ -146,6 +159,72 @@ class ApprovedDeletionScheduler:
             )
         return tuple(outcomes)
 
+    def purge_completed(
+        self,
+        *,
+        tenant_id: str,
+        max_items: int = 32,
+    ) -> int:
+        """Drop bounded operational claims after the durable deletion completed.
+
+        The lifecycle deletion row and its idempotency record remain the source
+        of truth for replay and audit.  Scheduler claims only coordinate an
+        in-flight worker, so completed claims can be reclaimed safely.
+        """
+
+        require_identifier(tenant_id, "tenant_id")
+        if type(max_items) is not int or not 1 <= max_items <= _MAX_PURGE_ITEMS:
+            raise ValueError("scheduler cleanup batch is invalid")
+        self._ledger.require_residency(tenant_id)
+        cursor = self._db.cursor()
+        active = False
+        try:
+            cursor.execute(f"SAVEPOINT {_CLAIM_PURGE_SAVEPOINT}")
+            active = True
+            changed = cursor.execute(
+                """DELETE FROM lifecycle_scheduler_claims
+                   WHERE rowid IN (
+                       SELECT c.rowid
+                       FROM lifecycle_scheduler_claims AS c
+                       JOIN lifecycle_deletions AS d
+                         ON d.tenant_id=c.tenant_id
+                        AND d.deletion_id=c.deletion_id
+                       WHERE c.tenant_id=?
+                         AND d.executed=1
+                       ORDER BY c.lease_expires_at, c.deletion_id
+                       LIMIT ?
+                   )""",
+                (tenant_id, max_items),
+            ).rowcount
+            cursor.execute(f"RELEASE SAVEPOINT {_CLAIM_PURGE_SAVEPOINT}")
+            active = False
+            return changed
+        except sqlite3.Error as error:
+            if active:
+                _rollback_savepoint(cursor, _CLAIM_PURGE_SAVEPOINT)
+            raise LifecycleConflict("scheduler cleanup is unavailable") from error
+        finally:
+            cursor.close()
+
+    def has_completed_claims(self, *, tenant_id: str) -> bool:
+        require_identifier(tenant_id, "tenant_id")
+        self._ledger.require_residency(tenant_id)
+        try:
+            row = self._db.execute(
+                """SELECT 1
+                   FROM lifecycle_scheduler_claims AS c
+                   JOIN lifecycle_deletions AS d
+                     ON d.tenant_id=c.tenant_id
+                    AND d.deletion_id=c.deletion_id
+                   WHERE c.tenant_id=?
+                     AND d.executed=1
+                   LIMIT 1""",
+                (tenant_id,),
+            ).fetchone()
+        except sqlite3.Error as error:
+            raise LifecycleConflict("scheduler cleanup state is unavailable") from error
+        return row is not None
+
     def _initialize_schema(self) -> None:
         try:
             for statement in LIFECYCLE_SCHEDULER_SCHEMA_STATEMENTS:
@@ -175,10 +254,16 @@ class ApprovedDeletionScheduler:
                 (tenant_id, deletion_id),
             ).fetchone()
             if row is not None:
-                active = _parse_utc(str(row["lease_expires_at"])) > now
-                if row["outcome"] == "EXECUTED" or (
-                    active and int(row["expected_version"]) == expected_version
-                ):
+                stored_version = row["expected_version"]
+                require_version(stored_version)
+                lease_expires_at = row["lease_expires_at"]
+                if type(lease_expires_at) is not str:
+                    raise LifecycleConflict("scheduler lease is invalid")
+                active = _parse_utc(lease_expires_at) > now
+                outcome = row["outcome"]
+                if outcome is not None and outcome not in {"CONFLICT", "EXECUTED"}:
+                    raise LifecycleConflict("scheduler outcome is invalid")
+                if outcome == "EXECUTED" or (active and stored_version == expected_version):
                     self._db.commit()
                     return None
             cursor.execute(
@@ -219,6 +304,10 @@ class ApprovedDeletionScheduler:
         outcome: str,
         resulting_version: int | None,
     ) -> None:
+        if outcome not in {"CONFLICT", "EXECUTED"}:
+            raise LifecycleConflict("scheduler outcome is invalid")
+        if resulting_version is not None:
+            require_version(resulting_version)
         cursor = self._db.cursor()
         try:
             cursor.execute("BEGIN IMMEDIATE")
@@ -267,6 +356,8 @@ def _utc(value: datetime) -> datetime:
 
 
 def _parse_utc(value: str) -> datetime:
+    if type(value) is not str:
+        raise LifecycleConflict("scheduler lease is invalid")
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as error:
@@ -274,6 +365,14 @@ def _parse_utc(value: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
         raise LifecycleConflict("scheduler lease is invalid")
     return parsed
+
+
+def _rollback_savepoint(cursor: sqlite3.Cursor, name: str) -> None:
+    try:
+        cursor.execute(f"ROLLBACK TO SAVEPOINT {name}")
+        cursor.execute(f"RELEASE SAVEPOINT {name}")
+    except sqlite3.Error:
+        pass
 
 
 __all__ = [

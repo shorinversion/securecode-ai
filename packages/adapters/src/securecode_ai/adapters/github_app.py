@@ -152,7 +152,6 @@ class GithubAppAdapter:
     """Authenticate allowed GitHub PR deliveries and admit exact-SHA runs."""
 
     __slots__ = (
-        "_delivery_sha256_by_id",
         "_head_resolver",
         "_lock",
         "_run_bindings",
@@ -178,7 +177,6 @@ class GithubAppAdapter:
         self._webhook_secret = webhook_secret
         self._run_state = run_state
         self._head_resolver = cast(TrustedHeadResolver, head_resolver)
-        self._delivery_sha256_by_id: dict[str, str] = {}
         self._run_bindings: dict[str, _RunBinding] = {}
         self._lock = RLock()
 
@@ -189,13 +187,6 @@ class GithubAppAdapter:
             raise GithubAppError(GithubAppErrorCode.DELIVERY_INVALID)
         self._verify_signature(delivery.raw_body, delivery.signature_sha256)
         delivery_sha256 = hashlib.sha256(delivery.raw_body).hexdigest()
-        with self._lock:
-            previous_sha256 = self._delivery_sha256_by_id.setdefault(
-                delivery.delivery_id,
-                delivery_sha256,
-            )
-        if previous_sha256 != delivery_sha256:
-            raise GithubAppError(GithubAppErrorCode.STATE_REJECTED)
         payload = _parse_payload(delivery.raw_body)
         installation_id, repository_id, change_id, payload_head_sha = _pull_request_metadata(
             payload
@@ -216,6 +207,7 @@ class GithubAppAdapter:
                     installation_id=f"{installation_id}:pr:{change_id}",
                     execution_identity=identity,
                     authorized_head_sha=revision.head_sha,
+                    delivery_sha256=delivery_sha256,
                 ),
                 current_head_sha=current_head_sha,
             )

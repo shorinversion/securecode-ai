@@ -18,6 +18,24 @@ services:
       SECURECODE_TMP_DIR: /tmp/securecode
       SECURECODE_DATA_REGION: ${SECURECODE_DATA_REGION:-}
       SECURECODE_TENANT_RESIDENCY_REGIONS: ${SECURECODE_TENANT_RESIDENCY_REGIONS:-}
+      SECURECODE_RESOURCE_PROFILE_ID: ${SECURECODE_RESOURCE_PROFILE_ID:-default-v1}
+      SECURECODE_MAX_CONCURRENT_RUNS: ${SECURECODE_MAX_CONCURRENT_RUNS:-4}
+      SECURECODE_MAX_ADMISSIONS_PER_WINDOW: ${SECURECODE_MAX_ADMISSIONS_PER_WINDOW:-100}
+      SECURECODE_ADMISSION_WINDOW_MS: ${SECURECODE_ADMISSION_WINDOW_MS:-3600000}
+      SECURECODE_MAX_TOKENS_PER_WINDOW: ${SECURECODE_MAX_TOKENS_PER_WINDOW:-2000000}
+      SECURECODE_MAX_COST_MICROUNITS_PER_WINDOW: ${SECURECODE_MAX_COST_MICROUNITS_PER_WINDOW:-100000000}
+      SECURECODE_MAX_CPU_MS_PER_RUN: ${SECURECODE_MAX_CPU_MS_PER_RUN:-600000}
+      SECURECODE_MAX_MEMORY_BYTES_PER_RUN: ${SECURECODE_MAX_MEMORY_BYTES_PER_RUN:-8589934592}
+      SECURECODE_MAX_WALL_MS_PER_RUN: ${SECURECODE_MAX_WALL_MS_PER_RUN:-600000}
+      SECURECODE_RUN_TOKENS: ${SECURECODE_RUN_TOKENS:-64000}
+      SECURECODE_RUN_COST_MICROUNITS: ${SECURECODE_RUN_COST_MICROUNITS:-5000000}
+      SECURECODE_RUN_CPU_MS: ${SECURECODE_RUN_CPU_MS:-600000}
+      SECURECODE_RUN_MEMORY_BYTES: ${SECURECODE_RUN_MEMORY_BYTES:-8589934592}
+      SECURECODE_RUN_WALL_MS: ${SECURECODE_RUN_WALL_MS:-600000}
+      SECURECODE_RUN_LEASE_MS: ${SECURECODE_RUN_LEASE_MS:-900000}
+      SECURECODE_API_QUOTA_WINDOW_SECONDS: ${SECURECODE_API_QUOTA_WINDOW_SECONDS:-60}
+      SECURECODE_API_MAX_REQUESTS_PER_WINDOW: ${SECURECODE_API_MAX_REQUESTS_PER_WINDOW:-5000}
+      SECURECODE_ARTIFACT_RECEIPT_KEY_ID: ${SECURECODE_ARTIFACT_RECEIPT_KEY_ID:-local-v1}
       SECURECODE_TLS_CERT_FILE: /run/secrets/securecode_tls_cert
       SECURECODE_TLS_KEY_FILE: /run/secrets/securecode_tls_key
       SECURECODE_BOOTSTRAP_TENANT_ID: ${SECURECODE_BOOTSTRAP_TENANT_ID:?Set a tenant ID}
@@ -47,6 +65,69 @@ services:
       retries: 3
     networks: [securecode-private, securecode-egress]
 
+  securecode-validator-broker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/repair-validator.Dockerfile
+    image: securecode-ai/validator-broker:local
+    entrypoint: ["/usr/local/bin/python", "-I", "-m", "securecode_ai.adapters.local_repair_oci_broker"]
+    init: true
+    user: "${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?Set the rootless Docker socket UID}:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    network_mode: none
+    environment:
+      SECURECODE_AI_VALIDATOR_MODE: broker
+      SECURECODE_AI_VALIDATOR_SOCKET: /run/securecode/validator/validator.sock
+      SECURECODE_AI_VALIDATOR_PROTOCOL_GID: "65532"
+      SECURECODE_AI_VALIDATOR_BUNDLE_ROOT: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?Set the absolute host-visible validator bundle root}
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET: /run/securecode/docker.sock
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID: ${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?Set the rootless Docker socket UID}
+      SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE: /run/securecode/docker
+      SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256: ${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256:?Set the approved Docker CLI SHA256}
+      SECURECODE_AI_VALIDATOR_IDENTITY: ${SECURECODE_AI_VALIDATOR_IDENTITY:?Set the validator broker identity}
+      SECURECODE_AI_VALIDATION_IMAGE: ${SECURECODE_AI_VALIDATION_IMAGE:?Set a pinned validator image digest}
+    volumes:
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_SOURCE:?Set the rootless Docker socket path}
+        target: /run/securecode/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SOURCE:?Set the approved Docker CLI path}
+        target: /run/securecode/docker
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?Set the absolute host-visible validator bundle root}
+        target: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?Set the absolute host-visible validator bundle root}
+        read_only: false
+        bind:
+          create_host_path: false
+      - validator-transport:/run/securecode/validator
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,stat; path=os.environ.get('SECURECODE_AI_VALIDATOR_SOCKET',''); details=os.stat(path, follow_symlinks=False); raise SystemExit(0 if stat.S_ISSOCK(details.st_mode) else 1)",
+        ]
+      interval: 5s
+      timeout: 2s
+      start_period: 5s
+      retries: 12
+
   securecode-worker:
     build:
       context: ../..
@@ -60,16 +141,29 @@ services:
     depends_on:
       securecode-server:
         condition: service_healthy
+      securecode-validator-broker:
+        condition: service_healthy
     environment:
       SECURECODE_CONTROL_PLANE_URL: https://securecode-server:8080
       SECURECODE_WORKER_ID: ${SECURECODE_WORKER_ID:-compose-worker-1}
       SECURECODE_WORKER_TARGET: /workspace/repository
       SECURECODE_WORKER_TOKEN_FILE: /run/secrets/securecode_worker_token
       SECURECODE_WORKER_ARTIFACT_HOSTS: securecode-server
-      SECURECODE_WORKER_LOCAL_PROVIDER_PORT: ${SECURECODE_WORKER_LOCAL_PROVIDER_PORT:-11435}
+      SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS: ${SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS:-15}
+      SECURECODE_WORKER_POLL_SECONDS: ${SECURECODE_WORKER_POLL_SECONDS:-2}
+      SECURECODE_WORKER_MAX_BACKOFF_SECONDS: ${SECURECODE_WORKER_MAX_BACKOFF_SECONDS:-30}
       SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS: ${SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS:-300}
       SECURECODE_DATA_DIR: /var/lib/securecode
+      SECURECODE_AI_ARTIFACT_ROOT: /var/lib/securecode/suggestions
       SECURECODE_TMP_DIR: /tmp/securecode
+      SECURECODE_AI_VALIDATION_IMAGE: ${SECURECODE_AI_VALIDATION_IMAGE:?Set a pinned validator image digest}
+      SECURECODE_AI_VALIDATOR_MODE: broker
+      SECURECODE_AI_VALIDATOR_SOCKET: /run/securecode/validator/validator.sock
+      SECURECODE_AI_VALIDATOR_BUNDLE_ROOT: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?Set the absolute host-visible validator bundle root}
+      SECURECODE_AI_VALIDATOR_IDENTITY: ${SECURECODE_AI_VALIDATOR_IDENTITY:?Set the validator broker identity}
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET: /run/securecode/docker.sock
+      SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID: ${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?Set the rootless Docker socket UID}
+      SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256: ${SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256:?Set the approved Docker CLI SHA256}
       SSL_CERT_FILE: /run/secrets/securecode_tls_ca
     secrets:
       - securecode_worker_token
@@ -91,6 +185,13 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?Set the absolute host-visible validator bundle root}
+        target: ${SECURECODE_AI_VALIDATOR_BUNDLE_ROOT:?Set the absolute host-visible validator bundle root}
+        read_only: false
+        bind:
+          create_host_path: false
+      - validator-transport:/run/securecode/validator:ro
       - worker-data:/var/lib/securecode
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=1g,mode=1777
@@ -103,7 +204,7 @@ services:
       test: ["CMD", "python", "/app/worker_healthcheck.py"]
       interval: 15s
       timeout: 3s
-      start_period: 20s
+      start_period: ${SECURECODE_WORKER_LOCAL_PROVIDER_WAIT_SECONDS:-300}s
       retries: 3
     networks: [securecode-private]
 
@@ -146,7 +247,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
     healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
+      test: ["CMD", "/usr/bin/ollama", "list"]
       interval: 10s
       timeout: 5s
       start_period: 30s
@@ -154,8 +255,7 @@ services:
 
   securecode-maintenance:
     image: securecode-ai/server:local
-    entrypoint: ["python"]
-    command: ["-m", "securecode_ai.server.maintenance_daemon"]
+    command: ["python", "-m", "securecode_ai.server.maintenance_daemon"]
     init: true
     user: "65532:65532"
     read_only: true
@@ -167,12 +267,17 @@ services:
         condition: service_healthy
     environment:
       SECURECODE_DATA_DIR: /var/lib/securecode
+      SECURECODE_DATA_REGION: ${SECURECODE_DATA_REGION:-}
+      SECURECODE_TENANT_RESIDENCY_REGIONS: ${SECURECODE_TENANT_RESIDENCY_REGIONS:-}
+      SECURECODE_TLS_CERT_FILE: ""
+      SECURECODE_TLS_KEY_FILE: ""
       SECURECODE_TMP_DIR: /tmp/securecode
-      SECURECODE_MAINTENANCE_TENANT_ID: ${SECURECODE_MAINTENANCE_TENANT_ID:?Set a tenant ID}
+      SECURECODE_MAINTENANCE_TENANT_IDS: ${SECURECODE_MAINTENANCE_TENANT_IDS:-${SECURECODE_MAINTENANCE_TENANT_ID:?Set a maintenance tenant or tenant list}}
       SECURECODE_MAINTENANCE_OWNER_ID: ${SECURECODE_MAINTENANCE_OWNER_ID:?Set an executor identity}
       SECURECODE_RETENTION_METADATA_DAYS: ${SECURECODE_RETENTION_METADATA_DAYS:?Set metadata retention}
       SECURECODE_RETENTION_ARTIFACT_DAYS: ${SECURECODE_RETENTION_ARTIFACT_DAYS:?Set artifact retention}
       SECURECODE_RETENTION_AUDIT_DAYS: ${SECURECODE_RETENTION_AUDIT_DAYS:?Set audit retention}
+      SECURECODE_SYSTEM_BACKUP_RETENTION_DAYS: ${SECURECODE_SYSTEM_BACKUP_RETENTION_DAYS:-90}
       SECURECODE_RETENTION_PLAN_LIMIT: ${SECURECODE_RETENTION_PLAN_LIMIT:-32}
       SECURECODE_RETENTION_EXECUTE_LIMIT: ${SECURECODE_RETENTION_EXECUTE_LIMIT:-32}
       SECURECODE_MAINTENANCE_INTERVAL_SECONDS: ${SECURECODE_MAINTENANCE_INTERVAL_SECONDS:-60}
@@ -203,6 +308,12 @@ secrets:
 volumes:
   server-data:
   worker-data:
+  validator-transport:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=${SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID:?Set the rootless Docker socket UID},gid=65532,mode=0770,size=16m,nodev,nosuid,noexec"
 
 networks:
   securecode-private:

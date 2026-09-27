@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 from urllib.parse import quote
 
 from .github_api import GitHubApi, GitHubError, GitHubResponse, repository_path
@@ -79,6 +79,7 @@ class GitHubWriter:
             external_id=external_id,
             projection=projection,
             delivery_key=delivery_key,
+            current_head=lambda: self.head(installation_id, owner, repo),
         )
 
     def write_pull_request_check(
@@ -108,6 +109,7 @@ class GitHubWriter:
             external_id=external_id,
             projection=projection,
             delivery_key=delivery_key,
+            current_head=lambda: resolver(installation_id, repository_id, change_id),
         )
 
     def _write_reconciled(
@@ -119,6 +121,7 @@ class GitHubWriter:
         external_id: str,
         projection: dict[str, object],
         delivery_key: str,
+        current_head: Callable[[], str] | None = None,
     ) -> GitHubWriteReceipt:
         if (
             _COMMIT_SHA.fullmatch(expected_head) is None
@@ -126,13 +129,39 @@ class GitHubWriter:
             or len(external_id) > 128
         ):
             raise GitHubError("EXTERNAL_ID_INVALID")
+        conclusion = projection.get("conclusion")
+        output = projection.get("output")
+        title = output.get("title") if type(output) is dict else None
+        summary = output.get("summary") if type(output) is dict else None
+        if (
+            type(conclusion) is not str
+            or conclusion
+            not in {
+                "success",
+                "failure",
+                "neutral",
+                "cancelled",
+                "timed_out",
+                "action_required",
+                "skipped",
+            }
+            or type(output) is not dict
+            or set(output) != {"title", "summary"}
+            or type(title) is not str
+            or not title
+            or len(title) > 512
+            or type(summary) is not str
+            or not summary
+            or len(summary) > 65_535
+        ):
+            raise GitHubError("CHECK_PROJECTION_INVALID")
         body = {
             "name": _CHECK_NAME,
             "head_sha": expected_head,
             "external_id": external_id,
             "status": "completed",
-            "conclusion": projection.get("conclusion", "neutral"),
-            "output": projection.get("output", {}),
+            "conclusion": conclusion,
+            "output": output,
         }
         existing = self._find_existing(
             installation_id=installation_id,
@@ -140,6 +169,8 @@ class GitHubWriter:
             expected_head=expected_head,
             external_id=external_id,
         )
+        if current_head is not None and current_head() != expected_head:
+            return GitHubWriteReceipt(external_id, "STALE_SUPPRESSED")
         if existing is None:
             response = self._api.request(
                 "POST",
@@ -161,6 +192,8 @@ class GitHubWriter:
                 idempotency_key=delivery_key,
             )
             remote_id = _validated_check(response, 200, body, expected_id=remote_id)
+        if current_head is not None and current_head() != expected_head:
+            return GitHubWriteReceipt(external_id, "STALE_SUPPRESSED", remote_id)
         return GitHubWriteReceipt(external_id, "WRITTEN", remote_id)
 
     def _find_existing(
@@ -211,6 +244,10 @@ def _validated_check(
     document = response.document
     if response.status != expected_status or type(document) is not dict:
         raise GitHubError("CHECK_RECEIPT_INVALID")
+    output = document.get("output")
+    expected_output = expected["output"]
+    if type(output) is not dict or type(expected_output) is not dict:
+        raise GitHubError("CHECK_RECEIPT_INVALID")
     identity = _check_identity(
         document,
         str(expected["head_sha"]),
@@ -220,6 +257,9 @@ def _validated_check(
         (expected_id is not None and identity != expected_id)
         or document.get("status") != "completed"
         or document.get("conclusion") != expected["conclusion"]
+        or output.get("title") != expected_output.get("title")
+        or output.get("summary") != expected_output.get("summary")
+        or ("text" in expected_output and output.get("text") != expected_output["text"])
     ):
         raise GitHubError("CHECK_RECEIPT_INVALID")
     return identity

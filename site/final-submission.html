@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SecureCode AI: итоговый отчёт и проверка готовности</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#56647a; --blue:#2155a5; --line:#d8e0ea; --pale:#f2f6fb; --amber:#fff3df; --red:#7b2424; --green:#245b3c; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#eef2f7; color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(1040px, calc(100% - 32px)); margin:32px auto; padding:36px; background:#fff; border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px #14243a12; }
+    h1,h2,h3 { line-height:1.2; } h1 { margin:0; font-size:2.25rem; } h2 { margin-top:2.2em; padding-bottom:.35em; border-bottom:2px solid var(--line); color:var(--blue); } h3 { margin-top:1.4em; }
+    p,li { max-width:90ch; } a { color:#174d9a; } code { overflow-wrap:anywhere; background:var(--pale); padding:.12em .32em; border-radius:4px; }
+    .lead { font-size:1.13rem; color:#34445e; } .meta { color:var(--muted); }
+    .callout { padding:18px 20px; border-left:5px solid #b76a12; background:var(--amber); border-radius:8px; }
+    .ok { color:var(--green); font-weight:700; } .partial { color:#86500b; font-weight:700; } .missing { color:var(--red); font-weight:700; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:20px 0; }
+    .card { padding:16px; background:var(--pale); border:1px solid var(--line); border-radius:10px; }
+    .card strong { display:block; color:var(--blue); }
+    table { width:100%; border-collapse:collapse; margin:18px 0; font-size:.94rem; }
+    th,td { text-align:left; vertical-align:top; border:1px solid var(--line); padding:9px 10px; }
+    th { background:#e8eef7; }
+    .architecture { display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:center; gap:10px; margin:18px 0; }
+    .architecture div { min-height:84px; display:grid; place-items:center; text-align:center; padding:12px; background:var(--pale); border:1px solid var(--line); border-radius:9px; }
+    .arrow { color:var(--blue); font-size:1.5rem; font-weight:700; }
+    footer { margin-top:44px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:.9rem; }
+    @media(max-width:680px) { main { padding:22px; } h1 { font-size:1.8rem; } .architecture { grid-template-columns:1fr; } .arrow { transform:rotate(90deg); justify-self:center; } table { font-size:.82rem; } }
+    @media print { body { background:#fff; } main { width:100%; margin:0; border:0; box-shadow:none; } a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <p class="meta">Проверка материалов и результатов на 27 сентября 2026 года</p>
+  <h1>SecureCode AI</h1>
+  <p class="lead">Локальный прототип аудита безопасности Python, JavaScript, TypeScript и Go с детерминированными инструментами, локальной LLM, проверяемыми свидетельствами и контролируемым предложением исправлений.</p>
+  <div class="callout"><strong>Итог:</strong> проект реализует значительную часть требуемого прототипа и содержит воспроизводимые эксперименты. Реальный вызов квантованной локальной Qwen завершился обнаружением кандидата, но не созданием патча. Бенчмарк не показывает преимущество над Semgrep. Полный тестовый прогон текущего дерева не прошёл, поэтому этот комплект нельзя представлять как полностью проверенный релиз или доказательство превосходства LLM.</div>
+
+  <h2>Что делает система</h2>
+  <div class="architecture" aria-label="Поток анализа">
+    <div>Локальный Git checkout<br>точная ревизия</div><span class="arrow">→</span>
+    <div>AST, правила, секреты,<br>зависимости и локальная LLM</div><span class="arrow">→</span>
+    <div>Finding и CWE,<br>Auditor / Architect, evidence</div>
+  </div>
+  <p>Предлагаемое исправление хранится отдельно от исходного checkout. В продуктовой реализации есть контролируемая валидация, approval, отчёты и CLI/API для CI. Это прототип, не готовый корпоративный SaaS и не подтверждённый production deployment.</p>
+
+  <h2>Фактический запуск локальной модели</h2>
+  <div class="grid">
+    <div class="card"><strong>Runtime</strong>Ollama 0.34.4, локальный loopback</div>
+    <div class="card"><strong>Модель</strong>qwen2.5-coder:7b-instruct-q4_K_M, Q4_K_M</div>
+    <div class="card"><strong>SHA-256 digest</strong><code>dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364</code></div>
+    <div class="card"><strong>Передача исходника</strong><code>http://127.0.0.1:11434/v1</code>, облачные API не использовались</div>
+  </div>
+  <p>На одном локальном Python-примере модель вернула один CWE-89 кандидат на строке 4; детерминированный поиск также вернул один сигнал, расположения совпали. Запрос на генерацию исправления дошёл до локальной модели, но ответ не содержал принятого patch-кандидата.</p>
+  <table>
+    <thead><tr><th>Проверка</th><th>Результат текущего локального прогона</th></tr></thead>
+    <tbody>
+      <tr><td>Обнаружение моделью</td><td>Выполнено: 1 кандидат CWE-89, файл <code>app.py</code>, строка 4</td></tr>
+      <tr><td>Согласие с детерминированным поиском</td><td>Сигнал найден обоими путями, локация совпала</td></tr>
+      <tr><td>Патч предложен</td><td>Нет: <code>NOT_PROPOSED</code></td></tr>
+      <tr><td>Применимость патча</td><td>Не оценивалась, принятого diff нет</td></tr>
+      <tr><td>Синтаксическая проверка патча</td><td>Не запускалась, патч не предложен</td></tr>
+      <tr><td>Проверка тестами безопасности</td><td>Не запускалась</td></tr>
+      <tr><td>Изменение исходного checkout</td><td>Нет</td></tr>
+      <tr><td>Вердикт продукта</td><td><code>INDETERMINATE</code>, product pass не заявлен</td></tr>
+    </tbody>
+  </table>
+  <p>Обезличенная квитанция: <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/evidence/current-real-local-p917.json">current-real-local-p917.json</a>. Предыдущий отдельный учебный прогон на Ollama 0.16.2 сохранил предложенный patch, ephemeral parse/rescan завершились успешно, исходный checkout не менялся. Он не проверял поведенческую безопасность и не заменяет нынешний прогон; эти исторические данные находятся в <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/m-a2026/evidence/p917-real-local/p917-local-demo.json">архивной квитанции M-A2026</a>.</p>
+
+<h3>Установленный product CLI</h3>
+  <p>Отдельно выполнена команда <code>uv run --locked --offline --no-sync securecode scan demo/fixtures/real-local-cwe89 --format json --output tmp/final-real-product-scan-20260927.json</code>. В процессе не было переменных <code>SECURECODE_*</code>, <code>DEEPSEEK_*</code>, <code>OPENAI_*</code> или <code>OLLAMA_*</code>. CLI вернул код 3 и сообщение <code>analysis result is indeterminate</code>; файл отчёта не появился. Этот запуск не является успешным полным аудитом, а квитанция не подтверждает отдельный вызов модели в установленном pipeline. Обезличенное наблюдение: <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/evidence/current-real-product-cli-scan.json">current-real-product-cli-scan.json</a>.</p>
+
+<h2>Классификация наблюдаемого сигнала</h2>
+  <p>Сигнал CWE-89 в <code>app.py:4</code> относится по существующему taxonomy mapping к OWASP Top 10 2021, <code>A03:2021 Injection</code>. Это классификация сигнала, а не подтверждённая уязвимость: итог локального прогона остаётся <code>INDETERMINATE</code>. Продуктовый receipt пока не формирует эту OWASP-категорию автоматически; она показана здесь как классификация текущего наблюдения.</p>
+
+  <h2>Эксперименты на публичном корпусе</h2>
+  <p>В манифесте 600 файловых ревизий CVEfixes v1.0.8: по 200 на Python, JavaScript/TypeScript и Go; 300 lineage-групп и сплиты 240/120/240 без перехода пары между split. Исходники набора в репозиторий не включены. Воспроизводимый анализ использует seed <code>20260927</code> и 5&nbsp;000 парных bootstrap итераций.</p>
+  <table>
+    <thead><tr><th>Конфигурация</th><th>Завершение</th><th>Precision</th><th>Recall</th><th>F1</th><th>Статус результата</th></tr></thead>
+    <tbody>
+      <tr><td>Deterministic only</td><td>347/600, 253 ошибки</td><td>49.2%</td><td>19.7%</td><td>28.1%</td><td>Архивированный результат прежнего кандидата</td></tr>
+      <tr><td>DeepSeek model-native</td><td>600/600, 3 повтора</td><td>50.5%</td><td>16.8%</td><td>25.2%</td><td>Архивированные прямые классификации</td></tr>
+      <tr><td>DeepSeek one-shot</td><td>600/600, 3 повтора</td><td>52.0%</td><td>22.7%</td><td>31.6%</td><td>Архивированные прямые классификации</td></tr>
+      <tr><td>Full hybrid</td><td>347/600; 253 scanner failures</td><td>49.9%</td><td>32.0%</td><td>39.0%</td><td>Производная парная композиция, не запуск полного pipeline</td></tr>
+      <tr><td>Semgrep 1.177.0</td><td>600/600</td><td>50.0%</td><td>34.3%</td><td>40.7%</td><td>Скоринг одной строки из трёх идентичных повторов</td></tr>
+    </tbody>
+  </table>
+  <p>На held-out split recall full hybrid равен 27.8%, Semgrep 32.5%; разница −4.7 процентного пункта, парный 95% интервал от −13.9 до +4.7 п.п. включает ноль. Hybrid не лучше Semgrep в этом эксперименте. Прямые DeepSeek-ответы не проходили полный SecureCode pipeline с EvidenceGraph, Auditor, Skeptic, валидацией и итоговым verdict. Выполненного исследования генерации патчей на всём корпусе нет.</p>
+  <p>Benchmark aggregate привязан к immutable source manifest прежнего кандидата и не пересчитывался на текущем дереве. Показанные метрики остаются архивными и не являются замером текущего кода.</p>
+  <p>Подробные знаменатели, метрики по языкам и CWE, хеши и ограничения приведены в <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/README.md">benchmark README</a>, <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/report.html">HTML-отчёте экспериментов</a>, <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/aggregate.json">машиночитаемом агрегате</a> и <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/stratified-metrics.csv">таблице срезов</a>.</p>
+
+  <h2>Готовность по требованиям</h2>
+  <table>
+    <thead><tr><th>Требование</th><th>Статус</th><th>Доказательство или ограничение</th></tr></thead>
+    <tbody>
+      <tr><td>GitHub/GitLab repository link and open access</td><td class="partial">Частично</td><td>Репозиторий GitHub открыт для публичного доступа. Обновлённые материалы подготовлены локально; доставка текущего кандидата в удалённую ветку ещё не подтверждена.</td></tr>
+      <tr><td>Воспроизводимость по README на чистой среде</td><td class="partial">Частично</td><td>Архив v10 распакован в чистый временный каталог; <code>uv sync --locked --offline --group quality</code>, 140 продуктовых тестов, offline P4 demo и live Qwen P9.17 demo повторены. Полный pytest не завершился с итоговым счётом. Docker backend собран и запущен на Cloud.ru; внутренняя HTTPS-проверка готовности успешна. Сквозной онлайн-аудит пока не подтверждён.</td></tr>
+      <tr><td>Локальная квантованная LLM</td><td class="partial">Частично</td><td>Реальная Qwen Q4_K_M на Ollama 0.34.4 обнаружила CWE-89. Текущий локальный прогон не создал patch.</td></tr>
+      <tr><td>Роли Auditor и Architect</td><td class="partial">Частично</td><td><code>packages/core/.../auditor.py</code>, <code>architect.py</code> и оркестрация имеются. Реальный прогон P9.17 не подтверждает их полное взаимодействие.</td></tr>
+      <tr><td>AST, секреты, зависимости, проверка кода</td><td class="partial">Частично</td><td>Адаптеры и валидация присутствуют. Полный реальный прогон всех инструментов одним сценарием не зафиксирован.</td></tr>
+      <tr><td>Локальный репозиторий и языки</td><td class="partial">Частично</td><td>Поддержка Python, JS/TS и Go реализована; текущая модельная демонстрация только на Python. Scanner завершился лишь на 347 из 600 кейсов.</td></tr>
+      <tr><td>Единый контракт файла, строк, фрагмента и CWE</td><td class="partial">Частично</td><td><code>FindingCase</code> хранит путь, интервал строк, CWE и ссылку на EvidenceGraph. Фрагмент можно запросить через ограниченный evidence tool, но в едином finding/receipt поле фрагмента нет; обезличенный P9.17 receipt его не содержит.</td></tr>
+      <tr><td>Генерация diff-патча</td><td class="partial">Частично</td><td>Architect умеет создавать отдельный patch artifact; в текущем real-local прогоне Qwen не предложила diff, статус <code>NOT_PROPOSED</code>.</td></tr>
+      <tr><td>Offline reference validation</td><td class="partial">Частично</td><td>В P4 receipt у vulnerable fixture один CWE-89 signal, у safe control ноль; валидация сообщает ноль сигналов на ephemeral candidate, а исходный checkout не менялся. Это узкая проверка pinned rule и не доказывает syntax correctness или security regression; <code>product_outcome=NOT_EVALUATED</code>.</td></tr>
+      <tr><td>Применимость текущего патча</td><td class="partial">Частично</td><td>Патча нет, поэтому применимость не оценивалась, <code>NOT_EVALUATED</code>. Исторический reference-патч в отдельном offline demo не является результатом текущего real-local прогона.</td></tr>
+      <tr><td>Синтаксическая корректность патча</td><td class="partial">Частично</td><td>В текущем прогоне парсинг неприменим, <code>NOT_APPLICABLE</code>, поскольку patch не был предложен.</td></tr>
+      <tr><td>Прохождение security regression</td><td class="partial">Частично</td><td>Тест безопасности патча не запускался, <code>NOT_RUN</code>; успешный результат не заявляется.</td></tr>
+      <tr><td>OWASP Top 10 в отчёте аудита</td><td class="partial">Частично</td><td>Этот отчёт относит наблюдаемый сигнал CWE-89 к A03:2021 Injection по существующему mapping. Сервис пока не сериализует OWASP-категорию в текущий продуктовый receipt автоматически.</td></tr>
+       <tr><td>README на русском и английском, зависимости, тесты</td><td class="partial">Частично</td><td>README, <code>pyproject.toml</code>, <code>uv.lock</code> и тесты есть. Целевой продуктовый набор прошёл 140 тестов; полный pytest не завершился в пятиминутное окно инструмента и итогового счёта нет. Общий canonical quality preflight остаётся FAIL.</td></tr>
+      <tr><td>Демонстрационный notebook</td><td class="ok">Выполнено</td><td>Python-ячейки обоих ноутбуков исполнены в этом проходе; M-A2026 notebook читает текущую redacted квитанцию Qwen.</td></tr>
+      <tr><td>Итоговый HTML с экспериментами и ограничениями</td><td class="ok">Выполнено</td><td>Этот отчёт плюс подробный benchmark HTML. В них явно указаны реальные результаты и ограничения.</td></tr>
+      <tr><td>Ссылки на данные и воспроизводимость</td><td class="ok">Выполнено</td><td><a href="https://zenodo.org/records/13118970">CVEfixes v1.0.8</a>, source-free manifest, скрипт построения и фиксированный seed агрегатора. Лицензии исходных репозиториев требуют отдельной проверки.</td></tr>
+       <tr><td>Веб-сервис, Docker и инструкция</td><td class="partial">Частично</td><td>ASGI API, non-root Dockerfiles с healthcheck и инструкция есть. <code>docker-compose -f deploy/docker/compose.yaml config --quiet</code> проходит с 54 временными placeholder-переменными. На этом хосте доступен standalone Docker Compose v5.5.1, но нет команды <code>docker compose</code>. Образы не собраны, сервисы не запущены. Browser dashboard отсутствует.</td></tr>
+       <tr><td>Сценарий и запись скринкаста на 2–5 минут</td><td class="partial">Частично</td><td>Подготовлен сценарий на 3 минуты; видеофайл не записан.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Проверки и ограничения</h2>
+  <ul>
+    <li>Офлайн reference demo завершается с одним сигналом уязвимого Python fixture и нулём у safe control. Это узкая демонстрация, не оценка точности продукта.</li>
+    <li>Последний полный canonical quality был FAIL: Ruff format, lint и mypy полного дерева не прошли, поэтому unit-stage был пропущен. Целевой продуктовый набор на текущих байтах прошёл 140 тестов, включая portfolio pipeline и отчёты; Ruff format/check и mypy прошли на восьми изменённых production/test файлах. Полный pytest не завершился в пятиминутное окно инструмента и итогового счёта нет. Архивный benchmark не пересчитывался, поскольку текущий worktree отличается от замороженного кандидата.</li>
+    <li>Архивный M-A2026 пакет показывает NOT_READY. Он не обновлён под все изменения рабочего дерева.</li>
+    <li>Репозиторий приватный, публичная лицензия не выбрана. Доступ проверяющему и правила индивидуальной сдачи требуют решения владельца.</li>
+  </ul>
+
+  <h2>Материалы</h2>
+  <ul>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/README.md">README и запуск проекта</a></li>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/evidence/current-real-local-p917.json">Обезличенная квитанция текущего локального запуска</a></li>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/output/submission-demo-cwe89/final-report.html">HTML reference demo</a></li>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/notebooks/m_a2026_submission.ipynb">Учебный notebook</a></li>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/deploy/docker/README.md">Docker Compose инструкция</a></li>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/docs/SUBMISSION_VIDEO_SCRIPT.md">Сценарий скринкаста</a></li>
+    <li><a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/output/pdf/securecode-ai-submission-benchmark.pdf">PDF отчёт benchmark</a></li>
+  </ul>
+  <footer>Подготовлено по содержимому текущего рабочего дерева. Репозиторий не опубликован, проект автоматически не отправлялся. Метрики и статусы не предполагают отсутствующие evidence.</footer>
+</main>
+</body>
+</html>

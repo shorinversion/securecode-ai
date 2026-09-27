@@ -32,6 +32,13 @@ class AdmissionState(StrEnum):
     RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
 
 
+class RunOperation(StrEnum):
+    """Durable intent for one admitted worker run."""
+
+    SCAN = "SCAN"
+    REPAIR = "REPAIR"
+
+
 class AdmissionErrorCode(StrEnum):
     INVALID_REQUEST = "INVALID_REQUEST"
     FORBIDDEN = "FORBIDDEN"
@@ -128,6 +135,14 @@ class RunAdmissionStore(Protocol):
 
     def admitted(self, record: AdmissionRecord, *, now_ms: int) -> AdmissionRecord: ...
 
+    def recover_admitted(
+        self,
+        record: AdmissionRecord,
+        *,
+        code: AdmissionErrorCode,
+        now_ms: int,
+    ) -> AdmissionRecord: ...
+
     def failed(
         self,
         record: AdmissionRecord,
@@ -142,6 +157,18 @@ class RunAdmissionStore(Protocol):
 
 class ResourceReservationPort(Protocol):
     def reserve(self, request: ResourceReservationRequest) -> ResourceReservationReceipt: ...
+
+    def is_active(
+        self,
+        *,
+        tenant_id: str,
+        repository_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        reservation_id: str,
+        expected_version: int,
+        now_ms: int,
+    ) -> bool: ...
 
     def release(
         self,
@@ -175,6 +202,33 @@ class AuthorizationPort(Protocol):
         action: str,
         repository_id: str | None,
     ) -> bool: ...
+
+
+class RunIdentityResolver(Protocol):
+    def resolve(
+        self,
+        *,
+        authenticated_tenant_id: str,
+        document: Mapping[str, object],
+    ) -> tuple[RunExecutionIdentity, str] | None: ...
+
+
+class RunPolicyPinValidator(Protocol):
+    """Validate the exact durable policy pin before a run is admitted."""
+
+    def __call__(self, identity: RunExecutionIdentity) -> None: ...
+
+
+class RunPublicationBinder(Protocol):
+    """Optional host-owned SCM binding for a connected run admission."""
+
+    def bind_publication(
+        self,
+        *,
+        run_id: str,
+        identity: RunExecutionIdentity,
+        document: Mapping[str, object] | None,
+    ) -> None: ...
 
 
 class ResourceRequestPolicy(Protocol):
@@ -211,9 +265,16 @@ class DefaultResourceRequestPolicy:
         if type(execution_identity) is not RunExecutionIdentity or not _bounded_nonnegative(now_ms):
             raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
         revision = execution_identity.repository_revision
-        lease_expires_at_ms = now_ms + self._defaults.lease_duration_ms
-        if lease_expires_at_ms > _SQLITE_INTEGER_MAX:
+        # Keep the reservation alive through the bounded admission wait and
+        # the bounded worker wall budget.  Heartbeats never extend this
+        # deadline, so an abandoned run remains reclaimable.
+        lease_window_ms = self._defaults.lease_duration_ms + self._defaults.requested_wall_ms
+        if (
+            lease_window_ms > _SQLITE_INTEGER_MAX
+            or now_ms > _SQLITE_INTEGER_MAX - lease_window_ms
+        ):
             raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        lease_expires_at_ms = now_ms + lease_window_ms
         request_id = (
             "admission-"
             + hashlib.sha256(
@@ -302,6 +363,10 @@ __all__ = [
     "DefaultResourceRequestPolicy",
     "ResourceRequestPolicy",
     "ResourceReservationPort",
+    "RunOperation",
+    "RunIdentityResolver",
+    "RunPolicyPinValidator",
+    "RunPublicationBinder",
     "RunAdmissionStore",
     "RunResourceDefaults",
     "WorkerQueuePort",

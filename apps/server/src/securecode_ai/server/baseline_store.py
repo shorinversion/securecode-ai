@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from securecode_ai.contracts import AnalysisHealth, AuditRun, AuditRunOutcome, DiscoveryCandidate
 from securecode_ai.core.baseline_fingerprints import (
     BASELINE_FINGERPRINT_SCHEMA_VERSION,
+    BaselineChangedScope,
     BaselineFingerprintComparison,
     BaselineFingerprintSnapshot,
     compare_baseline_fingerprints,
@@ -57,7 +58,7 @@ class DurableBaselineStore:
         self,
         audit_run: AuditRun,
         *,
-        verified_finding_fingerprints: tuple[str, ...],
+        verified_finding_fingerprints: tuple[str, ...] | None = None,
     ) -> BaselineFingerprintSnapshot:
         cursor = self.connection.cursor()
         try:
@@ -75,7 +76,7 @@ class DurableBaselineStore:
         cursor: sqlite3.Cursor,
         audit_run: AuditRun,
         *,
-        verified_finding_fingerprints: tuple[str, ...],
+        verified_finding_fingerprints: tuple[str, ...] | None = None,
     ) -> BaselineFingerprintSnapshot:
         """Persist a snapshot inside the caller's terminal-run transaction."""
 
@@ -165,9 +166,18 @@ class DurableBaselineStore:
         audit_run: AuditRun,
         *,
         commit_lineage: tuple[str, ...],
-        verified_finding_fingerprints: tuple[str, ...],
+        verified_finding_fingerprints: tuple[str, ...] | None = None,
+        changed_scope: BaselineChangedScope | None = None,
     ) -> BaselineFingerprintComparison:
-        """Compare one verified head run with its exact persisted base revision."""
+        """Compare one verified head run with its exact persisted base revision.
+
+        When ``changed_scope`` is supplied it is validated against the same
+        tenant, base SHA, and head SHA before the comparison is returned. This
+        makes the scope suitable for new-code policy evaluation. The legacy
+        baseline-only form remains available for callers that only need to
+        classify persistent findings; those callers must not treat every
+        baseline-absent fingerprint as introduced code.
+        """
 
         if type(audit_run) is not AuditRun:
             raise BaselineStoreError("baseline audit run is invalid")
@@ -193,15 +203,48 @@ class DurableBaselineStore:
             head=head,
             current_head_sha=audit_run.current_head_sha,
             commit_lineage=commit_lineage,
+            changed_scope=changed_scope,
         )
+
+    def compare_for_new_code_audit(
+        self,
+        audit_run: AuditRun,
+        *,
+        commit_lineage: tuple[str, ...],
+        verified_finding_fingerprints: tuple[str, ...],
+        changed_scope: BaselineChangedScope,
+    ) -> BaselineFingerprintComparison:
+        """Return a comparison that is safe to use for new-code enforcement.
+
+        A changed-line proof is mandatory here. The method deliberately has a
+        distinct name so a caller cannot accidentally retain the permissive
+        baseline-only behavior while wiring a blocking policy.
+        """
+
+        if type(changed_scope) is not BaselineChangedScope:
+            raise BaselineStoreError("changed scope is required for new-code comparison")
+        try:
+            return self.compare_for_audit(
+                audit_run,
+                commit_lineage=commit_lineage,
+                verified_finding_fingerprints=verified_finding_fingerprints,
+                changed_scope=changed_scope,
+            )
+        except (TypeError, ValueError):
+            raise BaselineStoreError("changed scope is invalid for the audit revision") from None
 
 
 def _verified_finding_candidates(
     audit_run: AuditRun,
-    fingerprints: tuple[str, ...],
+    fingerprints: tuple[str, ...] | None,
 ) -> tuple[DiscoveryCandidate, ...]:
     """Keep only candidates bound to independently verified findings."""
 
+    candidates = audit_run.coverage_manifest.discovery_candidates
+    if fingerprints is None:
+        if candidates:
+            raise BaselineStoreError("verified baseline findings are required")
+        fingerprints = ()
     if type(fingerprints) is not tuple or len(fingerprints) > 100_000:
         raise BaselineStoreError("verified baseline findings are invalid")
     if any(
@@ -211,7 +254,6 @@ def _verified_finding_candidates(
         raise BaselineStoreError("verified baseline findings are invalid")
     if fingerprints != tuple(sorted(set(fingerprints))):
         raise BaselineStoreError("verified baseline findings are invalid")
-    candidates = audit_run.coverage_manifest.discovery_candidates
     available = {item.root_cause_fingerprint for item in candidates}
     if not set(fingerprints).issubset(available):
         raise BaselineStoreError("verified baseline findings do not match the audit run")

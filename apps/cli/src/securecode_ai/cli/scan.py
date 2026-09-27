@@ -19,6 +19,16 @@ from securecode_ai.adapters.local_product_runner import (
     resolve_local_product_configuration,
     run_local_product_scan,
 )
+from securecode_ai.adapters.product_provider_runtime import (
+    ProductProviderConfigurationError,
+    ProductProviderRuntime,
+    load_product_provider_runtime,
+)
+from securecode_ai.adapters.local_provider_gateway_server import (
+    _ApprovedGatewayLifecycleError,
+    _running_approved_gateway,
+    gateway_observation_path,
+)
 from securecode_ai.core.classification import FindingSeverity
 from securecode_ai.core.reports import ReportFormat
 
@@ -127,6 +137,23 @@ def execute_installed_product_scan(
 ) -> LocalProductScanResult:
     # Approval protection and admission precede all lower-trust config reads.
     host = load_installed_product_host()
+    return _execute_installed_product_scan(
+        arguments,
+        environment=environment,
+        host=host,
+        gateway_already_running=False,
+    )
+
+
+def _execute_installed_product_scan(
+    arguments: ProductScanArguments,
+    *,
+    environment: Mapping[str, str],
+    host: LocalProductHost,
+    gateway_already_running: bool,
+) -> LocalProductScanResult:
+    if type(host) is not LocalProductHost or type(gateway_already_running) is not bool:
+        raise ProductScanUnavailableError()
     repository = _selection_file(Path(arguments.target) / "securecode.json", optional=True)
     if os.name == "nt":
         user_root = environment.get("APPDATA")
@@ -141,21 +168,64 @@ def execute_installed_product_scan(
     user = _selection_file(user_path, optional=True) if user_path is not None else {}
     cli = _selection_file(arguments.config) if arguments.config is not None else {}
     try:
-        configuration = resolve_local_product_configuration(
-            host,
-            user=user,
-            repository=repository,
-            environment=environment,
-            cli=cli,
-        )
-        return run_local_product_scan(
-            host=host,
-            target=arguments.target,
-            report_format=ReportFormat(arguments.report_format.value),
-            configuration=configuration,
-        )
+        provider_runtime: ProductProviderRuntime | None = None
+        if _remote_provider_requested(host, environment):
+            provider_runtime = load_product_provider_runtime(
+                profile_path=environment.get("SECURECODE_REMOTE_PROFILE_FILE", ""),
+                policy_path=environment.get("SECURECODE_REMOTE_POLICY_FILE", ""),
+                environment=environment,
+                tenant_id=environment.get("SECURECODE_REMOTE_TENANT_ID", ""),
+                expected_profile_sha256=environment.get("SECURECODE_REMOTE_PROFILE_SHA256"),
+                expected_policy_sha256=environment.get("SECURECODE_REMOTE_POLICY_SHA256"),
+                expected_egress_sha256=environment.get("SECURECODE_REMOTE_EGRESS_SHA256"),
+                expected_configuration_sha256=environment.get(
+                    "SECURECODE_REMOTE_CONFIGURATION_SHA256"
+                ),
+            )
+            configuration = provider_runtime.configuration
+        else:
+            configuration = resolve_local_product_configuration(
+                host,
+                user=user,
+                repository=repository,
+                environment=environment,
+                cli=cli,
+            )
+        if provider_runtime is not None:
+            try:
+                return run_local_product_scan(
+                    host=host,
+                    target=arguments.target,
+                    report_format=ReportFormat(arguments.report_format.value),
+                    configuration=configuration,
+                    provider_runtime=provider_runtime,
+                )
+            finally:
+                provider_runtime.close()
+        if gateway_already_running:
+            return run_local_product_scan(
+                host=host,
+                target=arguments.target,
+                report_format=ReportFormat(arguments.report_format.value),
+                configuration=configuration,
+            )
+        with _running_approved_gateway(
+            host.profile,
+            host.ollama_version,
+            observation_path=gateway_observation_path(environment),
+        ):
+            return run_local_product_scan(
+                host=host,
+                target=arguments.target,
+                report_format=ReportFormat(arguments.report_format.value),
+                configuration=configuration,
+            )
     except LocalProductConfigurationError:
         raise ProductScanConfigurationError() from None
+    except ProductProviderConfigurationError:
+        raise ProductScanConfigurationError() from None
+    except _ApprovedGatewayLifecycleError:
+        raise ProductScanUnavailableError() from None
 
 
 def load_installed_product_host() -> LocalProductHost:
@@ -165,6 +235,22 @@ def load_installed_product_host() -> LocalProductHost:
         return load_local_product_host()
     except LocalProductHostError:
         raise ProductScanUnavailableError() from None
+
+
+def _remote_provider_requested(
+    host: LocalProductHost, environment: Mapping[str, str]
+) -> bool:
+    if any(
+        environment.get(name)
+        for name in (
+            "SECURECODE_REMOTE_PROFILE_FILE",
+            "SECURECODE_REMOTE_POLICY_FILE",
+            "SECURECODE_REMOTE_SPEND_DB",
+        )
+    ) or environment.get("SECURECODE_REMOTE_PROVIDER") == "1":
+        return True
+    selector = environment.get("SECURECODE_PROVIDER_PROFILE")
+    return selector is not None and selector != host.profile.selector
 
 
 __all__ = [

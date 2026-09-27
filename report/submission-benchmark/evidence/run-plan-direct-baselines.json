@@ -1,0 +1,108 @@
+{
+  "abort_reason": "The deterministic ECMAScript CWE-209 scan looped on a Tree-sitter new_expression node without an object field. Scanner-dependent lanes were interrupted before any output was written; the full model-native and one-shot outputs and the pinned Semgrep baseline were preserved in this archive.",
+  "aborted_at_utc": "2026-09-26T18:30:49.966238+00:00",
+  "candidate": {
+    "head_commit": "88595ae7f50be5906defee9d06e6186ce66ee1f8",
+    "tracked_diff_sha256": "a5f8328b34d37d16e8a4ca1c4cc313b27d7b3e87bd78da2a5fc344ecf4c63e16",
+    "untracked_file_count": 42,
+    "working_tree_dirty": true,
+    "working_tree_snapshot_sha256": "f957efc64fecda562f040f8b17dd8f8f467f2b3d1d2557a18f4f226479c0db92"
+  },
+  "charged_before_abort_usd": 6.293655,
+  "corpus": {
+    "case_count": 600,
+    "dataset_content_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
+    "dataset_id": "cvefixes-v1.0.8-paired-python-js-ts-go",
+    "dataset_revision": "sqlite:CVEfixes_v1.0.8.sqlite",
+    "declared_license": "NOASSERTION",
+    "languages": {
+      "go": 200,
+      "javascript-typescript": 200,
+      "python": 200
+    },
+    "lineage_groups": 300,
+    "manifest_sha256": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+    "source_cache_lineages": 300,
+    "source_cache_sha256": "a14d86a2af27e885624a783e2be009bc6f94e524cb10737e239ea7ecdc8bc64a",
+    "source_hash_mismatches": 0,
+    "source_hashes_verified": 600,
+    "splits": {
+      "calibration": 120,
+      "development": 240,
+      "held-out": 240
+    },
+    "verified_source_bytes": 18603589
+  },
+  "created_at_utc": "2026-09-26T17:25:07+00:00",
+  "limitations": [
+    "The CVEfixes manifest declares NOASSERTION for dataset license.",
+    "The local remote smoke cell was a development-budget probe and is excluded from final held-out scores.",
+    "No model output, key, or raw source is stored in benchmark output.",
+    "This result is an academic benchmark run, not a release-readiness claim."
+  ],
+  "local_baseline": {
+    "configuration": "deterministic_only",
+    "output": "deterministic-600x3.json",
+    "requested_repetitions": 3,
+    "score_repetitions": 1
+  },
+  "matrix": {
+    "deterministic_only": {
+      "score_repetitions": 1
+    },
+    "full_hybrid": {
+      "score_repetitions": 3
+    },
+    "model_native": {
+      "score_repetitions": 3
+    },
+    "one_shot": {
+      "score_repetitions": 3
+    },
+    "scanner_seeded": {
+      "score_repetitions": 1
+    },
+    "semgrep": {
+      "score_repetitions": 1
+    }
+  },
+  "planned_remote_outputs": [
+    "deepseek-model-native-600x3.json",
+    "deepseek-one-shot-600x3.json",
+    "deepseek-full-hybrid-600x3.json",
+    "deepseek-scanner-seeded-600x1.json"
+  ],
+  "remote_model": {
+    "base_url": "https://api.deepseek.com",
+    "development_smoke_budget_cap_usd": 10,
+    "development_smoke_ledger": "deepseek-development-spend.sqlite",
+    "documented_version": "DeepSeek-V4.1-Flash",
+    "final_budget_cap_usd": 40,
+    "final_ledger": "deepseek-final-spend.sqlite",
+    "input_reservation": "UTF-8 source bytes + 2048 tokens",
+    "input_usd_per_million": 0.15,
+    "max_input_tokens": 1000000,
+    "max_output_tokens": 64,
+    "model_alias": "deepseek-flash",
+    "model_profile_sha256": "6d8e6f9bd1cad313caa9efc59324f80129190ff9b8353e42387c7b9d3b1e133c",
+    "output_usd_per_million": 0.6,
+    "price_period": "off-peak",
+    "provider": "DeepSeek API",
+    "reasoning_effort": "none",
+    "response_format": "json_object",
+    "temperature": 0,
+    "thinking": "disabled"
+  },
+  "schema_version": "securecode.submission-benchmark-plan.v1",
+  "semgrep": {
+    "output": "semgrep-600x3.json",
+    "prediction_policy": "Any Semgrep finding in the source file means vulnerable",
+    "projection_license": "Semgrep Rules License v1.0",
+    "projection_sha256": "d87c1f85ff239faccf7dcdebdc0f929c581641c27d5a9d4b1ab54c4d70882aed",
+    "requested_repetitions": 3,
+    "rules_repository_commit": "a84ff9cc2453ca91d581380de4b8b3f272f6f4be",
+    "score_repetitions": 1,
+    "version": "1.177.0"
+  },
+  "status": "ABORTED_PRE_FIX_NONTERMINATING_SCANNER"
+}

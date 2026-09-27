@@ -80,6 +80,7 @@ def _remote_source_profile() -> ProviderProfile:
             "provider_kind": "openai_compatible_remote",
             "execution_boundary": "private_tenant_endpoint",
             "credential_ref": "env://REMOTE_SOURCE_KEY",
+            "protocol_framing_token_upper_bound": 8192,
             "endpoint": {
                 "base_url": "https://models.example.com/v1",
                 "authority": "models.example.com",
@@ -348,8 +349,9 @@ class SpyConnector:
         model_id: str,
         timeout_ms: int,
         binding: ProviderAttemptBinding,
+        call_budget: object,
     ) -> ProviderAttempt:
-        del channel, credential, model_id, timeout_ms
+        del channel, credential, model_id, timeout_ms, call_budget
         self.events.append("send")
         self.application_bytes += len(payload)
         if self.attempt is None:

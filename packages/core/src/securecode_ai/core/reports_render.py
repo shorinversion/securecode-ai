@@ -54,6 +54,18 @@ def _assert_report_integrity(report: DeterministicReport) -> None:
         raise ReportError(ReportErrorCode.INPUT_INVALID) from None
     if document_hash != report.report_sha256:
         raise ReportError(ReportErrorCode.INPUT_INVALID)
+    try:
+        # The report object is a public frozen container, but its nested model
+        # and document references can still be replaced or mutated by callers.
+        # Rebuild the semantic source from the retained run/findings/tools so a
+        # caller cannot pair a valid hash with unrelated report metadata.
+        from .reports_build import build_deterministic_report
+
+        expected = build_deterministic_report(report.run, report.findings, report.tools)
+    except Exception:
+        raise ReportError(ReportErrorCode.INPUT_INVALID) from None
+    if expected.document != report.document or expected.report_sha256 != report.report_sha256:
+        raise ReportError(ReportErrorCode.INPUT_INVALID)
 
 
 def _render_markdown(report: DeterministicReport) -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 from .ports import ControlPlaneService, ServiceRequest, ServiceResponse, ServiceUnavailableError
 from .scm_publication_store import SqliteSCMPublicationStore
@@ -34,7 +35,7 @@ class SCMRunResolutionHandler:
                 raise ServiceUnavailableError()
             return response
         document = request.document
-        if document is None or set(document) != {
+        if not isinstance(document, Mapping) or set(document) != {
             "provider",
             "repository_id",
             "change_id",
@@ -46,7 +47,8 @@ class SCMRunResolutionHandler:
         change_id = document.get("change_id")
         head_sha = document.get("head_sha")
         if (
-            provider not in {"github", "gitlab"}
+            type(provider) is not str
+            or provider not in {"github", "gitlab"}
             or type(repository_id) is not str
             or _ID.fullmatch(repository_id) is None
             or type(change_id) is not str
@@ -55,13 +57,18 @@ class SCMRunResolutionHandler:
             or _COMMIT.fullmatch(head_sha) is None
         ):
             return ServiceResponse(400, {"error": {"code": "INVALID_REQUEST"}})
-        target = self._store.resolve(
-            tenant_id=request.identity.tenant_id,
-            provider=provider,
-            repository_id=repository_id,
-            change_id=change_id,
-            head_sha=head_sha,
-        )
+        try:
+            target = self._store.resolve(
+                tenant_id=request.identity.tenant_id,
+                provider=provider,
+                repository_id=repository_id,
+                change_id=change_id,
+                head_sha=head_sha,
+            )
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            raise ServiceUnavailableError() from None
         if target is None:
             return ServiceResponse(404, {"error": {"code": "RUN_NOT_FOUND"}})
         return ServiceResponse(
@@ -74,6 +81,12 @@ class SCMRunResolutionHandler:
                 "schema_version": "1.0.0",
             },
         )
+
+    def preflight_artifact_upload(self, request: ServiceRequest) -> str:
+        preflight = getattr(self._fallback, "preflight_artifact_upload", None)
+        if not callable(preflight):
+            raise ServiceUnavailableError()
+        return preflight(request)
 
 
 __all__ = ["SCMRunResolutionHandler"]

@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "observed_on": "2026-09-27",
+  "target": "demo/fixtures/real-local-cwe89",
+  "command": "uv run --locked --offline --no-sync securecode scan demo/fixtures/real-local-cwe89 --format json --output tmp/final-real-product-scan-20260927.json",
+  "provider_override_environment_keys_present": [],
+  "local_ollama_tags_observation": {
+    "endpoint": "http://127.0.0.1:11434/api/tags",
+    "model_id": "qwen2.5-coder:7b-instruct-q4_K_M",
+    "model_digest": "sha256:dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364"
+  },
+  "exit_code": 3,
+  "safe_error": "analysis result is indeterminate",
+  "outcome": "INDETERMINATE",
+  "requested_report_path": "tmp/final-real-product-scan-20260927.json",
+  "report_written": false,
+  "model_call_confirmed_by_cli_artifact": false,
+  "source_fixture_modified": false,
+  "notes": "The installed CLI did not produce a successful full-product audit. The local model tag observation is separate from this CLI invocation and does not prove a model call in the installed pipeline."
+}

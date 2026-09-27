@@ -19,10 +19,23 @@ from securecode_ai.contracts import ArtifactRef
 
 from .ports import ServiceRequest, ServiceResponse
 
-_PURPOSES: Final = frozenset({"audit-report", "audit-run", "evidence-graph", "sarif-report"})
+_PURPOSES: Final = frozenset(
+    {
+        "audit-report",
+        "audit-run",
+        "evidence-graph",
+        "repair-patch",
+        "repair-report",
+        "sarif-report",
+    }
+)
 _IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}\Z")
 _IDEMPOTENCY_KEY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
+_ARTIFACT_AUTHORIZATION_PURGE_SAVEPOINT: Final = (
+    "securecode_artifact_authorization_purge"
+)
+_MAX_PURGE_ITEMS: Final = 256
 
 
 class ArtifactAuthorizationDenied(Exception):
@@ -226,6 +239,14 @@ class SqliteArtifactAuthorizationStore:
             or artifact_ref.tenant_id != tenant_id
             or type(purpose) is not str
             or purpose not in _PURPOSES
+            or (
+                purpose == "repair-patch"
+                and artifact_ref.data_class.value != "DC3_CONFIDENTIAL_SOURCE"
+            )
+            or (
+                purpose != "repair-patch"
+                and artifact_ref.data_class.value == "DC3_CONFIDENTIAL_SOURCE"
+            )
             or type(method) is not str
             or method != "PUT"
             or type(artifact_ref.size_bytes) is not int
@@ -257,6 +278,9 @@ class SqliteArtifactAuthorizationStore:
                 now=now,
             ):
                 raise ArtifactAuthorizationDenied()
+            _require_artifact_not_tombstoned(
+                cursor, tenant_id=tenant_id, content_sha256=artifact_ref.content_sha256
+            )
             replay = cursor.execute(
                 """SELECT * FROM artifact_upload_authorizations
                    WHERE tenant_id=? AND idempotency_key=?""",
@@ -297,6 +321,10 @@ class SqliteArtifactAuthorizationStore:
                 ).hexdigest()[:48]
             )
             expires = now + timedelta(seconds=self._ttl_seconds)
+            if artifact_ref.expires_at is not None:
+                expires = min(expires, _utc(artifact_ref.expires_at))
+            if expires <= now:
+                raise ArtifactAuthorizationDenied()
             upload_url = self._upload_urls.build(
                 authorization_id=authorization_id,
                 tenant_id=tenant_id,
@@ -377,12 +405,88 @@ class SqliteArtifactAuthorizationStore:
         *,
         tenant_id: str,
         authorization_id: str,
+        repository_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        content_sha256: str,
+        size_bytes: int,
+        purpose: str,
+        request_sha256: str,
+    ) -> ArtifactUploadAuthorization:
+        return self._require(
+            tenant_id=tenant_id,
+            authorization_id=authorization_id,
+            repository_id=repository_id,
+            run_id=run_id,
+            execution_identity_hash=execution_identity_hash,
+            content_sha256=content_sha256,
+            size_bytes=size_bytes,
+            purpose=purpose,
+            request_sha256=request_sha256,
+        )
+
+    def require_upload(
+        self,
+        *,
+        tenant_id: str,
+        authorization_id: str,
+        repository_id: str,
         run_id: str,
         execution_identity_hash: str,
         content_sha256: str,
         size_bytes: int,
         purpose: str,
     ) -> ArtifactUploadAuthorization:
+        """Validate the signed upload capability without the original request body.
+
+        The original body hash is checked again when the worker commits the
+        artifact.  The PUT boundary has only the issued receipt fields, so its
+        binding is the signed authorization plus the live lease and payload.
+        """
+        return self._require(
+            tenant_id=tenant_id,
+            authorization_id=authorization_id,
+            repository_id=repository_id,
+            run_id=run_id,
+            execution_identity_hash=execution_identity_hash,
+            content_sha256=content_sha256,
+            size_bytes=size_bytes,
+            purpose=purpose,
+            request_sha256=None,
+        )
+
+    def require_not_tombstoned(
+        self,
+        *,
+        tenant_id: str,
+        content_sha256: str,
+    ) -> None:
+        """Re-check the immutable deletion barrier after filesystem I/O."""
+
+        _require_artifact_not_tombstoned(
+            self._connection,
+            tenant_id=tenant_id,
+            content_sha256=content_sha256,
+        )
+
+    def _require(
+        self,
+        *,
+        tenant_id: str,
+        authorization_id: str,
+        repository_id: str,
+        run_id: str,
+        execution_identity_hash: str,
+        content_sha256: str,
+        size_bytes: int,
+        purpose: str,
+        request_sha256: str | None,
+    ) -> ArtifactUploadAuthorization:
+        if (
+            not _valid_identifier(repository_id)
+            or (request_sha256 is not None and not _valid_digest(request_sha256))
+        ):
+            raise ArtifactAuthorizationDenied()
         row = self._connection.execute(
             """SELECT a.*, r.state, q.lease_owner, q.lease_expires_at,
                       q.session_id AS active_session_id, q.terminal
@@ -395,13 +499,35 @@ class SqliteArtifactAuthorizationStore:
         if row is None:
             raise ArtifactAuthorizationDenied()
         authorization = _row_authorization(row)
+        _require_artifact_not_tombstoned(
+            self._connection,
+            tenant_id=tenant_id,
+            content_sha256=content_sha256,
+        )
         if (
             authorization.run_id,
+            authorization.repository_id,
             authorization.execution_identity_hash,
             authorization.content_sha256,
             authorization.size_bytes,
             authorization.purpose,
-        ) != (run_id, execution_identity_hash, content_sha256, size_bytes, purpose):
+        ) != (
+            run_id,
+            repository_id,
+            execution_identity_hash,
+            content_sha256,
+            size_bytes,
+            purpose,
+        ):
+            raise ArtifactAuthorizationDenied()
+        stored_request_sha256 = row["request_sha256"]
+        if (
+            not _valid_digest(stored_request_sha256)
+            or (
+                request_sha256 is not None
+                and stored_request_sha256 != request_sha256
+            )
+        ):
             raise ArtifactAuthorizationDenied()
         self._verify(authorization)
         now = _utc(self._now())
@@ -426,6 +552,144 @@ class SqliteArtifactAuthorizationStore:
             _signing_bytes(authorization), authorization.receipt_signature
         ):
             raise ArtifactAuthorizationDenied()
+
+
+def purge_expired_artifact_authorizations(
+    connection: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    now: datetime,
+    max_items: int = _MAX_PURGE_ITEMS,
+) -> int:
+    """Bounded cleanup for expired, uncommitted authorizations of terminal runs."""
+
+    current = _validate_purge_arguments(tenant_id, now, max_items)
+    cursor = connection.cursor()
+    active = False
+    try:
+        cursor.execute(f"SAVEPOINT {_ARTIFACT_AUTHORIZATION_PURGE_SAVEPOINT}")
+        active = True
+        changed = cursor.execute(
+            """DELETE FROM artifact_upload_authorizations
+               WHERE rowid IN (
+                   SELECT z.rowid
+                   FROM artifact_upload_authorizations AS z
+                   WHERE z.tenant_id=? AND z.expires_at<=?
+                     AND NOT EXISTS (
+                         SELECT 1 FROM run_artifacts AS a
+                         WHERE a.tenant_id=z.tenant_id
+                           AND a.authorization_id=z.authorization_id
+                     )
+                     AND EXISTS (
+                         SELECT 1 FROM audit_runs AS r
+                         WHERE r.tenant_id=z.tenant_id AND r.run_id=z.run_id
+                           AND r.repository_id=z.repository_id
+                           AND r.execution_identity_hash=z.execution_identity_hash
+                     )
+                     AND EXISTS (
+                         SELECT 1
+                         FROM audit_runs AS r
+                         JOIN worker_run_queue AS q
+                           ON q.tenant_id=r.tenant_id AND q.run_id=r.run_id
+                         WHERE r.tenant_id=z.tenant_id AND r.run_id=z.run_id
+                           AND r.repository_id=z.repository_id
+                           AND r.execution_identity_hash=z.execution_identity_hash
+                           AND r.state IN ('CANCELLED', 'FAILED', 'INDETERMINATE',
+                                           'SUCCEEDED', 'SUPERSEDED')
+                           AND q.terminal=1
+                     )
+                   ORDER BY z.expires_at, z.authorization_id LIMIT ?
+               )""",
+            (tenant_id, current.isoformat(), max_items),
+        ).rowcount
+        cursor.execute(f"RELEASE SAVEPOINT {_ARTIFACT_AUTHORIZATION_PURGE_SAVEPOINT}")
+        active = False
+        return changed
+    except sqlite3.Error as error:
+        if active:
+            _rollback_savepoint(cursor, _ARTIFACT_AUTHORIZATION_PURGE_SAVEPOINT)
+        raise ValueError("artifact authorization cleanup is unavailable") from error
+    finally:
+        cursor.close()
+
+
+def has_expired_artifact_authorizations(
+    connection: sqlite3.Connection,
+    *,
+    tenant_id: str,
+    now: datetime,
+) -> bool:
+    current = _validate_purge_arguments(tenant_id, now, 1)
+    row = connection.execute(
+        """SELECT 1
+           FROM artifact_upload_authorizations AS z
+           WHERE z.tenant_id=? AND z.expires_at<=?
+             AND NOT EXISTS (
+                 SELECT 1 FROM run_artifacts AS a
+                 WHERE a.tenant_id=z.tenant_id
+                   AND a.authorization_id=z.authorization_id
+             )
+             AND EXISTS (
+                 SELECT 1 FROM audit_runs AS r
+                 WHERE r.tenant_id=z.tenant_id AND r.run_id=z.run_id
+                   AND r.repository_id=z.repository_id
+                   AND r.execution_identity_hash=z.execution_identity_hash
+             )
+             AND EXISTS (
+                 SELECT 1
+                 FROM audit_runs AS r
+                 JOIN worker_run_queue AS q
+                   ON q.tenant_id=r.tenant_id AND q.run_id=r.run_id
+                 WHERE r.tenant_id=z.tenant_id AND r.run_id=z.run_id
+                   AND r.repository_id=z.repository_id
+                   AND r.execution_identity_hash=z.execution_identity_hash
+                   AND r.state IN ('CANCELLED', 'FAILED', 'INDETERMINATE',
+                                   'SUCCEEDED', 'SUPERSEDED')
+                   AND q.terminal=1
+             )
+           LIMIT 1""",
+        (tenant_id, current.isoformat()),
+    ).fetchone()
+    return row is not None
+
+
+def _validate_purge_arguments(tenant_id: str, now: datetime, max_items: int) -> datetime:
+    if not _valid_identifier(tenant_id):
+        raise ValueError("artifact authorization tenant is invalid")
+    if type(max_items) is not int or not 1 <= max_items <= _MAX_PURGE_ITEMS:
+        raise ValueError("artifact authorization cleanup batch is invalid")
+    try:
+        return _utc(now)
+    except ArtifactAuthorizationDenied:
+        raise ValueError("artifact authorization cleanup clock is invalid") from None
+
+
+def _rollback_savepoint(cursor: sqlite3.Cursor, name: str) -> None:
+    try:
+        cursor.execute(f"ROLLBACK TO SAVEPOINT {name}")
+        cursor.execute(f"RELEASE SAVEPOINT {name}")
+    except sqlite3.Error:
+        pass
+
+
+def _require_artifact_not_tombstoned(
+    connection: sqlite3.Connection | sqlite3.Cursor,
+    *,
+    tenant_id: str,
+    content_sha256: str,
+) -> None:
+    """Prevent lifecycle-deleted tenant content from being reintroduced."""
+
+    try:
+        row = connection.execute(
+            """SELECT 1 FROM lifecycle_storage_tombstones
+               WHERE tenant_id=? AND content_sha256=?""",
+            (tenant_id, content_sha256),
+        ).fetchone()
+    except sqlite3.Error:
+        raise ArtifactAuthorizationDenied() from None
+    if row is not None:
+        raise ArtifactAuthorizationDenied()
 
 
 class SignedArtifactAuthorizationHandler:
@@ -458,6 +722,8 @@ class SignedArtifactAuthorizationHandler:
                 )
             )
             if not all(isinstance(value, str) and value for value in values):
+                raise ArtifactAuthorizationDenied()
+            if values[0] != request.identity.subject_id:
                 raise ArtifactAuthorizationDenied()
             authorization = self._store.issue(
                 tenant_id=request.identity.tenant_id,
@@ -524,6 +790,7 @@ def _authorization_headers(
         "x-securecode-content-sha256": authorization.content_sha256,
         "x-securecode-execution-identity-hash": authorization.execution_identity_hash,
         "x-securecode-purpose": authorization.purpose,
+        "x-securecode-repository-id": authorization.repository_id,
         "x-securecode-receipt-signature": authorization.receipt_signature,
         "x-securecode-run-id": authorization.run_id,
         "x-securecode-tenant-id": authorization.tenant_id,
@@ -637,6 +904,8 @@ __all__ = [
     "ArtifactUploadAuthorization",
     "ArtifactUploadUrlFactory",
     "HmacSha256ArtifactReceiptSigner",
+    "has_expired_artifact_authorizations",
+    "purge_expired_artifact_authorizations",
     "SignedArtifactAuthorizationHandler",
     "SqliteArtifactAuthorizationStore",
     "StaticArtifactUploadUrlFactory",

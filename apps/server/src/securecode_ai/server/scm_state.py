@@ -118,6 +118,12 @@ class SqliteSCMRunState:
         finally:
             cursor.close()
 
+    @property
+    def tenant_id(self) -> str:
+        """Return the tenant scope that owns every state row in this instance."""
+
+        return self._tenant_id
+
     def admit(
         self,
         request: SCMRunAdmissionRequest,
@@ -144,7 +150,22 @@ class SqliteSCMRunState:
             if replay is not None:
                 if replay["request_sha256"] != material_hash:
                     _codec.reject(SCMRunStateErrorCode.DELIVERY_CONFLICT)
-                return _codec.admission_from_json(replay["receipt_json"])
+                receipt = _codec.admission_from_json(replay["receipt_json"])
+                if receipt.lifecycle is SCMRunLifecycle.SUPERSEDED:
+                    return receipt
+                row = self._load_run(cursor, receipt.run_id)
+                if (
+                    row["execution_identity_hash"] != receipt.execution_identity_hash
+                    or row["head_sha"] != receipt.head_sha
+                ):
+                    _codec.reject(SCMRunStateErrorCode.TRANSITION_CONFLICT)
+                row = self._observe_run_head(cursor, row, current_head_sha)
+                if (
+                    _codec.lifecycle(row) is receipt.lifecycle
+                    and _codec.state_version(row) == receipt.state_version
+                ):
+                    return receipt
+                return _codec.admission_receipt(AdmissionDisposition.DUPLICATE, row, ())
 
             self._require_delivery_capacity(cursor)
             self._observe_head(
@@ -156,6 +177,13 @@ class SqliteSCMRunState:
             semantic_key = _codec.semantic_key(request)
             run_id = _codec.run_id(semantic_key)
             if current_head_sha != request.authorized_head_sha:
+                self._supersede_other_heads(
+                    cursor,
+                    installation_id=request.installation_id,
+                    repository_id=revision.repository_id,
+                    current_head_sha=current_head_sha,
+                    superseding_run_id=None,
+                )
                 receipt = SCMRunAdmissionReceipt(
                     disposition=AdmissionDisposition.SUPERSEDED,
                     run_id=run_id,

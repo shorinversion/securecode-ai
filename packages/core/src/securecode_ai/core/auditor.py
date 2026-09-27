@@ -7,6 +7,7 @@ schema-valid verdict plus its evidence citations, never model rationale text.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -14,6 +15,8 @@ from enum import StrEnum
 from securecode_ai.contracts import FindingVerdict, ModelCallStatus
 
 from .evidence_package import EvidencePackage
+
+_REFERENCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 
 
 class AuditorContractErrorCode(StrEnum):
@@ -52,11 +55,20 @@ class AuditorVerdict:
     def __post_init__(self) -> None:
         if (
             type(self.verdict_id) is not str
-            or not self.verdict_id
+            or _REFERENCE_ID.fullmatch(self.verdict_id) is None
             or type(self.finding_verdict) is not FindingVerdict
+            or self.finding_verdict
+            not in {
+                FindingVerdict.CONFIRMED,
+                FindingVerdict.REJECTED_WITH_EVIDENCE,
+                FindingVerdict.NEEDS_MORE_EVIDENCE,
+            }
             or type(self.cited_evidence_ids) is not tuple
             or not self.cited_evidence_ids
-            or any(type(item) is not str or not item for item in self.cited_evidence_ids)
+            or any(
+                type(item) is not str or _REFERENCE_ID.fullmatch(item) is None
+                for item in self.cited_evidence_ids
+            )
             or self.cited_evidence_ids != tuple(sorted(self.cited_evidence_ids))
             or len(self.cited_evidence_ids) != len(set(self.cited_evidence_ids))
             or type(self.rationale_sha256) is not str
@@ -110,7 +122,7 @@ def validate_auditor_response(
         )
     try:
         verdict = parse_auditor_verdict(package, payload)
-    except AuditorContractError:
+    except Exception:
         return AuditorResponse(
             model_call_status=ModelCallStatus.INVALID_SCHEMA,
             schema_valid_result=False,

@@ -149,10 +149,11 @@ def build_program_graph(
     if not symbol_indexes or len(scanner_results) != len(symbol_indexes):
         raise ProgramGraphAdapterError(ProgramGraphAdapterErrorCode.REQUEST_INVALID)
 
-    # Structural nodes are unique across admitted paths. Reject a lower-bound
-    # overflow before rescanning, constructing nodes, or sorting aggregates.
+    # Structural nodes and validated call facts are unique across admitted
+    # paths. Reject a lower-bound overflow before rescanning, constructing
+    # nodes, or sorting aggregates.
     structural_nodes = 0
-    structural_edges = 0
+    structural_edges = len(call_facts)
     for index in symbol_indexes:
         structural_nodes += len(index.symbols)
         structural_edges += max(0, len(index.symbols) - 1)

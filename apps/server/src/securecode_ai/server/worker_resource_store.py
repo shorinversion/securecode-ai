@@ -123,6 +123,27 @@ def _binding(
         actual = _actual(row, state)
     except Exception:
         _unavailable()
+    if actual is not None and any(
+        actual_value > reserved_value
+        for actual_value, reserved_value in zip(
+            (
+                actual.tokens,
+                actual.cost_microunits,
+                actual.cpu_ms,
+                actual.peak_memory_bytes,
+                actual.wall_ms,
+            ),
+            (
+                reserved.tokens,
+                reserved.cost_microunits,
+                reserved.cpu_ms,
+                reserved.peak_memory_bytes,
+                reserved.wall_ms,
+            ),
+            strict=True,
+        )
+    ):
+        _unavailable()
     if (
         row["admission_state"] != "ADMITTED"
         or row["admission_tenant_id"] != tenant_id
@@ -137,6 +158,7 @@ def _binding(
         or type(current_version) is not int
         or current_version != reservation_version + (0 if state is ReservationState.RESERVED else 1)
         or row["request_id"] != request.request_id
+        or request.tenant_id != tenant_id
         or row["repository_id"] != request.repository_id
         or row["run_id"] != request.run_id
         or row["execution_identity_hash"] != request.execution_identity_hash
@@ -171,14 +193,23 @@ def _request(value: object) -> ResourceReservationRequest:
     try:
         if type(value) is not str:
             _unavailable()
-        document = json.loads(value)
+        document = json.loads(value, object_pairs_hook=_closed_object)
         if not isinstance(document, Mapping) or set(document) != _REQUEST_KEYS:
             _unavailable()
         return ResourceReservationRequest(**dict(document))
     except WorkerResourceError:
         raise
-    except Exception:
+    except (RecursionError, TypeError, ValueError, UnicodeError):
         _unavailable()
+
+
+def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, item in pairs:
+        if key in document:
+            raise ValueError("duplicate resource request field")
+        document[key] = item
+    return document
 
 
 def _actual(row: sqlite3.Row, state: ReservationState) -> ResourceUsage | None:

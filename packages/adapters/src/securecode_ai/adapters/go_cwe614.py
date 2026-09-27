@@ -67,6 +67,7 @@ _SENSITIVE_NAME = frozenset(
         "csrf",
         "oauth",
     }
+)
 _GO_SCOPES = frozenset({"function_declaration", "method_declaration", "func_literal"})
 
 

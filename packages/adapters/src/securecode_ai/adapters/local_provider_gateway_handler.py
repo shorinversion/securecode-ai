@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+import threading
 import time
 from collections.abc import Callable
 
@@ -40,6 +41,7 @@ from .native_repository_tools import (
 )
 from .openai_compatible_local_codec import _canonicalize_ollama_envelope
 from .product_model import AUDITOR_WIRE_SCHEMA_JSON, MODEL_NATIVE_DISCOVERY_WIRE_SCHEMA_JSON
+from .product_skeptic_contracts import SKEPTIC_WIRE_SCHEMA_JSON
 
 
 def handle_gateway_request(
@@ -48,11 +50,29 @@ def handle_gateway_request(
     policy: GatewayPolicy,
     backend: GatewayBackend,
     deadline: float | None = None,
+    cancellation_event: threading.Event | None = None,
     normalization_observer: Callable[[GatewayNormalizationObservation], None] | None = None,
 ) -> GatewayReply:
     """Refuse actual restricted audit requests without any backend dispatch."""
     if normalization_observer is not None and not callable(normalization_observer):
         raise ValueError("invalid gateway normalization observer")
+    # This function is also called directly by the worker boundary.  Reject
+    # malformed calls before hashing or dereferencing them so an integration
+    # mistake cannot turn into an uncaught exception outside the HTTP server.
+    if type(body) is not bytes:
+        return _failure(413)
+    if type(policy) is not GatewayPolicy:
+        return _failure(502)
+    if cancellation_event is not None and not isinstance(cancellation_event, threading.Event):
+        return _failure(502)
+    if deadline is not None:
+        if type(deadline) not in (int, float):
+            return _failure(504)
+        try:
+            if not math.isfinite(deadline):
+                return _failure(504)
+        except (OverflowError, TypeError, ValueError):
+            return _failure(504)
     request_sha256 = hashlib.sha256(body).hexdigest()
 
     def observed(
@@ -131,20 +151,25 @@ def handle_gateway_request(
         ):
             raise ValueError("invalid gateway message")
         context = _decode(message["content"].encode())
-        if set(context) != {"trusted_controls", "untrusted_evidence", "untrusted_source_locations"}:
+        context_keys = set(context)
+        if context_keys not in (
+            {"trusted_controls", "untrusted_evidence", "untrusted_source_locations"},
+            {"trusted_controls", "untrusted_auditor_metadata", "untrusted_evidence"},
+        ):
             raise ValueError("invalid gateway audit context")
         controls = context["trusted_controls"]
-        if not isinstance(controls, dict) or set(controls) != {
+        if not isinstance(controls, dict) or not {
             "role",
             "instructions",
             "output_schema",
             "allowed_rule_ids",
             "source_revision",
-        }:
+        }.issubset(set(controls)):
             raise ValueError("invalid gateway controls")
         schemas = {
             "discovery": json.loads(MODEL_NATIVE_DISCOVERY_WIRE_SCHEMA_JSON),
             "auditor": json.loads(AUDITOR_WIRE_SCHEMA_JSON),
+            "skeptic": json.loads(SKEPTIC_WIRE_SCHEMA_JSON),
         }
         role = controls["role"]
         if (
@@ -153,6 +178,69 @@ def handle_gateway_request(
             or controls["output_schema"] != schemas[role]
         ):
             raise ValueError("invalid gateway role schema")
+        skeptic = role == "skeptic"
+        if skeptic:
+            if context_keys != {
+                "trusted_controls",
+                "untrusted_auditor_metadata",
+                "untrusted_evidence",
+            } or set(controls) != {
+                "role",
+                "instructions",
+                "output_schema",
+                "allowed_rule_ids",
+                "source_revision",
+                "selected_evidence_ids",
+                "selection_truncated",
+            }:
+                raise ValueError("invalid skeptic gateway context")
+            selected_evidence_ids = controls["selected_evidence_ids"]
+            if (
+                not isinstance(selected_evidence_ids, list)
+                or not 1 <= len(selected_evidence_ids) <= 4096
+                or any(not _valid_id(value) for value in selected_evidence_ids)
+                or len(set(selected_evidence_ids)) != len(selected_evidence_ids)
+                or type(controls["selection_truncated"]) is not bool
+            ):
+                raise ValueError("invalid skeptic gateway selection")
+            auditor_metadata = context["untrusted_auditor_metadata"]
+            if (
+                not isinstance(auditor_metadata, dict)
+                or set(auditor_metadata)
+                != {
+                    "candidate_id",
+                    "candidate_version",
+                    "auditor_identity",
+                    "auditor_output_sha256",
+                    "finding_verdict",
+                    "instruction_authority",
+                }
+                or not _valid_id(auditor_metadata["candidate_id"])
+                or type(auditor_metadata["candidate_version"]) is not int
+                or not 1 <= auditor_metadata["candidate_version"] <= 1_000_000
+                or not _valid_id(auditor_metadata["auditor_identity"])
+                or not isinstance(auditor_metadata["auditor_output_sha256"], str)
+                or re.fullmatch(r"[0-9a-f]{64}", auditor_metadata["auditor_output_sha256"])
+                is None
+                or not isinstance(auditor_metadata["finding_verdict"], str)
+                or not auditor_metadata["finding_verdict"]
+                or auditor_metadata["instruction_authority"] != "NONE"
+            ):
+                raise ValueError("invalid skeptic auditor metadata")
+        elif context_keys != {
+            "trusted_controls",
+            "untrusted_evidence",
+            "untrusted_source_locations",
+        } or set(controls) != {
+            "role",
+            "instructions",
+            "output_schema",
+            "allowed_rule_ids",
+            "source_revision",
+        }:
+            raise ValueError("invalid standard gateway context")
+        if native_tools and role != "discovery":
+            raise ValueError("native tools require discovery role")
         if (
             not isinstance(controls["instructions"], str)
             or not 1 <= len(controls["instructions"].encode()) <= 4096
@@ -190,18 +278,31 @@ def handle_gateway_request(
         )
         admitted_aliases: set[str] = set()
         for item in evidence:
-            if (
-                not isinstance(item, dict)
-                or set(item)
-                != {
-                    "evidence_id",
+            required_evidence_fields = (
+                {
                     "evidence_ids",
+                    "content_id",
                     "instruction_authority",
                     "data_class",
                     "content",
                 }
+                if skeptic
+                else {
+                    "evidence_id",
+                    "evidence_ids",
+                    "content_id",
+                    "instruction_authority",
+                    "data_class",
+                    "content",
+                }
+            )
+            if (
+                not isinstance(item, dict)
+                or set(item)
+                != required_evidence_fields
                 or item["instruction_authority"] != "NONE"
                 or not isinstance(item["content"], str)
+                or not _valid_id(item["content_id"])
             ):
                 raise ValueError("invalid gateway evidence fields")
             aliases = item["evidence_ids"]
@@ -210,7 +311,7 @@ def handle_gateway_request(
                 or not 1 <= len(aliases) <= 4096
                 or any(not _valid_id(alias) for alias in aliases)
                 or len(set(aliases)) != len(aliases)
-                or item["evidence_id"] != aliases[0]
+                or (not skeptic and item["evidence_id"] != aliases[0])
                 or admitted_aliases.intersection(aliases)
             ):
                 raise ValueError("invalid gateway aliases")
@@ -225,7 +326,9 @@ def handle_gateway_request(
             ):
                 raise ValueError("calibration requires public data")
             restricted = restricted or item["data_class"] == DataClass.RESTRICTED.value
-        locations = context["untrusted_source_locations"]
+        if skeptic and set(selected_evidence_ids) != admitted_aliases:
+            raise ValueError("invalid skeptic evidence selection")
+        locations = context.get("untrusted_source_locations", [])
         if not isinstance(locations, list) or len(locations) > 4096:
             raise ValueError("invalid gateway locations")
         located_aliases = set()
@@ -248,6 +351,8 @@ def handle_gateway_request(
         return _failure(400)
     if time.monotonic() >= request_deadline:
         return _failure(504)
+    if cancellation_event is not None and cancellation_event.is_set():
+        return _failure(408)
     if restricted:
         response = {
             "id": "gateway-refusal-" + policy.content_sha256,
@@ -281,17 +386,38 @@ def handle_gateway_request(
             ).encode()
             if len(upstream_body) > policy.max_request_bytes:
                 return _failure(413)
-        reply = backend.dispatch(upstream_body, timeout_seconds=remaining)
+        dispatch = getattr(backend, "dispatch", None)
+        if not callable(dispatch):
+            return _failure(502)
+        try:
+            dispatch_with_cancellation = getattr(backend, "dispatch_with_cancellation", None)
+            if cancellation_event is not None and callable(dispatch_with_cancellation):
+                reply = dispatch_with_cancellation(
+                    upstream_body,
+                    timeout_seconds=remaining,
+                    cancellation_event=cancellation_event,
+                )
+            else:
+                reply = dispatch(upstream_body, timeout_seconds=remaining)
+        except Exception:
+            return _failure(502, dispatched=True)
+        if (
+            type(reply) is not GatewayReply
+            or type(reply.status) is not int
+            or type(reply.backend_dispatched) is not bool
+            or type(reply.body) is not bytes
+        ):
+            return _failure(502, dispatched=True)
+        if cancellation_event is not None and cancellation_event.is_set():
+            return _failure(408, dispatched=reply.backend_dispatched)
         if time.monotonic() > request_deadline:
+            return _failure(504, dispatched=reply.backend_dispatched)
+        if reply.status != 200:
             return _failure(
-                504, dispatched=reply.backend_dispatched if type(reply) is GatewayReply else True
+                reply.status,
+                dispatched=reply.backend_dispatched,
             )
-        if type(reply) is not GatewayReply or reply.status != 200:
-            return _failure(
-                reply.status if type(reply) is GatewayReply else 502,
-                dispatched=reply.backend_dispatched if type(reply) is GatewayReply else True,
-            )
-        if type(reply.body) is not bytes or len(reply.body) > _MAX_RESPONSE_BYTES:
+        if len(reply.body) > _MAX_RESPONSE_BYTES:
             return _failure(502, dispatched=True)
         try:
             canonical = (
@@ -310,6 +436,9 @@ def handle_gateway_request(
             )
             return _failure(502, dispatched=True)
         except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
+            observed(GatewayResponseNormalization.REJECTED)
+            return _failure(502, dispatched=True)
+        if type(canonical) is not bytes or len(canonical) > _MAX_RESPONSE_BYTES:
             observed(GatewayResponseNormalization.REJECTED)
             return _failure(502, dispatched=True)
         if not observed(

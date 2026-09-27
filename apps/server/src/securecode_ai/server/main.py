@@ -28,12 +28,12 @@ async def serve() -> None:
             loop.add_signal_handler(value, stopping.set)
         except (NotImplementedError, RuntimeError):
             signal.signal(value, lambda *_args: loop.call_soon_threadsafe(stopping.set))
-    await server.start(
-        settings.host,
-        settings.port,
-        ssl_context=_tls_context(settings),
-    )
     try:
+        await server.start(
+            settings.host,
+            settings.port,
+            ssl_context=_tls_context(settings),
+        )
         await stopping.wait()
     finally:
         await server.stop()

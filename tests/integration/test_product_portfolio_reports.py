@@ -33,7 +33,9 @@ _VULNERABLE_CASES = (
     (
         "CWE-862",
         "authz.py",
-        b"def check(request, repo):\n repo.get(request.args.get('id'))\n",
+        b"@app.route('/admin/users/<user_id>', methods=['PATCH'])\n"
+        b"@login_required\n"
+        b"def check(user_id, repo):\n repo.update(user_id)\n",
         "A01:2021",
     ),
     (
@@ -57,7 +59,8 @@ _VULNERABLE_CASES = (
     (
         "CWE-862",
         "authz.js",
-        b"function check(req, repo) { repo.get(req.params.id); }\n",
+        b"const app = express();\n"
+        b"app.patch('/admin/users/:id', csrfProtection, authenticate, (req, res) => { repo.update(req.params.id); });\n",
         "A01:2021",
     ),
     (
@@ -81,7 +84,8 @@ _VULNERABLE_CASES = (
     (
         "CWE-862",
         "authz.ts",
-        b"function check(req: Request, repo: Repo): void { repo.get(req.params.id); }\n",
+        b"const app = express();\n"
+        b"app.patch('/admin/users/:id', csrfProtection, authenticate, (req: Request, res: Response) => { repo.update(req.params.id); });\n",
         "A01:2021",
     ),
     (
@@ -105,7 +109,9 @@ _VULNERABLE_CASES = (
     (
         "CWE-862",
         "authz.go",
-        b'package api\nfunc check(r *Request, repo Repo) { repo.Find(r.URL.Query().Get("id")) }\n',
+        b'package api\nimport "net/http"\nvar repo Repository\n'
+        b'func updateUser(w http.ResponseWriter, r *http.Request) { repo.Update(r.URL.Query().Get("id")) }\n'
+        b'func register(mux *http.ServeMux) { mux.HandleFunc("/admin/users/", updateUser) }\n',
         "A01:2021",
     ),
 )
@@ -130,7 +136,10 @@ _SAFE_CASES = (
     (
         "CWE-862",
         "authz.py",
-        b"def check(request, repo):\n authorize(current_user, request.args.get('id'))\n repo.get(request.args.get('id'))\n",
+        b"@app.route('/admin/users/<user_id>', methods=['PATCH'])\n"
+        b"@login_required\n"
+        b"def check(user_id, current_user, repo):\n"
+        b" authorize(current_user, user_id)\n repo.update(user_id)\n",
     ),
     ("CWE-78", "command.js", b"function check(req) { exec('date'); }\n"),
     ("CWE-22", "path.js", b"function check(req) { fs.readFile(path.join(root, 'readme.txt')); }\n"),
@@ -138,7 +147,8 @@ _SAFE_CASES = (
     (
         "CWE-862",
         "authz.js",
-        b"function check(req, repo) { authorize(currentUser, req.params.id); repo.get(req.params.id); }\n",
+        b"const app = express();\n"
+        b"app.patch('/admin/users/:id', csrfProtection, authenticate, (req, res) => { authorize(currentUser, req.params.id); repo.update(req.params.id); });\n",
     ),
     ("CWE-78", "command.ts", b"function check(req: Request): void { exec('date'); }\n"),
     (
@@ -154,7 +164,8 @@ _SAFE_CASES = (
     (
         "CWE-862",
         "authz.ts",
-        b"function check(req: Request, repo: Repo): void { authorize(currentUser, req.params.id); repo.get(req.params.id); }\n",
+        b"const app = express();\n"
+        b"app.patch('/admin/users/:id', csrfProtection, authenticate, (req: Request, res: Response) => { authorize(currentUser, req.params.id); repo.update(req.params.id); });\n",
     ),
     ("CWE-78", "command.go", b'package api\nfunc check(r *Request) { exec.Command("date") }\n'),
     (
@@ -170,7 +181,12 @@ _SAFE_CASES = (
     (
         "CWE-862",
         "authz.go",
-        b'package api\nfunc check(r *Request, repo Repo) { authorize(currentUser, r.URL.Query().Get("id")); repo.Find(r.URL.Query().Get("id")) }\n',
+        b'package api\nimport "net/http"\nvar repo Repository\n'
+        b"func updateUser(w http.ResponseWriter, r *http.Request) {\n"
+        b' userID := r.URL.Query().Get("id")\n'
+        b' if !authorize(r.Context(), userID) { http.Error(w, "forbidden", http.StatusForbidden); return }\n'
+        b" repo.Update(userID)\n}\n"
+        b'func register(mux *http.ServeMux) { mux.HandleFunc("/admin/users/", updateUser) }\n',
     ),
 )
 

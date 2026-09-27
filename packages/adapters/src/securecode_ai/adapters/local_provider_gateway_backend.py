@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.client
 import math
+import re
 import socket
 import threading
 import time
@@ -32,6 +33,22 @@ from .local_provider_gateway_types import (
 )
 
 
+class _GatewayRequestCancelled(Exception):
+    """The loopback caller disconnected while a provider exchange was active."""
+
+
+_MODEL_MANIFEST_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _normalize_model_manifest_digest(value: object) -> str | None:
+    """Normalize Ollama's tagged digest to the host-pinned digest form."""
+
+    if type(value) is not str:
+        return None
+    digest = value[7:] if value.startswith("sha256:") else value
+    return digest if _MODEL_MANIFEST_DIGEST.fullmatch(digest) is not None else None
+
+
 class LoopbackOllamaBackend:
     __slots__ = ("_observer", "_policy")
 
@@ -46,9 +63,38 @@ class LoopbackOllamaBackend:
         self._observer = observer
 
     def dispatch(self, body: bytes, *, timeout_seconds: float) -> GatewayReply:
-        deadline = time.monotonic() + timeout_seconds
-        if not self._identity_matches(deadline):
+        return self._dispatch(body, timeout_seconds=timeout_seconds, cancellation_event=None)
+
+    def dispatch_with_cancellation(
+        self,
+        body: bytes,
+        *,
+        timeout_seconds: float,
+        cancellation_event: threading.Event,
+    ) -> GatewayReply:
+        if not isinstance(cancellation_event, threading.Event):
             return _failure(502)
+        return self._dispatch(
+            body,
+            timeout_seconds=timeout_seconds,
+            cancellation_event=cancellation_event,
+        )
+
+    def _dispatch(
+        self,
+        body: bytes,
+        *,
+        timeout_seconds: float,
+        cancellation_event: threading.Event | None,
+    ) -> GatewayReply:
+        if not self._valid_timeout(timeout_seconds):
+            return _failure(502)
+        if cancellation_event is not None and cancellation_event.is_set():
+            return _failure(408)
+        deadline = time.monotonic() + timeout_seconds
+        if not self._identity_matches(deadline, cancellation_event):
+            status = 408 if cancellation_event is not None and cancellation_event.is_set() else 502
+            return _failure(status)
         try:
             native_body = _ollama_native_request(body, expected_model_id=self._policy.model_id)
         except (ValueError, TypeError, UnicodeError, RecursionError):
@@ -60,11 +106,15 @@ class LoopbackOllamaBackend:
             deadline=deadline,
             max_bytes=_MAX_RESPONSE_BYTES,
             dispatched=True,
+            cancellation_event=cancellation_event,
         )
         if generated.status != 200:
             return generated
-        if not self._identity_matches(deadline):
-            return _failure(502, dispatched=True)
+        if not self._identity_matches(deadline, cancellation_event):
+            status = 408 if cancellation_event is not None and cancellation_event.is_set() else 502
+            return _failure(
+                status, dispatched=True
+            )
         try:
             return GatewayReply(
                 200,
@@ -78,15 +128,24 @@ class LoopbackOllamaBackend:
 
     def ready(self, *, timeout_seconds: float) -> bool:
         """Verify the exact pinned Ollama runtime and model without sending source."""
-        if (
-            type(timeout_seconds) not in (float, int)
-            or not math.isfinite(timeout_seconds)
-            or not 0 < timeout_seconds <= self._policy.timeout_seconds
-        ):
+        if not self._valid_timeout(timeout_seconds):
             return False
         return self._identity_matches(time.monotonic() + timeout_seconds)
 
-    def _identity_matches(self, deadline: float) -> bool:
+    def _valid_timeout(self, timeout_seconds: object) -> bool:
+        return (
+            type(timeout_seconds) in (float, int)
+            and math.isfinite(timeout_seconds)
+            and 0 < timeout_seconds <= self._policy.timeout_seconds
+        )
+
+    def _identity_matches(
+        self,
+        deadline: float,
+        cancellation_event: threading.Event | None = None,
+    ) -> bool:
+        if cancellation_event is not None and cancellation_event.is_set():
+            return False
         try:
             version = self._exchange(
                 "GET",
@@ -95,6 +154,7 @@ class LoopbackOllamaBackend:
                 deadline=deadline,
                 max_bytes=65536,
                 dispatched=False,
+                cancellation_event=cancellation_event,
             )
             if version.status != 200 or _decode(version.body) != {
                 "version": self._policy.backend_version
@@ -107,6 +167,7 @@ class LoopbackOllamaBackend:
                 deadline=deadline,
                 max_bytes=1024 * 1024,
                 dispatched=False,
+                cancellation_event=cancellation_event,
             )
             if tags.status != 200:
                 return False
@@ -123,11 +184,14 @@ class LoopbackOllamaBackend:
                     or model.get("model") == self._policy.model_id
                 ):
                     matches.append(model)
+            digest = _normalize_model_manifest_digest(
+                matches[0].get("digest") if len(matches) == 1 else None
+            )
             return (
                 len(matches) == 1
                 and matches[0].get("name") == self._policy.model_id
                 and matches[0].get("model") == self._policy.model_id
-                and matches[0].get("digest") == self._policy.model_manifest_sha256
+                and digest == self._policy.model_manifest_sha256
                 and time.monotonic() < deadline
             )
         except (ValueError, TypeError, UnicodeError, RecursionError):
@@ -142,6 +206,7 @@ class LoopbackOllamaBackend:
         deadline: float,
         max_bytes: int,
         dispatched: bool,
+        cancellation_event: threading.Event | None = None,
     ) -> GatewayReply:
         started = time.monotonic()
         attempted = False
@@ -152,6 +217,8 @@ class LoopbackOllamaBackend:
         failure = GatewayExchangeFailure.NONE
         deadline_expired = False
         reply = _failure(502)
+        if cancellation_event is not None and cancellation_event.is_set():
+            return _failure(408)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             reply = _failure(504, dispatched=attempted)
@@ -174,6 +241,8 @@ class LoopbackOllamaBackend:
         )
         expiry: threading.Timer | None = None
         expiry_fired = threading.Event()
+        cancellation_monitor_stop = threading.Event()
+        cancellation_monitor: threading.Thread | None = None
         try:
             connection.connect()
             phase = GatewayExchangePhase.REQUEST
@@ -192,6 +261,23 @@ class LoopbackOllamaBackend:
             expiry = threading.Timer(remaining, expire_backend)
             expiry.daemon = True
             expiry.start()
+            if cancellation_event is not None:
+
+                def cancel_backend_when_requested() -> None:
+                    while not cancellation_monitor_stop.is_set():
+                        if cancellation_event.wait(0.05):
+                            with suppress(OSError):
+                                channel.shutdown(socket.SHUT_RDWR)
+                            return
+
+                cancellation_monitor = threading.Thread(
+                    target=cancel_backend_when_requested,
+                    name="securecode-gateway-cancel",
+                    daemon=True,
+                )
+                cancellation_monitor.start()
+                if cancellation_event.is_set():
+                    raise _GatewayRequestCancelled
             channel.settimeout(remaining)
             attempted = dispatched
             connection.request(
@@ -215,6 +301,8 @@ class LoopbackOllamaBackend:
                 chunks = []
                 size = 0
                 while True:
+                    if cancellation_event is not None and cancellation_event.is_set():
+                        raise _GatewayRequestCancelled
                     if response.isclosed():
                         break
                     remaining = deadline - time.monotonic()
@@ -233,16 +321,32 @@ class LoopbackOllamaBackend:
                     chunks.append(chunk)
                 if time.monotonic() > deadline:
                     raise TimeoutError
+                if cancellation_event is not None and cancellation_event.is_set():
+                    raise _GatewayRequestCancelled
                 phase = GatewayExchangePhase.COMPLETE
                 reply = GatewayReply(200, b"".join(chunks), backend_dispatched=attempted)
-        except TimeoutError:
-            deadline_expired = True
-            failure = GatewayExchangeFailure.TIMEOUT
-            reply = _failure(504, dispatched=attempted)
-        except (OSError, ValueError, http.client.HTTPException):
+        except _GatewayRequestCancelled:
             failure = GatewayExchangeFailure.TRANSPORT
-            reply = _failure(502, dispatched=attempted)
+            reply = _failure(408, dispatched=attempted)
+        except TimeoutError:
+            if cancellation_event is not None and cancellation_event.is_set():
+                failure = GatewayExchangeFailure.TRANSPORT
+                reply = _failure(408, dispatched=attempted)
+            else:
+                deadline_expired = True
+                failure = GatewayExchangeFailure.TIMEOUT
+                reply = _failure(504, dispatched=attempted)
+        except (OSError, ValueError, http.client.HTTPException):
+            if cancellation_event is not None and cancellation_event.is_set():
+                failure = GatewayExchangeFailure.TRANSPORT
+                reply = _failure(408, dispatched=attempted)
+            else:
+                failure = GatewayExchangeFailure.TRANSPORT
+                reply = _failure(502, dispatched=attempted)
         finally:
+            cancellation_monitor_stop.set()
+            if cancellation_monitor is not None:
+                cancellation_monitor.join(timeout=0.2)
             if expiry is not None:
                 expiry.cancel()
             connection.close()

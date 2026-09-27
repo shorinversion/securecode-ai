@@ -20,6 +20,23 @@ class SubprocessSecretProvider:
             raise TypeError("process must be a PinnedJsonProcess")
         self._process = process
 
+    def supports_required_operations(self) -> bool:
+        response = self._process.request(
+            {"operation": "capabilities", "schema_version": 1}
+        )
+        if (
+            set(response) != {"operations", "schema_version", "status"}
+            or not _schema_version_is_v1(response.get("schema_version"))
+            or response.get("status") != "ok"
+        ):
+            return False
+        operations = response.get("operations")
+        return (
+            type(operations) is list
+            and all(type(operation) is str for operation in operations)
+            and {"issue", "rotate", "retrieve", "revoke"}.issubset(operations)
+        )
+
     def issue(
         self,
         reference: str,
@@ -53,6 +70,16 @@ class SubprocessSecretProvider:
                 "previous_grant_id": previous_grant_id,
                 "purpose": purpose,
                 "reference": reference,
+                "schema_version": 1,
+            }
+        )
+        return _lease(response)
+
+    def retrieve(self, grant_id: str) -> OpaqueSecretLease:
+        response = self._process.request(
+            {
+                "grant_id": grant_id,
+                "operation": "retrieve",
                 "schema_version": 1,
             }
         )
@@ -98,6 +125,10 @@ class UnavailableSecretProvider:
         del reference, purpose, previous_grant_id, grant_id
         raise RuntimeError("secret provider is unavailable")
 
+    def retrieve(self, grant_id: str) -> OpaqueSecretLease:
+        del grant_id
+        raise RuntimeError("secret provider is unavailable")
+
     def revoke(self, grant_id: str) -> None:
         del grant_id
         raise RuntimeError("secret provider is unavailable")
@@ -128,7 +159,14 @@ def build_secret_provider(values: object) -> tuple[SecretProvider, bool]:
     process = configured_process(values, prefix="SECURECODE_SECRET_PROVIDER")
     if process is None:
         return UnavailableSecretProvider(), False
-    return SubprocessSecretProvider(process), True
+    provider = SubprocessSecretProvider(process)
+    try:
+        available = provider.supports_required_operations()
+    except Exception:
+        available = False
+    if not available:
+        return UnavailableSecretProvider(), False
+    return provider, True
 
 
 def _valid_handle(value: str) -> bool:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Self
 
 from pydantic import Field, model_validator
@@ -27,6 +28,55 @@ from .domain_primitives import (
 )
 
 
+class CommandOperation(StrEnum):
+    """Closed Python command operations retained for CWE-78 repair binding."""
+
+    OS_SYSTEM = "os.system"
+    OS_POPEN = "os.popen"
+    SUBPROCESS_RUN = "subprocess.run"
+    SUBPROCESS_CALL = "subprocess.call"
+    SUBPROCESS_CHECK_CALL = "subprocess.check_call"
+    SUBPROCESS_CHECK_OUTPUT = "subprocess.check_output"
+    SUBPROCESS_POPEN = "subprocess.Popen"
+    SUBPROCESS_GETOUTPUT = "subprocess.getoutput"
+    SUBPROCESS_GETSTATUSOUTPUT = "subprocess.getstatusoutput"
+    SUBPROCESS_ARGV = "subprocess.argv"
+
+
+class CommandOperationEvidence(WireModel):
+    """Source-free CWE-78 operation binding from scanner to validator.
+
+    Scanner output carries only operation and exact source/sink locations. The
+    graph builder fills the three evidence IDs once those locations have been
+    admitted into the immutable EvidenceGraph. Either all IDs are present or
+    none are present, so a repair path cannot silently use partial binding.
+    """
+
+    scanner_signal_id: OpaqueId
+    operation: CommandOperation
+    detail: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$", max_length=64)
+    source: SourceLocation
+    sink: SourceLocation
+    source_evidence_id: OpaqueId | None = None
+    sink_evidence_id: OpaqueId | None = None
+    flow_evidence_id: OpaqueId | None = None
+
+    @model_validator(mode="after")
+    def _validate_binding(self) -> Self:
+        if (
+            self.source.path != self.sink.path
+            or self.source.content_sha256 != self.sink.content_sha256
+            or self.source == self.sink
+        ):
+            raise ValueError("command operation source and sink must bind one file")
+        ids = (self.source_evidence_id, self.sink_evidence_id, self.flow_evidence_id)
+        if any(value is None for value in ids) and any(value is not None for value in ids):
+            raise ValueError("command operation evidence IDs must be complete")
+        if all(value is not None for value in ids) and len(set(ids)) != len(ids):
+            raise ValueError("command operation evidence IDs must be distinct")
+        return self
+
+
 class RawSignal(WireModel):
     """Untrusted deterministic fact; intentionally has no verdict field."""
 
@@ -39,6 +89,7 @@ class RawSignal(WireModel):
     payload_classification: DataClass
     payload_ref: ArtifactRef | None = None
     signal_sha256: Sha256
+    command_operation_evidence: CommandOperationEvidence | None = None
 
     @model_validator(mode="after")
     def _require_sensitive_payload_reference(self) -> Self:
@@ -52,6 +103,15 @@ class RawSignal(WireModel):
             raise ValueError("DC3/DC4 signal payload requires a same-class ArtifactRef")
         if self.payload_ref is not None and self.payload_ref.tenant_id != self.tenant_id:
             raise ValueError("signal and payload reference must belong to the same tenant")
+        if self.command_operation_evidence is not None and (
+            self.rule_id != "portfolio-cwe-78"
+            or self.command_operation_evidence.scanner_signal_id != self.raw_signal_id
+            or self.command_operation_evidence.sink != self.location
+            or self.command_operation_evidence.source.path != self.location.path
+            or self.command_operation_evidence.source.content_sha256
+            != self.location.content_sha256
+        ):
+            raise ValueError("command operation evidence is not bound to the raw signal")
         return self
 
 
@@ -64,6 +124,9 @@ class DiscoveryCandidate(WireModel):
     candidate_origin: CandidateOrigin
     lineage: tuple[LineageRef, ...] = Field(min_length=1, max_length=4096)
     evidence_ids: tuple[OpaqueId, ...] = Field(default=(), max_length=4096)
+    command_operation_evidence: tuple[CommandOperationEvidence, ...] = Field(
+        default=(), max_length=64
+    )
 
     @model_validator(mode="after")
     def _validate_origin_lineage(self) -> Self:
@@ -77,6 +140,9 @@ class DiscoveryCandidate(WireModel):
             raise ValueError("candidate lineage IDs must be unique")
         if len(self.evidence_ids) != len(set(self.evidence_ids)):
             raise ValueError("candidate evidence IDs must be unique")
+        command_ids = tuple(item.scanner_signal_id for item in self.command_operation_evidence)
+        if len(command_ids) != len(set(command_ids)):
+            raise ValueError("candidate command operation evidence must be unique")
         lineage_evidence_ids = {
             evidence_id for item in self.lineage for evidence_id in item.evidence_ids
         }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 from pydantic import ValidationError
 from securecode_ai.contracts import RunExecutionIdentity
@@ -18,6 +19,7 @@ from .ports import (
     ServiceResponse,
     ServiceUnavailableError,
 )
+from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
 from .run_admission_models import (
     AdmissionClock,
     AdmissionError,
@@ -28,11 +30,16 @@ from .run_admission_models import (
     ResourceRequestPolicy,
     ResourceReservationPort,
     RunAdmissionStore,
+    RunIdentityResolver,
+    RunPolicyPinValidator,
+    RunOperation,
     WorkerQueuePort,
     canonical,
     request_sha256,
     safe_message,
 )
+from .scm_webhooks import SCMWebhookError, SCMWebhookErrorCode
+from .profiles import ProfileConflict
 
 
 class RunAdmissionService:
@@ -44,6 +51,10 @@ class RunAdmissionService:
         "_queue",
         "_resource_policy",
         "_resources",
+        "_identity_resolver",
+        "_policy_pin_validator",
+        "_residency_guard",
+        "_residency_region",
         "_store",
     )
 
@@ -56,6 +67,10 @@ class RunAdmissionService:
         authorization: AuthorizationPort,
         clock: AdmissionClock,
         default_resource_policy: ResourceRequestPolicy,
+        identity_resolver: RunIdentityResolver | None = None,
+        policy_pin_validator: RunPolicyPinValidator | None = None,
+        residency_guard: ResidencyGuard | None = None,
+        residency_region: str | None = None,
     ) -> None:
         for dependency in (
             store,
@@ -67,16 +82,30 @@ class RunAdmissionService:
         ):
             if dependency is None:
                 raise TypeError("run admission dependency is missing")
+        if (residency_guard is None) != (residency_region is None):
+            raise TypeError("run admission residency configuration is incomplete")
+        if policy_pin_validator is not None and not callable(policy_pin_validator):
+            raise TypeError("run admission policy validator is invalid")
+        if residency_guard is not None and not callable(
+            getattr(residency_guard, "require_region", None)
+        ):
+            raise TypeError("run admission residency guard is invalid")
         self._store = store
         self._resources = resources
         self._queue = queue
         self._authorization = authorization
         self._clock = clock
         self._resource_policy = default_resource_policy
+        self._identity_resolver = identity_resolver
+        self._policy_pin_validator = policy_pin_validator
+        self._residency_guard = residency_guard
+        self._residency_region = residency_region
 
     def create(self, request: ServiceRequest) -> ServiceResponse:
+        request = self._resolve_shorthand(request)
         identity, run_id, idempotency_key = self._validate_request(request)
         revision = identity.repository_revision
+        self._validate_policy_pin(identity)
         try:
             allowed = self._authorization.allows(
                 request.identity,
@@ -87,6 +116,27 @@ class RunAdmissionService:
             raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
         if revision.tenant_id != request.identity.tenant_id or not allowed:
             raise AdmissionError(AdmissionErrorCode.FORBIDDEN, 403)
+        if self._residency_guard is not None:
+            region = self._residency_region
+            if region is None:
+                raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
+            try:
+                decision = self._residency_guard.require_region(
+                    tenant_id=revision.tenant_id,
+                    region=region,
+                )
+            except ResidencyConflict:
+                raise AdmissionError(AdmissionErrorCode.FORBIDDEN, 403) from None
+            except Exception:
+                raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+            if (
+                type(decision) is not ResidencyDecision
+                or decision.tenant_id != revision.tenant_id
+                or decision.source_region != region
+                or decision.destination_region != region
+                or not decision.same_region
+            ):
+                raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
 
         digest = request_sha256(request.method, request.route, request.raw_body)
         record = self._store.find(
@@ -116,16 +166,73 @@ class RunAdmissionService:
                 now_ms=now_ms,
             )
         _require_exact_record(record, identity, run_id)
-        return self._resume(record, identity)
+        return self._resume(record, identity, request.document)
 
-    def _resume(self, record: AdmissionRecord, identity: RunExecutionIdentity) -> ServiceResponse:
+    def _validate_policy_pin(self, identity: RunExecutionIdentity) -> None:
+        validator = self._policy_pin_validator
+        if validator is None:
+            return
+        try:
+            validator(identity)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except ProfileConflict:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+        except (TypeError, ValueError):
+            raise AdmissionError(AdmissionErrorCode.RUN_CONFLICT, 409) from None
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+
+    def _bind_publication(
+        self,
+        document: Mapping[str, object] | None,
+        identity: RunExecutionIdentity,
+        run_id: str,
+    ) -> None:
+        binder = getattr(self._identity_resolver, "bind_publication", None)
+        if binder is None:
+            return
+        if not callable(binder):
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
+        try:
+            binder(run_id=run_id, identity=identity, document=document)
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except AdmissionError:
+            raise
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+
+    def _resume(
+        self,
+        record: AdmissionRecord,
+        identity: RunExecutionIdentity,
+        document: Mapping[str, object] | None,
+    ) -> ServiceResponse:
         if record.state is AdmissionState.ADMITTED:
-            return ServiceResponse(201, self._store.run_document(record))
+            run_document = self._store.run_document(record)
+            if run_document.get("state") not in {
+                "SUCCEEDED",
+                "FAILED",
+                "INDETERMINATE",
+                "CANCELLED",
+                "SUPERSEDED",
+            } and not self._admitted_reservation_is_active(record):
+                recovered = self._recover_expired_admitted(record)
+                run_document = self._store.run_document(recovered)
+            self._bind_publication(document, identity, record.run_id)
+            return ServiceResponse(201, run_document)
         if record.state in {AdmissionState.FAILED, AdmissionState.RECOVERY_REQUIRED}:
             code = record.failure_code or AdmissionErrorCode.SERVICE_UNAVAILABLE
             raise AdmissionError(code, _status_for(code, record.state))
 
         if record.state is AdmissionState.PERSISTED:
+            if self._now_ms() >= record.resource_request.lease_expires_at_ms:
+                self._fail_closed(
+                    record,
+                    AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                    recovery_required=True,
+                )
             receipt = self._reserve(record)
             try:
                 record = self._store.reserved(record, receipt, now_ms=self._now_ms())
@@ -160,6 +267,15 @@ class RunAdmissionService:
                 recovery_required=not released,
             )
         try:
+            self._bind_publication(document, identity, record.run_id)
+        except Exception:
+            released = self._release_record(record)
+            self._fail_closed(
+                record,
+                AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                recovery_required=not released,
+            )
+        try:
             admitted = self._store.admitted(record, now_ms=self._now_ms())
         except Exception:
             released = self._release_record(record)
@@ -169,6 +285,91 @@ class RunAdmissionService:
                 recovery_required=not released,
             )
         return ServiceResponse(201, self._store.run_document(admitted))
+
+    def _admitted_reservation_is_active(self, record: AdmissionRecord) -> bool:
+        if record.reservation_id is None or record.reservation_version is None:
+            return False
+        checker = getattr(self._resources, "is_active", None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(
+                checker(
+                    tenant_id=record.tenant_id,
+                    repository_id=record.repository_id,
+                    run_id=record.run_id,
+                    execution_identity_hash=record.execution_identity_hash,
+                    reservation_id=record.reservation_id,
+                    expected_version=record.reservation_version,
+                    now_ms=self._now_ms(),
+                )
+            )
+        except Exception:
+            return False
+
+    def _recover_expired_admitted(self, record: AdmissionRecord) -> AdmissionRecord:
+        try:
+            recovered = self._store.recover_admitted(
+                record,
+                code=AdmissionErrorCode.SERVICE_UNAVAILABLE,
+                now_ms=self._now_ms(),
+            )
+            document = self._store.run_document(recovered)
+        except AdmissionError:
+            raise
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+        if document.get("state") in {
+            "SUCCEEDED",
+            "FAILED",
+            "INDETERMINATE",
+            "CANCELLED",
+            "SUPERSEDED",
+        }:
+            return recovered
+        raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503)
+
+    def _resolve_shorthand(self, request: ServiceRequest) -> ServiceRequest:
+        resolver = self._identity_resolver
+        document = request.document
+        if (
+            resolver is None
+            or document is None
+            or not isinstance(document, Mapping)
+            or request.action != "runs.create"
+            or request.method != "POST"
+            or request.route != "/api/v1/runs"
+            or request.idempotency_key is None
+        ):
+            return request
+        if "execution_identity" in document or "execution_identity_hash" in document:
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        try:
+            resolved = resolver.resolve(
+                authenticated_tenant_id=request.identity.tenant_id,
+                document=document,
+            )
+        except SCMWebhookError as error:
+            if error.code in {
+                SCMWebhookErrorCode.HEAD_UNAVAILABLE,
+                SCMWebhookErrorCode.INVALID_CONFIGURATION,
+            }:
+                raise AdmissionError(AdmissionErrorCode.SERVICE_UNAVAILABLE, 503) from None
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
+        except (KeyboardInterrupt, SystemExit, GeneratorExit):
+            raise
+        except Exception:
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
+        if resolved is None:
+            return request
+        identity, run_id = resolved
+        if type(identity) is not RunExecutionIdentity or not _identifier(run_id):
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        expanded = dict(document)
+        expanded["run_id"] = run_id
+        expanded["execution_identity"] = identity.model_dump(mode="json")
+        expanded["execution_identity_hash"] = identity.execution_identity_hash
+        return replace(request, document=expanded)
 
     def _reserve(self, record: AdmissionRecord) -> ResourceReservationReceipt:
         try:
@@ -265,6 +466,7 @@ class RunAdmissionService:
         run_id = request.document.get("run_id")
         identity_document = request.document.get("execution_identity")
         identity_hash = request.document.get("execution_identity_hash")
+        operation_value = request.document.get("operation", RunOperation.SCAN.value)
         if (
             type(run_id) is not str
             or not _identifier(run_id)
@@ -274,6 +476,10 @@ class RunAdmissionService:
             or type(identity_hash) is not str
         ):
             raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
+        try:
+            RunOperation(operation_value)
+        except (TypeError, ValueError):
+            raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
         try:
             identity = RunExecutionIdentity.model_validate(identity_document)
         except (TypeError, ValueError, ValidationError):
@@ -339,6 +545,12 @@ class RunAdmissionRoutingService:
             raise ServiceUnavailableError()
         return response
 
+    def preflight_artifact_upload(self, request: ServiceRequest) -> str:
+        preflight = getattr(self._fallback, "preflight_artifact_upload", None)
+        if not callable(preflight):
+            raise ServiceUnavailableError()
+        return preflight(request)
+
 
 def _require_exact_record(
     record: AdmissionRecord, identity: RunExecutionIdentity, run_id: str
@@ -357,11 +569,18 @@ def _require_exact_record(
 def _safe_metadata(document: Mapping[str, object] | None) -> dict[str, object]:
     if document is None:
         return {}
-    return {
+    metadata = {
         key: value
         for key in ("request_id", "policy_id", "workflow_id")
         if type(value := document.get(key)) is str and _identifier(value)
     }
+    try:
+        metadata["operation"] = RunOperation(
+            document.get("operation", RunOperation.SCAN.value)
+        ).value
+    except (TypeError, ValueError):
+        raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
+    return metadata
 
 
 def _safe_server_context(context: Mapping[str, object]) -> dict[str, object]:

@@ -72,7 +72,15 @@ def run_model_native_discovery(
         backend=repository,
     )
     for tool_request in initial_tool_requests:
-        session.dispatch(tool_request)
+        try:
+            session.dispatch(tool_request)
+        except Exception:
+            # Initial host-guided reads use the same untrusted repository port
+            # as provider-triggered reads.  A repository implementation may
+            # fail before it can return a typed GuardedToolResult; such a
+            # failure must remain an indeterminate discovery receipt rather
+            # than escaping as an adapter exception.
+            return _failure_outcome(plan, ModelCallStatus.GUARDRAIL_BLOCKED, session.receipts)
         if session.has_non_success:
             return _failure_outcome(plan, session.failure_status, session.receipts)
     try:
@@ -202,9 +210,7 @@ def _receipt(
     session: RepositoryToolSession | _ReceiptSession,
     result: ModelCallResult | None,
 ) -> ModelDiscoveryReceipt:
-    usage = result.usage if result is not None else None
-    tokens_used = (usage.input_tokens + usage.output_tokens) if usage is not None else 0
-    elapsed_ms = usage.elapsed_ms if usage is not None else 0
+    tokens_used, elapsed_ms = _safe_usage(result, plan)
     return ModelDiscoveryReceipt(
         schema_version=CONTRACT_SCHEMA_VERSION,
         receipt_id=plan.receipt_id,
@@ -232,6 +238,35 @@ def _receipt(
         output_sha256=output_sha256,
         candidate_ids=candidate_ids,
     )
+
+
+def _safe_usage(result: ModelCallResult | None, plan: ModelNativeDiscoveryPlan) -> tuple[int, int]:
+    """Retain provider usage only when it fits the host-owned request budget.
+
+    A provider result is contract-valid before it is request-budget-valid.  In
+    particular, a provider can report counters larger than this request's
+    limits.  Passing those counters straight into ``ModelBudgetUsage`` would
+    raise while constructing the fail-closed receipt, turning a typed
+    non-success into an uncaught exception.  Untrusted out-of-budget counters
+    are therefore omitted from the receipt rather than treated as evidence.
+    """
+
+    if result is None:
+        return 0, 0
+    usage = result.usage
+    token_limit = min(
+        _MAX_USAGE,
+        plan.request.budget.max_input_tokens + plan.request.budget.max_output_tokens,
+    )
+    tokens_used = usage.input_tokens + usage.output_tokens
+    if (
+        usage.input_tokens > plan.request.budget.max_input_tokens
+        or usage.output_tokens > plan.request.budget.max_output_tokens
+        or tokens_used > token_limit
+        or usage.elapsed_ms > plan.request.budget.timeout_ms
+    ):
+        return 0, 0
+    return tokens_used, usage.elapsed_ms
 
 
 def _result_matches_request(result: ModelCallResult, request: ModelRequest) -> bool:

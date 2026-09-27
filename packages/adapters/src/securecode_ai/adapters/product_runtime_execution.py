@@ -13,6 +13,7 @@ from typing import cast
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ArtifactRef,
+    DataClass,
     EgressContentRef,
     EgressPolicyDocument,
     ExecutionBoundary,
@@ -53,7 +54,6 @@ from .model_types import (
     ProviderAttemptBinding,
     _ProviderConnector,
 )
-from .remote_provider_budget import RemoteProviderCallContext
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_model import (
     DiscoverySchemaRefusalCategory,
@@ -64,6 +64,15 @@ from .product_runtime_contracts import (
     NativeDeadlineExceeded,
     ProviderConnector,
 )
+from .remote_provider_budget import RemoteProviderCallContext, RemoteProviderCostReceipt
+
+_DATA_CLASS_RANK = {
+    DataClass.PUBLIC: 0,
+    DataClass.INTERNAL_METADATA: 1,
+    DataClass.CONFIDENTIAL_SECURITY: 2,
+    DataClass.CONFIDENTIAL_SOURCE: 3,
+    DataClass.RESTRICTED: 4,
+}
 
 
 class AuthorizedLocalModelExecutor:
@@ -71,6 +80,7 @@ class AuthorizedLocalModelExecutor:
 
     __slots__ = (
         "_connector",
+        "_cost_observer",
         "_credential_supplier",
         "_harness",
         "_now",
@@ -93,6 +103,7 @@ class AuthorizedLocalModelExecutor:
         preflight: Callable[[ModelRequest], ModelPreflightRequest],
         credential_supplier: CredentialSupplier | None = None,
         usage_observer: Callable[[ModelUsage], None] | None = None,
+        cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
         now: Callable[[], float] = time.monotonic,
     ) -> None:
         if (
@@ -111,6 +122,7 @@ class AuthorizedLocalModelExecutor:
             approved.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE
             and approved.execution_boundary is not ExecutionBoundary.LOCAL_RUNNER
             and approved.credential_ref is not None
+            and type(approved.protocol_framing_token_upper_bound) is int
             and callable(credential_supplier)
         )
         if (
@@ -123,6 +135,7 @@ class AuthorizedLocalModelExecutor:
             or not callable(getattr(connector, "send", None))
             or not callable(preflight)
             or (usage_observer is not None and not callable(usage_observer))
+            or (cost_observer is not None and not callable(cost_observer))
             or not callable(now)
         ):
             raise ValueError("authorized local profile is invalid")
@@ -136,6 +149,7 @@ class AuthorizedLocalModelExecutor:
         )
         self._preflight = preflight
         self._usage_observer = usage_observer
+        self._cost_observer = cost_observer
         self._now = now
 
     def execute(
@@ -288,6 +302,7 @@ class AuthorizedLocalModelExecutor:
                 credential_supplier=self._credential_supplier,
                 validator=validator,
                 now=self.clock(),
+                cost_observer=self._cost_observer,
             )
             if native and self.elapsed_since(started) > request.budget.timeout_ms:
                 terminal = (
@@ -424,13 +439,17 @@ def _context(
     payload = json.dumps(
         material, ensure_ascii=True, separators=(",", ":"), sort_keys=True
     ).encode()
+    egress_data_class = max(
+        (artifact.data_class for artifact, _, _ in unique.values()),
+        key=_DATA_CLASS_RANK.__getitem__,
+    )
     return PreparedModelContext(
         payload=payload,
         content=tuple(
             EgressContentRef(
                 schema_version="0.2.0",
                 content_id=artifact.content_id,
-                data_class=artifact.data_class,
+                data_class=egress_data_class,
             )
             for artifact, _, _ in unique.values()
         ),

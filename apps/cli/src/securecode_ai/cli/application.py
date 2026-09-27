@@ -40,21 +40,26 @@ from .application_profiles import (
     build_foundation_profile,
 )
 from .approval import run_patch_approval_command
-from .connected import run_connected
+from .connected import ConnectedCliErrorCode, run_connected
 from .connected_ci_commands import run_ci_command as _run_ci_command
 from .connected_ci_commands import run_connect_command as _run_connect_command
 from .connected_cli_commands import (
     run_connected_approval,
+    run_connected_audit,
     run_connected_assurance,
     run_connected_backups,
     run_connected_decision,
     run_connected_deletions,
+    run_connected_download,
+    run_connected_repair_download,
     run_connected_events,
     run_connected_feedback,
     run_connected_inspection,
     run_connected_readout,
+    run_connected_policy_admin,
     run_connected_results,
     run_connected_secrets,
+    run_connected_waivers,
 )
 from .diagnostic import (
     DeterministicDiagnostic,
@@ -66,17 +71,21 @@ from .scan import execute_installed_product_scan
 _CONNECTED_COMMAND_HANDLERS: Mapping[str, Callable[..., int]] = MappingProxyType(
     {
         "finding": run_connected_readout,
-        "policies": run_connected_readout,
+        "policies": run_connected_policy_admin,
         "health": run_connected_readout,
         "secrets": run_connected_secrets,
         "decisions": run_connected_decision,
         "assurance": run_connected_assurance,
         "feedback": run_connected_feedback,
         "deletions": run_connected_deletions,
+        "waivers": run_connected_waivers,
         "backups": run_connected_backups,
         "events": run_connected_events,
+        "audit": run_connected_audit,
         "approvals": run_connected_approval,
         "results": run_connected_results,
+        "download": run_connected_download,
+        "repair-download": run_connected_repair_download,
         "status": run_connected_inspection,
         "cancel": run_connected_inspection,
     }
@@ -149,6 +158,14 @@ def main(
     ):
         output.write(_command_help(stripped[0]))
         return int(CliExitCode.COMPLETED)
+    if stripped and stripped[0] == "cancel" and "--if-match" not in stripped[1:]:
+        errors.write(
+            "connected run was rejected ("
+            + ConnectedCliErrorCode.INVALID_CONFIGURATION.value
+            + ")"
+            + chr(10)
+        )
+        return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
     if stripped and stripped[0] in _CONNECTED_COMMAND_HANDLERS:
         return _CONNECTED_COMMAND_HANDLERS[stripped[0]](
             stripped,
@@ -338,10 +355,14 @@ __all__ = [
     "run_connected_backups",
     "run_connected_decision",
     "run_connected_deletions",
+    "run_connected_download",
+    "run_connected_repair_download",
     "run_connected_events",
     "run_connected_feedback",
     "run_connected_inspection",
     "run_connected_readout",
+    "run_connected_policy_admin",
     "run_connected_results",
     "run_connected_secrets",
+    "run_connected_waivers",
 ]

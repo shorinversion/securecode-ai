@@ -1,0 +1,440 @@
+{
+  "bootstrap": {
+    "iterations": 5000,
+    "method": "paired resampling of lineage groups, retaining vulnerable/fixed pair and all repetitions",
+    "seed": 20260927
+  },
+  "candidate_source_files": 603,
+  "candidate_source_manifest_sha256": "d12e34b2623a0747c1800aab344fb72dd34ef9f68e95609dc5653c20621939b1",
+  "created_at_utc": "2026-09-27T08:02:56+00:00",
+  "dataset": {
+    "cases": 600,
+    "content_sha256": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
+    "languages": {
+      "go": 200,
+      "javascript-typescript": 200,
+      "python": 200
+    },
+    "license_spdx": "NOASSERTION",
+    "lineage_groups": 300,
+    "manifest_sha256": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+    "splits": {
+      "calibration": 120,
+      "development": 240,
+      "held-out": 240
+    }
+  },
+  "input_sha256": {
+    "cvefixes-manifest.json": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
+    "deepseek-full-hybrid-600x3.json": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
+    "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
+    "deepseek-one-shot-600x3.json": "5b567b6493d2e20437acd6b5efde02c83c7b21ef34fc2b23c4bf84235ca8b467",
+    "deepseek-scanner-seeded-600x1.json": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8",
+    "deterministic-600x1.json": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
+    "semgrep-600x3.json": "209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6"
+  },
+  "lanes": {
+    "deterministic_only": {
+      "cases": 600,
+      "cell_cost_usd": 0.0,
+      "cells": 600,
+      "cluster_bootstrap_95_percentile_intervals": {
+        "f1": [
+          0.23076923076923075,
+          0.3257918552036199
+        ],
+        "precision": [
+          0.47368421052631576,
+          0.5076923076923077
+        ],
+        "recall": [
+          0.15,
+          0.24333333333333335
+        ]
+      },
+      "completed_cases": 347,
+      "completed_cells": 347,
+      "completion_rate": 0.5783333333333334,
+      "f1": 0.28095238095238095,
+      "failed_cells": 253,
+      "false_positives_per_kloc": 0.12297717664562614,
+      "fn": 241,
+      "fp": 61,
+      "kloc_denominator": 496.027,
+      "latency_call_count": 0,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null,
+      "localization_rate": 0.0,
+      "localized_vulnerable_cells": 0,
+      "output_file": "deterministic-600x1.json",
+      "output_sha256": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
+      "precision": 0.49166666666666664,
+      "provenance": "fresh",
+      "ram_measurements_present": false,
+      "raw_output_cells": 600,
+      "recall": 0.19666666666666666,
+      "regression_observations": 0,
+      "scored_repetitions": 1,
+      "status_counts": {
+        "completed": 347,
+        "scanner-failed": 253
+      },
+      "tn": 239,
+      "tokens": 0,
+      "tp": 59,
+      "unsafe_patch_observations": 0,
+      "vram_measurements_present": false,
+      "vulnerable_cells": 300
+    },
+    "full_hybrid": {
+      "cases": 600,
+      "cell_cost_usd": 2.564667,
+      "cells": 1800,
+      "cluster_bootstrap_95_percentile_intervals": {
+        "f1": [
+          0.3465703971119134,
+          0.42975206611570244
+        ],
+        "precision": [
+          0.47884940778341795,
+          0.5187376725838264
+        ],
+        "recall": [
+          0.2677777777777778,
+          0.37333333333333335
+        ]
+      },
+      "completed_cases": 347,
+      "completed_cells": 1041,
+      "completion_rate": 0.5783333333333334,
+      "f1": 0.3899796885578876,
+      "failed_cells": 759,
+      "false_positives_per_kloc": 0.19420985819992326,
+      "fn": 612,
+      "fp": 289,
+      "kloc_denominator": 1488.081,
+      "latency_call_count": 1800,
+      "latency_p50_ms": 980.5,
+      "latency_p95_ms": 1555.0,
+      "localization_rate": 0.0,
+      "localized_vulnerable_cells": 0,
+      "output_file": "deepseek-full-hybrid-600x3.json",
+      "output_sha256": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
+      "precision": 0.49913344887348354,
+      "provenance": "paired-derived",
+      "ram_measurements_present": false,
+      "raw_output_cells": 1800,
+      "recall": 0.32,
+      "regression_observations": 0,
+      "scored_repetitions": 3,
+      "status_counts": {
+        "completed": 1041,
+        "scanner-failed": 759
+      },
+      "tn": 611,
+      "tokens": 17044488,
+      "tp": 288,
+      "unsafe_patch_observations": 0,
+      "vram_measurements_present": false,
+      "vulnerable_cells": 900
+    },
+    "model_native": {
+      "cases": 600,
+      "cell_cost_usd": 2.564667,
+      "cells": 1800,
+      "cluster_bootstrap_95_percentile_intervals": {
+        "f1": [
+          0.20214669051878353,
+          0.2989045383411581
+        ],
+        "precision": [
+          0.4664310954063604,
+          0.5447470817120622
+        ],
+        "recall": [
+          0.12777777777777777,
+          0.21
+        ]
+      },
+      "completed_cases": 600,
+      "completed_cells": 1800,
+      "completion_rate": 1.0,
+      "f1": 0.2518765638031693,
+      "failed_cells": 0,
+      "false_positives_per_kloc": 0.09945695160411296,
+      "fn": 749,
+      "fp": 148,
+      "kloc_denominator": 1488.081,
+      "latency_call_count": 1800,
+      "latency_p50_ms": 980.5,
+      "latency_p95_ms": 1555.0,
+      "localization_rate": 0.0,
+      "localized_vulnerable_cells": 0,
+      "output_file": "deepseek-model-native-600x3.json",
+      "output_sha256": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
+      "precision": 0.5050167224080268,
+      "provenance": "reused-archived",
+      "ram_measurements_present": false,
+      "raw_output_cells": 1800,
+      "recall": 0.16777777777777778,
+      "regression_observations": 0,
+      "scored_repetitions": 3,
+      "status_counts": {
+        "completed": 1800
+      },
+      "tn": 752,
+      "tokens": 17044488,
+      "tp": 151,
+      "unsafe_patch_observations": 0,
+      "vram_measurements_present": false,
+      "vulnerable_cells": 900
+    },
+    "one_shot": {
+      "cases": 600,
+      "cell_cost_usd": 2.567055,
+      "cells": 1800,
+      "cluster_bootstrap_95_percentile_intervals": {
+        "f1": [
+          0.26688632619439867,
+          0.3590875643855777
+        ],
+        "precision": [
+          0.4895833333333333,
+          0.5523114355231143
+        ],
+        "recall": [
+          0.1811111111111111,
+          0.2722222222222222
+        ]
+      },
+      "completed_cases": 600,
+      "completed_cells": 1800,
+      "completion_rate": 1.0,
+      "f1": 0.3157894736842105,
+      "failed_cells": 0,
+      "false_positives_per_kloc": 0.12633720879441376,
+      "fn": 696,
+      "fp": 188,
+      "kloc_denominator": 1488.081,
+      "latency_call_count": 1800,
+      "latency_p50_ms": 971.0,
+      "latency_p95_ms": 1523.0,
+      "localization_rate": 0.0,
+      "localized_vulnerable_cells": 0,
+      "output_file": "deepseek-one-shot-600x3.json",
+      "output_sha256": "5b567b6493d2e20437acd6b5efde02c83c7b21ef34fc2b23c4bf84235ca8b467",
+      "precision": 0.5204081632653061,
+      "provenance": "reused-archived",
+      "ram_measurements_present": false,
+      "raw_output_cells": 1800,
+      "recall": 0.22666666666666666,
+      "regression_observations": 0,
+      "scored_repetitions": 3,
+      "status_counts": {
+        "completed": 1800
+      },
+      "tn": 712,
+      "tokens": 17060688,
+      "tp": 204,
+      "unsafe_patch_observations": 0,
+      "vram_measurements_present": false,
+      "vulnerable_cells": 900
+    },
+    "scanner_seeded": {
+      "cases": 600,
+      "cell_cost_usd": 0.178044,
+      "cells": 600,
+      "cluster_bootstrap_95_percentile_intervals": {
+        "f1": [
+          0.0445859872611465,
+          0.12462908011869436
+        ],
+        "precision": [
+          0.4230769230769231,
+          0.5789473684210527
+        ],
+        "recall": [
+          0.023333333333333334,
+          0.07
+        ]
+      },
+      "completed_cases": 347,
+      "completed_cells": 347,
+      "completion_rate": 0.5783333333333334,
+      "f1": 0.08536585365853659,
+      "failed_cells": 253,
+      "false_positives_per_kloc": 0.028224270049815838,
+      "fn": 286,
+      "fp": 14,
+      "kloc_denominator": 496.027,
+      "latency_call_count": 120,
+      "latency_p50_ms": 1063.5,
+      "latency_p95_ms": 1687.0,
+      "localization_rate": 0.0,
+      "localized_vulnerable_cells": 0,
+      "output_file": "deepseek-scanner-seeded-600x1.json",
+      "output_sha256": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8",
+      "precision": 0.5,
+      "provenance": "paired-derived",
+      "ram_measurements_present": false,
+      "raw_output_cells": 600,
+      "recall": 0.04666666666666667,
+      "regression_observations": 0,
+      "scored_repetitions": 1,
+      "status_counts": {
+        "completed": 347,
+        "scanner-failed": 253
+      },
+      "tn": 286,
+      "tokens": 1183396,
+      "tp": 14,
+      "unsafe_patch_observations": 0,
+      "vram_measurements_present": false,
+      "vulnerable_cells": 300
+    },
+    "semgrep": {
+      "cases": 600,
+      "cell_cost_usd": 0.0,
+      "cells": 600,
+      "cluster_bootstrap_95_percentile_intervals": {
+        "f1": [
+          0.3648068669527897,
+          0.44402985074626866
+        ],
+        "precision": [
+          0.4847161572052402,
+          0.5157894736842106
+        ],
+        "recall": [
+          0.29,
+          0.39666666666666667
+        ]
+      },
+      "completed_cases": 600,
+      "completed_cells": 600,
+      "completion_rate": 1.0,
+      "f1": 0.4071146245059289,
+      "failed_cells": 0,
+      "false_positives_per_kloc": 0.20764998679507365,
+      "fn": 197,
+      "fp": 103,
+      "kloc_denominator": 496.027,
+      "latency_call_count": 600,
+      "latency_p50_ms": 333.0,
+      "latency_p95_ms": 455.0,
+      "localization_rate": 0.0,
+      "localized_vulnerable_cells": 0,
+      "output_file": "semgrep-600x3.json",
+      "output_sha256": "209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6",
+      "precision": 0.5,
+      "provenance": "reused-archived",
+      "ram_measurements_present": false,
+      "raw_output_cells": 1800,
+      "recall": 0.3433333333333333,
+      "regression_observations": 0,
+      "scored_repetitions": 1,
+      "status_counts": {
+        "completed": 600
+      },
+      "tn": 197,
+      "tokens": 0,
+      "tp": 103,
+      "unsafe_patch_observations": 0,
+      "vram_measurements_present": false,
+      "vulnerable_cells": 300
+    }
+  },
+  "limitations": [
+    "The 600-case public corpus manifest is marked NOASSERTION for licensing; no source blobs are included.",
+    "Archived model-native and one-shot results are raw direct model classifications, not the complete SecureCode verdict pipeline.",
+    "Semgrep output is scored using any-finding-in-file and is not CWE-aligned.",
+    "The deterministic scanner failed on 253 of 600 cases; full-hybrid rows retain those failures in the completion denominator.",
+    "scanner_seeded and full_hybrid are paired post-hoc compositions that reused existing predictions and made zero new model requests.",
+    "No full repair study was performed; zero patch counters are not evidence of repair safety.",
+    "RAM and VRAM were not measured. The reported model latency is API-call latency, not end-to-end scan latency.",
+    "The archived direct model outputs predate the current benchmark-runner exception-accounting fix; their own candidate and profile pins are retained separately."
+  ],
+  "paired_comparison": {
+    "all": {
+      "bootstrap_iterations": 5000,
+      "cluster_bootstrap_95_percentile_interval": [
+        -0.0822222222222222,
+        0.03222222222222221
+      ],
+      "comparison": "full_hybrid minus semgrep recall",
+      "observed_difference": -0.023333333333333317,
+      "paired_lineage_groups": 300,
+      "seed": 20260927
+    },
+    "held-out": {
+      "bootstrap_iterations": 5000,
+      "cluster_bootstrap_95_percentile_interval": [
+        -0.13888888888888892,
+        0.04722222222222222
+      ],
+      "comparison": "full_hybrid minus semgrep recall",
+      "observed_difference": -0.04722222222222222,
+      "paired_lineage_groups": 120,
+      "seed": 20260927
+    }
+  },
+  "schema_version": "securecode.submission-benchmark-aggregate.v1",
+  "spend": {
+    "final_scope": {
+      "attempts": 6932,
+      "development_scope_is_separate": true,
+      "pending_attempts": 11,
+      "pending_reserved_usd": 0.037515,
+      "settled_attempts": 6921,
+      "settled_charged_usd": 10.270833,
+      "settled_plus_pending_exposure_usd": 10.308348
+    },
+    "ledgers": {
+      "deepseek-development-spend.sqlite": {
+        "attempts": 1,
+        "pending_attempts": 0,
+        "pending_reserved_usd": 0.0,
+        "scope": "development",
+        "settled_attempts": 1,
+        "settled_charged_usd": 0.000248,
+        "sha256": "b4dad690ff6951aa1538bf9d0be95e7e346c4bb718badcc72bb0115ecb152753"
+      },
+      "deepseek-final-spend-v4.sqlite": {
+        "attempts": 1304,
+        "pending_attempts": 4,
+        "pending_reserved_usd": 0.007296,
+        "scope": "final",
+        "settled_attempts": 1300,
+        "settled_charged_usd": 2.2422,
+        "sha256": "1bdb76050816562577fdf86ebcc2c1e355f2aabfdf6cf452281567042c46a1c8"
+      },
+      "deepseek-final-spend.sqlite": {
+        "attempts": 4332,
+        "pending_attempts": 0,
+        "pending_reserved_usd": 0.0,
+        "scope": "final",
+        "settled_attempts": 4332,
+        "settled_charged_usd": 6.293655,
+        "sha256": "ca540ad7263bb663c048c9bf760a64c47e7cbafea22f1406d7004efd6d44506a"
+      },
+      "deepseek-pre-go776-fix-spend.sqlite": {
+        "attempts": 1123,
+        "pending_attempts": 4,
+        "pending_reserved_usd": 0.018879,
+        "scope": "final",
+        "settled_attempts": 1119,
+        "settled_charged_usd": 1.453753,
+        "sha256": "ba81ca6bdfb5e2293e69b9a5fe5d0a31161e376725d95b19949c0a3acbb7e5a2"
+      },
+      "deepseek-pre-python-cwe521-fix-spend.sqlite": {
+        "attempts": 173,
+        "pending_attempts": 3,
+        "pending_reserved_usd": 0.01134,
+        "scope": "final",
+        "settled_attempts": 170,
+        "settled_charged_usd": 0.281225,
+        "sha256": "1d8f2270a43bd14008d52cd744ee488c61c6fbb1d1197473146bb32c68141613"
+      }
+    }
+  }
+}

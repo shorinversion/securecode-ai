@@ -1,14 +1,59 @@
-# SecureCode AI — актуальный контекст
+# SecureCode AI - актуальный контекст
 
-Последнее обновление: 16 сентября 2026 года.
+Последнее обновление: 27 сентября 2026 года.
 
 ## Текущая позиция
 
-- Deadline: пользователь подтвердил **защиту 27 сентября 2026**, Екатеринбург,
-  **1 человек** (5 сентября, task `01a07049-3886-7a52-bc78-e53900cc816f`).
-  Комплект готовится к **24 сентября 18:00 Asia/Yekaterinburg**, 25-го репетиция,
-  26-го резерв. Слот защиты/загрузки и instructor reference/индивидуальное
-  разрешение ещё нужны; source time 23:59 не считается временем защиты.
+- Доступ к встроенному браузеру восстановлен. Страница задания и пустая форма
+  решения прочитаны через UI; отправки пока нет. Дедлайн на странице: 27 сентября 23:59.
+- ElevenLabs отклонил генерацию: отсутствует permission text_to_speech.
+  Новый сценарий подготовлен, опубликованная аудиодорожка пока OpenAI.
+- Владелец отдельно разрешил точные исключения для проверенных контрольных сумм
+  benchmark и CWE-798. Добавлены адресные записи в .secrets.baseline без изменения
+  детекторов. Архивные outputs_sha256 не подтверждают целостность текущих файлов.
+
+
+- Сайт материалов опубликован на Cloud.ru: http://82.202.143.138/.
+  Внешняя проверка главной, final-submission.html, benchmark.html и
+  securecode-demo.mp4 вернула HTTP 200. Это HTTP static site без загрузки
+  исходников и ключей. Публичный рабочий онлайн-аудит пока не подключён.
+
+- 27 сентября пользователь подтвердил согласование с Ксюшей, разрешил
+  публичный репозиторий, видео с OpenAI-озвучкой и отправку формы курса.
+  GitHub visibility проверена: PUBLIC. Видеопрезентация сохранённых результатов
+  готова локально: docs/media/securecode-demo.mp4, 252.21 секунды. Живой
+  скринкаст пока не записан: браузерный инструмент падает на Windows ACL.
+  Cloud.ru backend собран и запущен: securecode-submission-server healthy,
+  HTTPS loopback /api/v1/health/ready отвечает ready. Исправлен точный список
+  approval-колонок в tenant_key_migration.py; 13 persistence tests passed.
+  .env скопирован по запросу пользователя, права 600, значения не раскрывались.
+  Публичный API и аудит DeepSeek пока не подтверждены.
+  Pages, доставка текущих файлов и отправка формы ещё не подтверждены.
+
+- Пользователь указал, что дедлайн сдачи SecureCode AI сегодня, 27 сентября
+  2026 года. Исходное задание содержит дату 27 сентября, 23:59, без года и
+  часового пояса. Точное окно загрузки, слот защиты и административные
+  требования преподавателя не подтверждены.
+- Текущая цель: финальный проход и материалы для сдачи, не релиз v1.0.
+  Пользователь разрешил публичную публикацию и отправку формы сдачи. Отчёт
+  [submission benchmark](../report/submission-benchmark/README.md) охватывает
+  600 CVEfixes-кейсов и Semgrep; полный hybrid завершился на 347/600 из-за 253
+  scanner failures. На held-out hybrid recall 27.8%, Semgrep 32.5%; преимущество
+  продукта не доказано. Repair study и бенчмарк полного продуктового pipeline
+  не выполнены.
+- В финальном focused прогоне на текущих байтах прошло 140 тестов продуктового
+  audit/scanner/worker/portfolio среза, 155 тестов AST/CST, секретов,
+  зависимостей, repository tools, языков, Auditor contract и repair, а также 54
+  теста P9.17 real-local demo. Полный pytest
+  не вернул итоговый счёт за пятиминутное окно инструмента. Отдельного browser UI
+  нет; доступны CLI, API/control plane и HTML-отчёты.
+- Повторный offline P4 demo 27 сентября завершился `reference_outcome=COMPLETED`,
+  один сигнал на уязвимом fixture, ноль на safe control и
+  ноль CWE-89-сигналов на ephemeral validation candidate, исходный checkout не
+  изменён, а `product_outcome=NOT_EVALUATED`; продуктовый PASS не заявляется.
+  Focused unit
+  прогон CLI profile и GitHub comments повторно прошёл: 62 passed; Ruff и mypy
+  по этим двум областям чистые.
 - `CR-046/D-044`, `P9.15`: добавочный `M-A2026 — Academic Submission Snapshot`,
   календарь и ранняя diagnostic evaluation; exact reviews/handoff фиксируются
   в development-run CR-046. Первое демо P9.17 — 16 сентября (сценарий
@@ -16,31 +61,84 @@
   [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
   [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
-- `P9.17` implementation candidate is in progress. Its bounded real-local runner
-  keeps deterministic and independent model-native discovery on one immutable
-  Python snapshot, makes a separate repair request only after agreement, writes
-  redacted JSON/HTML metadata and applies a proposed patch only to an ephemeral
-  copy. Focused contract checks passed (46 tests); one literal-loopback Qwen
-  development case completed with source unchanged, lane agreement and ephemeral
-  parse/rescan pass. The integrator independently reran the focused suite and
-  verified the redacted artifact hashes. The current rerun also observes Ollama
-  `0.16.2`, model digest
-  `dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364`
-  and `Q4_K_M` before and after the calls; retained public evidence excludes the
-  raw patch. Instructor feedback remains pending. This is not gate, release,
-  accuracy or readiness evidence.
+- `P9.17` current real-local run used Ollama `0.34.4` and Qwen
+  `qwen2.5-coder:7b-instruct-q4_K_M`, quantization `Q4_K_M`, digest
+  `dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364` over
+  literal loopback. Deterministic and model lanes agreed on one Python CWE-89
+  candidate at `app.py:4`. Repair transport completed, but no accepted patch was
+  produced. Outcome is `INDETERMINATE`; applicability, syntax, and security
+  regression were not evaluated, and the source stayed unchanged. The receipt
+  is `report/submission-benchmark/evidence/current-real-local-p917.json`. The
+  earlier Ollama `0.16.2` parse/rescan success in M-A2026 is historical and is
+  not combined with this run.
+- Installed `securecode scan` was also run on the public real-local fixture with
+  no `SECURECODE_*`, `DEEPSEEK_*`, `OPENAI_*` or `OLLAMA_*` environment overrides.
+  It exited with code 3 and the safe error `analysis result is indeterminate`;
+  the requested JSON report was not written. This is not a successful full-product
+  audit. The metadata-only observation is
+  `report/submission-benchmark/evidence/current-real-product-cli-scan.json`.
+- Docker review confirmed non-root final users and healthcheck entrypoints in the
+  server/worker images. `docker compose` is unavailable on this Windows host, while
+  standalone Docker Compose v5.5.1 is present. The documented Compose file passed
+   `docker-compose -f deploy/docker/compose.yaml config --quiet` with 54 generated
+  unique non-secret placeholder values. No image build or service startup was run.
+- Final submission materials were refreshed locally: `report/final-submission.html`
+  and the bilingual benchmark HTML/README reflect the current local-model result,
+  focused-test counts and archived metric scope. A new local archive,
+  `output/SecureCode-AI-submission-final-2026-09-27-v11.zip`, contains 1,397 current
+  manifest-listed files; every member checksum was verified. Its outer archive
+  checksum is in the adjacent `.sha256` file. The final recheck verified every
+  manifest hash against this checkout, ZIP CRC, matching sidecar and absence of
+  `.env`. No push or submission was made.
+- Final live reruns on 27 September: the pinned Ollama 0.34.4/Qwen Q4_K_M demo
+  again found the CWE-89 candidate at `app.py:4`, agreed with the deterministic
+  lane and returned `INDETERMINATE` with `NOT_PROPOSED`; source remained unchanged.
+  The offline P4 reference demo completed with one vulnerable signal and zero safe
+  control signals; its ephemeral validation candidate had zero CWE-89 signals and
+  the original checkout stayed unchanged. Product outcome remained `NOT_EVALUATED`. Installed
+  `securecode scan` again exited 3 without writing a report. Compose syntax passed
+  with 54 unique generated placeholder values. The v10 archive was extracted into
+  a clean temporary directory; offline `uv sync`, the 140-test product suite, P4
+  demo and live P9.17 Qwen demo all reran there. The direct model result remains
+  `INDETERMINATE`; the installed CLI still exits 3. The v11 archive carries the
+  same code and matches the current tree byte-for-byte for every manifest-listed
+  file.
+- Current delivery is local only. Branch `codex/v1-code-only` is at
+  `88595ae7f50be5906defee9d06e6186ce66ee1f8` with 337 changed paths; no commit,
+  push, public link or submission was made. The v11 archive contains those local
+  files, while the GitHub repository will not reflect them until the owner
+  chooses and performs an authorized delivery.
+- Last full-tree canonical quality preflight: spec snapshot PASS, Ruff format
+  FAIL (187 and 47 findings in two input sets), Ruff lint FAIL (267 and 70
+  findings), Linux/Windows mypy FAIL (608/614 findings), unit stage SKIPPED.
+  The eight files changed in this final scoped fix pass Ruff format/check and
+  mypy. Focused tests passed 140 product cases and 155 AST/CST, secret/dependency,
+  repository-tool, language, Auditor-contract and repair cases. A full pytest run
+  did not return a final count within the five-minute tool window.
+- Current product portfolio pipeline and report tests are included in the
+  140-pass focused suite. This proves the tested sample contracts, not complete
+  production coverage or a clean full-repository test run.
+- The benchmark aggregation is bound to an immutable 603-file prior-candidate
+  source manifest and was not rerun on the current worktree. Keep those metrics
+  labeled as archived evidence, not a fresh measurement of current code.
+- Contract review confirmed `FindingCase` carries path, line interval, CWE and
+  EvidenceGraph reference, but no source-fragment field. The final assignment
+  matrix marks that requirement partial instead of inferring a snippet field.
 - `P9.16` M-A2026 snapshot implementation is `IN PROGRESS`. The fail-closed
   builder and validator now produce a substantive problem, architecture,
   method, experiment, metrics and conclusion report in Markdown, HTML and PDF.
-  The executed notebook runs the pinned public CWE-89 audit composition,
-  summarizes all 312 development cells and shows the redacted real-local
-  receipt. Exact deterministic report bytes, closed limitations and status,
+  Both notebook files' Python cells were executed programmatically: the pinned
+  public CWE-89 composition, 312-cell summary and redacted current local receipt
+  completed without cell errors in temporary workspaces. This was not a Jupyter
+  kernel run because `nbformat` is not installed in the quality environment.
+  Exact deterministic report bytes, closed limitations and status,
   evidence hashes, notebook execution and the subject-bound quality receipt are
   validated. The snapshot remains `NOT_READY`: durable independent-review
   receipts, instructor confirmations and protected delivery are pending.
-  Canonical quality passes with 1,613 tests, ten expected skips and 81.61% Core
-  branch coverage. It makes no G7, G9, v1.0, `PROJECT CLOSED`, accuracy or
-  readiness claim.
+  The archived canonical quality receipt records 1,613 tests, ten expected
+  skips and 81.61% Core branch coverage for its historical bound subject. The
+  current dirty worktree has separate failing quality and test results. It
+  makes no G7, G9, v1.0, `PROJECT CLOSED`, accuracy or readiness claim.
 - Independent review remediation is integrated in the candidate: JS/TS/Go facts
   now use a production RawSignal conversion, ProgramGraph rejects aggregate
   overflow before allocation, JSX/TSX and common callable forms are supported,

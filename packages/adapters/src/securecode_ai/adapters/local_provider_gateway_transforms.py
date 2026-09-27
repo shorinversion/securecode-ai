@@ -32,6 +32,22 @@ from .openai_compatible_local_codec import _canonicalize_ollama_envelope
 
 
 def _failure(status: int, *, dispatched: bool = False) -> GatewayReply:
+    # Keep the public boundary closed even when an adapter hands us an
+    # unexpected status value.  In particular, never let a bool, string, or
+    # provider-specific status reach BaseHTTPRequestHandler.send_response.
+    if type(status) is not int or status not in {
+        400,
+        408,
+        413,
+        429,
+        500,
+        502,
+        503,
+        504,
+    }:
+        status = 502
+    if type(dispatched) is not bool:
+        dispatched = True
     return GatewayReply(status, b'{"error":"gateway_request_unavailable"}', dispatched)
 
 
@@ -147,9 +163,9 @@ def _ollama_native_request(body: bytes, *, expected_model_id: str) -> bytes:
 
 
 def _canonicalize_ollama_native_chat(body: bytes, *, expected_model_id: str) -> bytes:
-    """Accept only Ollama 0.34 native chat replies and retain the closed dialect."""
+    """Accept bounded Ollama native chat replies and retain the closed dialect."""
     document = _decode(body)
-    expected = {
+    required = {
         "created_at",
         "done",
         "done_reason",
@@ -158,13 +174,14 @@ def _canonicalize_ollama_native_chat(body: bytes, *, expected_model_id: str) -> 
         "load_duration",
         "message",
         "model",
-        "prompt_eval_cached_count",
         "prompt_eval_count",
         "prompt_eval_duration",
         "total_duration",
     }
+    optional = {"prompt_eval_cached_count"}
     if (
-        set(document) != expected
+        not set(document).issubset(required | optional)
+        or not required.issubset(set(document))
         or document["model"] != expected_model_id
         or document["done"] is not True
     ):
@@ -175,7 +192,6 @@ def _canonicalize_ollama_native_chat(body: bytes, *, expected_model_id: str) -> 
         "eval_count",
         "eval_duration",
         "load_duration",
-        "prompt_eval_cached_count",
         "prompt_eval_count",
         "prompt_eval_duration",
         "total_duration",
@@ -187,14 +203,23 @@ def _canonicalize_ollama_native_chat(body: bytes, *, expected_model_id: str) -> 
         for key in counters
     ):
         raise ValueError("invalid native chat metrics")
+    cached = document.get("prompt_eval_cached_count")
+    if "prompt_eval_cached_count" in document and (
+        type(cached) is not int or isinstance(cached, bool) or cached < 0
+    ):
+        raise ValueError("invalid native chat cache metrics")
     message = document["message"]
     if type(message) is not dict or set(message) not in (
         {"role", "content"},
+        {"role", "content", "thinking"},
         {"role", "content", "tool_calls"},
+        {"role", "content", "thinking", "tool_calls"},
     ):
         raise ValueError("invalid native chat message")
     if message["role"] != "assistant" or not isinstance(message["content"], str):
         raise ValueError("invalid native chat message")
+    if "thinking" in message and not isinstance(message["thinking"], str):
+        raise ValueError("invalid native chat thinking")
     response_hash = hashlib.sha256(body).hexdigest()
     canonical: dict[str, object] = {
         "id": "ollama-" + response_hash[:56],

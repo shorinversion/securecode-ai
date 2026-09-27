@@ -62,8 +62,16 @@ def write_ci_worker_artifact(
         tenant_directory = _tenant_digest(tenant_id)
 
         root_fd, root_identity = _open_root(artifact_root)
-        tenants_fd, tenants_identity = _open_or_create_directory(root_fd, "tenants")
-        tenant_fd, tenant_identity = _open_or_create_directory(tenants_fd, tenant_directory)
+        tenants_fd, tenants_identity, tenants_created = _open_or_create_directory(
+            root_fd, "tenants"
+        )
+        if tenants_created:
+            os.fsync(root_fd)
+        tenant_fd, tenant_identity, tenant_created = _open_or_create_directory(
+            tenants_fd, tenant_directory
+        )
+        if tenant_created:
+            os.fsync(tenants_fd)
         leaf_name = f"{content_id}.json"
 
         try:
@@ -166,6 +174,8 @@ def _open_root(root: Path) -> tuple[int, tuple[int, int]]:
     if (
         type(root) is not _CONCRETE_PATH_TYPE
         or not root.is_absolute()
+        or root.anchor != "/"
+        or len(root.parts) < 2
         or any(part in {".", ".."} for part in root.parts)
     ):
         raise CiWorkerArtifactError()
@@ -197,12 +207,14 @@ def _open_existing_directory(parent_fd: int, name: str) -> tuple[int, tuple[int,
     return descriptor, _identity(opened)
 
 
-def _open_or_create_directory(parent_fd: int, name: str) -> tuple[int, tuple[int, int]]:
+def _open_or_create_directory(parent_fd: int, name: str) -> tuple[int, tuple[int, int], bool]:
+    created = False
     try:
         before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     except FileNotFoundError:
         with suppress(FileExistsError):
             os.mkdir(name, mode=0o700, dir_fd=parent_fd)
+            created = True
         before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
     if _is_link_like(before) or not stat.S_ISDIR(before.st_mode):
         raise CiWorkerArtifactError()
@@ -211,7 +223,7 @@ def _open_or_create_directory(parent_fd: int, name: str) -> tuple[int, tuple[int
     if not stat.S_ISDIR(opened.st_mode) or _identity(before) != _identity(opened):
         os.close(descriptor)
         raise CiWorkerArtifactError()
-    return descriptor, _identity(opened)
+    return descriptor, _identity(opened), created
 
 
 def _write_temporary(

@@ -117,9 +117,13 @@ class GitHubApi:
             raise GitHubError("REDIRECT_DENIED")
         parsed = _response_document(raw)
         if status >= 400:
+            rate_limited = status == 403 and (
+                response_headers.get("x-ratelimit-remaining") == "0"
+                or "retry-after" in response_headers
+            )
             raise GitHubError(
                 "HTTP_" + str(status),
-                status in {408, 425, 429} or status >= 500,
+                rate_limited or status in {408, 425, 429} or status >= 500,
             )
         return GitHubResponse(status, parsed, response_headers)
 

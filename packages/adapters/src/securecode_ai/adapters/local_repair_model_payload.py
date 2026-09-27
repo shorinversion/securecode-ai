@@ -105,6 +105,11 @@ def validated_architect_document(
     diff = document.get("unified_diff")
     rationale = document.get("rationale")
     symbols = document.get("touched_symbols")
+    try:
+        if type(rationale) is str:
+            rationale.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        raise ValueError from None
     if (
         type(diff) is not str
         or not diff

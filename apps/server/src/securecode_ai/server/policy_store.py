@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 from collections.abc import Callable, Mapping, Sequence
@@ -73,15 +74,32 @@ class PolicyStore:
         *,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        self._db = connection or sqlite3.connect(":memory:", check_same_thread=False)
+        if connection is not None and type(connection) is not sqlite3.Connection:
+            raise ProfileConflict("policy storage is invalid")
+        if not callable(now):
+            raise ProfileConflict("policy clock is invalid")
+        self._db = (
+            connection
+            if connection is not None
+            else sqlite3.connect(":memory:", check_same_thread=False)
+        )
         self._now = now
         self._lock = threading.RLock()
-        self._db.execute("PRAGMA foreign_keys = ON")
-        for statement in POLICY_STORE_SCHEMA_STATEMENTS:
-            self._db.execute(statement)
-        self._db.commit()
+        try:
+            self._db.execute("PRAGMA foreign_keys = ON")
+            self._db.execute("PRAGMA busy_timeout = 5000")
+            self._db.execute("PRAGMA synchronous = FULL")
+            for statement in POLICY_STORE_SCHEMA_STATEMENTS:
+                self._db.execute(statement)
+            self._db.commit()
+        except sqlite3.Error as error:
+            raise ProfileConflict("policy storage is unavailable") from error
 
     def create(self, profile: ScanProfile, *, idempotency_key: str) -> ScanProfile:
+        if type(profile) is not ScanProfile:
+            raise ProfileConflict("policy profile is invalid")
+        _require_identifier(profile.tenant_id)
+        _require_identifier(profile.profile_id)
         key = _require_key(idempotency_key)
         content_json = _canonical_profile_content(profile.content)
         if hashlib.sha256(content_json.encode("ascii")).hexdigest() != profile.content_sha256:
@@ -132,6 +150,9 @@ class PolicyStore:
                 )
                 self._db.commit()
                 return profile
+            except sqlite3.Error as error:
+                self._db.rollback()
+                raise ProfileConflict("policy storage is unavailable") from error
             except Exception:
                 self._db.rollback()
                 raise
@@ -179,7 +200,14 @@ class PolicyStore:
                     "SELECT version FROM scan_policy_active WHERE tenant_id = ? AND profile_id = ?",
                     (tenant_id, profile_id),
                 ).fetchone()
-                current = None if row is None else int(row[0])
+                if row is not None and (
+                    not _is_storage_row(row)
+                    or len(row) != 1
+                    or type(row[0]) is not int
+                    or row[0] < 1
+                ):
+                    raise ProfileConflict("stored active policy is invalid")
+                current = None if row is None else row[0]
                 if current != expected_active:
                     raise ProfileConflict("active policy version changed")
                 self._db.execute(
@@ -199,6 +227,9 @@ class PolicyStore:
                     )
                 self._db.commit()
                 return profile
+            except sqlite3.Error as error:
+                self._db.rollback()
+                raise ProfileConflict("policy storage is unavailable") from error
             except Exception:
                 self._db.rollback()
                 raise
@@ -211,16 +242,19 @@ class PolicyStore:
         profile_id: str,
         version: int,
         expected_assignment_version: int | None = None,
+        idempotency_key: str | None = None,
     ) -> None:
         _require_identifier(repository_id)
         self._assign(
             table="scan_policy_repository_assignments",
+            operation="assign_repository",
             tenant_id=tenant_id,
             scope_column="repository_id",
             scope_value=repository_id,
             profile_id=profile_id,
             version=version,
             expected_assignment_version=expected_assignment_version,
+            idempotency_key=idempotency_key,
         )
 
     def set_tenant_default(
@@ -230,15 +264,18 @@ class PolicyStore:
         profile_id: str,
         version: int,
         expected_assignment_version: int | None = None,
+        idempotency_key: str | None = None,
     ) -> None:
         self._assign(
             table="scan_policy_tenant_defaults",
+            operation="set_tenant_default",
             tenant_id=tenant_id,
             scope_column=None,
             scope_value=None,
             profile_id=profile_id,
             version=version,
             expected_assignment_version=expected_assignment_version,
+            idempotency_key=idempotency_key,
         )
 
     def resolve(
@@ -248,17 +285,19 @@ class PolicyStore:
         repository_id: str,
         waivers: tuple[WaiverReference, ...] = (),
     ) -> dict[str, object]:
+        if type(waivers) is not tuple or any(type(item) is not WaiverReference for item in waivers):
+            raise ProfileConflict("waiver references are invalid")
         profile = self.resolve_profile(tenant_id=tenant_id, repository_id=repository_id)
-        now = self._now()
-        if not isinstance(now, datetime) or now.tzinfo is None:
-            raise ProfileConflict("clock returned an invalid timestamp")
+        now = _checked_now(self._now)
         waiver_documents: list[dict[str, str]] = []
         for item in waivers:
             try:
                 expiry = datetime.fromisoformat(item.expires_at)
             except (TypeError, ValueError) as error:
                 raise ProfileConflict("waiver expiry is invalid") from error
-            if expiry.tzinfo is None or expiry <= now:
+            if expiry.tzinfo is None or expiry.utcoffset() is None:
+                raise ProfileConflict("waiver expiry is invalid")
+            if expiry <= now:
                 continue
             _require_identifier(item.waiver_id)
             _require_reference(item.reason_ref)
@@ -282,23 +321,45 @@ class PolicyStore:
 
         _require_identifier(tenant_id)
         _require_identifier(repository_id)
-        row = self._db.execute(
-            """SELECT profile_id, profile_version
-               FROM scan_policy_repository_assignments
-               WHERE tenant_id = ? AND repository_id = ?""",
-            (tenant_id, repository_id),
-        ).fetchone()
-        if row is None:
-            row = self._db.execute(
-                """SELECT profile_id, profile_version
-                   FROM scan_policy_tenant_defaults WHERE tenant_id = ?""",
-                (tenant_id,),
-            ).fetchone()
-        if row is None:
-            raise ProfileConflict("no policy is assigned in tenant scope")
-        profile = self._load(tenant_id, str(row[0]), int(row[1]))
+        try:
+            with self._lock:
+                row = self._db.execute(
+                    """SELECT profile_id, profile_version
+                       FROM scan_policy_repository_assignments
+                       WHERE tenant_id = ? AND repository_id = ?""",
+                    (tenant_id, repository_id),
+                ).fetchone()
+                if row is None:
+                    row = self._db.execute(
+                        """SELECT profile_id, profile_version
+                           FROM scan_policy_tenant_defaults WHERE tenant_id = ?""",
+                        (tenant_id,),
+                    ).fetchone()
+                if (
+                    row is None
+                    or not _is_storage_row(row)
+                    or len(row) != 2
+                    or type(row[0]) is not str
+                    or type(row[1]) is not int
+                    or row[1] < 1
+                ):
+                    raise ProfileConflict("no policy is assigned in tenant scope")
+                profile = self._load(tenant_id, row[0], row[1])
+                if profile is None:
+                    raise ProfileConflict("assigned policy version does not exist")
+                return profile
+        except sqlite3.Error as error:
+            raise ProfileConflict("policy storage is unavailable") from error
+
+    def get_profile(self, *, tenant_id: str, profile_id: str, version: int) -> ScanProfile:
+        """Load one immutable version without crossing the tenant boundary."""
+
+        _require_identifier(tenant_id)
+        _require_identifier(profile_id)
+        _require_version(version)
+        profile = self._load(tenant_id, profile_id, version)
         if profile is None:
-            raise ProfileConflict("assigned policy version does not exist")
+            raise ProfileConflict("policy version does not exist")
         return profile
 
     def list(
@@ -312,23 +373,46 @@ class PolicyStore:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ProfileConflict("page limit is invalid")
         after_profile, after_version = _decode_cursor(cursor, tenant_id)
-        rows = self._db.execute(
-            """SELECT tenant_id, profile_id, version, content_sha256,
-                      rollout, calibrated, content_json
-               FROM scan_policy_versions
-               WHERE tenant_id = ?
-                 AND (profile_id > ? OR (profile_id = ? AND version > ?))
-               ORDER BY profile_id, version LIMIT ?""",
-            (tenant_id, after_profile, after_profile, after_version, limit + 1),
-        ).fetchall()
+        try:
+            with self._lock:
+                rows = self._db.execute(
+                    """SELECT tenant_id, profile_id, version, content_sha256,
+                              rollout, calibrated, content_json
+                       FROM scan_policy_versions
+                       WHERE tenant_id = ?
+                         AND (profile_id > ? OR (profile_id = ? AND version > ?))
+                       ORDER BY profile_id, version LIMIT ?""",
+                    (tenant_id, after_profile, after_profile, after_version, limit + 1),
+                ).fetchall()
+        except sqlite3.Error as error:
+            raise ProfileConflict("policy storage is unavailable") from error
         page = rows[:limit]
+        for row in page:
+            if (
+                not _is_storage_row(row)
+                or len(row) != 7
+                or type(row[0]) is not str
+                or row[0] != tenant_id
+                or type(row[1]) is not str
+                or type(row[2]) is not int
+                or row[2] < 1
+                or type(row[3]) is not str
+                or len(row[3]) != 64
+                or any(item not in "0123456789abcdef" for item in row[3])
+                or type(row[4]) is not str
+                or row[4] not in {mode.value for mode in RolloutMode}
+                or type(row[5]) is not int
+                or row[5] not in {0, 1}
+                or type(row[6]) is not str
+            ):
+                raise ProfileConflict("stored policy profile is invalid")
         items = [
             {
-                "profile_id": str(row[1]),
-                "version": int(row[2]),
-                "content_sha256": str(row[3]),
-                "rollout": str(row[4]),
-                "calibrated": bool(row[5]),
+                "profile_id": row[1],
+                "version": row[2],
+                "content_sha256": row[3],
+                "rollout": row[4],
+                "calibrated": row[5] == 1,
             }
             for row in page
         ]
@@ -341,23 +425,50 @@ class PolicyStore:
         self,
         *,
         table: str,
+        operation: str,
         tenant_id: str,
         scope_column: str | None,
         scope_value: str | None,
         profile_id: str,
         version: int,
         expected_assignment_version: int | None,
+        idempotency_key: str | None,
     ) -> None:
         _require_identifier(tenant_id)
         _require_identifier(profile_id)
         _require_version(version)
         if expected_assignment_version is not None:
             _require_version(expected_assignment_version)
+        key = None if idempotency_key is None else _require_key(idempotency_key)
+        fingerprint = _digest(
+            {
+                "operation": operation,
+                "tenant_id": tenant_id,
+                "scope_column": scope_column,
+                "scope_value": scope_value,
+                "profile_id": profile_id,
+                "version": version,
+                "expected_assignment_version": expected_assignment_version,
+            }
+        )
         with self._lock:
             self._begin()
             try:
+                if key is not None:
+                    replay = self._replay(tenant_id, key)
+                    if replay is not None:
+                        if replay[0] != operation or replay[1] != fingerprint:
+                            raise ProfileConflict("idempotency key was reused")
+                        self._db.commit()
+                        return
                 if self._load(tenant_id, profile_id, version) is None:
                     raise ProfileConflict("policy version does not exist")
+                active = self._db.execute(
+                    "SELECT version FROM scan_policy_active WHERE tenant_id = ? AND profile_id = ?",
+                    (tenant_id, profile_id),
+                ).fetchone()
+                if active is None or int(active[0]) != version:
+                    raise ProfileConflict("policy version is not active")
                 where = "tenant_id = ?"
                 params: tuple[object, ...] = (tenant_id,)
                 if scope_column is not None:
@@ -367,10 +478,33 @@ class PolicyStore:
                     f"SELECT profile_id, profile_version, assignment_version FROM {table} WHERE {where}",
                     params,
                 ).fetchone()
-                if row is not None and (str(row[0]), int(row[1])) == (profile_id, version):
+                if row is not None and (
+                    not _is_storage_row(row)
+                    or len(row) != 3
+                    or type(row[0]) is not str
+                    or type(row[1]) is not int
+                    or type(row[2]) is not int
+                    or row[1] < 1
+                    or row[2] < 1
+                ):
+                    raise ProfileConflict("stored policy assignment is invalid")
+                current_version = None if row is None else row[2]
+                if row is not None and (row[0], row[1]) == (profile_id, version):
+                    if (
+                        expected_assignment_version is not None
+                        and current_version != expected_assignment_version
+                    ):
+                        raise ProfileConflict("policy assignment changed")
+                    if key is not None:
+                        self._record_replay(
+                            tenant_id,
+                            key,
+                            operation,
+                            fingerprint,
+                            {"profile_id": profile_id, "version": version},
+                        )
                     self._db.commit()
                     return
-                current_version = None if row is None else int(row[2])
                 if current_version != expected_assignment_version:
                     raise ProfileConflict("policy assignment changed")
                 next_version = 1 if current_version is None else current_version + 1
@@ -397,7 +531,18 @@ class PolicyStore:
                                assignment_version = excluded.assignment_version""",
                         (tenant_id, scope_value, profile_id, version, next_version),
                     )
+                if key is not None:
+                    self._record_replay(
+                        tenant_id,
+                        key,
+                        operation,
+                        fingerprint,
+                        {"profile_id": profile_id, "version": version},
+                    )
                 self._db.commit()
+            except sqlite3.Error as error:
+                self._db.rollback()
+                raise ProfileConflict("policy storage is unavailable") from error
             except Exception:
                 self._db.rollback()
                 raise
@@ -412,20 +557,32 @@ class PolicyStore:
         ).fetchone()
         if row is None:
             return None
+        if (
+            not _is_storage_row(row)
+            or len(row) != 7
+            or not all(type(item) is str for item in (row[0], row[1], row[3], row[4], row[6]))
+            or type(row[2]) is not int
+            or type(row[5]) is not int
+            or row[5] not in {0, 1}
+            or row[0] != tenant_id
+            or row[1] != profile_id
+            or row[2] != version
+        ):
+            raise ProfileConflict("stored policy profile is invalid")
         try:
-            content = json.loads(str(row[6]))
+            content = json.loads(row[6])
             if not isinstance(content, dict):
                 raise ProfileConflict("stored policy content is invalid")
             canonical_content = _canonical_profile_content(content)
-            if hashlib.sha256(canonical_content.encode("ascii")).hexdigest() != str(row[3]):
+            if hashlib.sha256(canonical_content.encode("ascii")).hexdigest() != row[3]:
                 raise ProfileConflict("stored policy content integrity failed")
             return ScanProfile(
-                tenant_id=str(row[0]),
-                profile_id=str(row[1]),
-                version=int(row[2]),
-                content_sha256=str(row[3]),
-                rollout=RolloutMode(str(row[4])),
-                calibrated=bool(row[5]),
+                tenant_id=row[0],
+                profile_id=row[1],
+                version=row[2],
+                content_sha256=row[3],
+                rollout=RolloutMode(row[4]),
+                calibrated=row[5] == 1,
                 content=content,
             )
         except ProfileConflict:
@@ -442,7 +599,25 @@ class PolicyStore:
                WHERE tenant_id = ? AND idempotency_key = ?""",
             (tenant_id, key),
         ).fetchone()
-        return None if row is None else (str(row[0]), str(row[1]), str(row[2]))
+        if row is None:
+            return None
+        if (
+            not _is_storage_row(row)
+            or len(row) != 3
+            or not all(type(item) is str for item in row)
+            or row[0]
+            not in {
+                "create",
+                "activate",
+                "assign_repository",
+                "set_tenant_default",
+            }
+            or len(row[1]) != 64
+            or any(item not in "0123456789abcdef" for item in row[1])
+            or len(row[2]) > 1_048_576
+        ):
+            raise ProfileConflict("stored policy replay is invalid")
+        return row[0], row[1], row[2]
 
     def _record_replay(
         self,
@@ -458,10 +633,17 @@ class PolicyStore:
         )
 
     def _begin(self) -> None:
-        self._db.execute("BEGIN IMMEDIATE")
+        try:
+            self._db.execute("BEGIN IMMEDIATE")
+        except sqlite3.Error as error:
+            raise ProfileConflict("policy storage is unavailable") from error
 
 
 _FORBIDDEN_PROFILE_KEYS = frozenset({"raw_source", "source_code", "prompt_text", "secret"})
+
+
+def _is_storage_row(value: object) -> bool:
+    return type(value) is tuple or type(value) is sqlite3.Row
 
 
 def _canonical_profile_content(content: Mapping[str, object]) -> str:
@@ -535,15 +717,20 @@ def _profile_document(profile: ScanProfile) -> dict[str, object]:
 
 
 def _require_identifier(value: object) -> str:
-    if not isinstance(value, str) or not 1 <= len(value) <= 256:
+    if type(value) is not str or not 1 <= len(value) <= 256:
         raise ProfileConflict("identifier is invalid")
-    if any(ord(character) < 33 or ord(character) > 126 for character in value):
+    if (
+        value != value.strip()
+        or any(ord(character) < 33 or ord(character) > 126 for character in value)
+    ):
         raise ProfileConflict("identifier contains unsupported characters")
     return value
 
 
 def _require_reference(value: object) -> str:
-    if not isinstance(value, str) or not 1 <= len(value) <= 512:
+    if type(value) is not str or not 1 <= len(value) <= 512:
+        raise ProfileConflict("waiver reason reference is invalid")
+    if value != value.strip() or any(ord(character) < 33 for character in value):
         raise ProfileConflict("waiver reason reference is invalid")
     return value
 
@@ -554,8 +741,28 @@ def _require_version(value: object) -> int:
     return value
 
 
+def _checked_now(source: Callable[[], datetime]) -> datetime:
+    try:
+        value = source()
+        if (
+            type(value) is not datetime
+            or value.tzinfo is None
+            or value.utcoffset() is None
+        ):
+            raise ValueError
+        return value.astimezone(UTC)
+    except Exception as error:
+        raise ProfileConflict("clock returned an invalid timestamp") from error
+
+
 def _require_key(value: object) -> str:
-    if not isinstance(value, str) or not 1 <= len(value) <= 128:
+    if (
+        type(value) is not str
+        or not 1 <= len(value) <= 128
+        or not value.isascii()
+        or value != value.strip()
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
         raise ProfileConflict("idempotency key is invalid")
     return value
 
@@ -568,18 +775,30 @@ def _encode_cursor(tenant_id: str, profile_id: str, version: int) -> str:
 def _decode_cursor(cursor: str | None, tenant_id: str) -> tuple[str, int]:
     if cursor is None:
         return "", 0
-    if not isinstance(cursor, str) or not 1 <= len(cursor) <= 1024:
+    if (
+        type(cursor) is not str
+        or not 1 <= len(cursor) <= 1024
+        or not cursor.isascii()
+        or re.fullmatch(r"[A-Za-z0-9_-]+", cursor) is None
+    ):
         raise ProfileConflict("cursor is invalid")
     try:
         payload = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
         document = json.loads(payload.decode("ascii"))
     except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ProfileConflict("cursor is invalid") from error
-    if not isinstance(document, dict) or document.get("tenant") != tenant_id:
+    if (
+        type(document) is not dict
+        or set(document) != {"profile", "tenant", "version"}
+        or document.get("tenant") != tenant_id
+    ):
         raise ProfileConflict("cursor is outside tenant scope")
     profile_id = document.get("profile")
     version = document.get("version")
-    return _require_identifier(profile_id), _require_version(version)
+    result = (_require_identifier(profile_id), _require_version(version))
+    if _encode_cursor(tenant_id, result[0], result[1]) != cursor:
+        raise ProfileConflict("cursor is invalid")
+    return result
 
 
 __all__ = ["POLICY_STORE_SCHEMA_STATEMENTS", "PolicyStore"]

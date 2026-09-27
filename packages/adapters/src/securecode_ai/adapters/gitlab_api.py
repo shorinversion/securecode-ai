@@ -40,6 +40,9 @@ MAX_GITLAB_JSON_ITEMS: Final = 100
 MAX_GITLAB_PAGES: Final = 100
 DEFAULT_TIMEOUT_SECONDS: Final = 5.0
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+_CWE_ID: Final = re.compile(r"CWE-[1-9][0-9]{0,5}\Z")
+_COMMIT_SHA: Final = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
 _SAFE_BASE_PATH: Final = re.compile(r"(?:/[A-Za-z0-9._/-]{1,255})?\Z")
 
 
@@ -158,17 +161,17 @@ class GitlabRestAPI:
         ]
         if len(matches) > 1:
             raise GitlabAPIError(GitlabAPIErrorCode.CONFLICT)
-        if matches:
-            note_id = _response_id(matches[0])
-            response = self._json_request(
-                "PUT",
-                self._mr_path(project_id, merge_request_iid, f"notes/{note_id}"),
-                {"body": body},
-                idempotency_key,
-                expected_statuses=frozenset({200}),
-            )
-        else:
-            try:
+        try:
+            if matches:
+                note_id = _response_id(matches[0])
+                response = self._json_request(
+                    "PUT",
+                    self._mr_path(project_id, merge_request_iid, f"notes/{note_id}"),
+                    {"body": body},
+                    idempotency_key,
+                    expected_statuses=frozenset({200}),
+                )
+            else:
                 response = self._json_request(
                     "POST",
                     self._mr_path(project_id, merge_request_iid, "notes"),
@@ -176,12 +179,12 @@ class GitlabRestAPI:
                     idempotency_key,
                     expected_statuses=frozenset({201}),
                 )
-            except GitlabAPIError as error:
-                reconciled = self._find_note(project_id, merge_request_iid, idempotency_key, body)
-                if reconciled is not None:
-                    return reconciled
-                raise error
-        return _response_id(response)
+        except GitlabAPIError as error:
+            reconciled = self._find_note(project_id, merge_request_iid, idempotency_key, body)
+            if reconciled is not None:
+                return reconciled
+            raise error
+        return _note_response_id(response, body)
 
     def merge_request_head(self, *, project_id: str, merge_request_iid: str) -> str:
         """Read the current MR head from the authenticated GitLab authority."""
@@ -207,6 +210,38 @@ class GitlabRestAPI:
             raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
         return sha
 
+    def merge_request_diff_refs(
+        self, *, project_id: str, merge_request_iid: str
+    ) -> tuple[str, str, str]:
+        """Return complete GitLab diff refs for a merge request."""
+
+        _validate_identifiers(project_id, merge_request_iid, "diff-refs")
+        request_key = (
+            "diff-refs-"
+            + hashlib.sha256(f"{project_id}\x00{merge_request_iid}".encode()).hexdigest()
+        )
+        response = self._json_request(
+            "GET",
+            self._mr_path(project_id, merge_request_iid, "").rstrip("/"),
+            None,
+            request_key,
+            expected_statuses=frozenset({200}),
+        )
+        if type(response) is not dict or type(response.get("diff_refs")) is not dict:
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        refs = cast(dict[str, object], response["diff_refs"])
+        base_sha, start_sha, head_sha = (
+            refs.get("base_sha"),
+            refs.get("start_sha"),
+            refs.get("head_sha"),
+        )
+        if any(
+            type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None
+            for value in (base_sha, start_sha, head_sha)
+        ):
+            raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+        return cast(str, base_sha), cast(str, start_sha), cast(str, head_sha)
+
     def compare_commit_lineage(
         self, *, project_id: str, base_sha: str, head_sha: str
     ) -> tuple[str, ...]:
@@ -225,6 +260,20 @@ class GitlabRestAPI:
     ) -> tuple[tuple[str, int], ...]:
         """Return complete changed HEAD locations for an exact straight comparison."""
 
+        return tuple(
+            (path, line)
+            for path, line, _old_path, _deleted in self.compare_commit_changed_line_paths(
+                project_id=project_id,
+                base_sha=base_sha,
+                head_sha=head_sha,
+            )
+        )
+
+    def compare_commit_changed_line_paths(
+        self, *, project_id: str, base_sha: str, head_sha: str
+    ) -> tuple[tuple[str, int, str, bool], ...]:
+        """Return verified changed lines with old paths for exact GitLab diff positions."""
+
         response = self._compare_commit_document(
             project_id=project_id,
             base_sha=base_sha,
@@ -241,7 +290,7 @@ class GitlabRestAPI:
             return ()
         if not diffs:
             raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
-        changed: set[tuple[str, int]] = set()
+        changed: set[tuple[str, int, str, bool]] = set()
         seen_paths: set[str] = set()
         for item in diffs:
             if type(item) is not dict:
@@ -267,7 +316,10 @@ class GitlabRestAPI:
                 parsed = parse_unified_diff_changed_lines(item.get("diff"), expected_path=path)
             except (SCMDiffError, TypeError, ValueError):
                 raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID) from None
-            changed.update(parsed)
+            deleted = new_path == "/dev/null" or item.get("deleted_file") is True
+            changed.update(
+                (changed_path, line, old_path, deleted) for changed_path, line in parsed
+            )
             if len(changed) > MAX_SCM_CHANGED_LINES:
                 raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
         return tuple(sorted(changed))
@@ -308,7 +360,7 @@ class GitlabRestAPI:
         """POST a discussion only at the exact changed-line position."""
 
         _validate_identifiers(project_id, merge_request_iid, idempotency_key)
-        if type(projection) is not GitlabDiscussionProjection or not _safe_body(projection.body):
+        if not _valid_discussion_projection(projection):
             raise GitlabAPIError(GitlabAPIErrorCode.INVALID_REQUEST)
         old_path = projection.old_path or projection.new_path
         if not safe_path(old_path):
@@ -363,9 +415,7 @@ class GitlabRestAPI:
         """Set the optional external status response for the exact projected SHA."""
 
         _validate_identifiers(project_id, merge_request_iid, idempotency_key)
-        if type(projection) is not GitlabExternalStatusProjection or not _safe_body(
-            projection.safe_summary
-        ):
+        if not _valid_external_status_projection(projection, idempotency_key):
             raise GitlabAPIError(GitlabAPIErrorCode.INVALID_REQUEST)
         state = {
             GitlabExternalStatus.PASSED: "success",
@@ -622,6 +672,55 @@ def _safe_body(value: object) -> bool:
     )
 
 
+def _valid_discussion_projection(value: object) -> bool:
+    if type(value) is not GitlabDiscussionProjection:
+        return False
+    projection = value
+    return (
+        type(projection.finding_id) is str
+        and _ID.fullmatch(projection.finding_id) is not None
+        and type(projection.cwe_id) is str
+        and _CWE_ID.fullmatch(projection.cwe_id) is not None
+        and type(projection.new_path) is str
+        and safe_path(projection.new_path)
+        and (
+            projection.old_path is None
+            or (type(projection.old_path) is str and safe_path(projection.old_path))
+        )
+        and type(projection.new_line) is int
+        and not isinstance(projection.new_line, bool)
+        and projection.new_line >= 1
+        and all(
+            type(sha) is str and _COMMIT_SHA.fullmatch(sha) is not None
+            for sha in (projection.base_sha, projection.start_sha, projection.head_sha)
+        )
+        and projection.base_sha != projection.head_sha
+        and type(projection.merge_authority) is bool
+        and not projection.merge_authority
+        and _safe_body(projection.body)
+    )
+
+
+def _valid_external_status_projection(value: object, idempotency_key: str) -> bool:
+    if type(value) is not GitlabExternalStatusProjection:
+        return False
+    projection = value
+    return (
+        type(projection.idempotency_key) is str
+        and projection.idempotency_key == idempotency_key
+        and _ID.fullmatch(projection.idempotency_key) is not None
+        and type(projection.execution_identity_hash) is str
+        and _SHA256.fullmatch(projection.execution_identity_hash) is not None
+        and type(projection.head_sha) is str
+        and _COMMIT_SHA.fullmatch(projection.head_sha) is not None
+        and type(projection.status) is GitlabExternalStatus
+        and type(projection.publish) is bool
+        and projection.publish
+        and type(projection.merge_authority) is bool
+        and _safe_body(projection.safe_summary)
+    )
+
+
 def _json_body(payload: Mapping[str, object]) -> bytes:
     try:
         body = json.dumps(
@@ -641,6 +740,12 @@ def _response_id(value: object) -> str:
     if identifier is None:
         raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
     return identifier
+
+
+def _note_response_id(value: object, expected_body: str) -> str:
+    if type(value) is not dict or value.get("body") != expected_body:
+        raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
+    return _response_id(value)
 
 
 def _verified_gitlab_commit_lineage(

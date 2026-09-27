@@ -121,7 +121,7 @@ def _diff_git_path(line: str) -> str:
 
 
 def _header_path(raw: str, *, required_prefix: str | None = None) -> str:
-    path = raw.split("\t", 1)[0].strip()
+    path = raw.split("\t", 1)[0]
     if path == "/dev/null":
         raise ValueError("file creation and deletion are outside repair scope")
     if required_prefix is not None:

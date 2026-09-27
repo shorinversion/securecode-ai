@@ -49,6 +49,8 @@ class ClassificationError(ValueError):
         self.code = code
         self.safe_message = "finding classification failed"
         super().__init__(self.safe_message)
+        self.__cause__ = None
+        self.__context__ = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,12 +135,43 @@ _MAPPINGS: Final[Mapping[str, _MappingEntry]] = MappingProxyType(
     {cwe: _MappingEntry(owasp, severity) for cwe, owasp, severity in _MAPPING_ROWS}
 )
 _PRODUCT_MAPPING_ID: Final = "securecode-product-portfolio-classification"
-_PRODUCT_MAPPING_VERSION: Final = "1.0.0"
+_PRODUCT_MAPPING_VERSION: Final = "1.2.0"
 _PRODUCT_MAPPING_ROWS: Final = (
     ("CWE-22", "A01:2021", FindingSeverity.HIGH),
+    ("CWE-79", "A03:2021", FindingSeverity.HIGH),
     ("CWE-78", "A03:2021", FindingSeverity.HIGH),
+    ("CWE-90", "A03:2021", FindingSeverity.HIGH),
     ("CWE-862", "A01:2021", FindingSeverity.HIGH),
     ("CWE-918", "A10:2021", FindingSeverity.HIGH),
+    ("CWE-937", "A06:2021", FindingSeverity.HIGH),
+    ("CWE-94", "A03:2021", FindingSeverity.CRITICAL),
+    ("CWE-117", "A09:2021", FindingSeverity.MEDIUM),
+    ("CWE-1321", "A03:2021", FindingSeverity.HIGH),
+    ("CWE-1333", "A05:2021", FindingSeverity.HIGH),
+    ("CWE-209", "A05:2021", FindingSeverity.MEDIUM),
+    ("CWE-295", "A02:2021", FindingSeverity.HIGH),
+    ("CWE-306", "A07:2021", FindingSeverity.CRITICAL),
+    ("CWE-307", "A07:2021", FindingSeverity.HIGH),
+    ("CWE-327", "A02:2021", FindingSeverity.HIGH),
+    ("CWE-338", "A02:2021", FindingSeverity.HIGH),
+    ("CWE-352", "A01:2021", FindingSeverity.HIGH),
+    ("CWE-367", "A04:2021", FindingSeverity.HIGH),
+    ("CWE-377", "A05:2021", FindingSeverity.HIGH),
+    ("CWE-384", "A07:2021", FindingSeverity.HIGH),
+    ("CWE-400", "A05:2021", FindingSeverity.HIGH),
+    ("CWE-476", "A05:2021", FindingSeverity.MEDIUM),
+    ("CWE-502", "A08:2021", FindingSeverity.HIGH),
+    ("CWE-521", "A07:2021", FindingSeverity.HIGH),
+    ("CWE-532", "A09:2021", FindingSeverity.MEDIUM),
+    ("CWE-598", "A04:2021", FindingSeverity.HIGH),
+    ("CWE-601", "A01:2021", FindingSeverity.MEDIUM),
+    ("CWE-611", "A05:2021", FindingSeverity.HIGH),
+    ("CWE-613", "A07:2021", FindingSeverity.HIGH),
+    ("CWE-614", "A05:2021", FindingSeverity.HIGH),
+    ("CWE-639", "A01:2021", FindingSeverity.HIGH),
+    ("CWE-732", "A01:2021", FindingSeverity.HIGH),
+    ("CWE-776", "A05:2021", FindingSeverity.HIGH),
+    ("CWE-798", "A07:2021", FindingSeverity.HIGH),
 )
 _PRODUCT_MAPPING_SHA256: Final = hashlib.sha256(
     json.dumps(

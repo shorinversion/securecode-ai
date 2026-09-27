@@ -79,6 +79,41 @@ class WorkerReservationBinding:
             or type(self.reserved) is not ResourceUsage
             or type(self.state) is not ReservationState
             or (self.actual is not None and type(self.actual) is not ResourceUsage)
+            or (
+                self.state is ReservationState.RESERVED
+                and self.actual is not None
+            )
+            or (
+                self.state is ReservationState.COMMITTED
+                and self.actual is None
+            )
+            or (
+                self.state in {ReservationState.RELEASED, ReservationState.CANCELLED}
+                and self.actual is not None
+            )
+            or (
+                self.actual is not None
+                and any(
+                    actual > reserved
+                    for actual, reserved in zip(
+                        (
+                            self.actual.tokens,
+                            self.actual.cost_microunits,
+                            self.actual.cpu_ms,
+                            self.actual.peak_memory_bytes,
+                            self.actual.wall_ms,
+                        ),
+                        (
+                            self.reserved.tokens,
+                            self.reserved.cost_microunits,
+                            self.reserved.cpu_ms,
+                            self.reserved.peak_memory_bytes,
+                            self.reserved.wall_ms,
+                        ),
+                        strict=True,
+                    )
+                )
+            )
         ):
             raise WorkerResourceError(WorkerResourceErrorCode.BINDING_UNAVAILABLE, 503)
 
@@ -92,9 +127,37 @@ class WorkerResourceSettlement:
     def __post_init__(self) -> None:
         if (
             type(self.binding) is not WorkerReservationBinding
+            or type(self.outcome) is not str
             or self.outcome not in TERMINAL_OUTCOMES
             or (self.outcome in COMMIT_OUTCOMES and type(self.usage) is not ResourceUsage)
-            or (self.outcome in RELEASE_OUTCOMES and self.usage is not None)
+            or (
+                self.usage is not None
+                and any(
+                    actual > reserved
+                    for actual, reserved in zip(
+                        (
+                            self.usage.tokens,
+                            self.usage.cost_microunits,
+                            self.usage.cpu_ms,
+                            self.usage.peak_memory_bytes,
+                            self.usage.wall_ms,
+                        ),
+                        (
+                            self.binding.reserved.tokens,
+                            self.binding.reserved.cost_microunits,
+                            self.binding.reserved.cpu_ms,
+                            self.binding.reserved.peak_memory_bytes,
+                            self.binding.reserved.wall_ms,
+                        ),
+                        strict=True,
+                    )
+                )
+            )
+            or (
+                self.binding.actual is not None
+                and self.usage is not None
+                and self.binding.actual != self.usage
+            )
         ):
             raise WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
 

@@ -294,10 +294,12 @@ class BoundaryAdmission:
         if (
             type(self.controls) is not TrustedInvestigationControls
             or type(self.spans) is not tuple
+            or len(self.spans) > _MAX_SPANS
             or any(type(item) is not UntrustedTextSpan for item in self.spans)
             or type(self.receipt) is not InjectionBoundaryReceipt
             or self.receipt.status is not BoundaryAdmissionStatus.ADMITTED
             or self.receipt.control_sha256 != self.controls.control_sha256
+            or self.receipt.total_bytes > self.controls.budget.max_context_bytes
         ):
             raise InjectionBoundaryError(BoundaryRejectionCode.INTEGRITY_FAILURE)
         expected = tuple(_safe_span_receipt(item) for item in self.spans)
@@ -344,6 +346,14 @@ class UntrustedTextBoundary:
             return self._rejection(BoundaryRejectionCode.RESOURCE_LIMIT)
         if any(type(item) is not UntrustedTextSpan for item in spans):
             return self._rejection(BoundaryRejectionCode.INVALID_REQUEST)
+        # UTF-8 byte length is never smaller than the Python character count.
+        # Reject obviously oversized spans before encoding or hashing their
+        # contents, keeping admission work bounded for hostile inputs.
+        character_counts = tuple(len(item.text) for item in spans)
+        if any(count > _MAX_SPAN_BYTES for count in character_counts):
+            return self._rejection(BoundaryRejectionCode.RESOURCE_LIMIT)
+        if sum(character_counts) > self._controls.budget.max_context_bytes:
+            return self._rejection(BoundaryRejectionCode.RESOURCE_LIMIT)
         span_ids = tuple(item.span_id for item in spans)
         if len(set(span_ids)) != len(span_ids):
             return self._rejection(BoundaryRejectionCode.INTEGRITY_FAILURE)

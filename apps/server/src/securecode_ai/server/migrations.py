@@ -33,7 +33,11 @@ from .tenant_key_migration import (
 )
 from .waivers import WAIVER_SCHEMA_STATEMENTS
 
-SCHEMA_VERSION = "1.6.0"
+SCHEMA_VERSION = "1.10.0"
+_BACKUP_TRANSITION_SCHEMA_VERSION = "1.9.0"
+_SOURCE_RATE_SCHEMA_VERSION = "1.8.0"
+_CAPABILITY_SCHEMA_VERSION = "1.7.0"
+_CHECKPOINT_SCHEMA_VERSION = "1.6.0"
 _PREVIOUS_SCHEMA_VERSION = "1.5.0"
 _SESSION_SCHEMA_VERSION = "1.4.0"
 _QUOTA_SCHEMA_VERSION = "1.3.0"
@@ -83,6 +87,37 @@ _TENANT_FOREIGN_KEYS = {
         ),
     ),
 }
+
+_WORKFLOW_CHECKPOINT_SCHEMA = """CREATE TABLE IF NOT EXISTS workflow_checkpoints (
+    tenant_id TEXT NOT NULL, run_id TEXT NOT NULL, identity_hash TEXT NOT NULL,
+    state TEXT NOT NULL, version INTEGER NOT NULL, metadata_json TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, run_id)
+)"""
+
+_SQLITE_OIDC_SOURCE_RATE_TABLE = """CREATE TABLE IF NOT EXISTS oidc_login_source_rate_limit (
+    bucket TEXT NOT NULL CHECK (bucket IN ('start', 'callback')),
+    source_hash TEXT NOT NULL CHECK (
+        length(source_hash) = 64
+        AND source_hash NOT GLOB '*[^0-9a-f]*'
+    ),
+    window_started_at INTEGER NOT NULL CHECK (window_started_at >= 0),
+    window_seconds INTEGER NOT NULL CHECK (window_seconds BETWEEN 1 AND 3600),
+    attempts INTEGER NOT NULL CHECK (attempts >= 1),
+    PRIMARY KEY (bucket, source_hash)
+)"""
+_POSTGRES_OIDC_SOURCE_RATE_TABLE = """CREATE TABLE IF NOT EXISTS oidc_login_source_rate_limit (
+    bucket TEXT NOT NULL CHECK (bucket IN ('start', 'callback')),
+    source_hash TEXT NOT NULL CHECK (
+        length(source_hash) = 64
+        AND source_hash ~ '^[0-9a-f]{64}$'
+    ),
+    window_started_at INTEGER NOT NULL CHECK (window_started_at >= 0),
+    window_seconds INTEGER NOT NULL CHECK (window_seconds BETWEEN 1 AND 3600),
+    attempts INTEGER NOT NULL CHECK (attempts >= 1),
+    PRIMARY KEY (bucket, source_hash)
+)"""
+_OIDC_SOURCE_RATE_INDEX = """CREATE INDEX IF NOT EXISTS oidc_login_source_rate_limit_expiry
+   ON oidc_login_source_rate_limit (window_started_at, bucket, source_hash)"""
 
 
 class SchemaVersionError(RuntimeError):
@@ -157,6 +192,7 @@ _STATEMENTS = (
         tenant_id TEXT NOT NULL, policy_id TEXT NOT NULL, policy_version TEXT NOT NULL,
         content_sha256 TEXT NOT NULL, PRIMARY KEY (tenant_id, policy_id, policy_version)
     )""",
+    _WORKFLOW_CHECKPOINT_SCHEMA,
     """CREATE TABLE IF NOT EXISTS worker_sessions (
         tenant_id TEXT NOT NULL, session_id TEXT NOT NULL, run_id TEXT NOT NULL,
         worker_id TEXT NOT NULL, execution_identity_hash TEXT NOT NULL,
@@ -273,8 +309,19 @@ _STATEMENTS = (
             window_started_at INTEGER NOT NULL CHECK (window_started_at >= 0),
             attempts INTEGER NOT NULL CHECK (attempts >= 1)
         )""",
+        _SQLITE_OIDC_SOURCE_RATE_TABLE,
         "CREATE INDEX IF NOT EXISTS oidc_login_states_expiry ON oidc_login_states (expires_at)",
         "CREATE INDEX IF NOT EXISTS oidc_nonce_replays_expiry ON oidc_nonce_replays (expires_at)",
+        _OIDC_SOURCE_RATE_INDEX,
+        """CREATE TABLE IF NOT EXISTS auth_capabilities (
+            token_hash TEXT NOT NULL PRIMARY KEY,
+            tenant_id TEXT NOT NULL, repository_id TEXT NOT NULL,
+            run_id TEXT NOT NULL, action TEXT NOT NULL,
+            execution_identity_hash TEXT NOT NULL, expires_at TEXT NOT NULL,
+            used INTEGER NOT NULL CHECK (used IN (0, 1))
+        )""",
+        """CREATE INDEX IF NOT EXISTS auth_capabilities_expiry_used_idx
+           ON auth_capabilities (used, expires_at, token_hash)""",
     )
 )
 
@@ -298,6 +345,8 @@ def require_schema_version(connection: sqlite3.Connection) -> None:
         raise SchemaVersionError("database schema is incomplete")
     _require_tenant_key_shapes(connection)
     _require_tenant_columns(connection)
+    _require_checkpoint_shape(connection)
+    _require_capability_shape(connection)
     _require_sqlite_integrity(connection)
 
 
@@ -305,7 +354,12 @@ def postgres_schema_statements() -> Iterable[str]:
     """Return fresh-schema DDL; existing PostgreSQL databases require an external migration."""
 
     return (
-        *_STATEMENTS,
+        *tuple(
+            _POSTGRES_OIDC_SOURCE_RATE_TABLE
+            if statement == _SQLITE_OIDC_SOURCE_RATE_TABLE
+            else statement
+            for statement in _STATEMENTS
+        ),
         """ALTER TABLE http_idempotency_records
            ADD COLUMN IF NOT EXISTS claimed_at_ms BIGINT""",
     )
@@ -372,17 +426,32 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
         connection.execute("BEGIN IMMEDIATE")
         existing = _application_objects(connection)
         expected = _expected_objects()
+        backup_transition_objects = {
+            ("table", "backup_transition_journal"),
+            ("table", "backup_restore_phases"),
+            ("table", "backup_restore_recovery_audit"),
+            ("trigger", "backup_restore_recovery_audit_no_update"),
+            ("trigger", "backup_restore_recovery_audit_no_delete"),
+        }
+        expected_before_backup_transitions = expected - backup_transition_objects
         occurrence = ("table", "finding_occurrences")
         occurrence_index = ("index", "finding_occurrences_revision_uq")
+        checkpoint = ("table", "workflow_checkpoints")
         added_auth_tables = {
             ("table", "auth_sessions"),
+            ("table", "auth_capabilities"),
+            ("index", "auth_capabilities_expiry_used_idx"),
             ("table", "oidc_login_states"),
             ("table", "oidc_nonce_replays"),
             ("table", "oidc_login_rate_limit"),
+            ("table", "oidc_login_source_rate_limit"),
             ("index", "oidc_login_states_expiry"),
             ("index", "oidc_nonce_replays_expiry"),
+            ("index", "oidc_login_source_rate_limit_expiry"),
         }
-        previous_expected = expected - added_auth_tables
+        previous_expected = (
+            expected_before_backup_transitions - added_auth_tables - {checkpoint}
+        )
         pre_occurrence = previous_expected - {occurrence, occurrence_index}
         metadata = ("table", "schema_metadata")
         update_metadata = False
@@ -393,7 +462,10 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 connection.execute(statement)
             insert_metadata = True
         elif metadata not in existing:
-            if existing != pre_occurrence - {metadata} or not is_exact_legacy_schema(connection):
+            if (
+                existing - {checkpoint} != pre_occurrence - {metadata}
+                or not is_exact_legacy_schema(connection)
+            ):
                 raise SchemaVersionError("unversioned database schema is incompatible")
             connection.execute(_STATEMENTS[0])
             _migrate_legacy_tenant_keys(connection)
@@ -402,11 +474,27 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
             insert_metadata = True
         else:
             version = _recorded_version(connection)
+            present_backup_transition_objects = existing & backup_transition_objects
+            if (
+                version not in {SCHEMA_VERSION, _BACKUP_TRANSITION_SCHEMA_VERSION}
+                and present_backup_transition_objects
+            ):
+                raise SchemaVersionError("backup transition schema is unsupported")
             if version == SCHEMA_VERSION:
-                if not expected.issubset(existing):
+                if (
+                    not expected.issubset(existing)
+                    or present_backup_transition_objects != backup_transition_objects
+                ):
                     raise SchemaVersionError("database schema is incomplete")
                 _require_tenant_key_shapes(connection)
                 _require_tenant_columns(connection)
+            elif version == _BACKUP_TRANSITION_SCHEMA_VERSION:
+                if (
+                    present_backup_transition_objects != backup_transition_objects
+                    or not expected_before_backup_transitions.issubset(existing)
+                ):
+                    raise SchemaVersionError("database schema is incomplete")
+                update_metadata = True
             elif version in {_LEGACY_SCHEMA_VERSION, _TENANT_KEY_SCHEMA_VERSION}:
                 if not pre_occurrence.issubset(existing) or occurrence in existing:
                     raise SchemaVersionError("legacy database schema is incompatible")
@@ -437,15 +525,23 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 for statement in SQLITE_REQUEST_QUOTA_SCHEMA_STATEMENTS:
                     connection.execute(statement)
                 update_metadata = True
+            elif version == _CHECKPOINT_SCHEMA_VERSION:
+                if not previous_expected.issubset(existing):
+                    raise SchemaVersionError("database schema is incomplete")
+                update_metadata = True
             elif version == _PREVIOUS_SCHEMA_VERSION:
                 if not (
-                    expected
+                    expected_before_backup_transitions - {checkpoint}
                     - {
+                        ("table", "auth_capabilities"),
+                        ("index", "auth_capabilities_expiry_used_idx"),
                         ("table", "oidc_login_states"),
                         ("table", "oidc_nonce_replays"),
                         ("table", "oidc_login_rate_limit"),
                         ("index", "oidc_login_states_expiry"),
                         ("index", "oidc_nonce_replays_expiry"),
+                        ("table", "oidc_login_source_rate_limit"),
+                        ("index", "oidc_login_source_rate_limit_expiry"),
                     }
                 ).issubset(existing):
                     raise SchemaVersionError("database schema is incomplete")
@@ -455,10 +551,35 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 if not previous_expected.issubset(existing):
                     raise SchemaVersionError("database schema is incomplete")
                 update_metadata = True
+            elif version == _CAPABILITY_SCHEMA_VERSION:
+                capability_previous_expected = expected_before_backup_transitions - {
+                    ("table", "auth_capabilities"),
+                    ("index", "auth_capabilities_expiry_used_idx"),
+                    ("table", "oidc_login_source_rate_limit"),
+                    ("index", "oidc_login_source_rate_limit_expiry"),
+                }
+                if not capability_previous_expected.issubset(existing):
+                    raise SchemaVersionError("database schema is incomplete")
+                update_metadata = True
+            elif version == _SOURCE_RATE_SCHEMA_VERSION:
+                source_rate_objects = {
+                    ("table", "oidc_login_source_rate_limit"),
+                    ("index", "oidc_login_source_rate_limit_expiry"),
+                }
+                if not (
+                    expected_before_backup_transitions - source_rate_objects
+                ).issubset(existing):
+                    raise SchemaVersionError("database schema is incomplete")
+                if existing & source_rate_objects:
+                    raise SchemaVersionError("database source rate schema is incomplete")
+                update_metadata = True
             else:
                 raise SchemaVersionError("database schema version is incompatible")
-        for statement in _STATEMENTS[-6:]:
+        for statement in _STATEMENTS[-10:]:
             connection.execute(statement)
+        for statement in BACKUP_SCHEMA_STATEMENTS[3:]:
+            connection.execute(statement)
+        connection.execute(_WORKFLOW_CHECKPOINT_SCHEMA)
         if migrate_auth_sessions:
             _migrate_auth_sessions(connection)
         _migrate_sqlite_http_idempotency(connection)
@@ -466,6 +587,8 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
             connection.execute(statement)
         _require_tenant_key_shapes(connection)
         _require_tenant_columns(connection)
+        _require_checkpoint_shape(connection)
+        _require_capability_shape(connection)
         _require_sqlite_integrity(connection)
         if insert_metadata:
             connection.execute(
@@ -490,7 +613,7 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
 def _application_objects(connection: sqlite3.Connection) -> frozenset[tuple[str, str]]:
     rows = connection.execute(
         """SELECT type, name FROM sqlite_master
-           WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'"""
+           WHERE type IN ('table', 'index', 'trigger') AND name NOT LIKE 'sqlite_%'"""
     ).fetchall()
     if any(len(row) != 2 or type(row[0]) is not str or type(row[1]) is not str for row in rows):
         raise SchemaVersionError("database schema inventory is invalid")
@@ -502,6 +625,7 @@ def _expected_objects() -> frozenset[tuple[str, str]]:
         "CREATE TABLE IF NOT EXISTS ": "table",
         "CREATE INDEX IF NOT EXISTS ": "index",
         "CREATE UNIQUE INDEX IF NOT EXISTS ": "index",
+        "CREATE TRIGGER IF NOT EXISTS ": "trigger",
     }
     names: set[tuple[str, str]] = set()
     for statement in _STATEMENTS:
@@ -524,6 +648,24 @@ def _expected_objects() -> frozenset[tuple[str, str]]:
 def _require_recorded_version(connection: sqlite3.Connection) -> None:
     if _recorded_version(connection) != SCHEMA_VERSION:
         raise SchemaVersionError("database schema version is incompatible")
+
+
+def _require_checkpoint_shape(connection: sqlite3.Connection) -> None:
+    rows = connection.execute("PRAGMA table_info(workflow_checkpoints)").fetchall()
+    actual = tuple(
+        (str(row[1]), str(row[2]).upper(), int(row[3]), row[4], int(row[5]))
+        for row in rows
+    )
+    expected = (
+        ("tenant_id", "TEXT", 1, None, 1),
+        ("run_id", "TEXT", 1, None, 2),
+        ("identity_hash", "TEXT", 1, None, 0),
+        ("state", "TEXT", 1, None, 0),
+        ("version", "INTEGER", 1, None, 0),
+        ("metadata_json", "TEXT", 1, None, 0),
+    )
+    if actual != expected:
+        raise SchemaVersionError("workflow checkpoint schema is incompatible")
 
 
 def _recorded_version(connection: sqlite3.Connection) -> str:
@@ -573,6 +715,11 @@ def _require_tenant_key_shapes(connection: sqlite3.Connection) -> None:
             ("bucket", "window_started_at", "attempts"),
             ("bucket",),
         ),
+        (
+            "oidc_login_source_rate_limit",
+            ("bucket", "source_hash", "window_started_at", "window_seconds", "attempts"),
+            ("bucket", "source_hash"),
+        ),
     ):
         info = connection.execute(f"PRAGMA table_info({table})").fetchall()
         actual_columns = tuple(str(row[1]) for row in info)
@@ -584,6 +731,37 @@ def _require_tenant_key_shapes(connection: sqlite3.Connection) -> None:
     for table, expected_fk in _TENANT_FOREIGN_KEYS.items():
         if expected_fk not in _foreign_key_groups(connection, table):
             raise SchemaVersionError("database tenant foreign key is incompatible")
+
+
+def _require_capability_shape(connection: sqlite3.Connection) -> None:
+    rows = connection.execute("PRAGMA table_info(auth_capabilities)").fetchall()
+    actual = tuple(
+        (str(row[1]), str(row[2]).upper(), int(row[3]), row[4], int(row[5]))
+        for row in rows
+    )
+    expected = (
+        ("token_hash", "TEXT", 1, None, 1),
+        ("tenant_id", "TEXT", 1, None, 0),
+        ("repository_id", "TEXT", 1, None, 0),
+        ("run_id", "TEXT", 1, None, 0),
+        ("action", "TEXT", 1, None, 0),
+        ("execution_identity_hash", "TEXT", 1, None, 0),
+        ("expires_at", "TEXT", 1, None, 0),
+        ("used", "INTEGER", 1, None, 0),
+    )
+    if actual != expected:
+        raise SchemaVersionError("database capability schema is incompatible")
+    for row in connection.execute("PRAGMA index_list(auth_capabilities)"):
+        if len(row) < 3 or type(row[1]) is not str or type(row[2]) is not int:
+            continue
+        columns = tuple(
+            str(item[2])
+            for item in connection.execute(f"PRAGMA index_info({row[1]})")
+        )
+        if row[1] == "auth_capabilities_expiry_used_idx" and row[2] == 0:
+            if columns == ("used", "expires_at", "token_hash"):
+                return
+    raise SchemaVersionError("database capability index is incompatible")
 
 
 def _has_base_tenant_key_shapes(connection: sqlite3.Connection) -> bool:

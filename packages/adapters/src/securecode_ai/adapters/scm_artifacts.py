@@ -404,11 +404,12 @@ class SCMArtifactPublisher:
                 or existing.projection != projection
             ):
                 raise SCMArtifactError(SCMArtifactErrorCode.IDENTITY_MISMATCH)
-            disposition = (
-                SCMArtifactDisposition.CREATED
-                if cursor.rowcount == 1
-                else SCMArtifactDisposition.IDEMPOTENT
-            )
+            if cursor.rowcount == 1:
+                disposition = SCMArtifactDisposition.CREATED
+            elif existing.disposition is SCMArtifactDisposition.UPLOADED:
+                disposition = SCMArtifactDisposition.IDEMPOTENT
+            else:
+                disposition = existing.disposition
             return _upload_receipt(existing, disposition, publication)
 
     def _load(self, upload_idempotency_key: str) -> _StoredUpload | None:

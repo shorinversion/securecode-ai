@@ -214,6 +214,40 @@ class BaselineFingerprintComparison:
             return BaselineFindingRelation.NEW
         return BaselineFindingRelation.UNKNOWN
 
+    def relation_for_new_code(
+        self,
+        fingerprint: str,
+        *,
+        changed_scope: BaselineChangedScope | None,
+    ) -> BaselineFindingRelation:
+        """Classify a finding only when the exact changed scope is available.
+
+        ``relation_for`` intentionally keeps its historical baseline-only
+        behavior for callers that are evaluating legacy debt. New-code policy
+        must use this entry point (or ``new_code_fingerprints``) because a
+        baseline-absent fingerprint is not evidence that the finding was
+        introduced by the current change. Missing or stale scope therefore
+        yields ``UNKNOWN`` and cannot be promoted to ``NEW``.
+        """
+
+        if changed_scope is not None:
+            if type(changed_scope) is not BaselineChangedScope:
+                return BaselineFindingRelation.UNKNOWN
+            try:
+                changed_scope.validate_for(self)
+            except (TypeError, ValueError):
+                return BaselineFindingRelation.UNKNOWN
+        baseline_relation = self.relation_for(fingerprint)
+        if baseline_relation is not BaselineFindingRelation.NEW:
+            return baseline_relation
+        if changed_scope is None:
+            return BaselineFindingRelation.UNKNOWN
+        return (
+            BaselineFindingRelation.NEW
+            if changed_scope.proves_changed(fingerprint)
+            else BaselineFindingRelation.UNKNOWN
+        )
+
     def new_code_fingerprints(
         self,
         *,
@@ -234,6 +268,22 @@ class BaselineFingerprintComparison:
                 changed_by_path=changed_scope._changed_lines_index,
                 locations_by_fingerprint=changed_scope._locations_index,
             )
+        )
+
+    def has_proven_new_code(
+        self,
+        fingerprint: str,
+        *,
+        changed_scope: BaselineChangedScope | None,
+    ) -> bool:
+        """Return true only for a baseline-absent finding proven in changed code."""
+
+        return (
+            self.relation_for_new_code(
+                fingerprint,
+                changed_scope=changed_scope,
+            )
+            is BaselineFindingRelation.NEW
         )
 
 

@@ -21,6 +21,7 @@ from .native_repository_tools import (
     NativeToolCallRejection,
 )
 from .product_model import AUDITOR_WIRE_SCHEMA_JSON, MODEL_NATIVE_DISCOVERY_WIRE_SCHEMA_JSON
+from .product_skeptic_contracts import SKEPTIC_WIRE_SCHEMA_JSON
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _MAX_OBSERVED_RESPONSE_BYTES = _MAX_RESPONSE_BYTES + 1
@@ -96,7 +97,7 @@ class GatewayPolicy:
     @property
     def content_sha256(self) -> str:
         material = {
-            "version": "1.7.0",
+            "version": "1.8.0",
             "budget_mode": self.budget_mode.value,
             "native_upstream_format": "provider_native_json_for_validated_ordinary_or_post_tool",
             "ollama_native_tool_index_ceiling": 3,
@@ -114,12 +115,13 @@ class GatewayPolicy:
                 value.value for value in DataClass if value is not DataClass.RESTRICTED
             ],
             "restricted_data_outcome": "PROVIDER_NATIVE_REFUSAL",
-            "allowed_roles": ["discovery", "auditor"],
+            "allowed_roles": ["discovery", "auditor", "skeptic"],
             "role_schemas": [
                 hashlib.sha256(schema).hexdigest()
                 for schema in (
                     MODEL_NATIVE_DISCOVERY_WIRE_SCHEMA_JSON,
                     AUDITOR_WIRE_SCHEMA_JSON,
+                    SKEPTIC_WIRE_SCHEMA_JSON,
                 )
             ],
         }

@@ -62,6 +62,7 @@ _SENSITIVE_WORDS = frozenset(
         "session_token",
         "token",
     }
+)
 _REQUEST_ROOTS = frozenset(
     {
         "ctx",
@@ -190,6 +191,7 @@ _EXPRESSION_NODES = frozenset(
         "unary_expression",
         "update_expression",
     }
+)
 
 
 class EcmaScriptCwe209ScanErrorCode(StrEnum):
@@ -515,7 +517,11 @@ def _scan_ecmascript_cwe209(
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe209ScanError(EcmaScriptCwe209ScanErrorCode.ANALYSIS_UNAVAILABLE)
 
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -544,14 +550,24 @@ def _scan_ecmascript_cwe209(
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
             raise EcmaScriptCwe209ScanError(EcmaScriptCwe209ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source, limits)
-        raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe209Operation, EcmaScriptCwe209SensitiveKind, str]] = set()
+        raw: set[
+            tuple[
+                SourceRange,
+                SourceRange,
+                EcmaScriptCwe209Operation,
+                EcmaScriptCwe209SensitiveKind,
+                str,
+            ]
+        ] = set()
         for node in nodes:
             operation: EcmaScriptCwe209Operation | None = None
             roots: tuple[Node, ...] = ()
             if node.type == "throw_statement":
                 operation = EcmaScriptCwe209Operation.THROW_ERROR
                 roots = tuple(node.named_children)
-            elif node.type == "assignment_expression" and _is_response_assignment(node, source, aliases):
+            elif node.type == "assignment_expression" and _is_response_assignment(
+                node, source, aliases
+            ):
                 operation = EcmaScriptCwe209Operation.HTTP_ERROR_RESPONSE
                 right = node.child_by_field_name("right")
                 roots = (right,) if right is not None else ()
@@ -576,7 +592,9 @@ def _scan_ecmascript_cwe209(
                 ):
                     source_range = _range(source_node)
                     if not sink_range.contains(source_range):
-                        raise EcmaScriptCwe209ScanError(EcmaScriptCwe209ScanErrorCode.INTEGRITY_FAILURE)
+                        raise EcmaScriptCwe209ScanError(
+                            EcmaScriptCwe209ScanErrorCode.INTEGRITY_FAILURE
+                        )
                     raw.add((source_range, sink_range, operation, kind, name))
                     if len(raw) > limits.max_signals:
                         raise EcmaScriptCwe209ScanError(EcmaScriptCwe209ScanErrorCode.SIGNAL_LIMIT)
@@ -647,11 +665,18 @@ def _call_operation(
         return EcmaScriptCwe209Operation.CONTEXT_ERROR
     if method in _RESPONSE_METHODS and root in _RESPONSE_ROOTS:
         return EcmaScriptCwe209Operation.HTTP_ERROR_RESPONSE
-    if method in {"json", "send", "end", "write"} and _root_name(function, source) in _RESPONSE_ROOTS:
+    if (
+        method in {"json", "send", "end", "write"}
+        and _root_name(function, source) in _RESPONSE_ROOTS
+    ):
         return EcmaScriptCwe209Operation.HTTP_ERROR_RESPONSE
     if method in _ERROR_CONSTRUCTORS:
         parent = node.parent
-        while parent is not None and parent.type in {"new_expression", "parenthesized_expression", "arguments"}:
+        while parent is not None and parent.type in {
+            "new_expression",
+            "parenthesized_expression",
+            "arguments",
+        }:
             parent = parent.parent
         if parent is not None and parent.type == "throw_statement":
             return None
@@ -686,13 +711,25 @@ def _resolve_sources(
     if _is_safe_call(node, source, aliases):
         return ()
     direct = _classify_expression(node, source, aliases)
-    if direct is not None and node.type not in {"identifier", "member_expression", "subscript_expression"}:
+    if direct is not None and node.type not in {
+        "identifier",
+        "member_expression",
+        "subscript_expression",
+    }:
         return ((node, direct[0], direct[1]),)
     if node.type == "identifier":
         name = _node_text(source, node)
         bound = _latest_binding(scope, name, node.start_byte, source)
         if bound is not None and name not in visited:
-            if _is_fixed_or_safe(bound, scope, source, aliases, limits, depth + 1, visited | {name}):
+            if _is_fixed_or_safe(
+                bound,
+                scope,
+                source,
+                aliases,
+                limits,
+                depth + 1,
+                visited | {name},
+            ):
                 return ()
             resolved = _resolve_sources(
                 bound,
@@ -711,9 +748,9 @@ def _resolve_sources(
     if node.type in {"member_expression", "subscript_expression"}:
         if direct is not None:
             return ((node, direct[0], direct[1]),)
-        values: list[tuple[Node, EcmaScriptCwe209SensitiveKind, str]] = []
+        expressions: list[tuple[Node, EcmaScriptCwe209SensitiveKind, str]] = []
         for child in node.named_children:
-            values.extend(
+            expressions.extend(
                 _resolve_sources(
                     child,
                     scope=scope,
@@ -724,14 +761,22 @@ def _resolve_sources(
                     visited=visited,
                 )
             )
-        return _unique_sources(values)
+        return _unique_sources(expressions)
     if node.type == "pair":
         value = node.child_by_field_name("value")
         if value is None:
             return ()
         key = node.child_by_field_name("key")
         key_direct = _classify_name(_static_property_name(key, source))
-        if key_direct is not None and not _is_fixed_or_safe(value, scope, source, aliases, limits, depth + 1, visited):
+        if key_direct is not None and not _is_fixed_or_safe(
+            value,
+            scope,
+            source,
+            aliases,
+            limits,
+            depth + 1,
+            visited,
+        ):
             resolved = _resolve_sources(
                 value,
                 scope=scope,
@@ -799,9 +844,13 @@ def _classify_expression(
         function = node.child_by_field_name("function")
         arguments = node.child_by_field_name("arguments")
         name = _normalize_name(
-            (_canonical_expression(function, source, aliases) or _compact_text(source, function)).rsplit(".", 1)[-1]
+            (
+                _canonical_expression(function, source, aliases) or _compact_text(source, function)
+            ).rsplit(".", 1)[-1]
         )
-        if name in _REQUEST_ACCESSORS or name.startswith("get") and name.endswith(("token", "secret", "password", "key")):
+        if name in _REQUEST_ACCESSORS or (
+            name.startswith("get") and name.endswith(("token", "secret", "password", "key"))
+        ):
             values = tuple(arguments.named_children) if arguments is not None else ()
             literal = _string_value(values[0], source) if values else None
             classified = _classify_name(literal)
@@ -813,7 +862,10 @@ def _classify_name(value: str | None) -> tuple[EcmaScriptCwe209SensitiveKind, st
     if not value:
         return None
     normalized = _normalize_name(value)
-    if any(part in {"safe", "sanitized", "redacted", "masked", "hash", "digest"} for part in normalized.split("_")):
+    if any(
+        part in {"safe", "sanitized", "redacted", "masked", "hash", "digest"}
+        for part in normalized.split("_")
+    ):
         return None
     compact = normalized.replace("_", "")
     if compact in {"password", "passwd", "passphrase", "passcode"}:
@@ -844,20 +896,47 @@ def _is_fixed_or_safe(
         raise EcmaScriptCwe209ScanError(EcmaScriptCwe209ScanErrorCode.DEPTH_LIMIT)
     if _is_safe_call(node, source, aliases):
         return True
-    if node.type in {"string", "string_fragment", "number", "true", "false", "null", "undefined", "regex"}:
+    if node.type in {
+        "string",
+        "string_fragment",
+        "number",
+        "true",
+        "false",
+        "null",
+        "undefined",
+        "regex",
+    }:
         return True
     if node.type == "identifier":
         name = _node_text(source, node)
         if name in visited:
             return False
         bound = _latest_binding(scope, name, node.start_byte, source)
-        return (
-            bound is not None
-            and _is_fixed_or_safe(bound, scope, source, aliases, limits, depth + 1, visited | {name})
+        return bound is not None and _is_fixed_or_safe(
+            bound,
+            scope,
+            source,
+            aliases,
+            limits,
+            depth + 1,
+            visited | {name},
         )
-    if node.type in {"binary_expression", "template_string", "template_substitution", "parenthesized_expression"}:
+    if node.type in {
+        "binary_expression",
+        "template_string",
+        "template_substitution",
+        "parenthesized_expression",
+    }:
         return bool(node.named_children) and all(
-            _is_fixed_or_safe(child, scope, source, aliases, limits, depth + 1, visited)
+            _is_fixed_or_safe(
+                child,
+                scope,
+                source,
+                aliases,
+                limits,
+                depth + 1,
+                visited,
+            )
             for child in node.named_children
         )
     return False
@@ -881,8 +960,16 @@ def _collect_aliases(
     for node in nodes:
         if node.type not in {"variable_declarator", "assignment_expression"}:
             continue
-        left = node.child_by_field_name("name") if node.type == "variable_declarator" else node.child_by_field_name("left")
-        right = node.child_by_field_name("value") if node.type == "variable_declarator" else node.child_by_field_name("right")
+        left = (
+            node.child_by_field_name("name")
+            if node.type == "variable_declarator"
+            else node.child_by_field_name("left")
+        )
+        right = (
+            node.child_by_field_name("value")
+            if node.type == "variable_declarator"
+            else node.child_by_field_name("right")
+        )
         if left is None or right is None or left.type != "identifier":
             continue
         canonical = _canonical_expression(right, source, aliases)
@@ -908,7 +995,9 @@ def _canonical_expression(node: Node | None, source: bytes, aliases: dict[str, s
         property_node = node.child_by_field_name("property") or node.child_by_field_name("index")
         if object_node is None or property_node is None:
             return None
-        base = _canonical_expression(object_node, source, aliases) or _canonical_name(_compact_text(source, object_node), aliases)
+        base = _canonical_expression(object_node, source, aliases) or _canonical_name(
+            _compact_text(source, object_node), aliases
+        )
         name = _static_property_name(property_node, source)
         return f"{base}.{name}" if base and name else None
     return _canonical_name(_compact_text(source, node), aliases)
@@ -924,13 +1013,19 @@ def _canonical_name(value: str, aliases: dict[str, str]) -> str:
 
 def _root_name(node: Node, source: bytes) -> str:
     current = node
-    while current.type in {"member_expression", "subscript_expression", "call_expression", "new_expression"}:
+    while current.type in {
+        "member_expression",
+        "subscript_expression",
+        "call_expression",
+        "new_expression",
+    }:
         if current.type == "call_expression":
-            current = current.child_by_field_name("function") or current
+            child = current.child_by_field_name("function")
         else:
-            current = current.child_by_field_name("object") or current
-        if current is node:
-            break
+            child = current.child_by_field_name("object")
+        if child is None or child.id == current.id:
+            raise EcmaScriptCwe209ScanError(EcmaScriptCwe209ScanErrorCode.ANALYSIS_UNAVAILABLE)
+        current = child
     if current.type == "identifier":
         return _normalize_name(_node_text(source, current))
     return ""
@@ -1023,7 +1118,12 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier" and _node_text(source, left) == name:
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _node_text(source, left) == name
+        ):
             bound = right
     return bound
 
