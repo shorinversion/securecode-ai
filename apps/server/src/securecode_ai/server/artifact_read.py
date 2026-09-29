@@ -9,7 +9,7 @@ import os
 import re
 import sqlite3
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -47,9 +47,7 @@ _COMMITTED_ARTIFACT_KEYS: Final = frozenset(
         "size_bytes",
     }
 )
-_EXPIRING_COMMITTED_ARTIFACT_KEYS: Final = _COMMITTED_ARTIFACT_KEYS | frozenset(
-    {"expires_at"}
-)
+_EXPIRING_COMMITTED_ARTIFACT_KEYS: Final = _COMMITTED_ARTIFACT_KEYS | frozenset({"expires_at"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,9 +113,7 @@ class LocalCommittedArtifactReader:
             raise NotFoundError() from None
         self._require_residency(tenant_id)
 
-    def read(
-        self, *, tenant_id: str, run_id: str, content_sha256: str
-    ) -> dict[str, object]:
+    def read(self, *, tenant_id: str, run_id: str, content_sha256: str) -> dict[str, object]:
         """Read one bounded artifact as a source-free JSON document."""
 
         return self._read_committed(
@@ -306,12 +302,8 @@ class LocalCommittedArtifactReader:
         principal: VerifiedIdentity | None = None,
     ) -> CommittedArtifactContent:
         self.require_tenant_access(tenant_id)
-        if (
-            principal is not None
-            and (
-                type(principal) is not VerifiedIdentity
-                or principal.tenant_id != tenant_id
-            )
+        if principal is not None and (
+            type(principal) is not VerifiedIdentity or principal.tenant_id != tenant_id
         ):
             raise NotFoundError()
         if (
@@ -510,11 +502,7 @@ def _principal_can_read(
 
 
 def _utc(value: datetime) -> datetime:
-    if (
-        not isinstance(value, datetime)
-        or value.tzinfo is None
-        or value.utcoffset() != timedelta(0)
-    ):
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() != timedelta(0):
         raise ValueError("artifact timestamp is not UTC")
     return value.astimezone(UTC)
 
@@ -697,7 +685,9 @@ def _repair_patch_binding_metadata(
         if type(expiry) is not str or not expiry:
             raise RepositoryError("repair patch metadata is invalid")
         try:
-            if _utc(datetime.fromisoformat(expiry)) <= _utc(datetime.fromisoformat(str(row["committed_at"]))):
+            if _utc(datetime.fromisoformat(expiry)) <= _utc(
+                datetime.fromisoformat(str(row["committed_at"]))
+            ):
                 raise RepositoryError("repair patch metadata is invalid")
             if _utc(datetime.now(UTC)) >= _utc(datetime.fromisoformat(expiry)):
                 raise NotFoundError()
@@ -739,6 +729,8 @@ def _validate_repair_patch_bundle(
         or hashlib.sha256(manifest).hexdigest() != binding["manifest_sha256"]
     ):
         raise RepositoryError("repair patch content is invalid")
+
+
 def _plain_chain(root: Path, target: Path) -> None:
     resolved_root = root.absolute()
     current = resolved_root

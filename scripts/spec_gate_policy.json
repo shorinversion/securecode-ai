@@ -1166,12 +1166,12 @@
     ]
   },
   "public_schema_sha256": {
-    "audit-event.schema.json": "ed3649fd9047faf392df2d8c0161afa8f99fc8c521be2401c0f835080fcfef97",
-    "audit-run.schema.json": "83383c2680c4f1af4adabab78c8146b8f813943608ec1de5d1faed38b0d06de4",
+    "audit-event.schema.json": "7a8f0add21d3c8076d5ef7203059dfa649ec294a3527dc6b9d668129489b75d9",
+    "audit-run.schema.json": "79f271c5d0bef7ebc41652950465ca888ec2ab44b485c59cf86af1cf1f7712b7",
     "cli-doctor-result.schema.json": "531b9bbef9cb64275456179fc6b87ad2fb84f81139ec37abe7437f690f2afb52",
     "cli-error-result.schema.json": "31dfd4cda7ae32abb5cf9913af1c1e632a318ff0ef9b3b1e34d11ea48c85fed4",
     "evidence.schema.json": "2e077f945fe7ace8604dcc17d37a56b7908cb84ae859819c60dff164f10249f2",
-    "finding-case.schema.json": "96e6826d52f74e5b5540bebc66505538dde995fab4588af347c389444ae64109",
+    "finding-case.schema.json": "046b49c07e72ba8678c341beaaec8eafaa86d6e8ec45228d2539b71a8626e002",
     "model-call-result.schema.json": "fbbbd0f1165b6d3d52eff597bdf37cea7721156f87a41ad254f06dbb7107b521",
     "model-request.schema.json": "74679b44f6edcc058c2304c0f6f10d7fa5848dcc92b8914c6b8099e0145ec3f9",
     "patch-candidate.schema.json": "c5dcd02acf531e104f79023d6562c2fb189939f4bb2ebb513d3926f646b597f6",

@@ -47,6 +47,7 @@ def _decision() -> ScmPolicyDecision:
             "audit_run_sha256": hashes.audit_run_sha256,
             "execution_identity_sha256": hashes.execution_identity_sha256,
             "baseline_comparison_sha256": None,
+            "changed_scope_sha256": None,
         },
         "is_passing": False,
         "matched_rule_ids": ("advisory_non_blocking",),
@@ -95,6 +96,7 @@ def _strict_non_pass_decision() -> ScmPolicyDecision:
             "audit_run_sha256": hashes.audit_run_sha256,
             "execution_identity_sha256": hashes.execution_identity_sha256,
             "baseline_comparison_sha256": None,
+            "changed_scope_sha256": None,
         },
         "is_passing": False,
         "matched_rule_ids": ("precalibration_blocking_rejected",),
@@ -284,8 +286,9 @@ def test_scm_policy_modes_control_only_the_published_outcome() -> None:
     )
 
     assert (
+        # Advisory mode never blocks the SCM check; the audit record stays FAIL.
         scm_publication_outcome(AuditRunOutcome.FAIL, advisory, execution_identity_hash="c" * 64)
-        is AuditRunOutcome.FAIL
+        is AuditRunOutcome.PASS
     )
     assert (
         scm_publication_outcome(

@@ -79,14 +79,8 @@ class WorkerReservationBinding:
             or type(self.reserved) is not ResourceUsage
             or type(self.state) is not ReservationState
             or (self.actual is not None and type(self.actual) is not ResourceUsage)
-            or (
-                self.state is ReservationState.RESERVED
-                and self.actual is not None
-            )
-            or (
-                self.state is ReservationState.COMMITTED
-                and self.actual is None
-            )
+            or (self.state is ReservationState.RESERVED and self.actual is not None)
+            or (self.state is ReservationState.COMMITTED and self.actual is None)
             or (
                 self.state in {ReservationState.RELEASED, ReservationState.CANCELLED}
                 and self.actual is not None

@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TypeGuard
 
 from securecode_ai.contracts import RunExecutionIdentity
 
@@ -393,13 +394,16 @@ class DurableControlPlaneService:
         limit: int,
     ) -> dict[str, object]:
         page = self._policy_store.list(tenant_id=tenant_id, cursor=cursor, limit=limit)
+        page_items = page["items"]
+        if not isinstance(page_items, list):
+            raise ConflictError()
         items = [
             {
                 "policy_id": item["profile_id"],
                 "policy_version": f"{item['version']}.0.0",
                 "content_sha256": item["content_sha256"],
             }
-            for item in page["items"]
+            for item in page_items
         ]
         return {"items": items, "next_cursor": page["next_cursor"]}
 
@@ -497,12 +501,7 @@ def _policy_store_connection(repository: DevelopmentRepository) -> sqlite3.Conne
         row = repository._connection.execute("PRAGMA database_list").fetchone()
     except sqlite3.Error as error:
         raise RepositoryError() from error
-    if (
-        row is None
-        or len(row) != 3
-        or row[1] != "main"
-        or type(row[2]) is not str
-    ):
+    if row is None or len(row) != 3 or row[1] != "main" or type(row[2]) is not str:
         raise RepositoryError()
     if not row[2]:
         return repository._connection
@@ -593,7 +592,7 @@ def _exact_policy_document(
     return dict(document)
 
 
-def _policy_identifier(value: object) -> bool:
+def _policy_identifier(value: object) -> TypeGuard[str]:
     return (
         type(value) is str
         and value.isascii()
@@ -603,18 +602,13 @@ def _policy_identifier(value: object) -> bool:
     )
 
 
-def _policy_version(value: object) -> bool:
+def _policy_version(value: object) -> TypeGuard[int]:
     return type(value) is int and 1 <= value <= 2_147_483_647
 
 
 def _path_policy_version(request: ServiceRequest) -> int:
     value = request.path_params.get("version")
-    if (
-        type(value) is not str
-        or not value.isascii()
-        or not value.isdecimal()
-        or len(value) > 10
-    ):
+    if type(value) is not str or not value.isascii() or not value.isdecimal() or len(value) > 10:
         raise ConflictError()
     version = int(value)
     if not _policy_version(version):

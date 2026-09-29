@@ -181,8 +181,7 @@ class PythonCwe352Signal:
             except ValueError:
                 valid_identity = False
         valid_endpoint = (
-            type(self.endpoint) is SourceRange
-            and self.endpoint.end_byte <= self.source_size_bytes
+            type(self.endpoint) is SourceRange and self.endpoint.end_byte <= self.source_size_bytes
         )
         expected_id = (
             _signal_id(
@@ -195,9 +194,7 @@ class PythonCwe352Signal:
                 self.framework,
                 self.operation,
             )
-            if valid_identity
-            and valid_endpoint
-            and type(self.operation) is PythonCwe352Operation
+            if valid_identity and valid_endpoint and type(self.operation) is PythonCwe352Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -370,9 +367,7 @@ def scan_python_cwe352(
                 raw.append(_node_range(function, source, line_starts))
                 if len(raw) > limits.max_signals:
                     raise PythonCwe352ScanError(PythonCwe352ScanErrorCode.SIGNAL_LIMIT)
-        unique = tuple(
-            sorted(set(raw), key=lambda item: (item.start_byte, item.end_byte))
-        )
+        unique = tuple(sorted(set(raw), key=lambda item: (item.start_byte, item.end_byte)))
         signals = tuple(
             PythonCwe352Signal(
                 repository_id=symbol_index.repository_id,
@@ -465,9 +460,7 @@ def _route_is_unsafe(
         return bool(call.args and _contains_unsafe_method(call.args[0]))
     if tail in {"route", "api_route"}:
         method_nodes = [
-            keyword.value
-            for keyword in call.keywords
-            if keyword.arg in {"methods", "method"}
+            keyword.value for keyword in call.keywords if keyword.arg in {"methods", "method"}
         ]
         return any(_contains_unsafe_method(node) for node in method_nodes)
     return tail in _UNSAFE_METHODS_LOWER
@@ -544,7 +537,10 @@ def _is_protection_name(name: str) -> bool:
     if tail in _NON_PROTECTION_NAMES or "exempt" in tail:
         return False
     return tail in _PROTECTION_NAMES or (
-        "csrf" in tail and any(word in tail for word in ("protect", "validate", "verify", "check", "require", "guard"))
+        "csrf" in tail
+        and any(
+            word in tail for word in ("protect", "validate", "verify", "check", "require", "guard")
+        )
     )
 
 
@@ -598,9 +594,7 @@ def _function_nodes(
     max_depth: int,
 ) -> tuple[ast.AST, ...]:
     output: list[ast.AST] = []
-    stack: list[tuple[ast.AST, int]] = [
-        (statement, 1) for statement in reversed(function.body)
-    ]
+    stack: list[tuple[ast.AST, int]] = [(statement, 1) for statement in reversed(function.body)]
     while stack:
         node, depth = stack.pop()
         if depth > max_depth:
@@ -740,9 +734,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -774,9 +766,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -803,7 +793,7 @@ __all__ = [
     "PythonCwe352ScanLimits",
     "PythonCwe352ScanResult",
     "PythonCwe352Signal",
+    "scan_python_csrf",
     "scan_python_cwe352",
     "scan_python_cwe352_csrf",
-    "scan_python_csrf",
 ]

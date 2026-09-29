@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Callable, Final, Protocol
+from typing import Final, Protocol
 
 from securecode_ai.contracts import FindingCase, FindingVerdict, RunExecutionIdentity
 from securecode_ai.core.scm_run_state import PublicationDisposition, SCMRunPublicationReceipt
@@ -272,10 +273,10 @@ __all__ = [
     "GithubAnnotationError",
     "GithubAnnotationProjection",
     "GithubAnnotationPublisher",
-    "GithubPublicationAuthorizer",
     "GithubAnnotationReceipt",
     "GithubAnnotationRequest",
     "GithubAnnotationSuppression",
     "GithubAnnotationSuppressionReceipt",
     "GithubChangedLine",
+    "GithubPublicationAuthorizer",
 ]

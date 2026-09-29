@@ -122,9 +122,7 @@ class BackupLifecycleAdapter:
             getattr(residency_guard, "require_region", None)
         ):
             raise TypeError("backup lifecycle residency guard is invalid")
-        if fallback is not None and not callable(
-            getattr(fallback, "execute_tombstone", None)
-        ):
+        if fallback is not None and not callable(getattr(fallback, "execute_tombstone", None)):
             raise TypeError("backup lifecycle fallback is invalid")
         self._db = connection
         self._root = lexical_absolute_path(root)
@@ -448,22 +446,18 @@ class BackupLifecycleAdapter:
         if row is None or row[0] != candidate.repository_id:
             raise LifecycleConflict("backup retention scope is unavailable")
 
-    def _metadata_files(
-        self, tenant_id: str
-    ) -> tuple[tuple[ArtifactMetadata, Path], ...]:
+    def _metadata_files(self, tenant_id: str) -> tuple[tuple[ArtifactMetadata, Path], ...]:
         namespace = _tenant_namespace(tenant_id)
         directory = self._root / namespace
         if not directory.exists():
             return ()
         _require_directory(directory)
         values: list[tuple[ArtifactMetadata, Path]] = []
-        seen = 0
         try:
             paths = tuple(directory.rglob("*.json"))
         except OSError as error:
             raise LifecycleConflict("backup retention store is unavailable") from error
-        for path in paths:
-            seen += 1
+        for seen, path in enumerate(paths, start=1):
             if seen > _MAX_STORE_ENTRIES:
                 raise LifecycleConflict("backup retention store exceeds its limit")
             relative = path.relative_to(directory)
@@ -509,9 +503,7 @@ class BackupLifecycleAdapter:
         metadata = payload.with_suffix(".json")
         return any(path.exists() or path.is_symlink() for path in (payload, metadata))
 
-    def _binding_for_metadata(
-        self, tenant_id: str, metadata: ArtifactMetadata
-    ) -> _BackupBinding:
+    def _binding_for_metadata(self, tenant_id: str, metadata: ArtifactMetadata) -> _BackupBinding:
         if (
             metadata.purpose not in BACKUP_RETENTION_PURPOSES
             or metadata.content_class != "DC2_CONFIDENTIAL_SECURITY"
@@ -542,10 +534,7 @@ class BackupLifecycleAdapter:
         ):
             raise LifecycleConflict("backup retention binding is invalid")
         identity_hash = _record_identity(backup)
-        if (
-            metadata.repository_id != row[1]
-            or metadata.execution_identity_hash != identity_hash
-        ):
+        if metadata.repository_id != row[1] or metadata.execution_identity_hash != identity_hash:
             raise LifecycleConflict("backup retention binding conflicts")
         if metadata.purpose == "backup-record":
             path = self._object_path(tenant_id, metadata.content_sha256)
@@ -561,11 +550,9 @@ class BackupLifecycleAdapter:
                 or stored.state not in {"BACKED_UP", "RESTORED"}
                 or stored.completed_at is None
                 or _record_identity(stored) != identity_hash
-                or metadata.created_at
-                != datetime.fromtimestamp(stored.completed_at, tz=UTC)
+                or metadata.created_at != datetime.fromtimestamp(stored.completed_at, tz=UTC)
                 or metadata.expires_at
-                != datetime.fromtimestamp(stored.completed_at, tz=UTC)
-                + timedelta(days=90)
+                != datetime.fromtimestamp(stored.completed_at, tz=UTC) + timedelta(days=90)
             ):
                 raise LifecycleConflict("backup record artifact conflicts")
         elif (
@@ -700,7 +687,7 @@ class BackupLifecycleAdapter:
     def _write_marker(self, path: Path, value: Mapping[str, object]) -> None:
         encoded = _canonical(value).encode("ascii")
         if path.exists():
-            self._require_exact(_read_marker(path), _binding_from_marker(value))
+            self._require_exact(self._read_marker(path), _binding_from_marker(value))
             return
         descriptor, temporary_name = tempfile.mkstemp(
             dir=path.parent,
@@ -716,7 +703,7 @@ class BackupLifecycleAdapter:
             try:
                 os.link(temporary, path)
             except FileExistsError:
-                self._require_exact(_read_marker(path), _binding_from_marker(value))
+                self._require_exact(self._read_marker(path), _binding_from_marker(value))
             _sync_directory(path.parent)
         finally:
             temporary.unlink(missing_ok=True)
@@ -745,9 +732,7 @@ class BackupLifecycleAdapter:
         _validate_marker(document)
         return document
 
-    def _stored_tombstone(
-        self, tenant_id: str, content_sha256: str
-    ) -> _TombstoneBinding | None:
+    def _stored_tombstone(self, tenant_id: str, content_sha256: str) -> _TombstoneBinding | None:
         row = self._db.execute(
             """SELECT deletion_id, tenant_id, repository_id,
                               content_sha256, execution_identity_hash,
@@ -790,9 +775,7 @@ class BackupLifecycleAdapter:
                 ),
             )
         except sqlite3.IntegrityError as error:
-            existing = self._stored_tombstone(
-                str(value["tenant_id"]), str(value["content_sha256"])
-            )
+            existing = self._stored_tombstone(str(value["tenant_id"]), str(value["content_sha256"]))
             if existing is None or existing != _binding_from_marker(value):
                 raise LifecycleConflict("backup tombstone conflicts") from error
 
@@ -976,9 +959,7 @@ def _record_identity(record: BackupRecord) -> str:
     return _sha256(material.encode("utf-8"))
 
 
-def _deletion_id(
-    *, tenant_id: str, content_sha256: str, identity_hash: str, purpose: str
-) -> str:
+def _deletion_id(*, tenant_id: str, content_sha256: str, identity_hash: str, purpose: str) -> str:
     return BACKUP_RETENTION_DELETION_PREFIX + _digest(
         {
             "content_sha256": content_sha256,

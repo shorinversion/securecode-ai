@@ -109,7 +109,10 @@ class ProviderAttempt:
             raise ValueError("provider elapsed time is invalid")
         if not isinstance(self.binding, ProviderAttemptBinding):
             raise TypeError("provider attempt binding must be typed")
-        if self.cost_receipt is not None and type(self.cost_receipt) is not RemoteProviderCostReceipt:
+        if (
+            self.cost_receipt is not None
+            and type(self.cost_receipt) is not RemoteProviderCostReceipt
+        ):
             raise TypeError("provider cost receipt must be typed")
         if type(self.cost_receipt_required) is not bool:
             raise TypeError("provider cost receipt requirement must be typed")

@@ -10,6 +10,7 @@ import signal
 import socket
 import socketserver
 import stat
+import sys
 import threading
 import time
 from collections.abc import Mapping
@@ -28,6 +29,10 @@ from .local_repair_oci_protocol import (
 from .local_repair_oci_provider import _sandbox_profile
 from .local_repair_oci_runtime import DockerCliOciRuntime, LocalRepairOciRuntimeError
 from .oci_sandbox import OciLaunchSpec, OciRuntimeAttestation
+
+# Linux-only broker: AF_UNIX servers and POSIX ids do not exist on Windows.
+# This assertion also tells mypy to skip the rest of the module for other platforms.
+assert sys.platform != "win32"
 
 _PROTOCOL_VERSION: Final = "1.0.0"
 _IDENTITY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}\Z")
@@ -59,18 +64,21 @@ class ValidatorBrokerConfiguration:
     @classmethod
     def from_environment(cls, environment: Mapping[str, str]) -> ValidatorBrokerConfiguration:
         try:
-            values = {name: _required(environment, name) for name in (
-                "SECURECODE_AI_VALIDATOR_MODE",
-                "SECURECODE_AI_VALIDATOR_SOCKET",
-                "SECURECODE_AI_VALIDATOR_PROTOCOL_GID",
-                "SECURECODE_AI_VALIDATOR_BUNDLE_ROOT",
-                "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET",
-                "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID",
-                "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE",
-                "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256",
-                "SECURECODE_AI_VALIDATION_IMAGE",
-                "SECURECODE_AI_VALIDATOR_IDENTITY",
-            )}
+            values = {
+                name: _required(environment, name)
+                for name in (
+                    "SECURECODE_AI_VALIDATOR_MODE",
+                    "SECURECODE_AI_VALIDATOR_SOCKET",
+                    "SECURECODE_AI_VALIDATOR_PROTOCOL_GID",
+                    "SECURECODE_AI_VALIDATOR_BUNDLE_ROOT",
+                    "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET",
+                    "SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID",
+                    "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE",
+                    "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256",
+                    "SECURECODE_AI_VALIDATION_IMAGE",
+                    "SECURECODE_AI_VALIDATOR_IDENTITY",
+                )
+            }
             socket_uid = int(values["SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID"], 10)
             protocol_gid = int(values["SECURECODE_AI_VALIDATOR_PROTOCOL_GID"], 10)
         except (KeyError, TypeError, ValueError):
@@ -136,9 +144,8 @@ class ValidatorBroker:
         self._lock = threading.RLock()
 
     def dispatch(self, request: dict[str, Any]) -> dict[str, object]:
-        if (
-            set(request) != {"operation", "schema_version"}
-            and not set(request).issuperset({"operation", "schema_version"})
+        if set(request) != {"operation", "schema_version"} and not set(request).issuperset(
+            {"operation", "schema_version"}
         ):
             raise LocalRepairOciRuntimeError("OCI_VALIDATOR_PROTOCOL_INVALID")
         if request.get("schema_version") != _PROTOCOL_VERSION:
@@ -166,10 +173,8 @@ class ValidatorBroker:
         with self._lock:
             sessions = tuple(self._sessions.items())
         for session_id, session in sessions:
-            try:
+            with suppress(Exception):
                 session.runtime.close()
-            except Exception:
-                pass
             with self._lock:
                 self._sessions.pop(session_id, None)
 
@@ -182,10 +187,8 @@ class ValidatorBroker:
                 if now - session.last_used > _MAX_IDLE_SECONDS
             ]
         for session_id, session in stale:
-            try:
+            with suppress(Exception):
                 session.runtime.close()
-            except Exception:
-                pass
             with self._lock:
                 self._sessions.pop(session_id, None)
 
@@ -228,7 +231,9 @@ class ValidatorBroker:
         if (
             type(expected_case_ids) is not list
             or not expected_case_ids
-            or any(type(item) is not str or _ID.fullmatch(item) is None for item in expected_case_ids)
+            or any(
+                type(item) is not str or _ID.fullmatch(item) is None for item in expected_case_ids
+            )
             or len(set(expected_case_ids)) != len(expected_case_ids)
         ):
             raise LocalRepairOciRuntimeError("OCI_PREPARATION_REQUEST_INVALID")
@@ -392,7 +397,9 @@ class ValidatorBroker:
 
     def _verify_endpoint(self) -> tuple[str, int, int]:
         try:
-            _require_socket(self._configuration.docker_socket, self._configuration.docker_socket_uid)
+            _require_socket(
+                self._configuration.docker_socket, self._configuration.docker_socket_uid
+            )
         except ValueError:
             raise LocalRepairOciRuntimeError("OCI_RUNTIME_AUTHORITY_UNAVAILABLE") from None
         try:
@@ -440,15 +447,20 @@ class _ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamS
     daemon_threads = True
     request_queue_size = _BROKER_BACKLOG
     allow_reuse_address = True
+    broker: ValidatorBroker
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._connection_slots = threading.BoundedSemaphore(_MAX_BROKER_CONNECTIONS)
         super().__init__(*args, **kwargs)
 
-    def process_request(self, request: socket.socket, client_address: object) -> None:
+    def process_request(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: Any
+    ) -> None:
         if not self._connection_slots.acquire(blocking=False):
-            with suppress(OSError):
-                request.close()
+            # A stream server always receives a connected socket.
+            if isinstance(request, socket.socket):
+                with suppress(OSError):
+                    request.close()
             return
         try:
             super().process_request(request, client_address)
@@ -456,7 +468,9 @@ class _ThreadingUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamS
             self._connection_slots.release()
             raise
 
-    def process_request_thread(self, request: socket.socket, client_address: object) -> None:
+    def process_request_thread(
+        self, request: socket.socket | tuple[bytes, socket.socket], client_address: Any
+    ) -> None:
         try:
             super().process_request_thread(request, client_address)
         finally:
@@ -472,7 +486,7 @@ class _BrokerHandler(socketserver.StreamRequestHandler):
             return
         try:
             request = closed_json(raw[:-1])
-            result = cast(ValidatorBroker, self.server.broker).dispatch(request)
+            result = cast(_ThreadingUnixServer, self.server).broker.dispatch(request)
             response: dict[str, object] = {
                 "ok": True,
                 "result": result,
@@ -499,13 +513,16 @@ class _BrokerHandler(socketserver.StreamRequestHandler):
         try:
             body = canonical_json(response) + b"\n"
             if len(body) > _MAX_RESPONSE_BYTES:
-                body = canonical_json(
-                    {
-                        "ok": False,
-                        "reason": "OCI_VALIDATOR_PROTOCOL_INVALID",
-                        "schema_version": _PROTOCOL_VERSION,
-                    }
-                ) + b"\n"
+                body = (
+                    canonical_json(
+                        {
+                            "ok": False,
+                            "reason": "OCI_VALIDATOR_PROTOCOL_INVALID",
+                            "schema_version": _PROTOCOL_VERSION,
+                        }
+                    )
+                    + b"\n"
+                )
             self.wfile.write(body)
             self.wfile.flush()
         except (OSError, ValueError):
@@ -514,9 +531,7 @@ class _BrokerHandler(socketserver.StreamRequestHandler):
     def _reply_failure(self, reason: str) -> None:
         with suppress(OSError, ValueError):
             self.wfile.write(
-                canonical_json(
-                    {"ok": False, "reason": reason, "schema_version": _PROTOCOL_VERSION}
-                )
+                canonical_json({"ok": False, "reason": reason, "schema_version": _PROTOCOL_VERSION})
                 + b"\n"
             )
             self.wfile.flush()
@@ -547,11 +562,7 @@ def _require_protocol_directory(path: Path, expected_gid: int) -> None:
     except OSError:
         raise ValueError from None
     mode = stat.S_IMODE(details.st_mode)
-    if (
-        not stat.S_ISDIR(details.st_mode)
-        or details.st_gid != expected_gid
-        or mode & 0o070 != 0o070
-    ):
+    if not stat.S_ISDIR(details.st_mode) or details.st_gid != expected_gid or mode & 0o070 != 0o070:
         raise ValueError
 
 
@@ -638,9 +649,7 @@ def _spec_from_wire(value: object) -> OciLaunchSpec:
         environment = tuple(tuple(item) for item in value["environment"])
         writable_tmpfs = _strings(value["writable_tmpfs"])
         if any(
-            type(item) is not tuple
-            or len(item) != 2
-            or any(type(part) is not str for part in item)
+            type(item) is not tuple or len(item) != 2 or any(type(part) is not str for part in item)
             for item in environment
         ):
             raise ValueError

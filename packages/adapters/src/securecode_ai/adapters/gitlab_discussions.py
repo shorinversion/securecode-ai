@@ -280,11 +280,11 @@ __all__ = [
     "GitlabChangedLine",
     "GitlabDiscussionCandidate",
     "GitlabDiscussionError",
-    "GitlabPublicationAuthorizer",
     "GitlabDiscussionProjection",
     "GitlabDiscussionPublisher",
     "GitlabDiscussionReceipt",
     "GitlabDiscussionRequest",
     "GitlabDiscussionSuppression",
     "GitlabDiscussionSuppressionReceipt",
+    "GitlabPublicationAuthorizer",
 ]

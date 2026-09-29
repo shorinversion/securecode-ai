@@ -355,7 +355,6 @@ _STAT_MODES = {
     "stat.S_IRWXU": 0o700,
     "stat.S_IRWXG": 0o070,
     "stat.S_IRWXO": 0o007,
-    "stat.S_IRWXU": 0o700,
 }
 _OS_FLAGS = {
     "os.O_CREAT": 0x40,
@@ -623,7 +622,9 @@ def _collect_aliases(tree: ast.Module, max_depth: int) -> dict[str, str | int | 
         if isinstance(node, ast.Import):
             for imported in node.names:
                 local = imported.asname or imported.name.split(".", 1)[0]
-                aliases[local] = imported.name if imported.name.split(".", 1)[0] in _SUPPORTED_MODULES else None
+                aliases[local] = (
+                    imported.name if imported.name.split(".", 1)[0] in _SUPPORTED_MODULES else None
+                )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
             for imported in node.names:
@@ -631,9 +632,11 @@ def _collect_aliases(tree: ast.Module, max_depth: int) -> dict[str, str | int | 
                     continue
                 local = imported.asname or imported.name
                 canonical = f"{module}.{imported.name}"
-                if canonical in _DIRECT_OPERATIONS or canonical in _PATH_OPERATIONS:
-                    aliases[local] = canonical
-                elif canonical in _TEMPFILE_CALLS:
+                if (
+                    canonical in _DIRECT_OPERATIONS
+                    or canonical in _PATH_OPERATIONS
+                    or canonical in _TEMPFILE_CALLS
+                ):
                     aliases[local] = canonical
                 elif canonical in _STAT_MODES:
                     aliases[local] = _STAT_MODES[canonical]
@@ -893,7 +896,9 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe732ScanError(PythonCwe732ScanErrorCode.INTEGRITY_FAILURE)
     if end > len(source):
         raise PythonCwe732ScanError(PythonCwe732ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:

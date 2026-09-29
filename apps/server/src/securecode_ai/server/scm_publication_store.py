@@ -80,10 +80,7 @@ class SCMPublicationTarget:
                 self.receipt_id is not None
                 and (type(self.receipt_id) is not str or _ID.fullmatch(self.receipt_id) is None)
             )
-            or (
-                self.publication_state == "PENDING"
-                and self.receipt_id is not None
-            )
+            or (self.publication_state == "PENDING" and self.receipt_id is not None)
             or (
                 self.publication_state == "PUBLISHED"
                 and (
@@ -214,8 +211,7 @@ class SqliteSCMPublicationStore:
         if (
             type(target) is not SCMPublicationTarget
             or target.publication_state != "PENDING"
-            or outcome
-            not in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}
+            or outcome not in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}
         ):
             raise SCMPublicationStoreError("SCM publication target is invalid")
         with self._transaction() as cursor:
@@ -314,9 +310,7 @@ class SqliteSCMPublicationStore:
                         (outcome, target.tenant_id, target.run_id, current.outcome),
                     )
                     if cursor.rowcount != 1:
-                        raise SCMPublicationStoreError(
-                            "SCM publication receipt conflicts"
-                        )
+                        raise SCMPublicationStoreError("SCM publication receipt conflicts")
                     current = _target(
                         cursor.execute(
                             """SELECT * FROM scm_publication_targets

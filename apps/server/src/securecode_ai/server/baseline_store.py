@@ -44,8 +44,7 @@ class DurableBaselineStore:
             raise TypeError("baseline store requires a SQLite connection")
         self.connection.execute(_SCHEMA)
         columns = {
-            row[1]
-            for row in self.connection.execute("PRAGMA table_info(scm_baseline_snapshots)")
+            row[1] for row in self.connection.execute("PRAGMA table_info(scm_baseline_snapshots)")
         }
         if "verification_version" not in columns:
             self.connection.execute(
@@ -247,10 +246,7 @@ def _verified_finding_candidates(
         fingerprints = ()
     if type(fingerprints) is not tuple or len(fingerprints) > 100_000:
         raise BaselineStoreError("verified baseline findings are invalid")
-    if any(
-        type(item) is not str or _FINGERPRINT.fullmatch(item) is None
-        for item in fingerprints
-    ):
+    if any(type(item) is not str or _FINGERPRINT.fullmatch(item) is None for item in fingerprints):
         raise BaselineStoreError("verified baseline findings are invalid")
     if fingerprints != tuple(sorted(set(fingerprints))):
         raise BaselineStoreError("verified baseline findings are invalid")

@@ -86,7 +86,8 @@ class SCMRunResolutionHandler:
         preflight = getattr(self._fallback, "preflight_artifact_upload", None)
         if not callable(preflight):
             raise ServiceUnavailableError()
-        return preflight(request)
+        artifact_id: str = preflight(request)
+        return artifact_id
 
 
 __all__ = ["SCMRunResolutionHandler"]

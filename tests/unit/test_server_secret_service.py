@@ -17,6 +17,9 @@ class P:
     ) -> OpaqueSecretLease:
         return OpaqueSecretLease("secret", 100)
 
+    def retrieve(self, grant_id: str) -> OpaqueSecretLease:
+        raise AssertionError("retrieve is not exercised by these tests")
+
     def revoke(self, grant_id: str) -> None:
         return None
 

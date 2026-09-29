@@ -344,20 +344,19 @@ class WorkflowTransitionEvent(WireModel):
                 WorkflowTransitionReason.LOOP_EXHAUSTED,
             }:
                 raise ValueError("signal transition requires a signal-specific reason")
-            if (
-                self.reason is WorkflowTransitionReason.DISCOVERY_LANE_RESOLVED
-                and self.completed_node
-                not in {
-                    WorkflowNode.DETERMINISTIC_ANALYSIS,
-                    WorkflowNode.MODEL_NATIVE_DISCOVERY,
-                }
-            ):
+            if self.reason in {
+                WorkflowTransitionReason.DISCOVERY_LANE_RESOLVED,
+                WorkflowTransitionReason.DISCOVERY_FAN_IN,
+            } and self.completed_node not in {
+                WorkflowNode.DETERMINISTIC_ANALYSIS,
+                WorkflowNode.MODEL_NATIVE_DISCOVERY,
+            }:
                 raise ValueError("discovery lane resolution requires a discovery node")
             if (
                 self.reason is WorkflowTransitionReason.DISCOVERY_FAN_IN
-                and self.completed_node is not WorkflowNode.NORMALIZATION
+                and WorkflowNode.NORMALIZATION not in self.resulting_snapshot.active_nodes
             ):
-                raise ValueError("discovery fan-in requires the normalization node")
+                raise ValueError("discovery fan-in must activate the normalization node")
         else:
             if (
                 self.completed_node is not None

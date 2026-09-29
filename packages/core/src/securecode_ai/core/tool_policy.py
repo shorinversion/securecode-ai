@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import re
-from threading import RLock
 import unicodedata
 from dataclasses import dataclass
 from enum import StrEnum
+from threading import RLock
 from typing import Final, Protocol
 
 from securecode_ai.contracts import RepositoryTool as RepositoryTool
@@ -195,10 +195,14 @@ class RepositoryToolBudget:
     max_tokens: int
 
     def __post_init__(self) -> None:
-        if any(
-            type(value) is not int or value < 0
-            for value in (self.max_calls, self.max_bytes, self.max_tokens)
-        ) or self.max_bytes == 0 or self.max_tokens == 0:
+        if (
+            any(
+                type(value) is not int or value < 0
+                for value in (self.max_calls, self.max_bytes, self.max_tokens)
+            )
+            or self.max_bytes == 0
+            or self.max_tokens == 0
+        ):
             raise ValueError("repository tool budget is invalid")
 
 

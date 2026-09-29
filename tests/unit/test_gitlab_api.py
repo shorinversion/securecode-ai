@@ -77,7 +77,7 @@ def _external_status() -> GitlabExternalStatusProjection:
 
 
 def test_summary_upsert_uses_exact_marker_and_private_token_only_in_request() -> None:
-    api, requester = _api([_response(200, []), _response(201, {"id": 17})])
+    api, requester = _api([_response(200, []), _response(201, {"id": 17, "body": _summary()})])
 
     result = api.upsert_merge_request_note(
         project_id="project-1",
@@ -94,13 +94,27 @@ def test_summary_upsert_uses_exact_marker_and_private_token_only_in_request() ->
     assert dict(requester.calls[1].headers)["Idempotency-Key"] == "note-key"
 
 
+def test_summary_upsert_rejects_a_response_that_does_not_echo_the_body() -> None:
+    api, _ = _api([_response(200, []), _response(201, {"id": 17, "body": "other"})])
+
+    with pytest.raises(GitlabAPIError) as error:
+        api.upsert_merge_request_note(
+            project_id="project-1",
+            merge_request_iid="42",
+            idempotency_key="note-key",
+            body=_summary(),
+        )
+
+    assert error.value.code is GitlabAPIErrorCode.RESPONSE_INVALID
+
+
 def test_summary_updates_only_one_existing_exact_marker_note() -> None:
     key = "note-key"
     marker = f"<!-- securecode-ai-gitlab-summary:{key} -->"
     api, requester = _api(
         [
             _response(200, [{"id": 18, "body": marker + "\nold"}]),
-            _response(200, {"id": 18}),
+            _response(200, {"id": 18, "body": _summary(key)}),
         ]
     )
 

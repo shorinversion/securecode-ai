@@ -136,9 +136,7 @@ class IdentityClaimMapping:
             or not self.workload_roles
             or not self.workload_roles.issubset(self.allowed_roles)
             or not self.workload_roles.issubset(_WORKLOAD_ROLES)
-            or not self.allowed_roles.intersection(_WORKLOAD_ROLES).issubset(
-                self.workload_roles
-            )
+            or not self.allowed_roles.intersection(_WORKLOAD_ROLES).issubset(self.workload_roles)
             or not set(self.role_map.values()).issubset(self.allowed_roles)
             or type(self.max_roles) is not int
             or not 1 <= self.max_roles <= 64
@@ -249,8 +247,12 @@ class BearerJwtIdentityVerifier:
             raise ValueError("JWT verifier configuration is invalid")
         self._mapping = mapping
         self._role_map = dict(mapping.role_map)
-        self._tenant_map = None if mapping.tenant_map is None else dict(mapping.tenant_map)
-        self._subject_map = None if mapping.subject_map is None else dict(mapping.subject_map)
+        self._tenant_map: dict[str, str] | None = (
+            None if mapping.tenant_map is None else dict(mapping.tenant_map)
+        )
+        self._subject_map: dict[str, str] | None = (
+            None if mapping.subject_map is None else dict(mapping.subject_map)
+        )
         self._repository_id_map = (
             None if mapping.repository_id_map is None else dict(mapping.repository_id_map)
         )
@@ -555,9 +557,12 @@ def _valid_string_map(value: object) -> bool:
         items = tuple(value.items())
     except Exception:
         return False
-    return bool(items) and len(items) <= 1024 and all(
-        _configured_string(key, 256) and _configured_string(item, 256)
-        for key, item in items
+    return (
+        bool(items)
+        and len(items) <= 1024
+        and all(
+            _configured_string(key, 256) and _configured_string(item, 256) for key, item in items
+        )
     )
 
 

@@ -108,7 +108,7 @@ def _build_python_symbol_index(
             name=module_name.rsplit(".", 1)[-1],
             qualified_name=module_name,
             occurrence=0,
-            declaration=_range(root),
+            declaration=SourceRange(0, root.end_byte, SourcePoint(0, 0), _range(root).end_point),
             name_location=SourceRange(0, 0, SourcePoint(0, 0), SourcePoint(0, 0)),
             parent_symbol_id=None,
         )

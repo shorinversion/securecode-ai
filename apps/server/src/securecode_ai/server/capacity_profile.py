@@ -36,9 +36,7 @@ LIVE_PATH: Final = "/api/v1/health/live"
 # The in-process operator profile exposes read-only health checks and a bounded
 # soak over the same ASGI endpoint. The connected worker lifecycle is opt-in and
 # is driven separately by ``profile_worker_lifecycle``.
-EXECUTABLE_SCENARIOS: Final = (
-    ChaosScenario.HEALTH_LIVE,
-)
+EXECUTABLE_SCENARIOS: Final = (ChaosScenario.HEALTH_LIVE,)
 
 AppCallable = Callable[
     [
@@ -181,10 +179,10 @@ class InProcessCapacityExecutor:
 
     __slots__ = (
         "_app",
-        "_headers",
-        "_requests",
         "_duration_seconds",
+        "_headers",
         "_max_requests",
+        "_requests",
     )
 
     def __init__(
@@ -206,8 +204,7 @@ class InProcessCapacityExecutor:
         ):
             raise ValueError("capacity duration is invalid")
         if max_requests is not None and (
-            type(max_requests) is not int
-            or not 1 <= max_requests <= MAX_SOAK_REQUESTS
+            type(max_requests) is not int or not 1 <= max_requests <= MAX_SOAK_REQUESTS
         ):
             raise ValueError("capacity request limit is invalid")
         request_headers = dict(headers or {})
@@ -235,15 +232,9 @@ class InProcessCapacityExecutor:
         if sum(len(name) + len(value) for name, value in encoded_headers) > 16_384:
             raise ValueError("capacity request headers are invalid")
         self._app = app
-        self._duration_seconds = (
-            None if duration_seconds is None else float(duration_seconds)
-        )
+        self._duration_seconds = None if duration_seconds is None else float(duration_seconds)
         self._max_requests = max_requests
-        self._requests = (
-            tuple(requests)
-            if requests is not None
-            else (("GET", LIVE_PATH, b""),)
-        )
+        self._requests = tuple(requests) if requests is not None else (("GET", LIVE_PATH, b""),)
         if not self._requests:
             raise ValueError("capacity requests are invalid")
         self._headers = tuple(encoded_headers)
@@ -286,9 +277,7 @@ class InProcessCapacityExecutor:
         pending: asyncio.Queue[tuple[int, float]] = asyncio.Queue()
         samples: list[_Sample] = []
         started = time.monotonic()
-        request_limit = (
-            self._max_requests if scenario is ChaosScenario.SOAK else iterations
-        )
+        request_limit = self._max_requests if scenario is ChaosScenario.SOAK else iterations
         if request_limit is None:
             request_limit = MAX_SOAK_REQUESTS
         initial_requests = min(concurrency, request_limit)
@@ -477,7 +466,7 @@ class InProcessCapacityExecutor:
 class WorkerLifecycleExecutor:
     """Exercise submit, exact-run polling and cancellation on a real worker path."""
 
-    __slots__ = ("_api", "_request", "_runs", "_duration", "_poll_interval")
+    __slots__ = ("_api", "_duration", "_poll_interval", "_request", "_runs")
 
     def __init__(
         self,
@@ -814,14 +803,14 @@ def render(receipt: CapacityReceipt) -> str:
 
 __all__ = [
     "EXECUTABLE_SCENARIOS",
-    "InProcessCapacityExecutor",
     "MAX_DURATION_SECONDS",
-    "MIN_DURATION_SECONDS",
-    "MAX_SOAK_REQUESTS",
-    "SOAK_DRAIN_GRACE_SECONDS",
     "MAX_LIFECYCLE_RUNS",
-    "MIN_POLL_INTERVAL_SECONDS",
     "MAX_POLL_INTERVAL_SECONDS",
+    "MAX_SOAK_REQUESTS",
+    "MIN_DURATION_SECONDS",
+    "MIN_POLL_INTERVAL_SECONDS",
+    "SOAK_DRAIN_GRACE_SECONDS",
+    "InProcessCapacityExecutor",
     "WorkerLifecycleApi",
     "WorkerLifecycleExecutor",
     "WorkerLifecycleRequest",

@@ -313,6 +313,7 @@ def _mapping(value: object) -> dict[str, Any]:
 def _root_cause(value: dict[str, Any]) -> RootCauseRecord:
     evidence = _mapping(value.pop("evidence", None))
     raw_command = value.pop("command_operation_evidence", None)
+    command: tuple[CommandOperationEvidence, ...]
     if raw_command is None:
         command = ()
     elif type(raw_command) is list:

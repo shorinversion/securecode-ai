@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-
 _MAX_ID_LENGTH = 256
 _MAX_ACTION_LENGTH = 128
 
@@ -84,10 +83,7 @@ class Principal:
             or not all(type(role) is Role for role in self.roles)
             or type(self.repository_grants) is not frozenset
             or any(not _safe_identifier(grant) for grant in self.repository_grants)
-            or (
-                repository_id is not None
-                and not _safe_identifier(repository_id)
-            )
+            or (repository_id is not None and not _safe_identifier(repository_id))
         ):
             return False
         if (

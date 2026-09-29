@@ -264,9 +264,7 @@ def scan_javascript_cwe1321(
 ) -> EcmaScriptCwe1321ScanResult:
     """Find bounded JavaScript prototype-pollution facts."""
 
-    return _scan_ecmascript_cwe1321(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe1321(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe1321(
@@ -276,9 +274,7 @@ def scan_typescript_cwe1321(
 ) -> EcmaScriptCwe1321ScanResult:
     """Find bounded TypeScript prototype-pollution facts."""
 
-    return _scan_ecmascript_cwe1321(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe1321(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe1321(
@@ -336,25 +332,17 @@ def _scan_ecmascript_cwe1321(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe1321ScanError(
-            EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe1321ScanError(
-            EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe1321ScanError(
-                EcmaScriptCwe1321ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         bindings = _collect_unsafe_bindings(nodes, source, aliases)
-        raw: set[
-            tuple[SourceRange, SourceRange, EcmaScriptCwe1321Operation]
-        ] = set()
+        raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe1321Operation]] = set()
         for node in nodes:
             if node.type == "call_expression":
                 raw.update(_call_facts(node, source, aliases, bindings))
@@ -367,9 +355,7 @@ def _scan_ecmascript_cwe1321(
                 if fact is not None:
                     raw.add(fact)
             if len(raw) > limits.max_signals:
-                raise EcmaScriptCwe1321ScanError(
-                    EcmaScriptCwe1321ScanErrorCode.SIGNAL_LIMIT
-                )
+                raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
             key=lambda item: (
@@ -381,15 +367,11 @@ def _scan_ecmascript_cwe1321(
             ),
         )
         if len(ordered) > limits.max_signals:
-            raise EcmaScriptCwe1321ScanError(
-                EcmaScriptCwe1321ScanErrorCode.SIGNAL_LIMIT
-            )
+            raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.SIGNAL_LIMIT)
     except EcmaScriptCwe1321ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe1321ScanError(
-            EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe1321Signal(
@@ -806,7 +788,13 @@ def _canonical_name(value: str, aliases: dict[str, str]) -> str:
 
 
 def _member_path(node: Node, source: bytes) -> tuple[str, ...] | None:
-    if node.type in {"identifier", "property_identifier", "private_property_identifier", "this", "super"}:
+    if node.type in {
+        "identifier",
+        "property_identifier",
+        "private_property_identifier",
+        "this",
+        "super",
+    }:
         value = _node_text(source, node)
         return (value,) if value and value != "#" else None
     if node.type in {"member_expression", "subscript_expression"}:
@@ -868,18 +856,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe1321ScanError(
-            EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe1321ScanError(
-            EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1321ScanError(EcmaScriptCwe1321ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -928,9 +912,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -964,9 +946,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

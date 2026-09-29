@@ -119,11 +119,7 @@ class InMemoryRequestReplayStore:
         with self._lock:
             record_key = (tenant_id, key)
             previous = self._values.get(record_key)
-            if (
-                previous is None
-                or previous[1] is not None
-                or previous[2] != _execution_owner()
-            ):
+            if previous is None or previous[1] is not None or previous[2] != _execution_owner():
                 raise ValueError("request replay claim is missing or owned by another request")
             del self._values[record_key]
 
@@ -288,7 +284,9 @@ class SqliteRequestReplayStore:
                 self._forget_claim(tenant_id, key, claim_token)
             except Exception:
                 if active:
-                    _rollback_atomic(cursor, self._connection, _COMPLETE_SAVEPOINT, owns_transaction)
+                    _rollback_atomic(
+                        cursor, self._connection, _COMPLETE_SAVEPOINT, owns_transaction
+                    )
                 raise
             finally:
                 cursor.close()

@@ -20,10 +20,11 @@ import re
 import secrets
 import time
 from collections import OrderedDict, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from threading import Lock
-from typing import Callable, Final, Protocol
+from typing import Final, Protocol
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .identity import Principal, Role
@@ -159,9 +160,7 @@ class OidcAuthorizationClient:
         object.__setattr__(self, "redirect_uri", redirect)
 
     def build(self, *, state: str, nonce: str) -> tuple[str, str, str]:
-        if not _bounded_login_value(
-            state, 1_024
-        ) or not _bounded_login_value(nonce, 1_024):
+        if not _bounded_login_value(state, 1_024) or not _bounded_login_value(nonce, 1_024):
             raise OidcLoginError(OidcLoginErrorCode.INVALID_CONFIGURATION)
         verifier = secrets.token_urlsafe(48)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
@@ -215,11 +214,11 @@ class OidcLoginService:
     __slots__ = (
         "_admission",
         "_attempt_limit",
+        "_attempt_policy_loader",
         "_attempt_window_seconds",
         "_attempts",
         "_authorization_client",
         "_authorization_client_loader",
-        "_attempt_policy_loader",
         "_issuer",
         "_ledger",
         "_lock",
@@ -277,9 +276,7 @@ class OidcLoginService:
             )
             or (
                 source_rate_limiter is not None
-                and not callable(
-                    getattr(source_rate_limiter, "charge_source_attempt", None)
-                )
+                and not callable(getattr(source_rate_limiter, "charge_source_attempt", None))
             )
             or (
                 state_store is not None
@@ -450,15 +447,12 @@ class OidcLoginService:
                     window_seconds=attempt_window_seconds,
                 )
                 source_hash = hashlib.sha256(
-                    b"securecode.oidc.login-source-scope.v1\x00"
-                    + rate_limit_key.encode("ascii")
+                    b"securecode.oidc.login-source-scope.v1\x00" + rate_limit_key.encode("ascii")
                 ).hexdigest()
-                source_rate_limiter = self._source_rate_limiter
+                source_rate_limiter: object = self._source_rate_limiter
                 if source_rate_limiter is None:
                     source_rate_limiter = self._state_store
-                charge_source_attempt = getattr(
-                    source_rate_limiter, "charge_source_attempt", None
-                )
+                charge_source_attempt = getattr(source_rate_limiter, "charge_source_attempt", None)
                 if not callable(charge_source_attempt):
                     raise OidcDenied()
                 charge_source_attempt(

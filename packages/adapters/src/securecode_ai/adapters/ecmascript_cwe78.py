@@ -32,9 +32,7 @@ _DETECTOR = "securecode-ecmascript-cwe78@1.0"
 
 _CHILD_PROCESS_MODULES = frozenset({"child_process"})
 _SANITIZER_MODULES = frozenset({"shell-escape", "shell-quote", "command-args"})
-_REQUEST_ROOTS = frozenset(
-    {"ctx", "context", "event", "httpRequest", "req", "request", "http"}
-)
+_REQUEST_ROOTS = frozenset({"ctx", "context", "event", "httpRequest", "req", "request", "http"})
 _REQUEST_FIELDS = frozenset(
     {
         "body",
@@ -439,9 +437,7 @@ def _scan_ecmascript_cwe78(
                 source_range = _range(source_node)
                 sink_range = _range(node)
                 if not sink_range.contains(source_range):
-                    raise EcmaScriptCwe78ScanError(
-                        EcmaScriptCwe78ScanErrorCode.INTEGRITY_FAILURE
-                    )
+                    raise EcmaScriptCwe78ScanError(EcmaScriptCwe78ScanErrorCode.INTEGRITY_FAILURE)
                 raw.add((source_range, sink_range, operation))
                 if len(raw) > limits.max_signals:
                     raise EcmaScriptCwe78ScanError(EcmaScriptCwe78ScanErrorCode.SIGNAL_LIMIT)
@@ -522,7 +518,7 @@ def _operation_for_call(
         "child_process.execSync": EcmaScriptCwe78Operation.EXEC_SYNC,
         "child_process.execFile": EcmaScriptCwe78Operation.EXEC_FILE,
         "child_process.execFileSync": EcmaScriptCwe78Operation.EXEC_FILE_SYNC,
-    }.get(canonical)
+    }.get(canonical or "")
     if direct in {
         EcmaScriptCwe78Operation.EXEC_FILE,
         EcmaScriptCwe78Operation.EXEC_FILE_SYNC,
@@ -753,9 +749,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _node_text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _node_text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -988,9 +988,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1025,9 +1023,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

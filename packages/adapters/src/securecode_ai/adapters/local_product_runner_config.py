@@ -34,7 +34,6 @@ from .product_audit import (
     GitProductAuditStateProbe,
     ProductAuditComposition,
 )
-from .product_rule_catalogue import PRODUCT_RULE_CWE as _RULES
 
 _CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _GIT_EXIT_TIMEOUT_SECONDS: Final[float] = 2.0

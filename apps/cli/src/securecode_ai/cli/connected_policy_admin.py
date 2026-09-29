@@ -15,8 +15,8 @@ from .connected_transport import (
     ConnectedCliError,
     ConnectedCliErrorCode,
     HttpConnectedApi,
-    _identifier,
     _idempotency_key,
+    _identifier,
     _safe_base_url,
 )
 
@@ -117,9 +117,7 @@ def _expected_version(value: str) -> int | None:
     return _version(value)
 
 
-def _required_fields(
-    tokens: tuple[str, ...], names: set[str]
-) -> dict[str, str]:
+def _required_fields(tokens: tuple[str, ...], names: set[str]) -> dict[str, str]:
     fields = parse_approval_arguments(tokens)
     if set(fields) != names:
         raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
@@ -179,10 +177,7 @@ def _assignment_response(
         or not isinstance(document["policy_version"], str)
         or document["policy_version"] != f"{expected_version}.0.0"
         or document["policy_id"] != expected_profile_id
-        or (
-            repository_id is not None
-            and document.get("repository_id") != repository_id
-        )
+        or (repository_id is not None and document.get("repository_id") != repository_id)
         or (tenant_id is not None and document.get("tenant_id") != tenant_id)
     ):
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
@@ -415,14 +410,10 @@ def run_connected_policy_admin(
                 rollout=rollout,
                 calibrated=calibrated,
                 content=content,
-                idempotency_key=_key(
-                    environment, operation="policy-create", payload=request
-                ),
+                idempotency_key=_key(environment, operation="policy-create", payload=request),
             )
         elif action == "activate":
-            fields = _required_fields(
-                tokens[2:], {"profile-id", "version", "expected-active"}
-            )
+            fields = _required_fields(tokens[2:], {"profile-id", "version", "expected-active"})
             profile_id = fields["profile-id"]
             version = _version(fields["version"])
             expected_active = _expected_version(fields["expected-active"])
@@ -436,9 +427,7 @@ def run_connected_policy_admin(
                 profile_id=profile_id,
                 version=version,
                 expected_active=expected_active,
-                idempotency_key=_key(
-                    environment, operation="policy-activate", payload=request
-                ),
+                idempotency_key=_key(environment, operation="policy-activate", payload=request),
             )
         elif action == "assign":
             fields = _required_fields(
@@ -448,9 +437,7 @@ def run_connected_policy_admin(
             profile_id = fields["profile-id"]
             version = _version(fields["version"])
             repository_id = fields["repository"]
-            expected_assignment_version = _expected_version(
-                fields["expected-assignment-version"]
-            )
+            expected_assignment_version = _expected_version(fields["expected-assignment-version"])
             request = {
                 "profile_id": profile_id,
                 "version": version,
@@ -463,9 +450,7 @@ def run_connected_policy_admin(
                 version=version,
                 repository_id=repository_id,
                 expected_assignment_version=expected_assignment_version,
-                idempotency_key=_key(
-                    environment, operation="policy-assign", payload=request
-                ),
+                idempotency_key=_key(environment, operation="policy-assign", payload=request),
             )
         elif action == "default":
             fields = _required_fields(
@@ -473,9 +458,7 @@ def run_connected_policy_admin(
             )
             profile_id = fields["profile-id"]
             version = _version(fields["version"])
-            expected_assignment_version = _expected_version(
-                fields["expected-assignment-version"]
-            )
+            expected_assignment_version = _expected_version(fields["expected-assignment-version"])
             request = {
                 "profile_id": profile_id,
                 "version": version,
@@ -486,9 +469,7 @@ def run_connected_policy_admin(
                 profile_id=profile_id,
                 version=version,
                 expected_assignment_version=expected_assignment_version,
-                idempotency_key=_key(
-                    environment, operation="policy-default", payload=request
-                ),
+                idempotency_key=_key(environment, operation="policy-default", payload=request),
             )
         else:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
@@ -498,7 +479,9 @@ def run_connected_policy_admin(
     except Exception:
         stderr.write("connected policy operation failed\n")
         return int(CliExitCode.OPERATIONAL_ERROR)
-    stdout.write(json.dumps(result, ensure_ascii=True, separators=(",", ":"), sort_keys=True) + "\n")
+    stdout.write(
+        json.dumps(result, ensure_ascii=True, separators=(",", ":"), sort_keys=True) + "\n"
+    )
     return int(CliExitCode.COMPLETED)
 
 

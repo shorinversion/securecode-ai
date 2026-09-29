@@ -18,6 +18,8 @@ from .cwe_portfolio_models import (
     CwePortfolioScanResult,
     CwePortfolioSignal,
     portfolio_signals_to_raw_signals,
+)
+from .cwe_portfolio_models import (
     scan_cwe_portfolio as _scan_cwe_portfolio,
 )
 

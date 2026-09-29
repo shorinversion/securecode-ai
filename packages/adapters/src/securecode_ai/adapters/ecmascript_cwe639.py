@@ -346,9 +346,7 @@ class EcmaScriptCwe639Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe639Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe639Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -643,7 +641,11 @@ def _subscript_fact(
 ) -> _Fact | None:
     object_node = node.child_by_field_name("object")
     index_node = node.child_by_field_name("index")
-    if object_node is None or index_node is None or not _is_lookup_target(object_node, source, aliases):
+    if (
+        object_node is None
+        or index_node is None
+        or not _is_lookup_target(object_node, source, aliases)
+    ):
         return None
     source_node = _user_input_node(index_node, source, aliases, limits, frozenset(), 0)
     if source_node is None:
@@ -705,12 +707,17 @@ def _is_lookup_target(node: Node, source: bytes, aliases: dict[str, Node]) -> bo
         return False
     if any(part in _LOOKUP_CONTEXT for part in parts):
         return True
-    if current.type == "identifier" and _normalise_name(_node_text(source, current)) in _LOOKUP_CONTEXT:
+    if (
+        current.type == "identifier"
+        and _normalise_name(_node_text(source, current)) in _LOOKUP_CONTEXT
+    ):
         return True
     if current.type in {"member_expression", "subscript_expression"}:
         base = current.child_by_field_name("object")
-        if base is not None and _unwrap(base).type == "this" and any(
-            part in _LOOKUP_CONTEXT for part in parts[1:]
+        if (
+            base is not None
+            and _unwrap(base).type == "this"
+            and any(part in _LOOKUP_CONTEXT for part in parts[1:])
         ):
             return True
     del aliases
@@ -734,9 +741,7 @@ def _user_input_node(
         name = _node_text(source, current)
         bound = aliases.get(name)
         if bound is not None and name not in visited:
-            resolved = _user_input_node(
-                bound, source, aliases, limits, visited | {name}, depth + 1
-            )
+            resolved = _user_input_node(bound, source, aliases, limits, visited | {name}, depth + 1)
             if resolved is not None:
                 return current
         if _is_key_parameter(current, source):
@@ -788,11 +793,7 @@ def _is_request_accessor(node: Node, source: bytes) -> bool:
     if canonical is None:
         return False
     parts = [_normalise_name(part) for part in canonical.split(".") if part]
-    return bool(
-        len(parts) >= 2
-        and parts[0] in _REQUEST_ROOTS
-        and parts[-1] in _REQUEST_ACCESSORS
-    )
+    return bool(len(parts) >= 2 and parts[0] in _REQUEST_ROOTS and parts[-1] in _REQUEST_ACCESSORS)
 
 
 def _is_key_parameter(node: Node, source: bytes) -> bool:
@@ -806,7 +807,8 @@ def _is_key_parameter(node: Node, source: bytes) -> bool:
             if parameters is None:
                 return False
             return any(
-                child.type in {"identifier", "required_parameter", "optional_parameter", "rest_pattern"}
+                child.type
+                in {"identifier", "required_parameter", "optional_parameter", "rest_pattern"}
                 and name in _normalise_name(_compact_text(source, child))
                 for child in _walk_nodes(parameters)
             )
@@ -838,7 +840,9 @@ def _is_guard_call(node: Node, source: bytes) -> bool:
     leaf = _normalise_name(canonical.rsplit(".", 1)[-1])
     if leaf in _GUARD_NAMES:
         return True
-    return bool(_GUARD_WORDS.search(leaf) and leaf.endswith(("guard", "check", "authorize", "access")))
+    return bool(
+        _GUARD_WORDS.search(leaf) and leaf.endswith(("guard", "check", "authorize", "access"))
+    )
 
 
 def _is_owner_comparison(node: Node, source: bytes) -> bool:
@@ -846,7 +850,9 @@ def _is_owner_comparison(node: Node, source: bytes) -> bool:
         return False
     text = _normalise_name(_compact_text(source, node))
     owner = any(word in text for word in ("owner", "tenant", "account", "principal"))
-    identity = any(word in text for word in ("user", "principal", "tenant", "account", "identity", "auth"))
+    identity = any(
+        word in text for word in ("user", "principal", "tenant", "account", "identity", "auth")
+    )
     return owner and identity
 
 
@@ -919,7 +925,9 @@ def _canonical_expression(node: Node | None, source: bytes) -> str | None:
         return _node_text(source, current)
     if current.type in {"member_expression", "subscript_expression"}:
         object_node = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         base = _canonical_expression(object_node, source)
         name = _static_property_name(property_node, source)
         if base and name:

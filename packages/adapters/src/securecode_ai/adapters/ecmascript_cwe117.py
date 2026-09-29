@@ -57,9 +57,7 @@ _REQUEST_FIELDS = frozenset(
         "queryStringParameters",
     }
 )
-_LOGGER_METHODS = frozenset(
-    {"debug", "error", "fatal", "info", "log", "trace", "warn", "warning"}
-)
+_LOGGER_METHODS = frozenset({"debug", "error", "fatal", "info", "log", "trace", "warn", "warning"})
 _LOGGER_ROOTS = frozenset(
     {
         "console",
@@ -232,9 +230,7 @@ class EcmaScriptCwe117Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe117Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe117Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -432,20 +428,14 @@ def _scan_ecmascript_cwe117(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe117ScanError(
-            EcmaScriptCwe117ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe117ScanError(EcmaScriptCwe117ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe117ScanError(
-            EcmaScriptCwe117ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe117ScanError(EcmaScriptCwe117ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe117ScanError(
-                EcmaScriptCwe117ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe117ScanError(EcmaScriptCwe117ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source, limits)
         logger_names = _collect_logger_names(nodes, source, aliases, limits)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe117Operation]] = set()
@@ -480,9 +470,7 @@ def _scan_ecmascript_cwe117(
                         )
                     raw.add((source_range, sink_range, operation))
                     if len(raw) > limits.max_signals:
-                        raise EcmaScriptCwe117ScanError(
-                            EcmaScriptCwe117ScanErrorCode.SIGNAL_LIMIT
-                        )
+                        raise EcmaScriptCwe117ScanError(EcmaScriptCwe117ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
             key=lambda item: (
@@ -496,9 +484,7 @@ def _scan_ecmascript_cwe117(
     except EcmaScriptCwe117ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe117ScanError(
-            EcmaScriptCwe117ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe117ScanError(EcmaScriptCwe117ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe117Signal(
@@ -761,8 +747,7 @@ def _call_source(callee: str) -> bool:
         "query",
     }:
         return len(pieces) >= 2 and (
-            any(part in _REQUEST_FIELDS for part in pieces)
-            or pieces[0] in _REQUEST_ROOTS
+            any(part in _REQUEST_FIELDS for part in pieces) or pieces[0] in _REQUEST_ROOTS
         )
     return False
 
@@ -789,9 +774,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _node_text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _node_text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -1006,9 +995,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1043,9 +1030,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

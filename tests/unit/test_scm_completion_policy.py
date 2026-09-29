@@ -94,6 +94,13 @@ class _FakePublicationStore:
             return None
         return self.target
 
+    def pending(self, *, tenant_id: str, limit: int = 32) -> tuple[SCMPublicationTarget, ...]:
+        raise AssertionError("pending publications are not exercised by these tests")
+
+    def mark_pending(self, *, target: SCMPublicationTarget, outcome: str) -> SCMPublicationTarget:
+        self.target = replace(target, outcome=outcome)
+        return self.target
+
     def record(
         self,
         *,
@@ -101,6 +108,7 @@ class _FakePublicationStore:
         outcome: str,
         stale: bool,
         receipt_id: str,
+        allow_policy_update: bool = False,
     ) -> SCMPublicationTarget:
         self.target = replace(
             target,
@@ -112,6 +120,8 @@ class _FakePublicationStore:
 
 
 class _FakeRunState:
+    tenant_id = "tenant-1"
+
     def __init__(self) -> None:
         self.outcome: AuditRunOutcome | None = None
 

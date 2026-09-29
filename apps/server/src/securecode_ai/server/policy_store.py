@@ -719,9 +719,8 @@ def _profile_document(profile: ScanProfile) -> dict[str, object]:
 def _require_identifier(value: object) -> str:
     if type(value) is not str or not 1 <= len(value) <= 256:
         raise ProfileConflict("identifier is invalid")
-    if (
-        value != value.strip()
-        or any(ord(character) < 33 or ord(character) > 126 for character in value)
+    if value != value.strip() or any(
+        ord(character) < 33 or ord(character) > 126 for character in value
     ):
         raise ProfileConflict("identifier contains unsupported characters")
     return value
@@ -744,11 +743,7 @@ def _require_version(value: object) -> int:
 def _checked_now(source: Callable[[], datetime]) -> datetime:
     try:
         value = source()
-        if (
-            type(value) is not datetime
-            or value.tzinfo is None
-            or value.utcoffset() is None
-        ):
+        if type(value) is not datetime or value.tzinfo is None or value.utcoffset() is None:
             raise ValueError
         return value.astimezone(UTC)
     except Exception as error:

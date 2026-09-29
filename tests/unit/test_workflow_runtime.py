@@ -1379,10 +1379,11 @@ def test_cross_run_model_receipt_envelope_rejects_without_mutation() -> None:
     other = _to_discovery_fork(other_runtime)
     assert other.snapshot is not None
     envelope = _model_envelope(other.snapshot).model_copy(update={"run_id": "other-run"})
-    request = _signal_request(first.snapshot, envelope, key="cross-run")
-    rejected = runtime.signal(request)
-    assert rejected.error_code is WorkflowErrorCode.INVALID_RECEIPT
-    assert rejected.transition_event is None
+    with pytest.raises(ValidationError, match="receipt scope must match"):
+        _signal_request(first.snapshot, envelope, key="cross-run")
+    assert (
+        _read_snapshot(runtime, first.snapshot, request_id="cross-run").snapshot == first.snapshot
+    )
 
 
 @pytest.mark.parametrize(
@@ -1431,6 +1432,10 @@ def test_model_receipt_runtime_envelope_rejects_every_scope_replay(mutation: str
             receipt_sha256=canonical_runtime_sha256(nested.model_dump(mode="json")),
             model_discovery_receipt=nested,
         )
+    if mutation in {"run", "identity"}:
+        with pytest.raises(ValidationError, match="receipt scope must match"):
+            _signal_request(result.snapshot, envelope, key=f"scope-{mutation}")
+        return
     request = _signal_request(result.snapshot, envelope, key=f"scope-{mutation}")
     rejected = runtime.signal(request)
     assert rejected.error_code is WorkflowErrorCode.INVALID_RECEIPT
@@ -1770,11 +1775,9 @@ def test_invalid_receipt_precedes_clock_failure_without_mutation() -> None:
     invalid = _node_envelope(before, WorkflowSignalKind.COMPLETED, suffix="clock-invalid")
     invalid = invalid.model_copy(update={"run_id": "other-run"})
 
-    result = runtime.signal(_signal_request(before, invalid, key="clock-invalid"))
+    with pytest.raises(ValidationError, match="receipt scope must match"):
+        _signal_request(before, invalid, key="clock-invalid")
 
-    assert result.operation_status is WorkflowOperationStatus.REJECTED
-    assert result.error_code is WorkflowErrorCode.INVALID_RECEIPT
-    assert result.transition_event is None
     assert clock.calls == 1
     assert _read_snapshot(runtime, before, request_id="clock-snapshot").snapshot == before
 
@@ -1815,6 +1818,10 @@ def test_typed_precedence_beats_registry_failure(
                 "node": WorkflowNode.REPORTING if condition == "illegal" else envelope.node,
             }
         )
+        if condition == "invalid":
+            with pytest.raises(ValidationError, match="receipt scope must match"):
+                _signal_request(before, envelope, key=f"precedence-{condition}")
+            return
         request = _signal_request(before, envelope, key=f"precedence-{condition}")
 
     registry.fail = True

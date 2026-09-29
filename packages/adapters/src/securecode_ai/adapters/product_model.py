@@ -25,7 +25,12 @@ from securecode_ai.contracts import (
     ModelRole,
 )
 from securecode_ai.core import PayloadValidation
-from securecode_ai.core.auditor import AuditorContractError, AuditorVerdict, parse_auditor_verdict
+from securecode_ai.core.auditor import (
+    AUDITOR_VERDICTS,
+    AuditorContractError,
+    AuditorVerdict,
+    parse_auditor_verdict,
+)
 from securecode_ai.core.evidence_package import EvidenceContextRef, EvidencePackage
 from securecode_ai.core.model_discovery import ModelNativeCandidateDraft
 
@@ -75,7 +80,7 @@ _AUDITOR_SCHEMA: Final = {
     "properties": {
         "finding_verdict": {
             "type": "string",
-            "enum": [verdict.value for verdict in FindingVerdict],
+            "enum": [verdict.value for verdict in FindingVerdict if verdict in AUDITOR_VERDICTS],
         },
         "cited_evidence_ids": {
             "type": "array",

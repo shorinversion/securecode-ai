@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from typing import cast
 
 import pytest
 from securecode_ai.server.identity import Role
@@ -38,7 +39,7 @@ CLAIMS = {
     "azp": "client",
     "nonce": NONCE,
     "iat": 1,
-    "exp": 9999999999,
+    "exp": 3_601,
     "groups": ["auditors"],
 }
 
@@ -65,9 +66,10 @@ def _service(
     claims: object = None,
     issuer: object = None,
     attempt_limit: int = 60,
+    now: int = NOW,
 ) -> OidcLoginService:
     return OidcLoginService(
-        admission=_admission(claims),
+        admission=_admission(claims, now=now),
         ledger=NonceReplayLedger(now=lambda: NOW),
         issuer=issuer,  # type: ignore[arg-type]
         attempt_limit=attempt_limit,
@@ -79,9 +81,10 @@ def _started_service(
     claims: object = None,
     issuer: object = None,
     attempt_limit: int = 60,
+    now: int = NOW,
 ) -> tuple[OidcLoginService, OidcLoginStart]:
     values = dict(CLAIMS) if claims is None else claims
-    service = _service(claims=values, issuer=issuer, attempt_limit=attempt_limit)
+    service = _service(claims=values, issuer=issuer, attempt_limit=attempt_limit, now=now)
     start = service.start()
     if isinstance(values, dict):
         values["nonce"] = start.nonce
@@ -121,8 +124,38 @@ class _Issuer:
             )
         return IssuedOidcSession(
             token="s" * 32,
-            receipt=OidcReceipt("user", "tenant", ("auditor",), int(time.time()) + 3600),
+            receipt=OidcReceipt(
+                "user",
+                "tenant",
+                ("auditor",),
+                min(token_expires_at, int(time.time()) + 3600),
+            ),
         )
+
+
+class _LooseStateStore:
+    def __init__(self, *, matches_result: object, consume_result: object) -> None:
+        self._matches_result = matches_result
+        self._consume_result = consume_result
+        self.consume_calls = 0
+
+    def create(self, *, state: str, nonce: str, expires_at: int) -> None:
+        del state, nonce, expires_at
+
+    def matches(self, *, state: str, nonce: str, now: int) -> bool:
+        del state, nonce, now
+        return cast(bool, self._matches_result)
+
+    def consume(self, *, state: str, nonce: str, now: int) -> bool:
+        del state, nonce, now
+        self.consume_calls += 1
+        return cast(bool, self._consume_result)
+
+    def charge_attempt(self, *, bucket: str, now: int, limit: int, window_seconds: int) -> None:
+        del bucket, now, limit, window_seconds
+
+    def charge_source_attempt(self, **arguments: object) -> None:
+        del arguments
 
 
 def test_service_rejects_invalid_configuration() -> None:
@@ -196,7 +229,10 @@ def test_attempts_are_bounded() -> None:
 
 
 def test_issuer_supplies_the_session_receipt() -> None:
-    service, start = _started_service(issuer=_Issuer("ok"))
+    # A session may not outlive the ID token, so the token must be current.
+    now = int(time.time())
+    claims = {**CLAIMS, "iat": now - 1, "exp": now + 7200}
+    service, start = _started_service(claims=claims, issuer=_Issuer("ok"), now=now)
     receipt = service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert 0 < receipt.session_receipt.expires_at - int(time.time()) <= 3600
     assert receipt.session_receipt is not receipt.receipt
@@ -257,3 +293,34 @@ def test_durable_state_survives_token_rejection_and_is_consumed_once() -> None:
     with pytest.raises(OidcLoginError) as error:
         service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
     assert error.value.code is OidcLoginErrorCode.STATE_REJECTED
+
+
+@pytest.mark.parametrize(
+    ("matches_result", "consume_result", "consume_calls"),
+    [(1, True, 0), ("yes", True, 0), (True, 1, 1)],
+)
+def test_state_store_requires_exact_boolean_results(
+    matches_result: object,
+    consume_result: object,
+    consume_calls: int,
+) -> None:
+    """Malformed state-port results must never be treated as authorization."""
+
+    values = dict(CLAIMS)
+    state_store = _LooseStateStore(
+        matches_result=matches_result,
+        consume_result=consume_result,
+    )
+    service = OidcLoginService(
+        admission=_admission(values),
+        ledger=NonceReplayLedger(now=lambda: NOW),
+        state_store=state_store,
+    )
+    start = service.start()
+    values["nonce"] = start.nonce
+
+    with pytest.raises(OidcLoginError) as error:
+        service.callback(token=TOKEN, nonce=start.nonce, state=start.state)
+
+    assert error.value.code is OidcLoginErrorCode.STATE_REJECTED
+    assert state_store.consume_calls == consume_calls

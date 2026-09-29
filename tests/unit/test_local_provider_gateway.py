@@ -68,6 +68,7 @@ def request(
             {
                 "evidence_id": "source-a",
                 "evidence_ids": ["source-a"],
+                "content_id": "source-content",
                 "instruction_authority": "NONE",
                 "data_class": data_class,
                 "content": source,
@@ -416,7 +417,11 @@ def test_loopback_native_translation_rejects_empty_messages_before_backend_dispa
     body = json.loads(request())
     body["messages"] = []
 
-    monkeypatch.setattr(LoopbackOllamaBackend, "_identity_matches", lambda self, deadline: True)
+    monkeypatch.setattr(
+        LoopbackOllamaBackend,
+        "_identity_matches",
+        lambda self, deadline, cancellation_event=None: True,
+    )
 
     def unexpected_exchange(self: object, *args: object, **kwargs: object) -> NoReturn:
         del self, args, kwargs

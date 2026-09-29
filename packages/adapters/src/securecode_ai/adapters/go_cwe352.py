@@ -16,6 +16,7 @@ from enum import StrEnum
 from securecode_ai.core import (
     CONTRACT_SCHEMA_VERSION,
     DataClass,
+    ParseHealth,
     ProducerRef,
     RawSignal,
     RepositoryFile,
@@ -25,12 +26,11 @@ from securecode_ai.core import (
     SourceRange,
     SymbolIndex,
 )
-from securecode_ai.core import ParseHealth
 from tree_sitter import Language, Node, Parser
 
 from .cst import build_go_symbol_index
-from .cst_models import CstAdapterError
 from .cst_go import _go_language
+from .cst_models import CstAdapterError
 
 _MAX_SOURCE_BYTES = 2_000_000
 _MAX_SIGNALS = 2_048
@@ -52,16 +52,26 @@ _HTTP_METHOD_CONSTANTS = {
 }
 _MUTATION_CALLS = frozenset(
     {
-        "Create", "CreateInBatches", "Delete", "Exec", "ExecContext", "Insert",
-        "InsertOne", "Remove", "Save", "Update", "UpdateColumn", "UpdateColumns",
-        "UpdateContext", "Updates", "WriteFile",
+        "Create",
+        "CreateInBatches",
+        "Delete",
+        "Exec",
+        "ExecContext",
+        "Insert",
+        "InsertOne",
+        "Remove",
+        "Save",
+        "Update",
+        "UpdateColumn",
+        "UpdateColumns",
+        "UpdateContext",
+        "Updates",
+        "WriteFile",
     }
 )
 _CSRF_MIDDLEWARE: dict[str, frozenset[str]] = {
     "github.com/gorilla/csrf": frozenset({"Protect"}),
-    "github.com/justinas/nosurf": frozenset(
-        {"New", "NewPure", "NewWithBaseURL", "Handler"}
-    ),
+    "github.com/justinas/nosurf": frozenset({"New", "NewPure", "NewWithBaseURL", "Handler"}),
     "github.com/go-chi/chi/middleware": frozenset({"CSRF"}),
     "github.com/go-chi/chi/v5/middleware": frozenset({"CSRF"}),
     "github.com/labstack/echo/v4/middleware": frozenset({"CSRF", "CSRFWithConfig"}),
@@ -601,19 +611,23 @@ def _scope_preorder(scope: Node, max_nodes: int, max_depth: int) -> tuple[Node, 
 def _is_nonproduction_path(path: str) -> bool:
     normalized = path.replace("\\", "/").casefold()
     parts = set(normalized.split("/"))
-    return normalized.endswith("_test.go") or normalized.endswith("_testdata.go") or bool(
-        parts.intersection(
-            {
-                "doc",
-                "docs",
-                "example",
-                "examples",
-                "fixture",
-                "fixtures",
-                "test",
-                "tests",
-                "testdata",
-            }
+    return (
+        normalized.endswith("_test.go")
+        or normalized.endswith("_testdata.go")
+        or bool(
+            parts.intersection(
+                {
+                    "doc",
+                    "docs",
+                    "example",
+                    "examples",
+                    "fixture",
+                    "fixtures",
+                    "test",
+                    "tests",
+                    "testdata",
+                }
+            )
         )
     )
 
@@ -776,9 +790,8 @@ def _has_mutating_method_evidence(
                 and _method_predicate(_compact(source, condition), imports)
             ):
                 return True
-        if parent.type == "expression_case":
-            if _case_has_mutating_method(parent, source, imports):
-                return True
+        if parent.type == "expression_case" and _case_has_mutating_method(parent, source, imports):
+            return True
         parent = parent.parent
     for node in scope_nodes:
         if node.type != "call_expression" or node.start_byte >= mutation.start_byte:
@@ -816,16 +829,16 @@ def _method_predicate(condition: str, imports: dict[str, str]) -> bool:
     if match is None or match.group(2) != "==":
         return False
     left, right = match.group(1), match.group(3)
-    return (
-        _is_request_method(left) and _is_mutating_method(right, imports)
-    ) or (
+    return (_is_request_method(left) and _is_mutating_method(right, imports)) or (
         _is_request_method(right) and _is_mutating_method(left, imports)
     )
 
 
 def _is_method_comparison(value: str) -> bool:
     match = re.fullmatch(r"(.+?)(==|!=)(.+)", _strip_outer_parentheses(value))
-    return match is not None and (_is_request_method(match.group(1)) or _is_request_method(match.group(3)))
+    return match is not None and (
+        _is_request_method(match.group(1)) or _is_request_method(match.group(3))
+    )
 
 
 def _is_request_method(value: str) -> bool:
@@ -834,12 +847,15 @@ def _is_request_method(value: str) -> bool:
 
 def _is_mutating_method(value: str, imports: dict[str, str]) -> bool:
     literal = value.strip('"`')
-    if literal in _MUTATING_METHODS and value[:1] in {'"', '`'}:
+    if literal in _MUTATING_METHODS and value[:1] in {'"', "`"}:
         return True
     if "." not in value:
         return False
     alias, constant = value.rsplit(".", 1)
-    return imports.get(alias) == _HTTP_PACKAGE and _HTTP_METHOD_CONSTANTS.get(constant) in _MUTATING_METHODS
+    return (
+        imports.get(alias) == _HTTP_PACKAGE
+        and _HTTP_METHOD_CONSTANTS.get(constant) in _MUTATING_METHODS
+    )
 
 
 def _case_has_mutating_method(node: Node, source: bytes, imports: dict[str, str]) -> bool:
@@ -902,7 +918,9 @@ def _terminal_name(source: bytes, node: Node) -> str:
 
 
 def _compact(source: bytes, node: Node) -> str:
-    return b"".join(source[node.start_byte:node.end_byte].split()).decode("ascii", errors="ignore")
+    return b"".join(source[node.start_byte : node.end_byte].split()).decode(
+        "ascii", errors="ignore"
+    )
 
 
 def _text(source: bytes, node: Node | None) -> str:
@@ -956,12 +974,12 @@ Cwe352Signal = GoCwe352Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE352_SCAN_LIMITS",
     "Cwe352ScanError",
     "Cwe352ScanErrorCode",
     "Cwe352ScanLimits",
     "Cwe352ScanResult",
     "Cwe352Signal",
-    "DEFAULT_GO_CWE352_SCAN_LIMITS",
     "GoCwe352Operation",
     "GoCwe352ScanError",
     "GoCwe352ScanErrorCode",
@@ -969,7 +987,7 @@ __all__ = [
     "GoCwe352ScanResult",
     "GoCwe352Signal",
     "go_cwe352_signals_to_raw_signals",
+    "scan_go_csrf",
     "scan_go_cwe352",
     "scan_go_cwe352_csrf",
-    "scan_go_csrf",
 ]

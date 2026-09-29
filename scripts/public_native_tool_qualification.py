@@ -642,6 +642,7 @@ def _context(fixture: PublicFixture, probe: NativeToolProbe) -> dict[str, object
             {
                 "evidence_id": anchor.evidence_id,
                 "evidence_ids": [anchor.evidence_id],
+                "content_id": anchor.read_artifact.content_id,
                 "instruction_authority": "NONE",
                 "data_class": "DC3_CONFIDENTIAL_SOURCE",
                 "content": _PUBLIC_SOURCE.decode("ascii"),

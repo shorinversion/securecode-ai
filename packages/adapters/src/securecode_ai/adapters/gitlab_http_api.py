@@ -22,9 +22,9 @@ GitlabHTTPAPI = GitlabRestAPI
 __all__ = [
     "GitlabAPIError",
     "GitlabAPIErrorCode",
+    "GitlabAuthenticatedAPI",
+    "GitlabHTTPAPI",
     "GitlabHTTPRequest",
     "GitlabHTTPResponse",
-    "GitlabAuthenticatedAPI",
     "GitlabHttpAPI",
-    "GitlabHTTPAPI",
 ]

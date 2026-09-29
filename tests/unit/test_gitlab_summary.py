@@ -66,8 +66,11 @@ def _setup(outcome: AuditRunOutcome = AuditRunOutcome.PASS) -> tuple[Any, Any, s
             execution_identity=identity,
         )
     )
+    run_id = admission.admission.run_id
+    # Production projects only an audit run whose run_id is the SCM run id.
+    audit_run = audit_run.model_copy(update={"run_id": run_id})
     publisher = GitlabSummaryPublisher(adapter)
-    return publisher, audit_run, admission.admission.run_id, head
+    return publisher, audit_run, run_id, head
 
 
 def test_publisher_requires_a_gitlab_adapter() -> None:
@@ -107,6 +110,8 @@ def test_first_projection_creates_then_repeats_idempotently() -> None:
     assert projection.merge_authority is False
     assert projection.rendered_markdown.startswith("<!-- securecode-ai-gitlab-summary:")
     assert "advisory" in projection.rendered_markdown
+    # Without a completion receipt no policy outcome exists yet.
+    assert "Published policy status: INDETERMINATE" in projection.rendered_markdown
     assert projection.note_idempotency_key.startswith("note-")
 
     second = publisher.project(GitlabSummaryRequest(scm_run_id=run_id, audit_run=audit_run))

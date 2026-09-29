@@ -38,6 +38,7 @@ from securecode_ai.core.tool_policy import (
     ToolOutcome,
 )
 
+from .model_types import _ProviderConnector
 from .product_model import (
     AUDITOR_WIRE_SCHEMA_JSON,
     MODEL_NATIVE_DISCOVERY_WIRE_SCHEMA_JSON,
@@ -96,10 +97,7 @@ PRODUCT_DISCOVERY_PROMPT_PIN = _prompt_pin(
 PRODUCT_AUDITOR_PROMPT_PIN = _prompt_pin("auditor", _AUDITOR_INSTRUCTIONS, AUDITOR_WIRE_SCHEMA_JSON)
 
 
-class ProviderConnector(Protocol):
-    def connect(self, **kwargs: object) -> object: ...
-
-    def send(self, channel: object, **kwargs: object) -> object: ...
+ProviderConnector = _ProviderConnector
 
 
 @dataclass(frozen=True, slots=True)

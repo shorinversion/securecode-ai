@@ -49,11 +49,11 @@ from .ports import (
     VerifiedIdentity,
 )
 from .request_quota import MAX_SPEND_MICROUNITS, QuotaError, QuotaErrorCode, RequestQuota
-from .run_admission_models import request_sha256 as _run_request_sha256
 from .request_scope import repository_id as _repository_id
+from .run_admission_models import request_sha256 as _run_request_sha256
 from .sessions import SessionError, SessionStore
-from .tenant_rate_limiter import TenantRateLimiter, TenantTokenBucketRateLimiter
 from .telemetry import TelemetryRecorder
+from .tenant_rate_limiter import TenantRateLimiter, TenantTokenBucketRateLimiter
 
 
 class RequestTelemetry(Protocol):
@@ -237,15 +237,19 @@ class ServerApp:
         if query_string is None:
             await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
             return
-        if path in {
-            "/api/v1/auth/login",
-            "/api/v1/auth/callback",
-            "/api/v1/auth/logout",
-            "/api/v1/capabilities",
-            "/api/v1/health/live",
-            "/api/v1/health/ready",
-            "/api/v1/openapi.json",
-        } and query_string:
+        if (
+            path
+            in {
+                "/api/v1/auth/login",
+                "/api/v1/auth/callback",
+                "/api/v1/auth/logout",
+                "/api/v1/capabilities",
+                "/api/v1/health/live",
+                "/api/v1/health/ready",
+                "/api/v1/openapi.json",
+            }
+            and query_string
+        ):
             await self._send_error(send, 400, "INVALID_REQUEST", correlation_id)
             return
         headers = _headers(scope.get("headers"))
@@ -459,7 +463,12 @@ class ServerApp:
                     await self._send_json(
                         send,
                         429,
-                        {"error": {"code": "RATE_LIMIT_EXCEEDED", "correlation_id": correlation_id}},
+                        {
+                            "error": {
+                                "code": "RATE_LIMIT_EXCEEDED",
+                                "correlation_id": correlation_id,
+                            }
+                        },
                         {"Retry-After": str(target_rate.retry_after_seconds)},
                     )
                     return
@@ -479,8 +488,10 @@ class ServerApp:
                     "check_idempotent_run",
                     None,
                 )
-                if route.action == "runs.create" and key is not None and callable(
-                    idempotent_run_charge
+                if (
+                    route.action == "runs.create"
+                    and key is not None
+                    and callable(idempotent_run_charge)
                 ):
                     decision = idempotent_run_charge(
                         tenant_id=target_tenant,
@@ -867,13 +878,12 @@ def _parse_query(action: str, query_string: str) -> dict[str, tuple[str, ...]] |
     query = {name: tuple(values) for name, values in parsed.items()}
     if any(len(values) != 1 for values in query.values()):
         return None
-    if any(
-        not _valid_query_value(name, values[0])
-        for name, values in query.items()
-    ):
+    if any(not _valid_query_value(name, values[0]) for name, values in query.items()):
         return None
-    if action == "runs.artifacts.read" and "content_sha256" in query and (
-        "cursor" in query or "limit" in query
+    if (
+        action == "runs.artifacts.read"
+        and "content_sha256" in query
+        and ("cursor" in query or "limit" in query)
     ):
         return None
     return query

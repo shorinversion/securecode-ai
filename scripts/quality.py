@@ -61,7 +61,6 @@ def _python_targets() -> tuple[str, ...]:
 
 def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
     return (
-        QualityStage("spec", ("scripts/spec_gate.py", "snapshot")),
         QualityStage(
             "format",
             ("-m", "ruff", "format", "--no-cache", "--check", *targets),

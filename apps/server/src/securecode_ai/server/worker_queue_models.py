@@ -173,11 +173,9 @@ def replayed_lease(value: str, lease_seconds: int) -> WorkerQueueLease | None:
             expected_keys - {"next_event_sequence", "operation", "resource_budget"},
         }
         document_keys = set(document)
-        if (
-            document_keys != expected_keys
-            and document_keys not in legacy_key_sets
-            or document["schema_version"] != _SCHEMA_VERSION
-        ):
+        if (document_keys != expected_keys and document_keys not in legacy_key_sets) or document[
+            "schema_version"
+        ] != _SCHEMA_VERSION:
             raise WorkerQueueConflict()
         tenant_id = document["tenant_id"]
         run_id = document["run_id"]

@@ -228,6 +228,20 @@ def test_pathlib_joinpath_with_constant_segment_emits_no_path_traversal_fact() -
     )
 
 
+def test_os_system_with_request_args_emits_command_injection_fact() -> None:
+    source = b"import os\ndef run(request):\n os.system(request.args.get('cmd'))\n"
+
+    result = scan_cwe_portfolio(_index(build_python_symbol_index, "api/run.py", source))
+
+    assert tuple(signal.cwe for signal in result.signals) == ("CWE-78",)
+
+
+def test_os_system_with_constant_command_emits_no_command_injection_fact() -> None:
+    source = b"import os\ndef run():\n os.system('date')\n"
+
+    assert scan_cwe_portfolio(_index(build_python_symbol_index, "api/run.py", source)).signals == ()
+
+
 @pytest.mark.parametrize(
     ("builder", "path", "source"),
     [
@@ -346,20 +360,6 @@ def test_go_local_constant_path_flow_emits_no_path_traversal_fact() -> None:
     )
 
     assert scan_cwe_portfolio(_index(build_go_symbol_index, "api/read.go", source)).signals == ()
-
-
-def test_os_system_with_request_args_emits_command_injection_fact() -> None:
-    source = b"import os\ndef run(request):\n os.system(request.args.get('cmd'))\n"
-
-    result = scan_cwe_portfolio(_index(build_python_symbol_index, "api/run.py", source))
-
-    assert tuple(signal.cwe for signal in result.signals) == ("CWE-78",)
-
-
-def test_os_system_with_constant_command_emits_no_command_injection_fact() -> None:
-    source = b"import os\ndef run():\n os.system('date')\n"
-
-    assert scan_cwe_portfolio(_index(build_python_symbol_index, "api/run.py", source)).signals == ()
 
 
 @pytest.mark.parametrize(

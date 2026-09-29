@@ -90,9 +90,7 @@ class PolicyOperationsHandler:
             repository_id=repository_id,
             profile_id=_required_text(document, "profile_id"),
             version=_required_int(document, "version"),
-            expected_assignment_version=_optional_version(
-                document["expected_assignment_version"]
-            ),
+            expected_assignment_version=_optional_version(document["expected_assignment_version"]),
             idempotency_key=request.idempotency_key,
         )
         profile = self._store.resolve_profile(
@@ -118,9 +116,7 @@ class PolicyOperationsHandler:
             tenant_id=request.identity.tenant_id,
             profile_id=profile_id,
             version=version,
-            expected_assignment_version=_optional_version(
-                document["expected_assignment_version"]
-            ),
+            expected_assignment_version=_optional_version(document["expected_assignment_version"]),
             idempotency_key=request.idempotency_key,
         )
         profile = self._store.get_profile(

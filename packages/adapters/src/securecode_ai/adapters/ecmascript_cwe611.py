@@ -119,7 +119,9 @@ _SAFE_FALSE_FLAGS = frozenset(
         "useDTD",
     }
 )
-_SAFE_TRUE_FLAGS = frozenset({"disableDtd", "disableDTD", "disableExternalEntities", "noNetwork", "noNet", "nonet"})
+_SAFE_TRUE_FLAGS = frozenset(
+    {"disableDtd", "disableDTD", "disableExternalEntities", "noNetwork", "noNet", "nonet"}
+)
 _UNSAFE_FALSE_FLAGS = _SAFE_TRUE_FLAGS
 _UNSAFE_TRUE_FLAGS = _SAFE_FALSE_FLAGS | frozenset(
     {"dtd", "dtdattr", "dtdload", "parseNoEnt", "replaceEntities"}
@@ -246,9 +248,7 @@ class EcmaScriptCwe611Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe611Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe611Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -374,9 +374,7 @@ def scan_javascript_cwe611(
 ) -> EcmaScriptCwe611ScanResult:
     """Find bounded JavaScript XML external-entity facts."""
 
-    return _scan_ecmascript_cwe611(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe611(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe611(
@@ -386,9 +384,7 @@ def scan_typescript_cwe611(
 ) -> EcmaScriptCwe611ScanResult:
     """Find bounded TypeScript XML external-entity facts."""
 
-    return _scan_ecmascript_cwe611(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe611(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe611(
@@ -446,20 +442,14 @@ def _scan_ecmascript_cwe611(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe611ScanError(
-            EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe611ScanError(
-            EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe611ScanError(
-                EcmaScriptCwe611ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         object_literals = _collect_object_literals(nodes, source)
         parser_safety = _collect_parser_safety(nodes, source, aliases)
@@ -497,9 +487,7 @@ def _scan_ecmascript_cwe611(
                         )
                     raw.add((source_range, sink, operation))
                     if len(raw) > limits.max_signals:
-                        raise EcmaScriptCwe611ScanError(
-                            EcmaScriptCwe611ScanErrorCode.SIGNAL_LIMIT
-                        )
+                        raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
             key=lambda item: (
@@ -513,9 +501,7 @@ def _scan_ecmascript_cwe611(
     except EcmaScriptCwe611ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe611ScanError(
-            EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe611Signal(
@@ -632,12 +618,18 @@ def _is_safe_parser_call(
         return False
     if function.type in {"member_expression", "subscript_expression"}:
         object_node = function.child_by_field_name("object")
-        if object_node is not None and object_node.type == "identifier":
-            if parser_safety.get(_text(source, object_node), False):
-                return True
-        if object_node is not None and object_node.type == "new_expression":
-            if _configuration_is_safe(object_node, source, object_literals):
-                return True
+        if (
+            object_node is not None
+            and object_node.type == "identifier"
+            and parser_safety.get(_text(source, object_node), False)
+        ):
+            return True
+        if (
+            object_node is not None
+            and object_node.type == "new_expression"
+            and _configuration_is_safe(object_node, source, object_literals)
+        ):
+            return True
     base = canonical.rsplit(".", 1)[0] if "." in canonical else ""
     if base and parser_safety.get(base.split(".", 1)[0], False):
         return True
@@ -650,12 +642,16 @@ def _collect_parser_safety(
     safety: dict[str, bool] = {}
     objects = _collect_object_literals(nodes, source)
     for node in nodes:
-        if node.type not in {"lexical_declaration", "variable_declaration", "assignment_expression"}:
+        if node.type not in {
+            "lexical_declaration",
+            "variable_declaration",
+            "assignment_expression",
+        }:
             continue
         if node.type == "assignment_expression":
             name = node.child_by_field_name("left")
             value = node.child_by_field_name("right")
-            targets = ((name, value),)
+            targets: tuple[tuple[Node | None, Node | None], ...] = ((name, value),)
         else:
             pairs: list[tuple[Node | None, Node | None]] = []
             for declarator in node.named_children:
@@ -724,9 +720,13 @@ def _collect_object_literals(nodes: tuple[Node, ...], source: bytes) -> dict[str
                 continue
             name = declarator.child_by_field_name("name")
             value = declarator.child_by_field_name("value")
-            if name is not None and value is not None and name.type == "identifier":
-                if _unwrap(value).type == "object":
-                    objects[_text(source, name)] = value
+            if (
+                name is not None
+                and value is not None
+                and name.type == "identifier"
+                and _unwrap(value).type == "object"
+            ):
+                objects[_text(source, name)] = value
     return objects
 
 
@@ -792,7 +792,9 @@ def _resolve_xml_sources(
         if function is None or arguments is None:
             return ()
         canonical = _canonical_expression(function, source, aliases)
-        if canonical in _XML_SANITIZERS or (canonical and canonical.rsplit(".", 1)[-1] in _XML_SANITIZERS):
+        if canonical in _XML_SANITIZERS or (
+            canonical and canonical.rsplit(".", 1)[-1] in _XML_SANITIZERS
+        ):
             flows = _resolve_children(arguments, scope, source, aliases, limits, depth + 1, visited)
             return tuple(_Flow(flow.source, sanitized=True) for flow in flows)
         if canonical in _SAFE_XML_TRANSFORMS or (
@@ -930,9 +932,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -1053,10 +1059,14 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
         constructor = current.child_by_field_name("constructor") or current.child_by_field_name(
             "function"
         )
-        return _canonical_expression(constructor, source, aliases) if constructor is not None else None
+        return (
+            _canonical_expression(constructor, source, aliases) if constructor is not None else None
+        )
     if current.type in {"member_expression", "subscript_expression"}:
         object_node = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         if object_node is None or property_node is None:
             return None
         base = _canonical_expression(object_node, source, aliases)
@@ -1138,18 +1148,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe611ScanError(
-            EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe611ScanError(
-            EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe611ScanError(EcmaScriptCwe611ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -1250,12 +1256,12 @@ scan_typescript_xxe = scan_typescript_cwe611
 scan_ecmascript_xxe = scan_ecmascript_cwe611
 
 __all__ = [
+    "DEFAULT_ECMASCRIPT_CWE611_SCAN_LIMITS",
     "Cwe611ScanError",
     "Cwe611ScanErrorCode",
     "Cwe611ScanLimits",
     "Cwe611ScanResult",
     "Cwe611Signal",
-    "DEFAULT_ECMASCRIPT_CWE611_SCAN_LIMITS",
     "EcmaScriptCwe611Operation",
     "EcmaScriptCwe611ScanError",
     "EcmaScriptCwe611ScanErrorCode",

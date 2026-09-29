@@ -63,7 +63,9 @@ def handle_gateway_request(
         return _failure(413)
     if type(policy) is not GatewayPolicy:
         return _failure(502)
-    if cancellation_event is not None and not isinstance(cancellation_event, threading.Event):
+    # Widen to ``object``: the runtime check guards untyped direct callers.
+    supplied_event: object = cancellation_event
+    if supplied_event is not None and not isinstance(supplied_event, threading.Event):
         return _failure(502)
     if deadline is not None:
         if type(deadline) not in (int, float):
@@ -220,8 +222,7 @@ def handle_gateway_request(
                 or not 1 <= auditor_metadata["candidate_version"] <= 1_000_000
                 or not _valid_id(auditor_metadata["auditor_identity"])
                 or not isinstance(auditor_metadata["auditor_output_sha256"], str)
-                or re.fullmatch(r"[0-9a-f]{64}", auditor_metadata["auditor_output_sha256"])
-                is None
+                or re.fullmatch(r"[0-9a-f]{64}", auditor_metadata["auditor_output_sha256"]) is None
                 or not isinstance(auditor_metadata["finding_verdict"], str)
                 or not auditor_metadata["finding_verdict"]
                 or auditor_metadata["instruction_authority"] != "NONE"
@@ -298,8 +299,7 @@ def handle_gateway_request(
             )
             if (
                 not isinstance(item, dict)
-                or set(item)
-                != required_evidence_fields
+                or set(item) != required_evidence_fields
                 or item["instruction_authority"] != "NONE"
                 or not isinstance(item["content"], str)
                 or not _valid_id(item["content_id"])

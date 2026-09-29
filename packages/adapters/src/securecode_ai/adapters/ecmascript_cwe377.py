@@ -153,9 +153,7 @@ class EcmaScriptCwe377Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe377Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe377Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -285,9 +283,7 @@ def scan_javascript_cwe377(
 ) -> EcmaScriptCwe377ScanResult:
     """Find bounded JavaScript insecure-temporary-file facts."""
 
-    return _scan_ecmascript_cwe377(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe377(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe377(
@@ -297,9 +293,7 @@ def scan_typescript_cwe377(
 ) -> EcmaScriptCwe377ScanResult:
     """Find bounded TypeScript insecure-temporary-file facts."""
 
-    return _scan_ecmascript_cwe377(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe377(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe377(
@@ -357,20 +351,14 @@ def _scan_ecmascript_cwe377(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe377ScanError(
-            EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe377ScanError(EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe377ScanError(
-            EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe377ScanError(EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe377ScanError(
-                EcmaScriptCwe377ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe377ScanError(EcmaScriptCwe377ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe377Operation]] = set()
         for node in nodes:
@@ -394,9 +382,7 @@ def _scan_ecmascript_cwe377(
     except EcmaScriptCwe377ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe377ScanError(
-            EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe377ScanError(EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe377Signal(
@@ -475,7 +461,10 @@ def _call_facts(
     # fs.mkdtemp creates a unique directory and is intentionally not a sink.
     # The operation map excludes it, and this guard protects aliases added by
     # future operation maps from being reported accidentally.
-    if callee is not None and callee.rsplit(".", 1)[-1].lower() in {"mkdtemp", "mkdtempSync".lower()}:
+    if callee is not None and callee.rsplit(".", 1)[-1].lower() in {
+        "mkdtemp",
+        "mkdtempSync".lower(),
+    }:
         return set()
 
     path_node = values[0]
@@ -605,20 +594,27 @@ def _predictable_temp_path(
     if current.type == "call_expression":
         function = current.child_by_field_name("function")
         arguments = current.child_by_field_name("arguments")
-        callee = (
-            _canonical_expression(function, source, aliases)
-            if function is not None
-            else None
-        )
+        callee = _canonical_expression(function, source, aliases) if function is not None else None
         if _is_unsafe_temp_name_callee(callee):
             return True
-        if callee in {"os.tmpdir", "path.tmpdir", "process.env.TMPDIR", "process.env.TMP", "process.env.TEMP"}:
+        if callee in {
+            "os.tmpdir",
+            "path.tmpdir",
+            "process.env.TMPDIR",
+            "process.env.TMP",
+            "process.env.TEMP",
+        }:
             return True
         values = list(arguments.named_children) if arguments is not None else []
-        if callee in {"path.join", "path.resolve", "path.normalize", "path.posix.join", "path.win32.join"}:
+        if callee in {
+            "path.join",
+            "path.resolve",
+            "path.normalize",
+            "path.posix.join",
+            "path.win32.join",
+        }:
             return any(
-                _predictable_temp_path(child, source, aliases, seen=seen)
-                for child in values
+                _predictable_temp_path(child, source, aliases, seen=seen) for child in values
             ) or _has_temp_marker(_compact_text(source, current))
         return _has_temp_marker(_compact_text(source, current)) or _contains_unsafe_temp_call(
             current, source, aliases
@@ -647,9 +643,7 @@ def _contains_unsafe_temp_call(node: Node, source: bytes, aliases: dict[str, str
         if current.type == "call_expression":
             function = current.child_by_field_name("function")
             callee = (
-                _canonical_expression(function, source, aliases)
-                if function is not None
-                else None
+                _canonical_expression(function, source, aliases) if function is not None else None
             )
             if _is_unsafe_temp_name_callee(callee):
                 return True
@@ -675,7 +669,9 @@ def _has_unsafe_temp_name_text(value: str) -> bool:
 
 
 def _is_safe_temp_alias_text(value: str) -> bool:
-    return bool(re.search(r"(?<![a-z0-9])(?:fs\.)?mkdtemps?(?:sync)?(?![a-z0-9])", value, re.IGNORECASE))
+    return bool(
+        re.search(r"(?<![a-z0-9])(?:fs\.)?mkdtemps?(?:sync)?(?![a-z0-9])", value, re.IGNORECASE)
+    )
 
 
 def _has_temp_marker(value: str) -> bool:
@@ -706,9 +702,19 @@ def _has_temp_marker(value: str) -> bool:
 
 def _is_temp_identifier(value: str) -> bool:
     lowered = value.lower()
-    if lowered in {"tmp", "temp", "tmpfile", "tempfile", "tmppath", "temppath", "tmpname", "tempname"}:
+    if lowered in {
+        "tmp",
+        "temp",
+        "tmpfile",
+        "tempfile",
+        "tmppath",
+        "temppath",
+        "tmpname",
+        "tempname",
+    }:
         return True
     return bool(re.match(r"^(?:tmp|temp)(?:_|[A-Z])", value))
+
 
 def _collect_aliases(nodes: tuple[Node, ...], source: bytes) -> dict[str, str]:
     """Collect direct, local module and callable aliases from the CST."""
@@ -773,7 +779,11 @@ def _collect_destructured_aliases(
     pattern: Node, module: str, source: bytes, aliases: dict[str, str]
 ) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key, value = _pair_parts(child)
         if key is None:
@@ -880,18 +890,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe377ScanError(
-            EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe377ScanError(EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe377ScanError(
-            EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe377ScanError(EcmaScriptCwe377ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -940,9 +946,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -976,9 +980,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

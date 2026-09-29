@@ -748,9 +748,7 @@ def _record_call(
         detail = _DETAIL_ARGV
         operation = PythonCwe78Operation.SUBPROCESS_ARGV
     else:
-        source_flows = _resolve_flows(
-            argument, aliases, flows, source, line_starts, limits, 0
-        )
+        source_flows = _resolve_flows(argument, aliases, flows, source, line_starts, limits, 0)
         detail = _DETAIL_SHELL
         operation = sink.operation
     if not source_flows:
@@ -835,16 +833,13 @@ def _resolve_flows(
     if isinstance(node, ast.Name):
         return flows.get(node.id, ())
     if isinstance(node, (ast.Await, ast.NamedExpr)):
-        return _resolve_flows(
-            node.value, aliases, flows, source, line_starts, limits, depth + 1
-        )
+        return _resolve_flows(node.value, aliases, flows, source, line_starts, limits, depth + 1)
     if isinstance(node, ast.Call):
         canonical = _canonical_reference(node.func, aliases, limits.max_resolution_depth)
         if canonical in _SANITIZER_CALLS:
             return ()
         if canonical in _FLOW_PRESERVING_CALLS or (
-            canonical is not None
-            and canonical.rsplit(".", 1)[-1] in _FLOW_PRESERVING_METHODS
+            canonical is not None and canonical.rsplit(".", 1)[-1] in _FLOW_PRESERVING_METHODS
         ):
             return _dedupe_flows(
                 (
@@ -888,9 +883,7 @@ def _resolve_flows(
     return ()
 
 
-def _dedupe_flows(
-    flows: Iterable[_Flow], limits: PythonCwe78ScanLimits
-) -> tuple[_Flow, ...]:
+def _dedupe_flows(flows: Iterable[_Flow], limits: PythonCwe78ScanLimits) -> tuple[_Flow, ...]:
     unique: dict[tuple[int, int], _Flow] = {}
     for flow in flows:
         unique[(flow.source.start_byte, flow.source.end_byte)] = flow
@@ -924,7 +917,11 @@ def _source_range(
 def _is_source_root(canonical: str | None) -> bool:
     if canonical is None:
         return False
-    return canonical in _REQUEST_ROOTS or canonical.endswith(".request") or canonical.endswith(".Request")
+    return (
+        canonical in _REQUEST_ROOTS
+        or canonical.endswith(".request")
+        or canonical.endswith(".Request")
+    )
 
 
 def _is_source_container(canonical: str | None) -> bool:
@@ -950,9 +947,7 @@ def _is_source_access_call(canonical: str, node: ast.AST) -> bool:
         return True
     if _is_source_root(base) and method in _REQUEST_ACCESS_METHODS:
         return True
-    if _is_source_container(base) and method in _CONTAINER_ACCESS_METHODS:
-        return True
-    return False
+    return bool(_is_source_container(base) and method in _CONTAINER_ACCESS_METHODS)
 
 
 def _canonical_reference(
@@ -966,7 +961,14 @@ def _canonical_reference(
     if isinstance(node, ast.Name):
         if node.id in aliases:
             return aliases[node.id]
-        if node.id in _REQUEST_ROOTS or node.id in {"os", "sys", "subprocess", "input", "environ", "env"}:
+        if node.id in _REQUEST_ROOTS or node.id in {
+            "os",
+            "sys",
+            "subprocess",
+            "input",
+            "environ",
+            "env",
+        }:
             return node.id
         return None
     if isinstance(node, ast.Attribute):

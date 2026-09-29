@@ -250,9 +250,7 @@ class WorkerResourceAccountingHandler:
             # reservation.  Keep non-completion actions on the fallback,
             # while reporting an invalid completion contract directly.
             return (
-                _error_response(
-                    WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409)
-                )
+                _error_response(WorkerResourceError(WorkerResourceErrorCode.INVALID_USAGE, 409))
                 if request.action == "worker_sessions.complete"
                 else await self._fallback.dispatch(request)
             )
@@ -408,7 +406,7 @@ def settle_worker_resources(
         )
         current_terminal_binding = binding.state is target
         if (
-            not stale_reserved_binding and not current_terminal_binding
+            (not stale_reserved_binding and not current_terminal_binding)
             or row["state_version"] != binding.reservation_version + 1
             or (target is ReservationState.COMMITTED) is not (settlement.usage is not None)
             or (

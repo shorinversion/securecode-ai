@@ -537,7 +537,9 @@ def _scan_statements(
             continue
         if isinstance(statement, ast.ClassDef):
             child_aliases = dict(aliases)
-            _scan_statements(statement.body, child_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, tree, source, line_starts, limits, output
+            )
             aliases[statement.name] = None
             continue
 
@@ -560,9 +562,13 @@ def _scan_statements(
             body_aliases = dict(aliases)
             if isinstance(statement, (ast.For, ast.AsyncFor)):
                 _invalidate_target_aliases(statement.target, body_aliases)
-            _scan_statements(statement.body, body_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, body_aliases, tree, source, line_starts, limits, output
+            )
             else_aliases = dict(aliases)
-            _scan_statements(statement.orelse, else_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.orelse, else_aliases, tree, source, line_starts, limits, output
+            )
             _merge_aliases(aliases, body_aliases, else_aliases)
         elif isinstance(statement, (ast.With, ast.AsyncWith)):
             parent_aliases = dict(aliases)
@@ -570,24 +576,34 @@ def _scan_statements(
             for item in statement.items:
                 if item.optional_vars is not None:
                     _invalidate_target_aliases(item.optional_vars, child_aliases)
-            _scan_statements(statement.body, child_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, tree, source, line_starts, limits, output
+            )
             _merge_aliases(aliases, parent_aliases, child_aliases)
         elif isinstance(statement, ast.Try):
             branches: list[dict[str, str | None]] = []
             body_aliases = dict(aliases)
-            _scan_statements(statement.body, body_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, body_aliases, tree, source, line_starts, limits, output
+            )
             branches.append(body_aliases)
             for handler in statement.handlers:
                 handler_aliases = dict(aliases)
                 if handler.name is not None:
                     handler_aliases[handler.name] = None
-                _scan_statements(handler.body, handler_aliases, tree, source, line_starts, limits, output)
+                _scan_statements(
+                    handler.body, handler_aliases, tree, source, line_starts, limits, output
+                )
                 branches.append(handler_aliases)
             else_aliases = dict(aliases)
-            _scan_statements(statement.orelse, else_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.orelse, else_aliases, tree, source, line_starts, limits, output
+            )
             branches.append(else_aliases)
             final_aliases = dict(aliases)
-            _scan_statements(statement.finalbody, final_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.finalbody, final_aliases, tree, source, line_starts, limits, output
+            )
             branches.append(final_aliases)
             _merge_many_aliases(aliases, branches)
         else:
@@ -697,10 +713,7 @@ def _record_call(
 
 
 def _message_node(call: ast.Call, operation: PythonCwe117Operation) -> ast.expr | None:
-    if operation.value.endswith(".log"):
-        index = 1
-    else:
-        index = 0
+    index = 1 if operation.value.endswith(".log") else 0
     for keyword in call.keywords:
         if keyword.arg in {"msg", "message"}:
             return keyword.value
@@ -726,10 +739,7 @@ def _is_structured_message(
         return False
     if type(message.value) is not str:
         return False
-    if operation.value.endswith(".log"):
-        format_index = 2
-    else:
-        format_index = 1
+    format_index = 2 if operation.value.endswith(".log") else 1
     if len(call.args) > format_index:
         return True
     return any(keyword.arg in {"extra", "context", "fields", "data"} for keyword in call.keywords)
@@ -945,9 +955,11 @@ def _is_parameter_source(name: str, call: ast.Call, tree: ast.AST | None) -> boo
         *scope.args.args,
         *scope.args.kwonlyargs,
     )
-    return any(parameter.arg == name for parameter in parameters) or (
-        scope.args.vararg is not None and scope.args.vararg.arg == name
-    ) or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    return (
+        any(parameter.arg == name for parameter in parameters)
+        or (scope.args.vararg is not None and scope.args.vararg.arg == name)
+        or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    )
 
 
 def _enclosing_function(
@@ -1325,9 +1337,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

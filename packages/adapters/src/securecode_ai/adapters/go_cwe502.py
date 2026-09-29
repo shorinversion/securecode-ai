@@ -115,9 +115,7 @@ _DIRECT_OPERATIONS: dict[tuple[str, str], GoCwe502Operation] = {
 }
 for _yaml_package in _YAML_PACKAGES:
     _DIRECT_OPERATIONS[(_yaml_package, "Unmarshal")] = GoCwe502Operation.YAML_UNMARSHAL
-    _DIRECT_OPERATIONS[(_yaml_package, "UnmarshalStrict")] = (
-        GoCwe502Operation.YAML_UNMARSHAL_STRICT
-    )
+    _DIRECT_OPERATIONS[(_yaml_package, "UnmarshalStrict")] = GoCwe502Operation.YAML_UNMARSHAL_STRICT
 
 
 @dataclass(frozen=True, slots=True)
@@ -483,7 +481,7 @@ def _operation_for_call(
     arguments = node.child_by_field_name("arguments")
     if function is None or arguments is None:
         return None
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     if not values:
         return None
 
@@ -513,8 +511,8 @@ def _operation_for_call(
         return None
     name = _text(source, field)
     receiver = _compact_text(source, operand)
-    package = imports.get(receiver)
-    if package in _DESERIALIZATION_PACKAGES and name in _DECODER_CONSTRUCTORS:
+    receiver_package = imports.get(receiver)
+    if receiver_package in _DESERIALIZATION_PACKAGES and name in _DECODER_CONSTRUCTORS:
         return None
     binding = decoders.get(receiver)
     if binding is None and name == "Decode":
@@ -526,16 +524,14 @@ def _operation_for_call(
     operation = {
         _GOB_PACKAGE: GoCwe502Operation.GOB_DECODER_DECODE,
         _JSON_PACKAGE: GoCwe502Operation.JSON_DECODER_DECODE,
-        **{package_name: GoCwe502Operation.YAML_DECODER_DECODE for package_name in _YAML_PACKAGES},
+        **dict.fromkeys(_YAML_PACKAGES, GoCwe502Operation.YAML_DECODER_DECODE),
     }.get(binding.package)
     if operation is None:
         return None
     return operation, values[-1], operand
 
 
-def _inline_decoder_package(
-    node: Node, source: bytes, imports: dict[str, str]
-) -> str | None:
+def _inline_decoder_package(node: Node, source: bytes, imports: dict[str, str]) -> str | None:
     """Return the package for an inline ``pkg.NewDecoder(...).Decode`` call."""
 
     if node.type != "call_expression":
@@ -583,7 +579,7 @@ def _capture_bindings(
         name_node = node.child_by_field_name("name")
         type_node = node.child_by_field_name("type")
         value_node = node.child_by_field_name("value")
-        names = name_node.named_children if name_node is not None else ()
+        names = tuple(name_node.named_children) if name_node is not None else ()
         if name_node is not None and not names:
             names = (name_node,)
         declared_dynamic = type_node is not None and _is_dynamic_type(
@@ -609,8 +605,8 @@ def _capture_bindings(
     right = node.child_by_field_name("right")
     if left is None or right is None:
         return
-    names = left.named_children if left.type == "expression_list" else (left,)
-    values = right.named_children if right.type == "expression_list" else (right,)
+    names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+    values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     _capture_value_bindings(
@@ -667,7 +663,7 @@ def _decoder_binding(node: Node, source: bytes, imports: dict[str, str]) -> _Dec
     package = imports.get(_text(source, operand))
     if package not in _DESERIALIZATION_PACKAGES:
         return None
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     source_node = values[0] if values else node
     return _DecoderBinding(package, _range(source_node))
 
@@ -685,8 +681,7 @@ def _qualified_function_from_value(
     name = _text(source, field)
     if package in _DESERIALIZATION_PACKAGES and (
         (package == _JSON_PACKAGE and name == "Unmarshal")
-        or package in _YAML_PACKAGES
-        and name in {"Unmarshal", "UnmarshalStrict"}
+        or (package in _YAML_PACKAGES and name in {"Unmarshal", "UnmarshalStrict"})
     ):
         return package, name
     return None
@@ -746,7 +741,10 @@ def _is_dynamic_expression(
     compact = _compact_text(source, node)
     if not compact:
         return False
-    if any(word in compact for word in ("interface{}", "interface{", "[]interface{}", "map[string]interface{}")):
+    if any(
+        word in compact
+        for word in ("interface{}", "interface{", "[]interface{}", "map[string]interface{}")
+    ):
         return True
     if re.search(r"(?:^|\W)any(?:$|\W)", compact):
         return True
@@ -754,7 +752,7 @@ def _is_dynamic_expression(
         function = node.child_by_field_name("function")
         if function is not None and _compact_text(source, function) == "new":
             arguments = node.child_by_field_name("arguments")
-            values = arguments.named_children if arguments is not None else ()
+            values = tuple(arguments.named_children) if arguments is not None else ()
             return bool(values) and _is_dynamic_expression(
                 values[0], source, dynamic_types, depth=depth + 1, limit=limit
             )
@@ -781,9 +779,7 @@ def _is_dynamic_type(type_text: str, dynamic_types: set[str]) -> bool:
         return True
     if compact in dynamic_types:
         return True
-    if compact.startswith("struct{") and ("interface{}" in compact or "any" in compact):
-        return True
-    return False
+    return bool(compact.startswith("struct{") and ("interface{}" in compact or "any" in compact))
 
 
 def _scopes(root: Node) -> tuple[Node, ...]:
@@ -912,12 +908,12 @@ Cwe502Signal = GoCwe502Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE502_SCAN_LIMITS",
     "Cwe502ScanError",
     "Cwe502ScanErrorCode",
     "Cwe502ScanLimits",
     "Cwe502ScanResult",
     "Cwe502Signal",
-    "DEFAULT_GO_CWE502_SCAN_LIMITS",
     "GoCwe502Operation",
     "GoCwe502ScanError",
     "GoCwe502ScanErrorCode",

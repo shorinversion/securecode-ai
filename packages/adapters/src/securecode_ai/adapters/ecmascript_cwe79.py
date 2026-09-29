@@ -424,9 +424,7 @@ def _scan_ecmascript_cwe79(
                 source_range = _range(source_node)
                 sink_range = _range(sink_node)
                 if not sink_range.contains(source_range):
-                    raise EcmaScriptCwe79ScanError(
-                        EcmaScriptCwe79ScanErrorCode.INTEGRITY_FAILURE
-                    )
+                    raise EcmaScriptCwe79ScanError(EcmaScriptCwe79ScanErrorCode.INTEGRITY_FAILURE)
                 raw.add((source_range, sink_range, operation))
                 if len(raw) > limits.max_signals:
                     raise EcmaScriptCwe79ScanError(EcmaScriptCwe79ScanErrorCode.SIGNAL_LIMIT)
@@ -515,7 +513,9 @@ def _node_facts(
         if operation is None:
             return ()
         values = list(arguments.named_children)
-        positions = (1,) if operation is EcmaScriptCwe79Operation.INSERT_ADJACENT_HTML else (0,)
+        positions: tuple[int, ...] = (
+            (1,) if operation is EcmaScriptCwe79Operation.INSERT_ADJACENT_HTML else (0,)
+        )
         if operation in {
             EcmaScriptCwe79Operation.DOCUMENT_WRITE,
             EcmaScriptCwe79Operation.DOCUMENT_WRITELN,
@@ -589,7 +589,7 @@ def _assignment_operation(
     return {
         "innerHTML": EcmaScriptCwe79Operation.INNER_HTML,
         "outerHTML": EcmaScriptCwe79Operation.OUTER_HTML,
-    }.get(name)
+    }.get(name or "")
 
 
 def _call_operation(
@@ -812,9 +812,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _node_text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _node_text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -984,9 +988,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1021,9 +1023,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

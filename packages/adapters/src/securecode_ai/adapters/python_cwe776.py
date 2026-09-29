@@ -161,9 +161,7 @@ class PythonCwe776Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe776Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe776Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -350,7 +348,9 @@ _PARSER_OPERATIONS = frozenset(
         PythonCwe776Operation.ELEMENTTREE_XML_PARSER,
     }
 )
-_SOURCE_ROOTS = frozenset({"request", "req", "http_request", "flask_request", "scope", "event", "context"})
+_SOURCE_ROOTS = frozenset(
+    {"request", "req", "http_request", "flask_request", "scope", "event", "context"}
+)
 _SOURCE_ATTRIBUTES = frozenset(
     {
         "args",
@@ -537,7 +537,9 @@ def _scan_statements(
                 branches.append(branch)
             if statement.orelse:
                 branch = dict(aliases)
-                _scan_statements(statement.orelse, branch, tree, source, line_starts, limits, output)
+                _scan_statements(
+                    statement.orelse, branch, tree, source, line_starts, limits, output
+                )
                 branches.append(branch)
             _merge_many_aliases(aliases, branches)
         else:
@@ -561,7 +563,9 @@ def _scan_expression(
         node = stack.pop()
         if node is not root and isinstance(node, ast.stmt):
             continue
-        if node is not root and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if node is not root and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
             continue
         if isinstance(node, ast.Call):
             _record_call(node, aliases, tree, source, line_starts, limits, output)
@@ -586,9 +590,7 @@ def _record_call(
         if _unsafe_parser_options(call):
             output.append((sink, sink, operation))
         return
-    if _parser_is_explicitly_safe(
-        call, aliases, tree, limits.max_resolution_depth
-    ):
+    if _parser_is_explicitly_safe(call, aliases, tree, limits.max_resolution_depth):
         return
     input_nodes = _input_nodes(call, operation)
     for input_node in input_nodes:
@@ -826,12 +828,16 @@ def _is_parameter_source(name: str, call: ast.Call, tree: ast.AST) -> bool:
     if scope is None:
         return False
     parameters = (*scope.args.posonlyargs, *scope.args.args, *scope.args.kwonlyargs)
-    return any(parameter.arg == name for parameter in parameters) or (
-        scope.args.vararg is not None and scope.args.vararg.arg == name
-    ) or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    return (
+        any(parameter.arg == name for parameter in parameters)
+        or (scope.args.vararg is not None and scope.args.vararg.arg == name)
+        or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    )
 
 
-def _enclosing_function(call: ast.Call, tree: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+def _enclosing_function(
+    call: ast.Call, tree: ast.AST
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     call_line = getattr(call, "lineno", -1)
     candidates: list[tuple[int, int, ast.FunctionDef | ast.AsyncFunctionDef]] = []
     for item in ast.walk(tree):
@@ -853,7 +859,9 @@ def _latest_assignment(
     stack: list[ast.AST] = [root]
     while stack:
         node = stack.pop()
-        if node is not root and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+        if node is not root and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+        ):
             continue
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             position = (node.lineno, node.col_offset)
@@ -1016,14 +1024,23 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe776ScanError(PythonCwe776ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe776ScanError(PythonCwe776ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _compact(source: bytes, node: ast.AST) -> str:
     location = _node_range(node, source, _line_starts(source))
-    return b"".join(source[location.start_byte : location.end_byte].split()).decode("ascii", "ignore")
+    return b"".join(source[location.start_byte : location.end_byte].split()).decode(
+        "ascii", "ignore"
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:

@@ -40,11 +40,12 @@ from securecode_ai.contracts import (
 )
 from securecode_ai.core.scm_run_state import (
     AdmissionDisposition,
-    SCMRunAdmissionRequest,
     SCMRunAdmissionReceipt,
+    SCMRunAdmissionRequest,
     SCMRunPublicationReceipt,
 )
 
+from . import scm_state_codec as _scm_state_codec
 from .scm_github_payload import parse_github_payload
 from .scm_payload import (
     MAX_JSON_DEPTH,
@@ -54,7 +55,6 @@ from .scm_payload import (
 )
 from .scm_publication_store import SCMPublicationTarget
 from .scm_state import SCMRunStatePort
-from . import scm_state_codec as _scm_state_codec
 
 MAX_WEBHOOK_BYTES: Final = 65_536
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -171,22 +171,13 @@ class ConnectedRunIdentityResolver:
         if (
             type(self.pins) is not WebhookExecutionPins
             or self.scm_provider not in {"github", "gitlab"}
-            or (
-                self.head_resolver is not None
-                and not callable(self.head_resolver)
-            )
-            or (
-                self.installation_id is not None
-                and _ID.fullmatch(self.installation_id) is None
-            )
+            or (self.head_resolver is not None and not callable(self.head_resolver))
+            or (self.installation_id is not None and _ID.fullmatch(self.installation_id) is None)
             or (
                 self.publication_store is not None
                 and not callable(getattr(self.publication_store, "bind", None))
             )
-            or (
-                self.run_state is not None
-                and not callable(getattr(self.run_state, "admit", None))
-            )
+            or (self.run_state is not None and not callable(getattr(self.run_state, "admit", None)))
             or (self.publication_store is not None and self.run_state is None)
             or (
                 self.run_state is not None
@@ -225,10 +216,7 @@ class ConnectedRunIdentityResolver:
             or document.get("tenant_id") != authenticated_tenant_id
             or type(operation) is not str
             or operation not in {"SCAN", "REPAIR"}
-            or (
-                "scm_provider" in document
-                and document.get("scm_provider") != self.scm_provider
-            )
+            or ("scm_provider" in document and document.get("scm_provider") != self.scm_provider)
         ):
             return None
         repository_id = document.get("repository_id")
@@ -291,10 +279,7 @@ class ConnectedRunIdentityResolver:
 
         if not isinstance(document, Mapping):
             return
-        if (
-            "scm_provider" in document
-            and document.get("scm_provider") != self.scm_provider
-        ):
+        if "scm_provider" in document and document.get("scm_provider") != self.scm_provider:
             raise SCMWebhookError(SCMWebhookErrorCode.IDENTITY_MISMATCH)
         if document.get("change_id") is None:
             return
@@ -380,7 +365,10 @@ class ConnectedRunIdentityResolver:
                 and admission.state_version == 0
             ):
                 raise SCMWebhookError(SCMWebhookErrorCode.IDENTITY_MISMATCH)
-            store.bind(
+            bind = getattr(store, "bind", None)
+            if not callable(bind):
+                raise SCMWebhookError(SCMWebhookErrorCode.INVALID_CONFIGURATION)
+            bind(
                 SCMPublicationTarget(
                     tenant_id=self.pins.tenant_id,
                     run_id=run_id,
@@ -453,7 +441,8 @@ class ConnectedRunIdentityResolverRouter:
         authenticated_tenant_id: str,
         document: Mapping[str, object],
     ) -> tuple[RunExecutionIdentity, str] | None:
-        if not isinstance(document, Mapping):
+        untrusted_document: object = document
+        if not isinstance(untrusted_document, Mapping):
             return None
         selector_present = "scm_provider" in document
         provider = document.get("scm_provider")
@@ -491,15 +480,15 @@ class ConnectedRunIdentityResolverRouter:
         if type(identity) is not RunExecutionIdentity:
             raise SCMWebhookError(SCMWebhookErrorCode.IDENTITY_MISMATCH)
         provider = identity.repository_revision.scm_provider
-        resolver = self.github if provider == "github" else self.gitlab if provider == "gitlab" else None
+        resolver = (
+            self.github if provider == "github" else self.gitlab if provider == "gitlab" else None
+        )
         if resolver is None:
             raise SCMWebhookError(SCMWebhookErrorCode.IDENTITY_MISMATCH)
         if isinstance(document, Mapping) and "scm_provider" in document:
             if document.get("scm_provider") != provider:
                 raise SCMWebhookError(SCMWebhookErrorCode.IDENTITY_MISMATCH)
-            document = {
-                key: value for key, value in document.items() if key != "scm_provider"
-            }
+            document = {key: value for key, value in document.items() if key != "scm_provider"}
         resolver.bind_publication(run_id=run_id, identity=identity, document=document)
 
 
@@ -976,12 +965,12 @@ def _gitlab_error(error: GitlabCIError) -> SCMWebhookError:
 
 
 __all__ = [
-    "ConnectedRunIdentityResolver",
-    "ConnectedRunIdentityResolverRouter",
     "MAX_JSON_DEPTH",
     "MAX_JSON_ITEMS",
     "MAX_JSON_SCALAR_BYTES",
     "MAX_WEBHOOK_BYTES",
+    "ConnectedRunIdentityResolver",
+    "ConnectedRunIdentityResolverRouter",
     "GithubWebhookAdapter",
     "GitlabWebhookAdapter",
     "SCMWebhookError",

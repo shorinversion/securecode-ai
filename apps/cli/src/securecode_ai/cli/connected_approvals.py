@@ -70,13 +70,12 @@ class ApprovalDraft:
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         if self.approval_id.startswith("repair-") and any(value is None for value in patch_digests):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
-        if self.approval_id.startswith("repair-"):
-            if self.approval_id != repair_approval_id(
-                self.run_id,
-                self.finding_id,
-                self.patch_sha256 or "",
-            ):
-                raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
+        if self.approval_id.startswith("repair-") and self.approval_id != repair_approval_id(
+            self.run_id,
+            self.finding_id,
+            self.patch_sha256 or "",
+        ):
+            raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
 
 
 def _timestamp(value: object) -> bool:
@@ -99,9 +98,10 @@ def repair_approval_id(run_id: str, finding_id: str, patch_sha256: str) -> str:
     if not _identifier(run_id) or not _identifier(finding_id) or not _sha256(patch_sha256):
         raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     selector = "sha256:" + patch_sha256
-    return "repair-" + hashlib.sha256(
-        f"{run_id}\x00{finding_id}\x00{selector}".encode("ascii")
-    ).hexdigest()[:48]
+    return (
+        "repair-"
+        + hashlib.sha256(f"{run_id}\x00{finding_id}\x00{selector}".encode("ascii")).hexdigest()[:48]
+    )
 
 
 def _approval_decision_idempotency_key(
@@ -186,7 +186,7 @@ def create_approval(
 ) -> ConnectedCollection:
     """Open one pending approval bound to an exact run and identity."""
 
-    request_document = {
+    request_document: dict[str, object] = {
         "approval_id": draft.approval_id,
         "repository_id": draft.repository_id,
         "run_id": draft.run_id,
@@ -207,7 +207,7 @@ def create_approval(
     if not _idempotency_key(key):
         raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     client = api if api is not None else HttpConnectedApi(settings.base_url)
-    expected_binding = {
+    expected_binding: dict[str, object] = {
         "approval_id": draft.approval_id,
         "repository_id": draft.repository_id,
         "run_id": draft.run_id,
@@ -231,9 +231,7 @@ def create_approval(
         # failure, preserving idempotent operator retries.
         if error.code is not ConnectedCliErrorCode.PROTOCOL_INVALID:
             raise
-        document = client.read(
-            f"/api/v1/approvals/{draft.approval_id}", token=settings.token
-        )
+        document = client.read(f"/api/v1/approvals/{draft.approval_id}", token=settings.token)
         safe_document = _validated_approval(
             document,
             expected=expected_binding,
@@ -275,9 +273,7 @@ def read_approval(
     client = api if api is not None else HttpConnectedApi(settings.base_url)
     document = client.read(f"/api/v1/approvals/{approval_id}", token=settings.token)
     safe_document = _validated_approval(document, expected={"approval_id": approval_id})
-    return ConnectedCollection(
-        run_id=approval_id, kind=ResultKind.FINDINGS, document=safe_document
-    )
+    return ConnectedCollection(run_id=approval_id, kind=ResultKind.FINDINGS, document=safe_document)
 
 
 def decide_approval(
@@ -319,7 +315,7 @@ def decide_approval(
     client = api if api is not None else HttpConnectedApi(settings.base_url)
     expected_version = _version_from_precondition(if_match)
     expected_state = "APPROVED" if approve else "REJECTED"
-    expected_decision = {
+    expected_decision: dict[str, object] = {
         "reason_code": reason_code,
         "rationale_sha256": hashlib.sha256(rationale.encode("utf-8")).hexdigest(),
     }
@@ -338,9 +334,7 @@ def decide_approval(
         }:
             raise
         try:
-            replay = client.read(
-                f"/api/v1/approvals/{approval_id}", token=settings.token
-            )
+            replay = client.read(f"/api/v1/approvals/{approval_id}", token=settings.token)
             safe_document = _validated_approval(
                 replay,
                 expected={
@@ -350,8 +344,8 @@ def decide_approval(
                 },
                 expected_decision=expected_decision,
             )
-        except ConnectedCliError:
-            raise error
+        except ConnectedCliError as replay_error:
+            raise error from replay_error
         return ConnectedCollection(
             run_id=approval_id, kind=ResultKind.FINDINGS, document=safe_document
         )
@@ -364,9 +358,7 @@ def decide_approval(
         },
         expected_decision=expected_decision,
     )
-    return ConnectedCollection(
-        run_id=approval_id, kind=ResultKind.FINDINGS, document=safe_document
-    )
+    return ConnectedCollection(run_id=approval_id, kind=ResultKind.FINDINGS, document=safe_document)
 
 
 def _version_from_precondition(value: str) -> int:
@@ -446,9 +438,8 @@ def _validated_approval(
     safe_document = {name: document[name] for name in fields}
     decision = document.get("decision")
     has_decision = document["state"] in {"APPROVED", "REJECTED", "REVOKED"}
-    if (
-        has_decision != (decision is not None)
-        or (expected_decision is not None and not has_decision)
+    if has_decision != (decision is not None) or (
+        expected_decision is not None and not has_decision
     ):
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
     if expected_decision is not None or decision is not None:

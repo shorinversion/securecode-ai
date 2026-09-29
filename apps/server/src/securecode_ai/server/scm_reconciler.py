@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 import sqlite3
 from collections.abc import Mapping
@@ -17,7 +18,6 @@ from .scm_publication_store import SqliteSCMPublicationStore
 from .scm_runtime import build_scm_handlers
 from .sqlite_database import open_private_sqlite
 from .waivers import WaiverLedger
-
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _MAX_BATCH: Final = 32
@@ -154,10 +154,8 @@ class SCMPublicationReconciler:
                     continue
         finally:
             if connection is not None:
-                try:
+                with contextlib.suppress(sqlite3.Error):
                     connection.close()
-                except sqlite3.Error:
-                    pass
 
     def _build_publisher(
         self,

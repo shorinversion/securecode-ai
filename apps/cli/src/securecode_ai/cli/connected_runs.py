@@ -9,11 +9,12 @@ import json
 import re
 import uuid
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from securecode_ai.adapters.local_durable_files import durable_delete, durable_write_new
 from securecode_ai.adapters.patch_artifact import (
@@ -24,6 +25,7 @@ from securecode_ai.adapters.patch_artifact import (
 
 from .connected_transport import (
     INITIAL_POLL_SECONDS,
+    MAX_BINARY_RESPONSE_BYTES,
     MAXIMUM_POLL_SECONDS,
     ConnectedApi,
     ConnectedArtifactApi,
@@ -33,14 +35,11 @@ from .connected_transport import (
     ConnectedRunReceipt,
     ConnectedRunRequest,
     HttpConnectedApi,
-    MAX_BINARY_RESPONSE_BYTES,
     _commit,
     _exact_version_precondition,
     _idempotency_key,
     _identifier,
     _receipt,
-    _sha256,
-    _version_precondition,
 )
 
 MAX_POLL_ATTEMPTS = 120
@@ -94,11 +93,7 @@ def settings_from_environment(
         head_sha=required("SECURECODE_HEAD_SHA"),
         idempotency_key=(
             environment.get("SECURECODE_IDEMPOTENCY_KEY")
-            or (
-                new_idempotency_key()
-                if fresh
-                else _pending_key(environment, operation=operation)
-            )
+            or (new_idempotency_key() if fresh else _pending_key(environment, operation=operation))
         ),
         base_sha=environment.get("SECURECODE_BASE_SHA") or None,
         change_id=environment.get("SECURECODE_CHANGE_ID") or None,
@@ -517,8 +512,7 @@ def parse_audit_arguments(tokens: tuple[str, ...]) -> tuple[str, int, int | None
         run_id = token
         index += 1
     if run_id is None or (
-        end is not None
-        and (end < start or end - start + 1 > _MAX_AUDIT_PAGE_EVENTS)
+        end is not None and (end < start or end - start + 1 > _MAX_AUDIT_PAGE_EVENTS)
     ):
         raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     return run_id, start, end
@@ -624,8 +618,20 @@ def _validate_run_audit_document(
                 for key in attributes
             )
             or any(
-                (key == "outcome" and (type(value) is not str or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", value)))
-                or (key == "reason_code" and (type(value) is not str or re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", value) is None))
+                (
+                    key == "outcome"
+                    and (
+                        type(value) is not str
+                        or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,31}", value)
+                    )
+                )
+                or (
+                    key == "reason_code"
+                    and (
+                        type(value) is not str
+                        or re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", value) is None
+                    )
+                )
                 or (key == "resource_type" and value not in {"metadata", "artifact", "audit"})
                 or (key == "retention_marked" and type(value) is not bool)
                 for key, value in attributes.items()
@@ -667,10 +673,7 @@ def _audit_event_hash_matches(event: Mapping[str, object]) -> bool:
         "attributes": event.get("attributes"),
         "created_at": event.get("created_at"),
     }
-    if (
-        type(material["attributes"]) is not dict
-        or type(material["created_at"]) is not str
-    ):
+    if type(material["attributes"]) is not dict or type(material["created_at"]) is not str:
         return False
     encoded = json.dumps(
         material,
@@ -814,11 +817,7 @@ def download_repair_patch(
 ) -> bytes:
     """Download one repair bundle bound to the live run and exact patch."""
 
-    if (
-        not _identifier(run_id)
-        or not _identifier(finding_id)
-        or not _sha256(patch_sha256)
-    ):
+    if not _identifier(run_id) or not _identifier(finding_id) or not _sha256(patch_sha256):
         raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
     client = api if api is not None else HttpConnectedApi(settings.base_url)
     run_document = client.status(run_id, token=settings.token)
@@ -897,10 +896,8 @@ def import_repair_patch_bundle(
                 raise PatchArtifactError("PATCH_CONTRACT_MISMATCH")
         except Exception:
             for path in reversed(created):
-                try:
+                with suppress(OSError):
                     durable_delete(path)
-                except OSError:
-                    pass
             raise
     except ConnectedCliError:
         raise
@@ -909,7 +906,8 @@ def import_repair_patch_bundle(
     return ImportedRepairPatch(
         selector=selector,
         manifest_sha256=str(binding["manifest_sha256"]),
-        patch_size_bytes=int(binding["patch_size_bytes"]),
+        # _decode_repair_patch_bundle requires patch_size_bytes to be exactly an int.
+        patch_size_bytes=cast(int, binding["patch_size_bytes"]),
     )
 
 
@@ -1297,14 +1295,11 @@ def _validate_result_item(
     elif kind is ResultKind.EVENTS:
         if not _valid_result_event(item):
             raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
-    elif kind is ResultKind.ARTIFACTS:
-        if not _valid_result_artifact(item):
-            raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
+    elif kind is ResultKind.ARTIFACTS and not _valid_result_artifact(item):
+        raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
 
 
-def _valid_result_finding(
-    item: Mapping[str, object], *, head_sha: str, tenant_id: str
-) -> bool:
+def _valid_result_finding(item: Mapping[str, object], *, head_sha: str, tenant_id: str) -> bool:
     required = {
         "blocking",
         "confidence",
@@ -1467,7 +1462,8 @@ def _valid_policy_event(item: Mapping[str, object]) -> bool:
     error_code = decision.get("error_code")
     if error_code is not None and (
         type(error_code) is not str
-        or error_code not in {
+        or error_code
+        not in {
             "INVALID_INPUT",
             "PRECALIBRATION_BLOCKING",
             "BASELINE_REQUIRED",
@@ -1524,19 +1520,12 @@ def _valid_policy_event(item: Mapping[str, object]) -> bool:
         and type(decision.get("publication_permitted")) is bool
         and type(enforcement) is str
         and enforcement in {"ADVISORY", "ALLOW", "BLOCK", "NON_PASS"}
-        and (
-            mode is None
-            or (
-                type(mode) is str
-                and mode in {"advisory", "new_code", "strict"}
-            )
-        )
+        and (mode is None or (type(mode) is str and mode in {"advisory", "new_code", "strict"}))
         and (
             observed_outcome is None
             or (
                 type(observed_outcome) is str
-                and observed_outcome
-                in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}
+                and observed_outcome in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}
             )
         )
         and _sha256(decision.get("decision_sha256"))

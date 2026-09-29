@@ -17,7 +17,6 @@ from securecode_ai.contracts import (
     EgressContentRef,
     Evidence,
     EvidenceInputRef,
-    ExecutionBoundary,
     ModelCallBudget,
     ModelCallResult,
     ModelCallStatus,
@@ -53,8 +52,8 @@ from .local_repair_model_schema import (
 from .model import HmacContentIdentifier, PreparedModelContext
 from .model_harness import AuthorizedProviderHarness
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
-from .product_runtime import AuthorizedLocalModelExecutor
 from .product_provider_runtime import ProductProviderRuntime
+from .product_runtime import AuthorizedLocalModelExecutor
 from .remote_provider_budget import RemoteProviderCostReceipt
 
 _MAX_CONTEXT_BYTES: Final = 65_536
@@ -331,9 +330,7 @@ def generate_local_patch(
     author = ProducerRef(
         schema_version="0.2.0",
         producer_id=(
-            "installed-local-architect"
-            if operation is None
-            else "installed-remote-architect"
+            "installed-local-architect" if operation is None else "installed-remote-architect"
         ),
         producer_version="1.0.0",
         producer_sha256=ARCHITECT_PROMPT_PIN.content_sha256,
@@ -487,28 +484,29 @@ def _context(
                 data_class=DataClass.CONFIDENTIAL_SOURCE,
             ),
         )
-    material = {
-        "trusted_controls": {
-            "instruction_authority": "HOST_CONTROL",
-            "instructions": _ARCHITECT_INSTRUCTIONS,
-            "output_schema": _ARCHITECT_SCHEMA,
-            "allowed_paths": list(allowed_paths),
-            "identity": {
-                "finding_id": binding.finding.finding_id,
-                "root_cause_id": binding.root_cause.record_id,
-                "invariant_id": binding.invariant.invariant_id,
-                "regression_descriptor_id": binding.regression.descriptor_id,
-                "head_sha": request.head_sha,
-                "command_operation_evidence": [
-                    item.model_dump(mode="json")
-                    for item in binding.invariant.command_operation_evidence
-                ],
-            },
+    trusted_controls: dict[str, object] = {
+        "instruction_authority": "HOST_CONTROL",
+        "instructions": _ARCHITECT_INSTRUCTIONS,
+        "output_schema": _ARCHITECT_SCHEMA,
+        "allowed_paths": list(allowed_paths),
+        "identity": {
+            "finding_id": binding.finding.finding_id,
+            "root_cause_id": binding.root_cause.record_id,
+            "invariant_id": binding.invariant.invariant_id,
+            "regression_descriptor_id": binding.regression.descriptor_id,
+            "head_sha": request.head_sha,
+            "command_operation_evidence": [
+                item.model_dump(mode="json")
+                for item in binding.invariant.command_operation_evidence
+            ],
         },
+    }
+    material = {
+        "trusted_controls": trusted_controls,
         "untrusted_repository_source": windows,
     }
     if retry_feedback is not None:
-        material["trusted_controls"]["repair_retry_feedback"] = {
+        trusted_controls["repair_retry_feedback"] = {
             "instruction": "Address each listed failed validation gate while preserving the original finding and allowed path scope.",
             "attempt": request.attempt,
             "failed_gates": [

@@ -146,9 +146,7 @@ class PythonCwe384Signal:
                 self.operation,
                 self.detail,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is PythonCwe384Operation
+            if valid_identity and valid_ranges and type(self.operation) is PythonCwe384Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -524,9 +522,15 @@ def _is_login_handler(
     named = bool(_LOGIN_WORDS.search(name))
     route_login = False
     for decorator in function.decorator_list:
-        decorator_name = _canonical_name(decorator.func if isinstance(decorator, ast.Call) else decorator, aliases)
+        decorator_name = _canonical_name(
+            decorator.func if isinstance(decorator, ast.Call) else decorator, aliases
+        )
         if decorator_name and decorator_name.rsplit(".", 1)[-1] in _ROUTE_METHODS:
-            literals = [item for item, _ in _bounded_nodes(decorator, max_depth) if isinstance(item, ast.Constant)]
+            literals = [
+                item
+                for item, _ in _bounded_nodes(decorator, max_depth)
+                if isinstance(item, ast.Constant)
+            ]
             route_login = any(
                 isinstance(item.value, str)
                 and bool(re.search(r"(?:login|signin|sign-in|auth)", item.value, re.IGNORECASE))
@@ -535,8 +539,7 @@ def _is_login_handler(
         if route_login:
             break
     auth_call = any(
-        isinstance(node, ast.Call)
-        and _is_auth_call(_canonical_name(node.func, aliases))
+        isinstance(node, ast.Call) and _is_auth_call(_canonical_name(node.func, aliases))
         for node, _ in _bounded_nodes(function, max_depth)
     )
     return named or route_login or auth_call
@@ -558,17 +561,19 @@ def _collect_path_events(
         if depth > max_depth:
             raise PythonCwe384ScanError(PythonCwe384ScanErrorCode.SIGNAL_LIMIT)
         for statement in statements:
-            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if statement is not function:
-                    continue
+            if (
+                isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and statement is not function
+            ):
+                continue
             for node, _ in _bounded_nodes(statement, max_depth - depth):
-                if node is not statement and isinstance(node, (ast.stmt, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node is not statement and isinstance(
+                    node, (ast.stmt, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
                     continue
                 if isinstance(node, ast.Call):
                     if _is_rotation_call(_canonical_name(node.func, aliases)):
-                        rotations.append(
-                            _Rotation(path, (node.lineno, node.col_offset))
-                        )
+                        rotations.append(_Rotation(path, (node.lineno, node.col_offset)))
                     _record_update_assignments(
                         node,
                         path,
@@ -586,12 +591,7 @@ def _collect_path_events(
                         line_starts,
                         assignments,
                     )
-            if isinstance(statement, ast.If):
-                branch_id += 1
-                current = branch_id
-                visit(statement.body, (*path, (current, True)), depth + 1)
-                visit(statement.orelse, (*path, (current, False)), depth + 1)
-            elif isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+            if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While)):
                 branch_id += 1
                 current = branch_id
                 visit(statement.body, (*path, (current, True)), depth + 1)
@@ -625,10 +625,7 @@ def _record_assignment(
     output: list[_Assignment],
 ) -> None:
     targets: tuple[ast.expr, ...]
-    if isinstance(node, ast.Assign):
-        targets = tuple(node.targets)
-    else:
-        targets = (node.target,)
+    targets = tuple(node.targets) if isinstance(node, ast.Assign) else (node.target,)
     for target in targets:
         key = _session_assignment_key(target, aliases)
         if key is None:
@@ -759,11 +756,8 @@ def _normalise_key(value: str) -> str:
     return value.strip().lower().replace("-", "_")
 
 
-def _meaningful_value(node: ast.AST) -> bool:
-    return not (
-        isinstance(node, ast.Constant)
-        and node.value in {None, False, 0, ""}
-    )
+def _meaningful_value(node: ast.AST | None) -> bool:
+    return not (isinstance(node, ast.Constant) and node.value in {None, False, ""})
 
 
 def _constant_false_assignment(
@@ -773,14 +767,15 @@ def _constant_false_assignment(
     line_starts: tuple[int, ...],
 ) -> bool:
     for node in ast.walk(function):
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-            if _node_range(node, source, line_starts) == location:
-                return isinstance(node.value, ast.Constant) and node.value.value in {
-                    None,
-                    False,
-                    0,
-                    "",
-                }
+        if (
+            isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign))
+            and _node_range(node, source, line_starts) == location
+        ):
+            return isinstance(node.value, ast.Constant) and node.value.value in {
+                None,
+                False,
+                "",
+            }
     return False
 
 
@@ -789,7 +784,11 @@ def _paths_compatible(
 ) -> bool:
     left_values = dict(left)
     right_values = dict(right)
-    return all(left_values.get(key, value) == right_values.get(key, value) for key, value in left_values.items() if key in right_values)
+    return all(
+        left_values.get(key, value) == right_values.get(key, value)
+        for key, value in left_values.items()
+        if key in right_values
+    )
 
 
 def _bounded_nodes(root: ast.AST, max_depth: int) -> tuple[tuple[ast.AST, int], ...]:
@@ -831,7 +830,12 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe384ScanError(PythonCwe384ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe384ScanError(PythonCwe384ScanErrorCode.INTEGRITY_FAILURE)
     return SourceRange(
         start,

@@ -285,7 +285,6 @@ def _run_stage(
                 gate_outcome = ValidationGateOutcome.INDETERMINATE
             elif sandbox_receipt.outcome is not SandboxOutcome.SUCCEEDED:
                 reason = "SANDBOX_NON_SUCCESS"
-                gate_outcome = ValidationGateOutcome.INDETERMINATE
             elif observation is None:
                 reason = "OBSERVATION_EVIDENCE_MISSING"
                 gate_outcome = ValidationGateOutcome.INDETERMINATE

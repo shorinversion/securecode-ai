@@ -7,9 +7,8 @@ import hashlib
 import json
 import posixpath
 import re
+from collections.abc import Sequence
 from typing import Final
-
-from tree_sitter import Language, Node, Parser
 
 from securecode_ai.core.discovery import IgnorePolicy, discover_repository
 from securecode_ai.core.repository import (
@@ -19,14 +18,13 @@ from securecode_ai.core.repository import (
 )
 from securecode_ai.core.scanning import ScannerExecution, ScannerRunStatus
 from securecode_ai.core.symbols import Symbol, SymbolIndex, SymbolKind
+from tree_sitter import Language, Node, Parser
 
 from . import cst_ecmascript, cst_go, cwe89, cwe89_multilanguage, python_ast
 from .native_sources import NativeSourceCatalogue
-from .program_graph import ProgramCallFact, build_program_graph
+from .program_graph import ProgramCallFact
 
-_TOP_LEVEL_CALLABLE_KINDS: Final = frozenset(
-    {SymbolKind.FUNCTION, SymbolKind.ASYNC_FUNCTION}
-)
+_TOP_LEVEL_CALLABLE_KINDS: Final = frozenset({SymbolKind.FUNCTION, SymbolKind.ASYNC_FUNCTION})
 _CALLABLE_SYMBOL_KINDS: Final = frozenset(
     {
         SymbolKind.FUNCTION,
@@ -50,6 +48,7 @@ def _program_graph_scanner_results(
         "go": cwe89_multilanguage.scan_go_cwe89,
     }
     for index in catalogue.indexes:
+        result: cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult
         if index.language == "python":
             result = cwe89.scan_python_cwe89(index, python_ast.analyze_python_ast(index))
         else:
@@ -86,7 +85,9 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
     indeterminate = False
     go_package_cache: dict[str, tuple[Node, str]] = {}
 
-    def admit(caller_index: SymbolIndex, caller: Symbol, target_index: SymbolIndex, target: Symbol) -> None:
+    def admit(
+        caller_index: SymbolIndex, caller: Symbol, target_index: SymbolIndex, target: Symbol
+    ) -> None:
         nonlocal indeterminate
         if target_index.path == caller_index.path:
             return
@@ -120,9 +121,7 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
                     )
                     if len(targets) > 1:
                         ambiguous_named_aliases.update(
-                            item.asname or item.name
-                            for item in statement.names
-                            if item.name != "*"
+                            item.asname or item.name for item in statement.names if item.name != "*"
                         )
                         continue
                     if not targets:
@@ -162,13 +161,20 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
                     caller = _callable_for_bytes(index, start, end)
                     if caller is not None and isinstance(node.func, ast.Name):
                         bindings = module_named.get(node.func.id, ())
-                        locals_for_scope = _python_scope_bindings(scope) if scope is not None else set()
-                        if node.func.id in ambiguous_named_aliases and node.func.id not in locals_for_scope:
+                        locals_for_scope = (
+                            _python_scope_bindings(scope) if scope is not None else set()
+                        )
+                        if (
+                            node.func.id in ambiguous_named_aliases
+                            and node.func.id not in locals_for_scope
+                        ):
                             indeterminate = True
                         if node.func.id not in locals_for_scope and bindings:
                             resolved = []
                             for target_index, target_name in bindings:
-                                candidates = _symbols_named(target_index, target_name, top_level=True)
+                                candidates = _symbols_named(
+                                    target_index, target_name, top_level=True
+                                )
                                 if len(candidates) == 1:
                                     resolved.append((target_index, candidates[0]))
                                 elif len(candidates) > 1:
@@ -180,17 +186,19 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
                     elif caller is not None and isinstance(node.func, ast.Attribute):
                         if isinstance(node.func.value, ast.Name):
                             alias = node.func.value.id
-                            locals_for_scope = _python_scope_bindings(scope) if scope is not None else set()
+                            locals_for_scope = (
+                                _python_scope_bindings(scope) if scope is not None else set()
+                            )
                             if alias not in locals_for_scope:
                                 if alias in ambiguous_module_aliases:
                                     indeterminate = True
-                                targets = module_aliases.get(alias, ())
-                                if len(targets) == 1:
+                                alias_targets = module_aliases.get(alias, ())
+                                if len(alias_targets) == 1:
                                     candidates = _symbols_named(
-                                        targets[0], node.func.attr, top_level=True
+                                        alias_targets[0], node.func.attr, top_level=True
                                     )
                                     if len(candidates) == 1:
-                                        admit(index, caller, targets[0], candidates[0])
+                                        admit(index, caller, alias_targets[0], candidates[0])
                                     elif len(candidates) > 1:
                                         indeterminate = True
                 children = list(ast.iter_child_nodes(node))
@@ -217,9 +225,9 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
                     continue
                 cached_target = go_package_cache.get(target_index.path)
                 if cached_target is None:
-                    target_root = Parser(Language(cst_go._go_language())).parse(
-                        target_index.source
-                    ).root_node
+                    target_root = (
+                        Parser(Language(cst_go._go_language())).parse(target_index.source).root_node
+                    )
                     target_package = _go_package_name(target_root, target_index.source)
                     go_package_cache[target_index.path] = (target_root, target_package)
                 else:
@@ -235,29 +243,29 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
                             )
             stack: list[Node] = [root]
             while stack:
-                node = stack.pop()
+                cst_node = stack.pop()
                 tree_nodes += 1
                 if tree_nodes > _MAX_PROGRAM_CALL_TREE_NODES:
                     raise ValueError("ProgramGraph call parser budget exceeded")
-                if node.type == "call_expression":
+                if cst_node.type == "call_expression":
                     call_sites += 1
                     if call_sites > _MAX_PROGRAM_CALL_SITES:
                         raise ValueError("ProgramGraph call-site budget exceeded")
-                    function = node.child_by_field_name("function")
-                    caller = _callable_for_bytes(index, node.start_byte, node.end_byte)
+                    function = cst_node.child_by_field_name("function")
+                    caller = _callable_for_bytes(index, cst_node.start_byte, cst_node.end_byte)
                     if caller is not None and function is not None:
                         if function.type == "identifier":
-                            name = index.source[function.start_byte:function.end_byte].decode(
+                            name = index.source[function.start_byte : function.end_byte].decode(
                                 "utf-8", "strict"
                             )
-                            targets = package_functions.get(name, ())
-                            if len(targets) == 1:
-                                admit(index, caller, *targets[0])
-                            elif len(targets) > 1:
+                            package_targets = package_functions.get(name, ())
+                            if len(package_targets) == 1:
+                                admit(index, caller, *package_targets[0])
+                            elif len(package_targets) > 1:
                                 indeterminate = True
                         elif function.type == "selector_expression" and function.named_children:
                             selector = function.named_children[-1]
-                            name = index.source[selector.start_byte:selector.end_byte].decode(
+                            name = index.source[selector.start_byte : selector.end_byte].decode(
                                 "utf-8", "strict"
                             )
                             if any(
@@ -266,7 +274,7 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
                                 for symbol in index.symbols
                             ):
                                 indeterminate = True
-                stack.extend(reversed(node.named_children))
+                stack.extend(reversed(cst_node.named_children))
             continue
 
         imports: dict[str, list[tuple[SymbolIndex, str]]] = {}
@@ -275,79 +283,89 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
         exported = _ecmascript_exported_symbols(index, root)
         stack = [root]
         while stack:
-            node = stack.pop()
+            cst_node = stack.pop()
             tree_nodes += 1
             if tree_nodes > _MAX_PROGRAM_CALL_TREE_NODES:
                 raise ValueError("ProgramGraph call parser budget exceeded")
-            if node.type == "import_statement":
-                bindings, modules, ambiguous = _ecmascript_import_bindings(index, node, index_by_path)
-                for alias, targets in bindings.items():
-                    imports.setdefault(alias, []).extend(targets)
-                for alias, targets in modules.items():
-                    namespaces.setdefault(alias, []).extend(targets)
+            if cst_node.type == "import_statement":
+                cst_bindings, modules, ambiguous = _ecmascript_import_bindings(
+                    index, cst_node, index_by_path
+                )
+                for alias, import_targets in cst_bindings.items():
+                    imports.setdefault(alias, []).extend(import_targets)
+                for alias, module_targets in modules.items():
+                    namespaces.setdefault(alias, []).extend(module_targets)
                 ambiguous_imports.update(ambiguous)
-            stack.extend(reversed(node.named_children))
+            stack.extend(reversed(cst_node.named_children))
         stack = [root]
         while stack:
-            node = stack.pop()
-            if node.type == "call_expression":
+            cst_node = stack.pop()
+            if cst_node.type == "call_expression":
                 call_sites += 1
                 if call_sites > _MAX_PROGRAM_CALL_SITES:
                     raise ValueError("ProgramGraph call-site budget exceeded")
-                function = node.child_by_field_name("function")
-                caller = _callable_for_bytes(index, node.start_byte, node.end_byte)
+                function = cst_node.child_by_field_name("function")
+                caller = _callable_for_bytes(index, cst_node.start_byte, cst_node.end_byte)
                 if caller is not None and function is not None:
                     if function.type == "identifier":
-                        alias = index.source[function.start_byte:function.end_byte].decode(
+                        alias = index.source[function.start_byte : function.end_byte].decode(
                             "utf-8", "strict"
                         )
-                        resolved = _resolve_ecmascript_named_import(
+                        cst_resolved = _resolve_ecmascript_named_import(
                             imports.get(alias, ()), alias, exported
                         )
-                        if len(resolved) == 1:
-                            admit(index, caller, *resolved[0])
-                        elif len(resolved) > 1 or alias in ambiguous_imports:
-                            indeterminate = True
-                        elif any(
-                            target.path != index.path
-                            for target, _ in functions_by_language_name[index.language].get(alias, ())
+                        if len(cst_resolved) == 1:
+                            admit(index, caller, *cst_resolved[0])
+                        elif (
+                            len(cst_resolved) > 1
+                            or alias in ambiguous_imports
+                            or any(
+                                target.path != index.path
+                                for target, _ in functions_by_language_name[index.language].get(
+                                    alias, ()
+                                )
+                            )
                         ):
                             indeterminate = True
                     elif function.type in {"member_expression", "optional_member_expression"}:
-                        children = function.named_children
-                        if len(children) >= 2 and children[0].type == "identifier":
-                            alias = index.source[children[0].start_byte:children[0].end_byte].decode(
-                                "utf-8", "strict"
-                            )
-                            name = index.source[children[-1].start_byte:children[-1].end_byte].decode(
-                                "utf-8", "strict"
-                            )
-                            targets = namespaces.get(alias, ())
-                            if len(targets) == 1:
-                                resolved = _resolve_ecmascript_named_import(
-                                    tuple((target, name) for target in targets), name, exported
+                        cst_children = function.named_children
+                        if len(cst_children) >= 2 and cst_children[0].type == "identifier":
+                            alias = index.source[
+                                cst_children[0].start_byte : cst_children[0].end_byte
+                            ].decode("utf-8", "strict")
+                            name = index.source[
+                                cst_children[-1].start_byte : cst_children[-1].end_byte
+                            ].decode("utf-8", "strict")
+                            cst_targets = namespaces.get(alias, ())
+                            if len(cst_targets) == 1:
+                                cst_resolved = _resolve_ecmascript_named_import(
+                                    tuple((target, name) for target in cst_targets), name, exported
                                 )
-                                if len(resolved) == 1:
-                                    admit(index, caller, *resolved[0])
+                                if len(cst_resolved) == 1:
+                                    admit(index, caller, *cst_resolved[0])
                                 else:
                                     indeterminate = True
                             elif alias in ambiguous_imports or any(
                                 target.path != index.path
-                                for target, _ in functions_by_language_name[index.language].get(name, ())
+                                for target, _ in functions_by_language_name[index.language].get(
+                                    name, ()
+                                )
                             ):
                                 indeterminate = True
                         else:
-                            property_name = children[-1] if children else None
+                            property_name = cst_children[-1] if cst_children else None
                             if property_name is not None:
                                 name = index.source[
-                                    property_name.start_byte:property_name.end_byte
+                                    property_name.start_byte : property_name.end_byte
                                 ].decode("utf-8", "strict")
                                 if any(
                                     target.path != index.path
-                                    for target, _ in functions_by_language_name[index.language].get(name, ())
+                                    for target, _ in functions_by_language_name[index.language].get(
+                                        name, ()
+                                    )
                                 ):
                                     indeterminate = True
-            stack.extend(reversed(node.named_children))
+            stack.extend(reversed(cst_node.named_children))
     if indeterminate:
         raise ValueError("ProgramGraph contains unresolved internal call sites")
     facts = tuple(
@@ -359,7 +377,9 @@ def _program_graph_call_facts(catalogue: NativeSourceCatalogue) -> tuple[Program
 
 def _symbols_named(index: SymbolIndex, name: str, *, top_level: bool) -> tuple[Symbol, ...]:
     allowed = _TOP_LEVEL_CALLABLE_KINDS if top_level else _CALLABLE_SYMBOL_KINDS
-    return tuple(symbol for symbol in index.symbols if symbol.name == name and symbol.kind in allowed)
+    return tuple(
+        symbol for symbol in index.symbols if symbol.name == name and symbol.kind in allowed
+    )
 
 
 def _callable_for_bytes(index: SymbolIndex, start: int, end: int) -> Symbol | None:
@@ -447,7 +467,7 @@ def _go_package_name(root: Node, source: bytes) -> str:
             if name is None and node.named_children:
                 name = node.named_children[-1]
             if name is not None:
-                return source[name.start_byte:name.end_byte].decode("utf-8", "strict")
+                return source[name.start_byte : name.end_byte].decode("utf-8", "strict")
     raise ValueError("Go package clause is unavailable")
 
 
@@ -476,7 +496,7 @@ def _ecmascript_import_bindings(
     bindings: dict[str, list[tuple[SymbolIndex, str]]] = {}
     modules: dict[str, list[SymbolIndex]] = {}
     ambiguous: set[str] = set()
-    raw = index.source[node.start_byte:node.end_byte]
+    raw = index.source[node.start_byte : node.end_byte]
     match = re.match(
         rb"\s*import\s+(?:type\s+)?(.*?)\s+from\s*(['\"])([^'\"]+)\2",
         raw,
@@ -539,7 +559,7 @@ def _resolve_ecmascript_import(
 
 
 def _resolve_ecmascript_named_import(
-    bindings: tuple[tuple[SymbolIndex, str], ...],
+    bindings: Sequence[tuple[SymbolIndex, str]],
     name: str,
     exported: frozenset[str],
 ) -> tuple[tuple[SymbolIndex, Symbol], ...]:
@@ -565,16 +585,12 @@ def _catalogue_language_inventory_matches(catalogue: NativeSourceCatalogue) -> b
         for entry in discovery.languages
         for item in entry.files
     }
-    indexed = {
-        (index.language, index.path, index.content_sha256) for index in catalogue.indexes
-    }
+    indexed = {(index.language, index.path, index.content_sha256) for index in catalogue.indexes}
     return discovered == indexed
 
 
 def _program_graph_facts_match_receipts(
-    results: tuple[
-        cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult, ...
-    ],
+    results: tuple[cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult, ...],
     receipts: tuple[ScannerExecution, ...],
 ) -> bool:
     results_by_request: dict[
@@ -605,7 +621,10 @@ def _program_graph_facts_match_receipts(
         ):
             return False
         expected = []
-        for ordinal, signal in enumerate(result.signals):
+        result_signals: tuple[
+            cwe89.Cwe89Signal | cwe89_multilanguage.MultilanguageCwe89Signal, ...
+        ] = result.signals
+        for ordinal, signal in enumerate(result_signals):
             if not receipt.signals:
                 return False
             material = [
@@ -617,9 +636,10 @@ def _program_graph_facts_match_receipts(
                 ordinal,
                 receipt.scanner.producer.model_dump(mode="json"),
             ]
-            signal_id = "product-sql-" + hashlib.sha256(
-                json.dumps(material, sort_keys=True).encode()
-            ).hexdigest()
+            signal_id = (
+                "product-sql-"
+                + hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+            )
             expected.append(
                 (
                     signal_id,

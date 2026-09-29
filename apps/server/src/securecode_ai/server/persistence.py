@@ -7,7 +7,7 @@ import binascii
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -300,10 +300,15 @@ class DevelopmentRepository:
                     )
                 except ScmPolicyReceiptConflict:
                     raise RepositoryError() from None
-                if decision is None or metadata != {
-                    "kind": "SCM_POLICY_DECISION",
-                    "policy_decision": decision.metadata(),
-                }:
+                # Compare the JSON projection: stored tuples decode as lists.
+                if decision is None or metadata != json.loads(
+                    json.dumps(
+                        {
+                            "kind": "SCM_POLICY_DECISION",
+                            "policy_decision": decision.metadata(),
+                        }
+                    )
+                ):
                     raise RepositoryError()
             else:
                 _require_worker_event(
@@ -776,9 +781,7 @@ def _required_repository_id(run: dict[str, object]) -> str:
     return repository_id
 
 
-def _artifact_listing_metadata_is_visible(
-    row: sqlite3.Row, *, now: datetime
-) -> bool:
+def _artifact_listing_metadata_is_visible(row: sqlite3.Row, *, now: datetime) -> bool:
     authorization_id = row["authorization_id"]
     content_id = row["content_id"]
     content_sha256 = row["content_sha256"]
@@ -794,8 +797,7 @@ def _artifact_listing_metadata_is_visible(
         or len(content_sha256) != 64
         or any(character not in "0123456789abcdef" for character in content_sha256)
         or type(data_class) is not str
-        or data_class
-        not in {"DC0_PUBLIC", "DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY"}
+        or data_class not in {"DC0_PUBLIC", "DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY"}
         or type(purpose) is not str
         or purpose
         not in {
@@ -923,12 +925,7 @@ def _require_worker_event(
 
 
 def _base64url_character(value: str) -> bool:
-    return (
-        "A" <= value <= "Z"
-        or "a" <= value <= "z"
-        or "0" <= value <= "9"
-        or value in {"_", "-"}
-    )
+    return "A" <= value <= "Z" or "a" <= value <= "z" or "0" <= value <= "9" or value in {"_", "-"}
 
 
 def _canonical(value: object) -> str:

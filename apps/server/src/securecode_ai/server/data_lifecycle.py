@@ -363,9 +363,7 @@ class LifecycleLedger:
         require_sha256(identity_hash, "identity_hash")
         require_version(expected_version)
         self._require_residency(tenant_id)
-        if self._storage is None and self._requires_external_storage(
-            deletion_id, tenant_id
-        ):
+        if self._storage is None and self._requires_external_storage(deletion_id, tenant_id):
             raise LifecycleConflict("storage executor is unavailable")
         fingerprint = _operation_hash(
             "execute",
@@ -525,9 +523,7 @@ class LifecycleLedger:
                 (tenant_id,),
             ).fetchone()
         except sqlite3.Error as error:
-            raise LifecycleConflict(
-                "legacy audit reconciliation state is unavailable"
-            ) from error
+            raise LifecycleConflict("legacy audit reconciliation state is unavailable") from error
         return row is not None
 
     def _requires_external_storage(self, deletion_id: str, tenant_id: str) -> bool:
@@ -1005,9 +1001,7 @@ def _redact_worker_persistence(
 ) -> None:
     """Redact only terminal worker fields that do not carry replay identity."""
 
-    tables = {
-        table: _table_exists(cursor, table) for table in _WORKER_PERSISTENCE_TABLES
-    }
+    tables = {table: _table_exists(cursor, table) for table in _WORKER_PERSISTENCE_TABLES}
     if tables["worker_sessions"]:
         active_session = cursor.execute(
             """SELECT 1 FROM worker_sessions

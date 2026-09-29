@@ -585,9 +585,7 @@ class ControlPlaneClient:
             try:
                 raw = error.read(max_response_bytes + 1)
             except (IncompleteRead, OSError, TimeoutError, URLError):
-                raise RetryableControlPlaneError(
-                    "control-plane transport is unavailable"
-                ) from None
+                raise RetryableControlPlaneError("control-plane transport is unavailable") from None
         except (IncompleteRead, OSError, TimeoutError, URLError):
             raise RetryableControlPlaneError("control-plane transport is unavailable") from None
         if len(raw) > max_response_bytes:
@@ -606,10 +604,7 @@ class ControlPlaneClient:
             raise ControlPlaneRejected("control-plane response is invalid") from None
         if type(decoded) is not dict:
             raise ControlPlaneRejected("control-plane response is invalid")
-        if (
-            status == HTTPStatus.CONFLICT
-            and _error_code(decoded) == "IDEMPOTENCY_IN_FLIGHT"
-        ):
+        if status == HTTPStatus.CONFLICT and _error_code(decoded) == "IDEMPOTENCY_IN_FLIGHT":
             raise IdempotencyInFlight("control-plane request is still in flight")
         return status, decoded
 
@@ -818,8 +813,7 @@ def _validate_artifact_authorization(
         or type(authorization.get("size_bytes")) is not int
         or authorization["size_bytes"] != reference.size_bytes
         or any(
-            type(authorization.get(name)) is not str
-            or authorization[name] != value
+            type(authorization.get(name)) is not str or authorization[name] != value
             for name, value in expected_text.items()
         )
         or type(headers) is not dict
@@ -935,9 +929,7 @@ def _session_update(document: Mapping[str, object], current_version: int) -> Ses
         type(terminal) is not bool
         or (outcome is not None and type(outcome) is not str)
         or (
-            terminal
-            and outcome
-            not in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}
+            terminal and outcome not in {"PASS", "FAIL", "INDETERMINATE", "CANCELLED", "SUPERSEDED"}
         )
         or (not terminal and outcome is not None)
     ):
@@ -1056,8 +1048,7 @@ def _idempotency_key(*parts: str) -> str:
 
 def _is_http_header_name(name: str) -> bool:
     return bool(name) and all(
-        character.isascii()
-        and (character.isalnum() or character in "!#$%&'*+-.^_`|~")
+        character.isascii() and (character.isalnum() or character in "!#$%&'*+-.^_`|~")
         for character in name
     )
 

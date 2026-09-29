@@ -18,7 +18,7 @@ import json
 import re
 import sqlite3
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
@@ -234,9 +234,10 @@ class GithubSarifPublisher:
                 )
                 attempt_count = int(row["attempt_count"])
                 stored_idempotency_key = row["idempotency_key"]
-                if type(stored_idempotency_key) is not str or _ID.fullmatch(
-                    stored_idempotency_key
-                ) is None:
+                if (
+                    type(stored_idempotency_key) is not str
+                    or _ID.fullmatch(stored_idempotency_key) is None
+                ):
                     raise GithubSarifError(GithubSarifErrorCode.RECEIPT_CONFLICT)
                 idempotency_key = stored_idempotency_key
                 if row["status"] == "SUBMITTED":
@@ -413,12 +414,13 @@ class GithubSarifPublisher:
 
     def _load(self, upload_key: str) -> sqlite3.Row | None:
         try:
-            return self._connection.execute(
+            row: sqlite3.Row | None = self._connection.execute(
                 "SELECT * FROM github_sarif_uploads WHERE upload_key=?",
                 (upload_key,),
             ).fetchone()
         except sqlite3.Error:
             raise GithubSarifError(GithubSarifErrorCode.RECEIPT_UNAVAILABLE) from None
+        return row
 
     def _existing_attempt(self, upload_key: str) -> int:
         row = self._load(upload_key)
@@ -436,14 +438,10 @@ class GithubSarifPublisher:
             yield cursor
             cursor.execute("RELEASE SAVEPOINT " + savepoint)
         except BaseException:
-            try:
+            with suppress(sqlite3.Error):
                 cursor.execute("ROLLBACK TO SAVEPOINT " + savepoint)
-            except sqlite3.Error:
-                pass
-            try:
+            with suppress(sqlite3.Error):
                 cursor.execute("RELEASE SAVEPOINT " + savepoint)
-            except sqlite3.Error:
-                pass
             raise
         finally:
             cursor.close()
@@ -477,7 +475,7 @@ class GithubSarifPublisher:
                         values["payload_sha256"],
                         values["idempotency_key"],
                         values["attempt_count"],
-                    )
+                    ),
                 )
                 if cursor.rowcount != 1:
                     raise GithubSarifError(GithubSarifErrorCode.RECEIPT_CONFLICT)
@@ -593,7 +591,9 @@ def _validate_sarif(content: bytes, run_id: str, identity_hash: str) -> None:
     ):
         raise GithubSarifError(GithubSarifErrorCode.SARIF_INVALID)
     try:
-        too_large = _json_depth(document) > _MAX_JSON_DEPTH or _json_items(document) > _MAX_JSON_ITEMS
+        too_large = (
+            _json_depth(document) > _MAX_JSON_DEPTH or _json_items(document) > _MAX_JSON_ITEMS
+        )
     except RecursionError:
         raise GithubSarifError(GithubSarifErrorCode.SARIF_INVALID) from None
     if too_large:

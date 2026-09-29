@@ -221,10 +221,7 @@ class BackupRepository:
                 request_sha256=request_sha256,
             )
             if replay is not None:
-                if (
-                    replay.tenant_id != value.tenant_id
-                    or replay.backup_id != value.backup_id
-                ):
+                if replay.tenant_id != value.tenant_id or replay.backup_id != value.backup_id:
                     raise BackupConflict("idempotency key has another backup")
                 return replay
             row = cursor.execute(
@@ -299,9 +296,7 @@ class BackupRepository:
         expected_version: int,
         request_sha256: str,
     ) -> tuple[str, BackupRecord | None] | None:
-        _validate_transition_key(
-            tenant_id, backup_id, operation, expected_version, request_sha256
-        )
+        _validate_transition_key(tenant_id, backup_id, operation, expected_version, request_sha256)
         row = self.db.execute(
             """SELECT request_sha256, status, result_json
                FROM backup_transition_journal
@@ -330,9 +325,7 @@ class BackupRepository:
         expected_version: int,
         request_sha256: str,
     ) -> bool:
-        _validate_transition_key(
-            tenant_id, backup_id, operation, expected_version, request_sha256
-        )
+        _validate_transition_key(tenant_id, backup_id, operation, expected_version, request_sha256)
         with self._transaction() as cursor:
             row = cursor.execute(
                 """SELECT request_sha256 FROM backup_transition_journal
@@ -371,11 +364,7 @@ class BackupRepository:
                WHERE tenant_id=? AND backup_id=? AND operation=? AND expected_version=?""",
             (value.tenant_id, value.backup_id, operation, expected),
         ).fetchone()
-        if (
-            row is None
-            or row["request_sha256"] != request_sha256
-            or row["status"] != "RUNNING"
-        ):
+        if row is None or row["request_sha256"] != request_sha256 or row["status"] != "RUNNING":
             raise BackupConflict("backup transition claim is missing")
         cursor.execute(
             """UPDATE backup_transition_journal
@@ -483,11 +472,7 @@ class BackupRepository:
                    WHERE tenant_id=? AND backup_id=? AND expected_version=?""",
                 (tenant_id, backup_id, expected_version),
             ).fetchone()
-            if (
-                phase is None
-                or phase[0] != restore_request_sha256
-                or phase[1] != "IN_PROGRESS"
-            ):
+            if phase is None or phase[0] != restore_request_sha256 or phase[1] != "IN_PROGRESS":
                 raise BackupConflict("backup restore phase is not unresolved")
             audit_sha256 = recovery_audit_sha256(
                 tenant_id=tenant_id,
@@ -660,8 +645,7 @@ def _validate_record(value: BackupRecord) -> None:
         or len(value.encryption_key_ref) > 512
         or not value.encryption_key_ref.isascii()
         or any(
-            ord(character) < 0x20 or ord(character) > 0x7E
-            for character in value.encryption_key_ref
+            ord(character) < 0x20 or ord(character) > 0x7E for character in value.encryption_key_ref
         )
     ):
         raise BackupConflict("encryption_key_ref is invalid")
@@ -706,12 +690,12 @@ def _validate_record(value: BackupRecord) -> None:
         if (
             not value.backup_verified
             or value.restore_verified
-                or value.manifest_sha256 is None
-                or value.rpo_seconds is None
-                or value.rto_seconds is not None
-                or value.completed_at is None
-            ):
-                raise BackupConflict("backed up state is incomplete")
+            or value.manifest_sha256 is None
+            or value.rpo_seconds is None
+            or value.rto_seconds is not None
+            or value.completed_at is None
+        ):
+            raise BackupConflict("backed up state is incomplete")
     elif (
         not value.backup_verified
         or not value.restore_verified
@@ -821,11 +805,7 @@ def _recovery_from_row(row: object) -> BackupRecoveryRecord:
     values = tuple(row)
     if not all(type(values[index]) is str for index in (0, 1, 3, 4, 5, 6, 7, 8, 9, 11)):
         raise BackupConflict("stored backup recovery audit is invalid")
-    if (
-        type(values[2]) is not int
-        or type(values[10]) is not int
-        or values[9] != "ABORTED"
-    ):
+    if type(values[2]) is not int or type(values[10]) is not int or values[9] != "ABORTED":
         raise BackupConflict("stored backup recovery audit is invalid")
     record = BackupRecoveryRecord(
         tenant_id=values[0],
@@ -853,30 +833,36 @@ def _recovery_from_row(row: object) -> BackupRecoveryRecord:
         evidence_ref=record.evidence_ref,
         resolved_at=record.resolved_at,
     )
-    if recovery_audit_sha256(
-        tenant_id=record.tenant_id,
-        backup_id=record.backup_id,
-        expected_version=record.expected_version,
-        restore_request_sha256=record.restore_request_sha256,
-        resolution_request_sha256=record.resolution_request_sha256,
-        idempotency_key=record.idempotency_key,
-        actor_id=record.actor_id,
-        reason=record.reason,
-        evidence_ref=record.evidence_ref,
-        resolution=record.resolution,
-        resolved_at=record.resolved_at,
-    ) != record.audit_sha256:
+    if (
+        recovery_audit_sha256(
+            tenant_id=record.tenant_id,
+            backup_id=record.backup_id,
+            expected_version=record.expected_version,
+            restore_request_sha256=record.restore_request_sha256,
+            resolution_request_sha256=record.resolution_request_sha256,
+            idempotency_key=record.idempotency_key,
+            actor_id=record.actor_id,
+            reason=record.reason,
+            evidence_ref=record.evidence_ref,
+            resolution=record.resolution,
+            resolved_at=record.resolved_at,
+        )
+        != record.audit_sha256
+    ):
         raise BackupConflict("stored backup recovery audit hash is invalid")
-    if recovery_request_sha256(
-        tenant_id=record.tenant_id,
-        backup_id=record.backup_id,
-        expected_version=record.expected_version,
-        restore_request_sha256=record.restore_request_sha256,
-        idempotency_key=record.idempotency_key,
-        actor_id=record.actor_id,
-        reason=record.reason,
-        evidence_ref=record.evidence_ref,
-    ) != record.resolution_request_sha256:
+    if (
+        recovery_request_sha256(
+            tenant_id=record.tenant_id,
+            backup_id=record.backup_id,
+            expected_version=record.expected_version,
+            restore_request_sha256=record.restore_request_sha256,
+            idempotency_key=record.idempotency_key,
+            actor_id=record.actor_id,
+            reason=record.reason,
+            evidence_ref=record.evidence_ref,
+        )
+        != record.resolution_request_sha256
+    ):
         raise BackupConflict("stored backup recovery request is invalid")
     return record
 
@@ -972,12 +958,12 @@ def _deserialize(payload: str) -> BackupRecord:
         raise BackupConflict("stored backup record is invalid") from error
 
 
-def _require_identifier(value: str, field: str) -> None:
+def _require_identifier(value: object, field: str) -> None:
     if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
         raise BackupConflict(f"{field} is invalid")
 
 
-def _require_sha256(value: str, field: str) -> None:
+def _require_sha256(value: object, field: str) -> None:
     if type(value) is not str or _SHA256.fullmatch(value) is None:
         raise BackupConflict(f"{field} is invalid")
 

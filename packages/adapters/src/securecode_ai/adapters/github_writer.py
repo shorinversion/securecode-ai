@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Protocol
 from urllib.parse import quote
 
 from .github_api import GitHubApi, GitHubError, GitHubResponse, repository_path
@@ -155,7 +156,7 @@ class GitHubWriter:
             or len(summary) > 65_535
         ):
             raise GitHubError("CHECK_PROJECTION_INVALID")
-        body = {
+        body: dict[str, object] = {
             "name": _CHECK_NAME,
             "head_sha": expected_head,
             "external_id": external_id,

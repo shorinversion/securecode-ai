@@ -226,9 +226,7 @@ class EcmaScriptCwe338Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe338Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe338Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -398,7 +396,11 @@ def _scan_ecmascript_cwe338(
         raise EcmaScriptCwe338ScanError(EcmaScriptCwe338ScanErrorCode.SOURCE_LIMIT)
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe338ScanError(EcmaScriptCwe338ScanErrorCode.ANALYSIS_UNAVAILABLE)
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -597,7 +599,10 @@ def _weak_random_nodes(
     current = _unwrap(node)
     if current.type == "call_expression":
         function = current.child_by_field_name("function")
-        if function is not None and _canonical_expression(function, source, aliases) == "Math.random":
+        if (
+            function is not None
+            and _canonical_expression(function, source, aliases) == "Math.random"
+        ):
             return {current}
     if current.type in {"identifier", "property_identifier"}:
         name = _node_text(source, current)
@@ -662,7 +667,7 @@ def _collect_aliases(nodes: tuple[Node, ...], source: bytes) -> dict[str, str]:
                     if item.type == "identifier":
                         aliases[_node_text(source, item)] = module
                     elif item.type == "namespace_import":
-                        names = item.named_children
+                        names = tuple(item.named_children)
                         if names:
                             aliases[_node_text(source, names[-1])] = module
                     elif item.type in {"named_imports", "named_import"}:
@@ -701,7 +706,9 @@ def _collect_aliases(nodes: tuple[Node, ...], source: bytes) -> dict[str, str]:
 def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) -> str | None:
     current = _unwrap(node)
     if current.type in {"call_expression", "new_expression"}:
-        function = current.child_by_field_name("function") or current.child_by_field_name("constructor")
+        function = current.child_by_field_name("function") or current.child_by_field_name(
+            "constructor"
+        )
         arguments = current.child_by_field_name("arguments")
         if function is None:
             return None
@@ -713,7 +720,9 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
         return _canonical_expression(function, source, aliases)
     if current.type in {"member_expression", "subscript_expression"}:
         base = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         named = tuple(current.named_children)
         if base is None or property_node is None:
             if len(named) < 2:
@@ -745,17 +754,22 @@ def _operation_for_name(name: str) -> EcmaScriptCwe338Operation:
 
 def _is_sensitive_name(name: str) -> bool:
     compact = re.sub(r"[^a-z0-9]", "", name.lower())
-    return bool(compact) and (
-        compact in _SENSITIVE_WORDS or bool(_SENSITIVE_NAME.search(name))
-    )
+    return bool(compact) and (compact in _SENSITIVE_WORDS or bool(_SENSITIVE_NAME.search(name)))
 
 
 def _property_or_identifier(node: Node, source: bytes) -> str:
     current = _unwrap(node)
-    if current.type in {"identifier", "property_identifier", "private_property_identifier", "string"}:
+    if current.type in {
+        "identifier",
+        "property_identifier",
+        "private_property_identifier",
+        "string",
+    }:
         return _node_text(source, current).strip("'\"")
     if current.type in {"member_expression", "subscript_expression"}:
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         if property_node is not None:
             return _property_or_identifier(property_node, source)
     return _compact_text(source, current)

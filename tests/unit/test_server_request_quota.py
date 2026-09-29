@@ -61,9 +61,9 @@ def test_ledger_rejects_duplicate_or_malformed_policies() -> None:
 
 def test_requests_are_charged_until_the_ceiling() -> None:
     ledger = QuotaLedger((_policy(max_requests=2, max_spend_microunits=0),))
-    first = ledger.check(tenant_id=TENANT, now_ms=0)
-    second = ledger.check(tenant_id=TENANT, now_ms=10)
-    third = ledger.check(tenant_id=TENANT, now_ms=20)
+    first = ledger.check(tenant_id=TENANT, now_ms=0, cost_microunits=0)
+    second = ledger.check(tenant_id=TENANT, now_ms=10, cost_microunits=0)
+    third = ledger.check(tenant_id=TENANT, now_ms=20, cost_microunits=0)
     assert first.allowed and first.remaining_requests == 1
     assert second.allowed and second.remaining_requests == 0
     assert not third.allowed
@@ -72,9 +72,9 @@ def test_requests_are_charged_until_the_ceiling() -> None:
 
 def test_window_rolls_over_and_allows_again() -> None:
     ledger = QuotaLedger((_policy(max_requests=1, max_spend_microunits=0),))
-    assert ledger.check(tenant_id=TENANT, now_ms=0).allowed
-    assert not ledger.check(tenant_id=TENANT, now_ms=59_999).allowed
-    fresh = ledger.check(tenant_id=TENANT, now_ms=60_000)
+    assert ledger.check(tenant_id=TENANT, now_ms=0, cost_microunits=0).allowed
+    assert not ledger.check(tenant_id=TENANT, now_ms=59_999, cost_microunits=0).allowed
+    fresh = ledger.check(tenant_id=TENANT, now_ms=60_000, cost_microunits=0)
     assert fresh.allowed
     assert fresh.remaining_requests == 0
 
@@ -99,7 +99,7 @@ def test_spend_is_accumulated_across_requests() -> None:
 def test_tenant_without_a_policy_is_not_limited() -> None:
     ledger = QuotaLedger((_policy(),))
     for index in range(5):
-        decision = ledger.check(tenant_id="other-tenant", now_ms=index)
+        decision = ledger.check(tenant_id="other-tenant", now_ms=index, cost_microunits=0)
         assert decision.allowed
         assert decision.remaining_requests == MAX_REQUESTS_PER_WINDOW
 
@@ -111,9 +111,9 @@ def test_tenants_are_accounted_separately() -> None:
             _policy(tenant_id="tenant-b", max_requests=1, max_spend_microunits=0),
         )
     )
-    assert ledger.check(tenant_id="tenant-a", now_ms=0).allowed
-    assert not ledger.check(tenant_id="tenant-a", now_ms=1).allowed
-    assert ledger.check(tenant_id="tenant-b", now_ms=1).allowed
+    assert ledger.check(tenant_id="tenant-a", now_ms=0, cost_microunits=0).allowed
+    assert not ledger.check(tenant_id="tenant-a", now_ms=1, cost_microunits=0).allowed
+    assert ledger.check(tenant_id="tenant-b", now_ms=1, cost_microunits=0).allowed
     assert ledger.tenants == 2
 
 
@@ -143,7 +143,7 @@ def test_tenant_capacity_is_bounded_at_configuration() -> None:
 
 def test_decision_document_is_metadata_only() -> None:
     ledger = QuotaLedger((_policy(),))
-    document = ledger.check(tenant_id=TENANT, now_ms=0).document()
+    document = ledger.check(tenant_id=TENANT, now_ms=0, cost_microunits=0).document()
     assert set(document) == {
         "allowed",
         "remaining_requests",
@@ -168,9 +168,9 @@ def _sqlite_quota(max_tenants: int = 10) -> tuple[sqlite3.Connection, SqliteQuot
 
 def test_sqlite_quota_persists_across_ledger_recreation_and_tenants() -> None:
     connection, ledger = _sqlite_quota()
-    assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
-    assert ledger.check(tenant_id="tenant-a", now_ms=1_001).allowed
-    refused = ledger.check(tenant_id="tenant-a", now_ms=1_002)
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_000, cost_microunits=0).allowed
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_001, cost_microunits=0).allowed
+    refused = ledger.check(tenant_id="tenant-a", now_ms=1_002, cost_microunits=0)
     assert not refused.allowed and refused.retry_after_seconds == 60
 
     restarted = SqliteQuotaLedger(
@@ -179,9 +179,9 @@ def test_sqlite_quota_persists_across_ledger_recreation_and_tenants() -> None:
         max_requests=2,
         max_spend_microunits=500,
     )
-    assert not restarted.check(tenant_id="tenant-a", now_ms=1_003).allowed
-    assert restarted.check(tenant_id="tenant-b", now_ms=1_003).allowed
-    assert restarted.check(tenant_id="tenant-a", now_ms=61_000).allowed
+    assert not restarted.check(tenant_id="tenant-a", now_ms=1_003, cost_microunits=0).allowed
+    assert restarted.check(tenant_id="tenant-b", now_ms=1_003, cost_microunits=0).allowed
+    assert restarted.check(tenant_id="tenant-a", now_ms=61_000, cost_microunits=0).allowed
 
 
 def test_sqlite_quota_refuses_a_first_request_above_the_spend_ceiling() -> None:
@@ -208,8 +208,8 @@ def test_sqlite_quota_refuses_a_first_request_above_the_spend_ceiling() -> None:
 
 def test_sqlite_quota_bounds_tenants_and_fails_closed_without_storage() -> None:
     connection, ledger = _sqlite_quota(max_tenants=1)
-    assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
-    capacity = ledger.check(tenant_id="tenant-b", now_ms=1_001)
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_000, cost_microunits=0).allowed
+    capacity = ledger.check(tenant_id="tenant-b", now_ms=1_001, cost_microunits=0)
     assert not capacity.allowed
 
     missing_schema = SqliteQuotaLedger(
@@ -218,7 +218,7 @@ def test_sqlite_quota_bounds_tenants_and_fails_closed_without_storage() -> None:
         max_requests=2,
     )
     with pytest.raises(QuotaError) as unavailable:
-        missing_schema.check(tenant_id="tenant-a", now_ms=1_000)
+        missing_schema.check(tenant_id="tenant-a", now_ms=1_000, cost_microunits=0)
     assert unavailable.value.code is QuotaErrorCode.STORE_UNAVAILABLE
 
     connection.close()
@@ -226,8 +226,8 @@ def test_sqlite_quota_bounds_tenants_and_fails_closed_without_storage() -> None:
 
 def test_sqlite_quota_reclaims_expired_tenant_capacity() -> None:
     connection, ledger = _sqlite_quota(max_tenants=1)
-    assert ledger.check(tenant_id="tenant-a", now_ms=1_000).allowed
-    assert ledger.check(tenant_id="tenant-b", now_ms=61_000).allowed
+    assert ledger.check(tenant_id="tenant-a", now_ms=1_000, cost_microunits=0).allowed
+    assert ledger.check(tenant_id="tenant-b", now_ms=61_000, cost_microunits=0).allowed
     rows = connection.execute("SELECT tenant_id FROM request_quota_windows").fetchall()
     assert rows == [("tenant-b",)]
     connection.close()
@@ -237,6 +237,18 @@ def test_sqlite_schema_upgrade_adds_persistent_quota_window() -> None:
     connection = sqlite3.connect(":memory:")
     apply_schema(connection)
     connection.execute("DROP TABLE request_quota_windows")
+    # A real 1.3.0 database predates the backup transition objects as well.
+    for trigger in (
+        "backup_restore_recovery_audit_no_update",
+        "backup_restore_recovery_audit_no_delete",
+    ):
+        connection.execute(f"DROP TRIGGER {trigger}")
+    for table in (
+        "backup_restore_recovery_audit",
+        "backup_restore_phases",
+        "backup_transition_journal",
+    ):
+        connection.execute(f"DROP TABLE {table}")
     connection.execute("UPDATE schema_metadata SET schema_version='1.3.0'")
     connection.commit()
 

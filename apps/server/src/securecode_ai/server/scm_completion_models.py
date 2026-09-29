@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, Protocol
 
+from securecode_ai.adapters.github_annotations import GithubAnnotationReceipt
 from securecode_ai.adapters.gitlab_ci import (
     GitlabExternalStatus,
     GitlabExternalStatusProjection,
@@ -17,7 +18,6 @@ from securecode_ai.adapters.gitlab_ci import (
 from securecode_ai.adapters.gitlab_discussions import GitlabDiscussionProjection
 from securecode_ai.adapters.gitlab_summary import GitlabSummaryProjection
 from securecode_ai.adapters.gitlab_writer import GitlabWriteTarget
-from securecode_ai.adapters.github_annotations import GithubAnnotationReceipt
 from securecode_ai.contracts import AuditRunOutcome
 from securecode_ai.core.scm_policy import (
     ScmPolicyDecision,
@@ -59,9 +59,7 @@ class SCMPublicationStorePort(Protocol):
 
     def load(self, *, tenant_id: str, run_id: str) -> SCMPublicationTarget | None: ...
 
-    def pending(
-        self, *, tenant_id: str, limit: int = 32
-    ) -> tuple[SCMPublicationTarget, ...]: ...
+    def pending(self, *, tenant_id: str, limit: int = 32) -> tuple[SCMPublicationTarget, ...]: ...
 
     def mark_pending(
         self, *, target: SCMPublicationTarget, outcome: str
@@ -230,10 +228,7 @@ def scm_publication_outcome(
     if audit is AuditRunOutcome.INDETERMINATE:
         return AuditRunOutcome.INDETERMINATE
     if decision.mode is ScmPolicyMode.ADVISORY:
-        if (
-            decision.enforcement is not ScmPolicyEnforcement.ADVISORY
-            or decision.blocks_merge
-        ):
+        if decision.enforcement is not ScmPolicyEnforcement.ADVISORY or decision.blocks_merge:
             raise SCMCompletionError("SCM advisory policy decision is invalid")
         return AuditRunOutcome.PASS if audit is AuditRunOutcome.FAIL else audit
     if decision.enforcement is ScmPolicyEnforcement.BLOCK:
@@ -362,9 +357,9 @@ def _digest(value: dict[str, object]) -> str:
 __all__ = [
     "GitHubCheckWriterPort",
     "GitHubCommentWriterPort",
+    "GithubHeadResolver",
     "GithubSarifArtifactResolver",
     "GithubSarifWriterPort",
-    "GithubHeadResolver",
     "GitlabHeadResolver",
     "GitlabStatusWriterPort",
     "GitlabTerminalPublication",

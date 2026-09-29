@@ -153,6 +153,7 @@ class World:
         return self.authorizations.issue(
             tenant_id=tenant_id,
             worker_id=worker_id,
+            session_id=self.lease.session_id if self.lease is not None else "session-unleased",
             repository_id=REPOSITORY,
             run_id=RUN_ID,
             execution_identity_hash=self.identity.execution_identity_hash,
@@ -387,6 +388,7 @@ def test_request_rejects_invalid_shape() -> None:
             authorization_id="upload-1",
             tenant_id="tenant-1",
             worker_id="worker-1",
+            repository_id="repository-1",
             run_id="run-1",
             execution_identity_hash="short",
             content_sha256="a" * 64,
@@ -428,9 +430,11 @@ def test_authorization_row_is_scoped_to_the_recording_tenant(tmp_path: Path) -> 
         other.require(
             tenant_id=OTHER_TENANT,
             authorization_id=authorization.authorization_id,
+            repository_id=REPOSITORY,
             run_id=RUN_ID,
             execution_identity_hash=world.identity.execution_identity_hash,
             content_sha256=world.content_sha256,
             size_bytes=len(world.content),
             purpose=PURPOSE,
+            request_sha256=HASH_A,
         )

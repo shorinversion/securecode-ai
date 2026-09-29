@@ -63,9 +63,7 @@ def dependency_manifest_plan(
     if len(by_path) != len(manifests) or set(by_path) != set(contents):
         raise DependencyScanError(DependencyScanErrorCode.REQUEST_INVALID)
     covered: dict[str, DependencyManifestEntry] = {}
-    workspaces = tuple(
-        item for item in manifests if item.kind is DependencyManifestKind.GO_WORK
-    )
+    workspaces = tuple(item for item in manifests if item.kind is DependencyManifestKind.GO_WORK)
     workspace_sums = tuple(
         item for item in manifests if item.kind is DependencyManifestKind.GO_WORK_SUM
     )

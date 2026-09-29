@@ -244,8 +244,15 @@ def test_cancellation_interrupts_in_flight_requests_and_counts_them() -> None:
 
     assert cell.scenario == "cancellation"
     assert cell.cancellations == 2
-    assert not cell.completed
-    assert not cell.passed
+    # A cancellation cell is terminal once every scheduled request has an
+    # observed outcome.  The scenario passes because the interrupted requests
+    # were observed and counted rather than silently lost.
+    assert cell.completed
+    assert cell.cancelled_requests == 2
+    assert cell.unfinished_requests == 0
+    assert cell.observed_requests == cell.planned_requests
+    assert cell.result == "PASSED"
+    assert cell.passed
     assert cell.live_leases == 0
 
 

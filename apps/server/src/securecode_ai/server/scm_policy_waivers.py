@@ -57,9 +57,7 @@ def waivers_cover_run_policy(
         repository_id=row[0],
         run_id=run_id,
         identity_hash=identity_hash,
-        findings=tuple(
-            (item.finding_id, item.root_cause_fingerprint) for item in blocking
-        ),
+        findings=tuple((item.finding_id, item.root_cause_fingerprint) for item in blocking),
         policy_scope=decision.policy_id,
     )
 

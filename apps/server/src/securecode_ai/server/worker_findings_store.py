@@ -12,6 +12,7 @@ from securecode_ai.contracts import ArtifactRef
 from .run_admission_models import RunOperation
 from .worker_findings import WorkerFindingRecord, parse_worker_findings
 from .worker_queue_models import (
+    _MAX_VERSION,
     OUTCOME_STATES,
     WorkerQueueConflict,
     WorkerQueueLease,
@@ -22,7 +23,6 @@ from .worker_queue_models import (
     timestamp,
     utc,
 )
-from .worker_queue_models import _MAX_VERSION
 from .worker_resource_accounting import settle_worker_resources
 from .worker_resource_models import WorkerResourceSettlement
 

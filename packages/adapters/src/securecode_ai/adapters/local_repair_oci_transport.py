@@ -48,7 +48,7 @@ def _closed_wire_json(raw: bytes) -> dict[str, Any]:
         value = closed_json(raw)
     except LocalRepairOciProtocolError:
         raise LocalRepairOciRuntimeError("OCI_VALIDATOR_PROTOCOL_INVALID") from None
-    return cast(dict[str, Any], value)
+    return value
 
 
 def _from_wire_b64(value: object, *, limit: int) -> bytes:
@@ -97,17 +97,17 @@ class ValidatorBrokerOciRuntime:
         "_bundle_sha256",
         "_closed",
         "_docker_endpoint",
-        "_docker_socket_uid",
         "_docker_sha256",
+        "_docker_socket_uid",
         "_expected_case_ids",
         "_expected_image_digest",
+        "_fixed_head_sha",
         "_identity",
         "_on_close",
         "_parent_head_sha",
         "_patch_sha256",
         "_session_id",
         "_socket_path",
-        "_fixed_head_sha",
     )
 
     def __init__(
@@ -240,7 +240,9 @@ class ValidatorBrokerOciRuntime:
         if (
             type(expected_case_ids) is not tuple
             or not expected_case_ids
-            or any(type(item) is not str or _ID.fullmatch(item) is None for item in expected_case_ids)
+            or any(
+                type(item) is not str or _ID.fullmatch(item) is None for item in expected_case_ids
+            )
             or len(set(expected_case_ids)) != len(expected_case_ids)
         ):
             raise LocalRepairOciRuntimeError("OCI_PREPARATION_REQUEST_INVALID")
@@ -368,14 +370,14 @@ class ValidatorBrokerOciRuntime:
         if len(raw) > _MAX_REQUEST_BYTES:
             raise LocalRepairOciRuntimeError("OCI_VALIDATOR_PROTOCOL_INVALID")
         timeout = (
-            130.0
-            if operation in {"prepare", "run"}
-            else 5.0
-            if operation == "cancel"
-            else 30.0
+            130.0 if operation in {"prepare", "run"} else 5.0 if operation == "cancel" else 30.0
         )
+        # AF_UNIX brokers are Linux-only; fail closed instead of AttributeError.
+        unix_family = getattr(socket, "AF_UNIX", None)
+        if unix_family is None:
+            raise LocalRepairOciRuntimeError("OCI_VALIDATOR_BROKER_UNAVAILABLE")
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            with socket.socket(unix_family, socket.SOCK_STREAM) as connection:
                 connection.settimeout(timeout)
                 connection.connect(str(self._socket_path))
                 connection.sendall(raw + b"\n")
@@ -410,9 +412,10 @@ class ValidatorBrokerOciRuntime:
             ):
                 raise LocalRepairOciRuntimeError(reason)
             raise LocalRepairOciRuntimeError("OCI_VALIDATOR_PROTOCOL_INVALID")
-        if set(response) != {"schema_version", "ok", "result"} or type(
-            response.get("result")
-        ) is not dict:
+        if (
+            set(response) != {"schema_version", "ok", "result"}
+            or type(response.get("result")) is not dict
+        ):
             raise LocalRepairOciRuntimeError("OCI_VALIDATOR_PROTOCOL_INVALID")
         return cast(dict[str, Any], response["result"])
 

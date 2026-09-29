@@ -18,6 +18,15 @@ from .evidence_package import EvidencePackage
 
 _REFERENCE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 
+# CONFLICTING and NOT_EVALUATED are run-level states, never an Auditor answer.
+AUDITOR_VERDICTS: frozenset[FindingVerdict] = frozenset(
+    {
+        FindingVerdict.CONFIRMED,
+        FindingVerdict.REJECTED_WITH_EVIDENCE,
+        FindingVerdict.NEEDS_MORE_EVIDENCE,
+    }
+)
+
 
 class AuditorContractErrorCode(StrEnum):
     """Closed, source-free reasons a structured Auditor output is refused."""
@@ -57,12 +66,7 @@ class AuditorVerdict:
             type(self.verdict_id) is not str
             or _REFERENCE_ID.fullmatch(self.verdict_id) is None
             or type(self.finding_verdict) is not FindingVerdict
-            or self.finding_verdict
-            not in {
-                FindingVerdict.CONFIRMED,
-                FindingVerdict.REJECTED_WITH_EVIDENCE,
-                FindingVerdict.NEEDS_MORE_EVIDENCE,
-            }
+            or self.finding_verdict not in AUDITOR_VERDICTS
             or type(self.cited_evidence_ids) is not tuple
             or not self.cited_evidence_ids
             or any(
@@ -173,6 +177,7 @@ def parse_auditor_verdict(
 
 
 __all__ = [
+    "AUDITOR_VERDICTS",
     "AuditorContractError",
     "AuditorContractErrorCode",
     "AuditorResponse",

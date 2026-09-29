@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-import re
 
 _ALLOWED_ATTRIBUTES = frozenset(
     {

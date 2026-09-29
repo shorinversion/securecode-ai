@@ -82,11 +82,7 @@ def parse_yarn_berry_lock(
             if metadata_seen or set(current_fields) - _METADATA_FIELDS:
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
             version = current_fields.get("version")
-            if (
-                type(version) is not str
-                or not version.isdecimal()
-                or not 2 <= int(version) <= 16
-            ):
+            if type(version) is not str or not version.isdecimal() or not 2 <= int(version) <= 16:
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
             metadata_seen = True
         else:
@@ -123,9 +119,7 @@ def parse_yarn_berry_lock(
             if current_kind is None:
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
             key, raw_value = _field(line[2:])
-            allowed = (
-                _METADATA_FIELDS if current_kind == "metadata" else _PACKAGE_FIELDS
-            )
+            allowed = _METADATA_FIELDS if current_kind == "metadata" else _PACKAGE_FIELDS
             if key in current_fields or key not in allowed:
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
             if raw_value == "":

@@ -145,26 +145,8 @@ class AuditTelemetryControlPlane:
         preflight = getattr(self._fallback, "preflight_artifact_upload", None)
         if not callable(preflight):
             raise ServiceUnavailableError()
-        return preflight(request)
-
-
-def _record_telemetry_safely(
-    telemetry: OperationsTelemetry,
-    *,
-    operation: str,
-    outcome: str,
-    elapsed_ms: int,
-    resource_usage: Mapping[str, int] | None = None,
-) -> None:
-    try:
-        telemetry.record(
-            operation=operation,
-            outcome=outcome,
-            elapsed_ms=elapsed_ms,
-            resource_usage=resource_usage,
-        )
-    except Exception:
-        return
+        artifact_id: str = preflight(request)
+        return artifact_id
 
     def _export_run_audit(self, request: ServiceRequest) -> ServiceResponse:
         run_id = request.path_params.get("run_id")
@@ -211,7 +193,10 @@ def _record_telemetry_safely(
             or resource_type not in _RESOURCE_AUDIT_TYPES
             or (
                 resource_id is not None
-                and (type(resource_id) is not str or _RESOURCE_AUDIT_ID.fullmatch(resource_id) is None)
+                and (
+                    type(resource_id) is not str
+                    or _RESOURCE_AUDIT_ID.fullmatch(resource_id) is None
+                )
             )
         ):
             return _error(400, "INVALID_AUDIT_RANGE")
@@ -270,7 +255,9 @@ def _record_telemetry_safely(
                     raw_body_sha,
                 )
             )
-            idempotency_key = "resource-audit-" + hashlib.sha256(material.encode("utf-8")).hexdigest()
+            idempotency_key = (
+                "resource-audit-" + hashlib.sha256(material.encode("utf-8")).hexdigest()
+            )
             try:
                 self._audit_log.append_resource(
                     tenant_id=request.identity.tenant_id,
@@ -375,10 +362,7 @@ def _record_telemetry_safely(
                 "execution_identity_hash",
                 document.get("identity_hash", identity_hash),
             )
-        if (
-            not _safe_identifier(repository_id)
-            or not _sha256(identity_hash)
-        ):
+        if not _safe_identifier(repository_id) or not _sha256(identity_hash):
             return None
         lookup = getattr(self._runs, "get_run_by_identity", None)
         if not callable(lookup):
@@ -395,6 +379,25 @@ def _record_telemetry_safely(
         return run_id if _safe_identifier(run_id) else None
 
 
+def _record_telemetry_safely(
+    telemetry: OperationsTelemetry,
+    *,
+    operation: str,
+    outcome: str,
+    elapsed_ms: int,
+    resource_usage: Mapping[str, int] | None = None,
+) -> None:
+    try:
+        telemetry.record(
+            operation=operation,
+            outcome=outcome,
+            elapsed_ms=elapsed_ms,
+            resource_usage=resource_usage,
+        )
+    except Exception:
+        return
+
+
 def _resource_audit_target(
     request: ServiceRequest,
     response: ServiceResponse,
@@ -408,9 +411,7 @@ def _resource_audit_target(
     if resource_id is None and request.action == "backups.create":
         request_document = request.document
         candidate = (
-            request_document.get("backup_id")
-            if isinstance(request_document, Mapping)
-            else None
+            request_document.get("backup_id") if isinstance(request_document, Mapping) else None
         )
         if type(candidate) is str and _RESOURCE_AUDIT_ID.fullmatch(candidate) is not None:
             resource_id = candidate
@@ -482,14 +483,8 @@ def _request_scope_hash(request: ServiceRequest) -> str:
     """Hash routing metadata so keyless transitions cannot collide by run."""
 
     parts = [request.method, request.route]
-    parts.extend(
-        f"path:{key}={value}"
-        for key, value in sorted(request.path_params.items())
-    )
-    parts.extend(
-        f"query:{key}={'/'.join(values)}"
-        for key, values in sorted(request.query.items())
-    )
+    parts.extend(f"path:{key}={value}" for key, value in sorted(request.path_params.items()))
+    parts.extend(f"query:{key}={'/'.join(values)}" for key, values in sorted(request.query.items()))
     return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
 
 
@@ -518,9 +513,7 @@ def _operation_for(action: str) -> str | None:
         return "run"
     if action.startswith("worker_sessions."):
         return "worker"
-    if action.startswith(
-        ("artifacts.", "backups.", "secrets.", "lifecycle.deletions.")
-    ):
+    if action.startswith(("artifacts.", "backups.", "secrets.", "lifecycle.deletions.")):
         return "artifact"
     if action.startswith(("approvals.", "waivers.")):
         return "approval"
@@ -538,9 +531,7 @@ def _outcome(response: ServiceResponse | None) -> str:
     return "success"
 
 
-def _worker_terminal_outcome(
-    request: ServiceRequest, response: ServiceResponse | None
-) -> str:
+def _worker_terminal_outcome(request: ServiceRequest, response: ServiceResponse | None) -> str:
     """Use a worker terminal result only after the server accepted completion."""
 
     if response is None or response.status < 200 or response.status >= 300:
@@ -611,13 +602,9 @@ def _audit_attributes(
     response_document = response.document
     if request.action in {"findings.decide", "approvals.decide"}:
         reason_code = (
-            request_document.get("reason_code")
-            if isinstance(request_document, Mapping)
-            else None
+            request_document.get("reason_code") if isinstance(request_document, Mapping) else None
         )
-        if (
-            type(reason_code) is str and _REASON_CODE.fullmatch(reason_code) is not None
-        ):
+        if type(reason_code) is str and _REASON_CODE.fullmatch(reason_code) is not None:
             attributes["reason_code"] = reason_code
     if request.action.startswith("lifecycle.deletions."):
         for document in (response_document, request_document):
@@ -633,9 +620,7 @@ def _audit_attributes(
                 break
         if request.action == "lifecycle.deletions.legal_hold":
             retention_marked = (
-                request_document.get("enabled")
-                if isinstance(request_document, Mapping)
-                else None
+                request_document.get("enabled") if isinstance(request_document, Mapping) else None
             )
             if type(retention_marked) is bool:
                 attributes["retention_marked"] = retention_marked
@@ -646,10 +631,7 @@ def _is_audit_retention_execution(
     request: ServiceRequest,
     response: ServiceResponse,
 ) -> bool:
-    if (
-        request.action != "lifecycle.deletions.execute"
-        or not 200 <= response.status < 300
-    ):
+    if request.action != "lifecycle.deletions.execute" or not 200 <= response.status < 300:
         return False
     for document in (response.document, request.document):
         if isinstance(document, Mapping) and document.get("data_class") == "audit":

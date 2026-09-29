@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import heapq
 import sqlite3
@@ -272,10 +273,7 @@ class SqliteOidcLoginState:
                     count = self._connection.execute(
                         "SELECT COUNT(*) FROM oidc_login_source_rate_limit"
                     ).fetchone()
-                    if (
-                        count is None
-                        or type(count[0]) is not int
-                    ):
+                    if count is None or type(count[0]) is not int:
                         raise OidcDenied()
                     if count[0] >= _DEFAULT_MAX_ENTRIES:
                         rate_limited = True
@@ -358,9 +356,7 @@ class OpaqueSessionIssuer:
             or type(principal.repository_grants) is not frozenset
             or len(principal.repository_grants) > 128
             or not all(
-                type(grant) is str
-                and 1 <= len(grant) <= 256
-                and _safe_principal_value(grant)
+                type(grant) is str and 1 <= len(grant) <= 256 and _safe_principal_value(grant)
                 for grant in principal.repository_grants
             )
             or type(token_expires_at) is not int
@@ -398,10 +394,8 @@ class OpaqueSessionIssuer:
             or session_expiry > now + timedelta(seconds=3600)
         ):
             if type(token) is str and token.isascii() and 1 <= len(token) <= 8192:
-                try:
+                with contextlib.suppress(Exception):
                     self._store.revoke_session(token)
-                except Exception:
-                    pass
             raise OidcDenied()
         receipt = OidcReceipt(
             subject_id=session.subject_id,

@@ -43,8 +43,7 @@ def run(
     values = os.environ if environment is None else environment
     stop_event = stop if stop is not None else threading.Event()
     arguments = tuple(
-        _maintenance_arguments(values, tenant_id=tenant_id)
-        for tenant_id in _tenant_ids(values)
+        _maintenance_arguments(values, tenant_id=tenant_id) for tenant_id in _tenant_ids(values)
     )
     interval = _interval(values)
     while not stop_event.is_set():
@@ -99,10 +98,7 @@ def _tenant_ids(values: Mapping[str, str]) -> tuple[str, ...]:
         ):
             raise ValueError("maintenance tenant configuration is invalid")
         return tuple(raw_ids)
-    if (
-        type(configured_single) is not str
-        or _TENANT_ID.fullmatch(configured_single) is None
-    ):
+    if type(configured_single) is not str or _TENANT_ID.fullmatch(configured_single) is None:
         raise ValueError("maintenance tenant configuration is incomplete")
     return (configured_single,)
 

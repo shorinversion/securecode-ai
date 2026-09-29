@@ -337,9 +337,7 @@ class EcmaScriptCwe306Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe306Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe306Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -520,7 +518,11 @@ def _scan_ecmascript_cwe306(
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe306ScanError(EcmaScriptCwe306ScanErrorCode.ANALYSIS_UNAVAILABLE)
 
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -574,17 +576,17 @@ def _scan_ecmascript_cwe306(
         for method in nodes:
             if method.type != "method_definition":
                 continue
-            candidate = _nest_candidate(method, source, aliases)
-            if candidate is None or not _critical_path(candidate.path, candidate.method):
+            nest = _nest_candidate(method, source, aliases)
+            if nest is None or not _critical_path(nest.path, nest.method):
                 continue
-            if _nest_has_auth(candidate, source, aliases):
+            if _nest_has_auth(nest, source, aliases):
                 continue
-            source_range = _range(candidate.evidence)
-            sink_range = _range(candidate.handler)
+            source_range = _range(nest.evidence)
+            sink_range = _range(nest.handler)
             if not sink_range.contains(source_range):
                 source_range = sink_range
             raw.add((source_range, sink_range, EcmaScriptCwe306Operation.CRITICAL_ROUTE))
-            route_handlers.add((candidate.handler.start_byte, candidate.handler.end_byte))
+            route_handlers.add((nest.handler.start_byte, nest.handler.end_byte))
             if len(raw) > limits.max_signals:
                 raise EcmaScriptCwe306ScanError(EcmaScriptCwe306ScanErrorCode.SIGNAL_LIMIT)
 
@@ -715,7 +717,9 @@ def _is_framework_route(canonical: str) -> bool:
 
 
 def _critical_path(path: str, method: str) -> bool:
-    tokens = {token for token in re.split(r"[^a-z0-9]+", path.lower()) if token and not token.isdigit()}
+    tokens = {
+        token for token in re.split(r"[^a-z0-9]+", path.lower()) if token and not token.isdigit()
+    }
     if not tokens or (tokens & _PUBLIC_ROUTE_WORDS and not tokens & _CRITICAL_ROUTE_WORDS):
         return False
     if tokens & _CRITICAL_ROUTE_WORDS:
@@ -792,7 +796,8 @@ def _route_has_auth(
     for item in middleware:
         current = _unwrap(item)
         if _is_function_node(current) or (
-            current.type == "identifier" and _node_text(source, current) == _node_text(source, candidate.handler)
+            current.type == "identifier"
+            and _node_text(source, current) == _node_text(source, candidate.handler)
         ):
             continue
         if _is_auth_expression(current, source, aliases):
@@ -894,7 +899,9 @@ def _nest_candidate(method: Node, source: bytes, aliases: dict[str, str]) -> _Ne
     method_name = method.child_by_field_name("name")
     if route_path is None:
         route_path = _node_text(source, method_name) if method_name is not None else ""
-    combined = "/".join(part.strip("/") for part in (controller_path, route_path) if part).join(("/", ""))
+    combined = "/".join(part.strip("/") for part in (controller_path, route_path) if part).join(
+        ("/", "")
+    )
     return _NestCandidate(method, route_decorator, combined or "/", route_method, class_node)
 
 
@@ -925,7 +932,11 @@ def _decorator_info(
     call = next((item for item in _walk_nodes(node) if item.type == "call_expression"), None)
     if call is None:
         children = tuple(node.named_children)
-        return (_canonical_expression(children[0], source, aliases), None) if children else (None, None)
+        return (
+            (_canonical_expression(children[0], source, aliases), None)
+            if children
+            else (None, None)
+        )
     function = call.child_by_field_name("function")
     arguments = call.child_by_field_name("arguments")
     if function is None:
@@ -1030,7 +1041,7 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
             if item.type == "identifier":
                 aliases[_node_text(source, item)] = module
             elif item.type == "namespace_import":
-                names = item.named_children
+                names = tuple(item.named_children)
                 if names:
                     aliases[_node_text(source, names[-1])] = module
             elif item.type in {"named_imports", "named_import"}:
@@ -1051,7 +1062,9 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
 def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) -> str | None:
     current = _unwrap(node)
     if current.type in {"call_expression", "new_expression"}:
-        function = current.child_by_field_name("function") or current.child_by_field_name("constructor")
+        function = current.child_by_field_name("function") or current.child_by_field_name(
+            "constructor"
+        )
         arguments = current.child_by_field_name("arguments")
         if function is None:
             return None
@@ -1063,7 +1076,9 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
         return _canonical_expression(function, source, aliases)
     if current.type in {"member_expression", "subscript_expression"}:
         base = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         if base is None or property_node is None:
             named = tuple(current.named_children)
             if len(named) < 2:

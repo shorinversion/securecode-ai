@@ -65,7 +65,7 @@ _ESCAPE_FUNCTIONS = frozenset(
         "URLQueryEscaper",
     }
 )
-_HTML_CONVERSIONS: dict[str, "GoCwe79Operation"] = {}
+_HTML_CONVERSIONS: dict[str, GoCwe79Operation] = {}
 _GO_SCOPES = frozenset({"function_declaration", "method_declaration", "func_literal"})
 
 
@@ -488,7 +488,7 @@ def _sink_for_call(
     arguments = node.child_by_field_name("arguments")
     if function is None or arguments is None:
         return None, ()
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     qualified = _qualified_call(function, source, imports)
     if qualified.startswith("html/template."):
         conversion_name = qualified.rsplit(".", 1)[-1]
@@ -499,12 +499,18 @@ def _sink_for_call(
     receiver = _receiver_text(function, source)
     if method == "Write" and _is_response_writer(receiver, response_writers):
         return GoCwe79Operation.RAW_RESPONSE_WRITE, values[:1]
-    if qualified in {"fmt.Fprint", "fmt.Fprintln", "io.WriteString"}:
-        if values and _is_response_writer(_compact_text(source, values[0]), response_writers):
-            return GoCwe79Operation.RAW_FORMATTED_RESPONSE_WRITE, values[1:]
-    if qualified == "fmt.Fprintf":
-        if values and _is_response_writer(_compact_text(source, values[0]), response_writers):
-            return GoCwe79Operation.RAW_FORMATTED_RESPONSE_WRITE, values[2:]
+    if (
+        qualified in {"fmt.Fprint", "fmt.Fprintln", "io.WriteString"}
+        and values
+        and _is_response_writer(_compact_text(source, values[0]), response_writers)
+    ):
+        return GoCwe79Operation.RAW_FORMATTED_RESPONSE_WRITE, values[1:]
+    if (
+        qualified == "fmt.Fprintf"
+        and values
+        and _is_response_writer(_compact_text(source, values[0]), response_writers)
+    ):
+        return GoCwe79Operation.RAW_FORMATTED_RESPONSE_WRITE, values[2:]
     if method in {"Execute", "ExecuteTemplate"}:
         receiver_node = function.child_by_field_name("operand")
         package = (
@@ -533,22 +539,24 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     for name, value in zip(names, values, strict=False):
         if name.type != "identifier":
             continue
         name_text = _text(source, name)
-        environment[name_text] = _resolve(value, environment, source, imports, limits, 0, frozenset())
+        environment[name_text] = _resolve(
+            value, environment, source, imports, limits, 0, frozenset()
+        )
         template_kind = _template_kind(value, source, imports, templates)
         if template_kind is not None:
             templates[name_text] = template_kind
@@ -602,7 +610,11 @@ def _template_kind(
         return templates.get(_text(source, node))
     if node.type == "parenthesized_expression":
         return next(
-            (kind for child in node.named_children if (kind := _template_kind(child, source, imports, templates))),
+            (
+                kind
+                for child in node.named_children
+                if (kind := _template_kind(child, source, imports, templates))
+            ),
             None,
         )
     if node.type != "call_expression":
@@ -690,7 +702,11 @@ def _resolve(
             "strings.TrimPrefix",
             "strings.TrimSuffix",
         }:
-            values = arguments.named_children[1:] if qualified == "fmt.Sprintf" else arguments.named_children
+            values = (
+                arguments.named_children[1:]
+                if qualified == "fmt.Sprintf"
+                else arguments.named_children
+            )
             return _dedupe_flows(
                 (
                     flow
@@ -750,9 +766,8 @@ def _external_source(node: Node, source: bytes, imports: dict[str, str]) -> Node
 def _is_sanitizer(node: Node, source: bytes, imports: dict[str, str]) -> bool:
     qualified = _qualified_call(node.child_by_field_name("function"), source, imports)
     package, _, name = qualified.rpartition(".")
-    return (
-        (package == _HTML_PACKAGE and name == "EscapeString")
-        or (package == _HTML_TEMPLATE and name in _ESCAPE_FUNCTIONS)
+    return (package == _HTML_PACKAGE and name == "EscapeString") or (
+        package == _HTML_TEMPLATE and name in _ESCAPE_FUNCTIONS
     )
 
 

@@ -14,7 +14,7 @@ import re
 import tomllib
 import uuid
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TypeGuard
 
 BOM_FORMAT: Final = "CycloneDX"
 SPEC_VERSION: Final = "1.5"
@@ -56,7 +56,7 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
 
 
-def _safe_text(value: object) -> bool:
+def _safe_text(value: object) -> TypeGuard[str]:
     return (
         type(value) is str
         and value == value.strip()
@@ -151,7 +151,7 @@ def build_sbom(*, lock: Path = DEFAULT_LOCK, pyproject: Path = DEFAULT_PYPROJECT
     manifest = lock_document.get("manifest")
     members = manifest.get("members") if isinstance(manifest, dict) else None
     if members is None:
-        workspace_names = frozenset()
+        workspace_names: frozenset[str] = frozenset()
     elif type(members) is list and all(type(item) is str and item for item in members):
         workspace_names = frozenset(members)
     else:
@@ -192,12 +192,7 @@ def build_sbom(*, lock: Path = DEFAULT_LOCK, pyproject: Path = DEFAULT_PYPROJECT
 
 
 def _read_assessment(path: Path) -> dict[str, Any]:
-    if (
-        not path.is_absolute()
-        or path.suffix != ".json"
-        or path.is_symlink()
-        or not path.is_file()
-    ):
+    if not path.is_absolute() or path.suffix != ".json" or path.is_symlink() or not path.is_file():
         raise SbomError("SBOM assessment is unavailable")
     try:
         resolved = path.resolve(strict=True)
@@ -209,7 +204,14 @@ def _read_assessment(path: Path) -> dict[str, Any]:
         document = json.loads(payload.decode("ascii"))
     except SbomError:
         raise
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError, TypeError, ValueError):
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        TypeError,
+        ValueError,
+    ):
         raise SbomError("SBOM assessment cannot be parsed") from None
     if type(document) is not dict or payload != _canonical(document):
         raise SbomError("SBOM assessment is not canonical")
@@ -392,10 +394,9 @@ def main(argv: list[str] | None = None) -> int:
         document = build_sbom(lock=arguments.lock, pyproject=arguments.pyproject)
         if (arguments.assessment is None) != (arguments.release_output is None):
             raise SbomError("assessment and release output must be supplied together")
-        if (
-            arguments.assessment is not None
-            and arguments.output.resolve(strict=False) == arguments.release_output.resolve(strict=False)
-        ):
+        if arguments.assessment is not None and arguments.output.resolve(
+            strict=False
+        ) == arguments.release_output.resolve(strict=False):
             raise SbomError("CycloneDX and release SBOM outputs must differ")
         release_payload = (
             None

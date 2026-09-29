@@ -44,9 +44,7 @@ _REQUEST_CALLS = frozenset(
         "requests.sessions.Session",
     }
 )
-_HTTPX_CALLS = frozenset(
-    {"httpx.request", "httpx.Client", "httpx.AsyncClient"}
-)
+_HTTPX_CALLS = frozenset({"httpx.request", "httpx.Client", "httpx.AsyncClient"})
 _URLLIB3_CALLS = frozenset(
     {
         "urllib3.PoolManager",
@@ -71,9 +69,7 @@ _UNVERIFIED_CONTEXT_CALLS = frozenset(
     }
 )
 _SSL_WRAP_CALLS = frozenset({"ssl.wrap_socket", "_ssl.wrap_socket"})
-_SSL_PROTOCOL_SERVER = frozenset(
-    {"ssl.PROTOCOL_TLS_SERVER", "_ssl.PROTOCOL_TLS_SERVER"}
-)
+_SSL_PROTOCOL_SERVER = frozenset({"ssl.PROTOCOL_TLS_SERVER", "_ssl.PROTOCOL_TLS_SERVER"})
 _SSL_CERT_NONE = frozenset({"ssl.CERT_NONE", "_ssl.CERT_NONE"})
 _SERVER_METHODS = frozenset({"wrap_socket", "wrap_bio"})
 _CONTEXT_FACTORY_CALLS = frozenset(
@@ -212,9 +208,7 @@ class PythonCwe295Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is PythonCwe295Operation
+            if valid_identity and valid_ranges and type(self.operation) is PythonCwe295Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -503,9 +497,7 @@ def _collect_aliases(tree: ast.AST, max_depth: int) -> dict[str, str | None]:
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             target = node.target
             if isinstance(target, (ast.Name, ast.Attribute)):
-                aliases[_dotted_name(target)] = _canonical_reference(
-                    node.value, aliases, max_depth
-                )
+                aliases[_dotted_name(target)] = _canonical_reference(node.value, aliases, max_depth)
     return aliases
 
 
@@ -530,13 +522,53 @@ _KNOWN_IMPORTS = frozenset(
         *{
             f"{module}.{member}"
             for module, members in {
-                "requests": {"get", "post", "put", "delete", "head", "options", "patch", "request", "Session"},
-                "httpx": {"get", "post", "put", "delete", "head", "options", "patch", "request", "Client", "AsyncClient"},
-                "urllib3": {"PoolManager", "ProxyManager", "HTTPSConnectionPool", "HTTPConnectionPool"},
+                "requests": {
+                    "get",
+                    "post",
+                    "put",
+                    "delete",
+                    "head",
+                    "options",
+                    "patch",
+                    "request",
+                    "Session",
+                },
+                "httpx": {
+                    "get",
+                    "post",
+                    "put",
+                    "delete",
+                    "head",
+                    "options",
+                    "patch",
+                    "request",
+                    "Client",
+                    "AsyncClient",
+                },
+                "urllib3": {
+                    "PoolManager",
+                    "ProxyManager",
+                    "HTTPSConnectionPool",
+                    "HTTPConnectionPool",
+                },
                 "urllib3.util.ssl_": {"create_urllib3_context"},
                 "urllib3.util.ssl": {"create_urllib3_context"},
-                "ssl": {"SSLContext", "CERT_NONE", "PROTOCOL_TLS_SERVER", "create_default_context", "_create_unverified_context", "wrap_socket"},
-                "_ssl": {"SSLContext", "CERT_NONE", "PROTOCOL_TLS_SERVER", "create_default_context", "_create_unverified_context", "wrap_socket"},
+                "ssl": {
+                    "SSLContext",
+                    "CERT_NONE",
+                    "PROTOCOL_TLS_SERVER",
+                    "create_default_context",
+                    "_create_unverified_context",
+                    "wrap_socket",
+                },
+                "_ssl": {
+                    "SSLContext",
+                    "CERT_NONE",
+                    "PROTOCOL_TLS_SERVER",
+                    "create_default_context",
+                    "_create_unverified_context",
+                    "wrap_socket",
+                },
             }.items()
             for member in members
         }
@@ -555,7 +587,7 @@ def _collect_context_roles(
         key=lambda node: (getattr(node, "lineno", 0), getattr(node, "col_offset", 0)),
     )
     for node in assignments:
-        value = node.value if isinstance(node, ast.AnnAssign) else node.value
+        value = node.value
         if not isinstance(value, ast.expr):
             continue
         canonical = _canonical_reference(value, aliases, 64)
@@ -571,29 +603,30 @@ def _collect_context_roles(
             if _dotted_name(value) in servers:
                 servers.add(base_name)
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+    for walked in ast.walk(tree):
+        if not isinstance(walked, ast.Call):
             continue
-        if not _server_side_true(node):
+        call = walked
+        if not _server_side_true(call):
             continue
-        context_argument = _keyword(node, "ssl_context")
+        context_argument = _keyword(call, "ssl_context")
         if context_argument is not None:
             name = _dotted_name(context_argument)
             if name in contexts:
                 servers.add(name)
             if isinstance(context_argument, ast.Call):
                 safe_calls.add(id(context_argument))
-        if isinstance(node.func, ast.Attribute) and node.func.attr in _SERVER_METHODS:
-            name = _dotted_name(node.func.value)
+        if isinstance(call.func, ast.Attribute) and call.func.attr in _SERVER_METHODS:
+            name = _dotted_name(call.func.value)
             if name in contexts:
                 servers.add(name)
-        canonical = _canonical_reference(node.func, aliases, 64)
+        canonical = _canonical_reference(call.func, aliases, 64)
         if canonical in _SSL_WRAP_CALLS:
-            value = _keyword(node, "ssl_context")
+            value = _keyword(call, "ssl_context")
             if value is not None and isinstance(value, ast.Call):
                 safe_calls.add(id(value))
         if canonical == "asyncio.start_server":
-            value = _keyword(node, "ssl")
+            value = _keyword(call, "ssl")
             name = _dotted_name(value) if value is not None else ""
             if name in contexts:
                 servers.add(name)
@@ -708,10 +741,9 @@ def _is_requests_call(canonical: str | None) -> bool:
     if canonical in _REQUEST_CALLS:
         return True
     receiver, _, method = canonical.rpartition(".")
-    return (
-        method in _REQUEST_METHODS
-        and (receiver in {"requests", "requests.api", "requests.sessions.Session"}
-             or receiver.endswith(".Session"))
+    return method in _REQUEST_METHODS and (
+        receiver in {"requests", "requests.api", "requests.sessions.Session"}
+        or receiver.endswith(".Session")
     )
 
 
@@ -743,7 +775,9 @@ def _uses_server_protocol(value: ast.expr, aliases: dict[str, str | None]) -> bo
     if not isinstance(value, ast.Call):
         return False
     protocol = value.args[0] if value.args else _keyword(value, "protocol")
-    return _canonical_reference(protocol, aliases, 64) in _SSL_PROTOCOL_SERVER if protocol else False
+    return (
+        _canonical_reference(protocol, aliases, 64) in _SSL_PROTOCOL_SERVER if protocol else False
+    )
 
 
 def _server_side_true(call: ast.Call) -> bool:
@@ -839,9 +873,7 @@ def _line_starts(source: bytes) -> tuple[int, ...]:
     return tuple(starts)
 
 
-def _node_range(
-    node: ast.AST, source: bytes, line_starts: tuple[int, ...]
-) -> SourceRange:
+def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> SourceRange:
     try:
         start_line = node.lineno - 1  # type: ignore[attr-defined]
         end_line = node.end_lineno - 1  # type: ignore[attr-defined]
@@ -860,7 +892,12 @@ def _node_range(
         raise PythonCwe295ScanError(PythonCwe295ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe295ScanError(PythonCwe295ScanErrorCode.INTEGRITY_FAILURE)
     return SourceRange(
         start,
@@ -905,9 +942,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -939,9 +974,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

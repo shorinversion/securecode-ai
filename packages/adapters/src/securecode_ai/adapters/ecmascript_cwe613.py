@@ -114,7 +114,9 @@ _SENSITIVE_NAME_RE = re.compile(
     r"(?:^|[_./:-])(?:access|auth|credential|id.?token|identity|jwt|login|oauth|refresh|remember|session|sid|token)(?:$|[_./:-])",
     re.IGNORECASE,
 )
-_DURATION_RE = re.compile(r"\A([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))\s*(ms|s|m|h|d|w)?\Z", re.IGNORECASE)
+_DURATION_RE = re.compile(
+    r"\A([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))\s*(ms|s|m|h|d|w)?\Z", re.IGNORECASE
+)
 _YEAR_RE = re.compile(r"\A(?:[+-]?)(\d{4})[-/]\d{1,2}[-/]\d{1,2}")
 
 
@@ -238,9 +240,7 @@ class EcmaScriptCwe613Signal:
                 self.operation,
                 self.subject,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe613Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe613Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -368,9 +368,7 @@ def scan_javascript_cwe613(
 ) -> EcmaScriptCwe613ScanResult:
     """Find bounded JavaScript session and token lifetime facts."""
 
-    return _scan_ecmascript_cwe613(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe613(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe613(
@@ -380,9 +378,7 @@ def scan_typescript_cwe613(
 ) -> EcmaScriptCwe613ScanResult:
     """Find bounded TypeScript session and token lifetime facts."""
 
-    return _scan_ecmascript_cwe613(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe613(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe613(
@@ -440,20 +436,14 @@ def _scan_ecmascript_cwe613(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe613ScanError(
-            EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe613ScanError(
-            EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe613ScanError(
-                EcmaScriptCwe613ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe613Operation, str]] = set()
         for node in nodes:
@@ -462,9 +452,7 @@ def _scan_ecmascript_cwe613(
                 if candidate is not None:
                     raw.add(candidate)
                     if len(raw) > limits.max_signals:
-                        raise EcmaScriptCwe613ScanError(
-                            EcmaScriptCwe613ScanErrorCode.SIGNAL_LIMIT
-                        )
+                        raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.SIGNAL_LIMIT)
                 continue
             if node.type not in {"call_expression", "new_expression"}:
                 continue
@@ -472,9 +460,7 @@ def _scan_ecmascript_cwe613(
             if candidate is not None:
                 raw.add(candidate)
                 if len(raw) > limits.max_signals:
-                    raise EcmaScriptCwe613ScanError(
-                        EcmaScriptCwe613ScanErrorCode.SIGNAL_LIMIT
-                    )
+                    raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
             key=lambda item: (
@@ -489,9 +475,7 @@ def _scan_ecmascript_cwe613(
     except EcmaScriptCwe613ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe613ScanError(
-            EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe613Signal(
@@ -697,9 +681,7 @@ def _is_session_operation(canonical: str) -> bool:
     return canonical.rsplit(".", 1)[-1] in _SESSION_NAMES
 
 
-def _is_jwt_signer(
-    canonical: str, function: Node, source: bytes, aliases: dict[str, str]
-) -> bool:
+def _is_jwt_signer(canonical: str, function: Node, source: bytes, aliases: dict[str, str]) -> bool:
     if canonical in _JWT_SIGNERS:
         return True
     if canonical.endswith((".SignJWT.sign", ".SignJWT.compactSign")):
@@ -718,7 +700,9 @@ def _contains_sign_jwt_owner(node: Node, source: bytes, aliases: dict[str, str])
         return _contains_sign_jwt_owner(object_node, source, aliases)
     if current.type == "call_expression":
         function = current.child_by_field_name("function")
-        return _contains_sign_jwt_owner(function, source, aliases) if function is not None else False
+        return (
+            _contains_sign_jwt_owner(function, source, aliases) if function is not None else False
+        )
     if current.type == "new_expression":
         constructor = current.child_by_field_name("constructor") or current.child_by_field_name(
             "function"
@@ -726,7 +710,9 @@ def _contains_sign_jwt_owner(node: Node, source: bytes, aliases: dict[str, str])
         if constructor is None:
             return False
         canonical = _canonical_expression(constructor, source, aliases) or ""
-        return canonical.endswith(".SignJWT") or _compact_text(source, constructor).endswith("SignJWT")
+        return canonical.endswith(".SignJWT") or _compact_text(source, constructor).endswith(
+            "SignJWT"
+        )
     return False
 
 
@@ -878,11 +864,7 @@ def _member_property(node: Node, source: bytes) -> str | None:
 def _bounded_number_state(value: float, unit: str) -> _ExpiryState:
     if value <= 0:
         return _ExpiryState.UNSAFE
-    ceiling = (
-        _MAX_LIFETIME_SECONDS
-        if unit == "seconds"
-        else _MAX_LIFETIME_MILLISECONDS
-    )
+    ceiling = _MAX_LIFETIME_SECONDS if unit == "seconds" else _MAX_LIFETIME_MILLISECONDS
     return _ExpiryState.SAFE if value <= ceiling else _ExpiryState.UNSAFE
 
 
@@ -901,7 +883,14 @@ def _duration_state(value: str, unit: str) -> _ExpiryState:
     except ValueError:
         return _ExpiryState.UNKNOWN
     suffix = (match.group(2) or ("s" if unit == "seconds" else "ms")).lower()
-    multiplier = {"ms": 1.0, "s": 1000.0, "m": 60_000.0, "h": 3_600_000.0, "d": 86_400_000.0, "w": 604_800_000.0}[suffix]
+    multiplier = {
+        "ms": 1.0,
+        "s": 1000.0,
+        "m": 60_000.0,
+        "h": 3_600_000.0,
+        "d": 86_400_000.0,
+        "w": 604_800_000.0,
+    }[suffix]
     milliseconds = number * multiplier
     if unit == "seconds":
         return _bounded_number_state(milliseconds / 1000.0, "seconds")
@@ -961,7 +950,13 @@ def _static_delta(node: Node, source: bytes) -> float | None:
 
 def _number_value(value: str) -> float | None:
     compact = value.replace("_", "")
-    if compact.lower() in {"infinity", "+infinity", "number.infinity", "number.maxvalue", "number.maxsafeinteger"}:
+    if compact.lower() in {
+        "infinity",
+        "+infinity",
+        "number.infinity",
+        "number.maxvalue",
+        "number.maxsafeinteger",
+    }:
         return float("inf")
     try:
         if not re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)", compact):
@@ -984,7 +979,11 @@ def _object_properties(node: Node, source: bytes) -> tuple[tuple[str, Node], ...
         return ()
     result: list[tuple[str, Node]] = []
     for child in current.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key = child.child_by_field_name("key") or child.child_by_field_name("name")
         value = child.child_by_field_name("value")
@@ -1062,7 +1061,11 @@ def _collect_pattern_aliases(
     pattern: Node, module: str, source: bytes, aliases: dict[str, str]
 ) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key = child.child_by_field_name("key") or child
         value = child.child_by_field_name("value") or key
@@ -1088,10 +1091,14 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
         constructor = current.child_by_field_name("constructor") or current.child_by_field_name(
             "function"
         )
-        return _canonical_expression(constructor, source, aliases) if constructor is not None else None
+        return (
+            _canonical_expression(constructor, source, aliases) if constructor is not None else None
+        )
     if current.type in {"member_expression", "subscript_expression"}:
         object_node = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         if object_node is None or property_node is None:
             return None
         base = _canonical_expression(object_node, source, aliases)
@@ -1163,18 +1170,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe613ScanError(
-            EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe613ScanError(
-            EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe613ScanError(EcmaScriptCwe613ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -1278,12 +1281,12 @@ scan_typescript_insufficient_session_expiration = scan_typescript_cwe613
 scan_ecmascript_insufficient_session_expiration = scan_ecmascript_cwe613
 
 __all__ = [
+    "DEFAULT_ECMASCRIPT_CWE613_SCAN_LIMITS",
     "Cwe613ScanError",
     "Cwe613ScanErrorCode",
     "Cwe613ScanLimits",
     "Cwe613ScanResult",
     "Cwe613Signal",
-    "DEFAULT_ECMASCRIPT_CWE613_SCAN_LIMITS",
     "EcmaScriptCwe613Operation",
     "EcmaScriptCwe613ScanError",
     "EcmaScriptCwe613ScanErrorCode",

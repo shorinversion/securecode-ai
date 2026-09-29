@@ -121,7 +121,12 @@ def load_verified_terminal_audit_run(
     findings: tuple[WorkerFindingRecord, ...],
     include_graph: bool = False,
     include_findings: bool = False,
-) -> AuditRun | tuple[AuditRun, EvidenceGraph] | tuple[AuditRun, EvidenceGraph, tuple[FindingCase, ...]] | None:
+) -> (
+    AuditRun
+    | tuple[AuditRun, EvidenceGraph]
+    | tuple[AuditRun, EvidenceGraph, tuple[FindingCase, ...]]
+    | None
+):
     """Load an AuditRun only after validating its stored terminal evidence."""
 
     if outcome not in {"PASS", "FAIL", "INDETERMINATE"}:

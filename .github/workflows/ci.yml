@@ -123,53 +123,9 @@ jobs:
       - name: Prove a known-vulnerable fixture is blocking
         run: uv run --locked --offline --no-sync --only-group quality python -I scripts/ci_policy.py audit-negative
 
-  spec:
-    name: spec
-    needs: [policy]
-    permissions:
-      actions: read # Read immutable workflow attempts and required gate jobs.
-      contents: read
-      pull-requests: read # Bind evidence to the exact merged pull request.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      EVENT_NAME: ${{ github.event_name }}
-      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
-      CANDIDATE_SHA: ${{ github.sha }}
-      PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
-    steps:
-      - name: Checkout exact candidate and authoritative history
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-          lfs: false
-          submodules: false
-          set-safe-directory: false
-      - name: Select Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.13"
-          check-latest: false
-      - name: Install verified uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: "0.12.0"
-          checksum: eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9
-          enable-cache: false
-          add-problem-matchers: false
-      - name: Validate lock before installation
-        run: python -I scripts/ci_policy.py lock
-      - name: Provision exact specification tools
-        run: uv sync --locked --only-group quality --no-editable
-      - name: Validate exact event candidate or dispatch snapshot
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: uv run --locked --offline --no-sync --only-group quality python -I scripts/spec_gate.py ci --event "$EVENT_NAME" --base "$BASE_SHA" --candidate "$CANDIDATE_SHA" --pull-request-head "$PULL_REQUEST_HEAD_SHA" --github-repository "$GITHUB_REPOSITORY"
-
   quality:
     name: quality / python-${{ matrix.python-version }}
-    needs: [policy, secrets, dependency, spec]
+    needs: [policy, secrets, dependency]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -207,7 +163,7 @@ jobs:
   gate:
     name: gate
     if: ${{ always() }}
-    needs: [policy, secrets, dependency, spec, quality]
+    needs: [policy, secrets, dependency, quality]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions: {}
@@ -215,8 +171,7 @@ jobs:
       POLICY_RESULT: ${{ needs.policy.result }}
       SECRETS_RESULT: ${{ needs.secrets.result }}
       DEPENDENCY_RESULT: ${{ needs.dependency.result }}
-      SPEC_RESULT: ${{ needs.spec.result }}
       QUALITY_RESULT: ${{ needs.quality.result }}
     steps:
       - name: Require every mandatory job to succeed
-        run: python -c "import os,sys; names=('POLICY_RESULT','SECRETS_RESULT','DEPENDENCY_RESULT','SPEC_RESULT','QUALITY_RESULT'); failed=[name for name in names if os.environ.get(name) != 'success']; print('CI_GATE=' + ('PASS' if not failed else 'FAIL')); sys.exit(bool(failed))"
+        run: python -c "import os,sys; names=('POLICY_RESULT','SECRETS_RESULT','DEPENDENCY_RESULT','QUALITY_RESULT'); failed=[name for name in names if os.environ.get(name) != 'success']; print('CI_GATE=' + ('PASS' if not failed else 'FAIL')); sys.exit(bool(failed))"

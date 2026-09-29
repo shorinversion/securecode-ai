@@ -21,7 +21,7 @@ class V:
             "azp": "client",
             "nonce": "n",
             "iat": 1,
-            "exp": 9999999999,
+            "exp": 3_601,
             "groups": ["auditors"],
         }
 

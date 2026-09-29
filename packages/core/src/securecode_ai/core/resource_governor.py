@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import RLock
-from typing import Callable, Final
+from typing import Final
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
@@ -368,7 +370,7 @@ class PerRunResourceEnforcer:
     first snapshot that crosses any reserved per-run ceiling.
     """
 
-    __slots__ = ("_lock", "_reserved", "_terminate", "_stopped")
+    __slots__ = ("_lock", "_reserved", "_stopped", "_terminate")
 
     def __init__(
         self,
@@ -404,12 +406,10 @@ class PerRunResourceEnforcer:
             if not exceeded:
                 return
             self._stopped = True
-        try:
+        # A failed cancellation request must not turn a limit breach into
+        # an accepted snapshot or leak the callback's error to callers.
+        with suppress(Exception):
             self._terminate()
-        except Exception:
-            # A failed cancellation request must not turn a limit breach into
-            # an accepted snapshot or leak the callback's error to callers.
-            pass
         raise ResourceGovernorError(ResourceGovernorErrorCode.QUOTA_EXCEEDED)
 
 
@@ -475,13 +475,13 @@ def _sha256(value: object) -> bool:
 
 
 __all__ = [
+    "PerRunResourceEnforcer",
     "ReservationState",
     "ResourceGovernorError",
     "ResourceGovernorErrorCode",
     "ResourceReservationReceipt",
     "ResourceReservationRequest",
     "ResourceUsage",
-    "PerRunResourceEnforcer",
     "TenantResourceGovernor",
     "TenantResourceLimits",
 ]

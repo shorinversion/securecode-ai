@@ -22,6 +22,7 @@ from securecode_ai.adapters.model import (
     NativeTurnBoundaryExecution,
     TransportFailure,
 )
+from securecode_ai.adapters.remote_provider_budget import RemoteProviderCallContext
 from securecode_ai.contracts import (
     DataClass,
     EgressPolicyDocument,
@@ -352,6 +353,7 @@ def test_native_connector_cannot_forge_consumed_attempt_binding() -> None:
         model_id: str,
         timeout_ms: int,
         binding: ProviderAttemptBinding,
+        call_budget: RemoteProviderCallContext,
     ) -> ProviderAttempt:
         attempt = original(
             channel,
@@ -360,6 +362,7 @@ def test_native_connector_cannot_forge_consumed_attempt_binding() -> None:
             model_id=model_id,
             timeout_ms=timeout_ms,
             binding=binding,
+            call_budget=call_budget,
         )
         return replace(attempt, binding=replace(attempt.binding, manifest_hash="f" * 64))
 

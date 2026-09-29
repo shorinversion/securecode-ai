@@ -62,9 +62,10 @@ def _with_cwe862_detector_signals(
         scan_python_cwe862,
     )
 
+    facts: tuple[tuple[str, SourceRange, SourceRange], ...]
     try:
         if index.language == "python":
-            detected = scan_python_cwe862(
+            python_signals = scan_python_cwe862(
                 index,
                 analyze_python_ast(index),
                 limits=PythonCwe862ScanLimits(
@@ -72,25 +73,25 @@ def _with_cwe862_detector_signals(
                     max_signals=limits.max_signals,
                 ),
             ).signals
-            facts = (("CWE-862", signal.endpoint, signal.sink) for signal in detected)
+            facts = tuple(("CWE-862", signal.endpoint, signal.sink) for signal in python_signals)
         elif index.language in {"javascript", "typescript"}:
-            detected = scan_ecmascript_cwe862(
+            ecmascript_signals = scan_ecmascript_cwe862(
                 index,
                 limits=EcmaScriptCwe862ScanLimits(
                     max_source_bytes=limits.max_source_bytes,
                     max_signals=limits.max_signals,
                 ),
             ).signals
-            facts = (("CWE-862", signal.source, signal.sink) for signal in detected)
+            facts = tuple(("CWE-862", signal.source, signal.sink) for signal in ecmascript_signals)
         elif index.language == "go":
-            detected = scan_go_cwe862(
+            go_signals = scan_go_cwe862(
                 index,
                 limits=GoCwe862ScanLimits(
                     max_source_bytes=limits.max_source_bytes,
                     max_signals=limits.max_signals,
                 ),
             ).signals
-            facts = (("CWE-862", signal.source, signal.sink) for signal in detected)
+            facts = tuple(("CWE-862", signal.source, signal.sink) for signal in go_signals)
         else:
             raise CwePortfolioScanError(CwePortfolioScanErrorCode.REQUEST_INVALID)
     except (
@@ -100,23 +101,18 @@ def _with_cwe862_detector_signals(
         GoCwe862ScanError,
     ) as error:
         code = getattr(getattr(error, "code", None), "value", None)
+        if type(code) is not str:
+            raise CwePortfolioScanError(CwePortfolioScanErrorCode.ANALYSIS_UNAVAILABLE) from None
         try:
             normalized = CwePortfolioScanErrorCode(code)
         except (TypeError, ValueError):
-            raise CwePortfolioScanError(
-                CwePortfolioScanErrorCode.ANALYSIS_UNAVAILABLE
-            ) from None
+            raise CwePortfolioScanError(CwePortfolioScanErrorCode.ANALYSIS_UNAVAILABLE) from None
         raise CwePortfolioScanError(normalized) from None
 
-    facts = tuple(facts)
     # The dedicated detectors own CWE-862 semantics.  Do not retain a legacy
     # portfolio fact when a detector returns no matching sink: that would let
     # the broad fallback bypass the language-specific authorization analysis.
-    signals = [
-        signal
-        for signal in result.signals
-        if signal.cwe != "CWE-862"
-    ]
+    signals = [signal for signal in result.signals if signal.cwe != "CWE-862"]
     for cwe, source, sink in facts:
         signals.append(
             CwePortfolioSignal(
@@ -246,6 +242,8 @@ def _python_facts(source: bytes) -> tuple[tuple[str, SourceRange, SourceRange], 
         if cwe is None:
             continue
         security_argument = _python_security_argument(call, cwe, compact)
+        if security_argument is None:
+            continue
         source_node = _python_resolve_source(
             security_argument,
             call=call,
@@ -279,20 +277,25 @@ def _python_cwe(compact: str) -> str | None:
     return None
 
 
-def _python_security_argument(call: ast.Call, cwe: str, compact: str) -> ast.expr:
+def _python_security_argument(call: ast.Call, cwe: str, compact: str) -> ast.expr | None:
     if cwe == "CWE-918" and compact.startswith("requests.request(") and len(call.args) > 1:
         return call.args[1]
-    if cwe == "CWE-22" and not call.args:
-        if isinstance(call.func, ast.Attribute) and call.func.attr in {
+    if (
+        cwe == "CWE-22"
+        and not call.args
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr
+        in {
             "open",
             "read_bytes",
             "read_text",
-        }:
-            return call.func.value
-        raise CwePortfolioScanError(CwePortfolioScanErrorCode.INTEGRITY_FAILURE)
-    if not call.args:
-        raise CwePortfolioScanError(CwePortfolioScanErrorCode.INTEGRITY_FAILURE)
-    return call.args[0]
+        }
+    ):
+        return call.func.value
+    if call.args:
+        return call.args[0]
+    keyword = next((item.value for item in call.keywords if item.arg is not None), None)
+    return keyword
 
 
 def _python_guarded(call: ast.Call, tree: ast.AST, source: bytes, identity: ast.expr) -> bool:

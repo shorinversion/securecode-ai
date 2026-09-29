@@ -192,9 +192,7 @@ class GoCwe614Signal:
                 self.operation,
                 self.cookie_name,
             )
-            if valid_identity
-            and ranges_valid
-            and type(self.operation) is GoCwe614Operation
+            if valid_identity and ranges_valid and type(self.operation) is GoCwe614Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -476,11 +474,7 @@ def _import_aliases(root: Node, source: bytes) -> dict[str, str]:
         if package != _HTTP_PACKAGE:
             continue
         name_node = node.child_by_field_name("name")
-        alias = (
-            _text(source, name_node)
-            if name_node is not None
-            else package.rsplit("/", 1)[-1]
-        )
+        alias = _text(source, name_node) if name_node is not None else package.rsplit("/", 1)[-1]
         if alias not in {".", "_"}:
             aliases[alias] = package
     return aliases
@@ -505,9 +499,7 @@ def _collect_set_cookie_call(
         name = _text(source, cookie_expression)
         info = _latest_binding(bindings.get(name, ()), node.start_byte)
         if info is not None:
-            update = _latest_secure_update(
-                secure_updates.get(name, ()), node.start_byte
-            )
+            update = _latest_secure_update(secure_updates.get(name, ()), node.start_byte)
             if update is not None:
                 info = replace(info, secure_state=update)
     if info is None or not _is_sensitive_cookie(info.cookie_name):
@@ -542,8 +534,7 @@ def _cookie_bindings(
             if info is not None:
                 output.setdefault(_text(source, name), []).append((node.start_byte, info))
     return {
-        name: tuple(sorted(events, key=lambda item: item[0]))
-        for name, events in output.items()
+        name: tuple(sorted(events, key=lambda item: item[0])) for name, events in output.items()
     }
 
 
@@ -575,8 +566,7 @@ def _secure_assignments(
         state = _secure_state(right_value)
         output.setdefault(_text(source, operand), []).append((node.start_byte, state))
     return {
-        name: tuple(sorted(events, key=lambda item: item[0]))
-        for name, events in output.items()
+        name: tuple(sorted(events, key=lambda item: item[0])) for name, events in output.items()
     }
 
 
@@ -602,9 +592,7 @@ def _latest_secure_update(
     return latest
 
 
-def _cookie_info(
-    node: Node | None, source: bytes, imports: dict[str, str]
-) -> _CookieInfo | None:
+def _cookie_info(node: Node | None, source: bytes, imports: dict[str, str]) -> _CookieInfo | None:
     if node is None:
         return None
     package, name = _composite_type(node, source, imports)
@@ -618,11 +606,7 @@ def _cookie_info(
     if cookie_name is None or not _is_sensitive_cookie(cookie_name):
         return None
     secure_node = fields.get("secure")
-    secure_state = (
-        _SecureState.MISSING
-        if secure_node is None
-        else _secure_state(secure_node)
-    )
+    secure_state = _SecureState.MISSING if secure_node is None else _secure_state(secure_node)
     return _CookieInfo(
         literal=_range(node),
         name_location=_range(name_node),
@@ -684,9 +668,7 @@ def _field_key(node: Node, source: bytes) -> str:
     return _compact_text(source, node).strip('"`').lower()
 
 
-def _qualified_call(
-    node: Node, source: bytes, imports: dict[str, str]
-) -> tuple[str, str] | None:
+def _qualified_call(node: Node, source: bytes, imports: dict[str, str]) -> tuple[str, str] | None:
     function = node.child_by_field_name("function")
     if function is None or function.type != "selector_expression":
         return None
@@ -825,9 +807,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -862,9 +842,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -878,12 +856,12 @@ Cwe614Signal = GoCwe614Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE614_SCAN_LIMITS",
     "Cwe614ScanError",
     "Cwe614ScanErrorCode",
     "Cwe614ScanLimits",
     "Cwe614ScanResult",
     "Cwe614Signal",
-    "DEFAULT_GO_CWE614_SCAN_LIMITS",
     "GoCwe614Operation",
     "GoCwe614ScanError",
     "GoCwe614ScanErrorCode",

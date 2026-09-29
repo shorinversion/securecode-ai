@@ -6,10 +6,11 @@ import re
 import secrets
 import sqlite3
 import time
-from contextlib import contextmanager
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from threading import Lock
-from typing import Final, Iterator, TypeGuard, cast
+from typing import Final, TypeGuard, cast
 
 from securecode_ai.adapters.remote_provider_budget import (
     RemoteProviderBudgetError,
@@ -179,11 +180,14 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 raise RemoteProviderBudgetError("INVALID_STATE")
             if active_total[0] >= _MAX_RECORDS:
                 raise RemoteProviderBudgetError("LIMIT_EXCEEDED")
-            if cursor.execute(
-                f"""SELECT 1 FROM {_TABLE}
+            if (
+                cursor.execute(
+                    f"""SELECT 1 FROM {_TABLE}
                     WHERE tenant_id=? AND model_id=? AND request_id=? AND attempt=?""",
-                request_key,
-            ).fetchone() is not None:
+                    request_key,
+                ).fetchone()
+                is not None
+            ):
                 raise RemoteProviderBudgetError("INVALID_STATE")
 
             cutoff_ms = now_ms - policy.window_ms
@@ -217,9 +221,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                     raise RemoteProviderBudgetError("INVALID_STATE")
                 if event.reserved == 1 and event.slot_active != 1:
                     raise RemoteProviderBudgetError("INVALID_STATE")
-                if event.replay_blocked == 1 and (
-                    event.reserved == 1 or event.slot_active == 1
-                ):
+                if event.replay_blocked == 1 and (event.reserved == 1 or event.slot_active == 1):
                     raise RemoteProviderBudgetError("INVALID_STATE")
                 if event.slot_active == 1 and event.slot_expires_at_ms <= now_ms:
                     raise RemoteProviderBudgetError("INVALID_STATE")
@@ -297,9 +299,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             actual_tokens = usage.input_tokens + usage.output_tokens
             actual_cost = _cost_microunits(
                 usage.input_tokens, pricing.input_rate
-            ) + _cost_microunits(
-                usage.output_tokens, pricing.output_rate
-            )
+            ) + _cost_microunits(usage.output_tokens, pricing.output_rate)
             cursor.execute(
                 f"""UPDATE {_TABLE}
                     SET timestamp_ms=?, tokens=?, cost_microunits=?, reserved=0,
@@ -363,9 +363,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             return self._purge_cursor(cursor, now_ms=timestamp, max_items=max_items)
 
     @staticmethod
-    def _reconcile_expired_slots(
-        cursor: sqlite3.Cursor, *, now_ms: int, max_items: int
-    ) -> int:
+    def _reconcile_expired_slots(cursor: sqlite3.Cursor, *, now_ms: int, max_items: int) -> int:
         rows = cursor.execute(
             f"SELECT lease_id FROM {_TABLE} WHERE slot_active=1 "
             "AND slot_expires_at_ms<=? ORDER BY slot_expires_at_ms,lease_id LIMIT ?",
@@ -399,26 +397,43 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 for item in cursor.execute(f"PRAGMA table_info({_quote_identifier(_TABLE)})")
             )
             legacy = (
-                "lease_id", "tenant_id", "model_id", "request_id", "attempt",
-                "timestamp_ms", "max_input_tokens", "max_output_tokens", "tokens",
-                "cost_microunits", "reserved",
+                "lease_id",
+                "tenant_id",
+                "model_id",
+                "request_id",
+                "attempt",
+                "timestamp_ms",
+                "max_input_tokens",
+                "max_output_tokens",
+                "tokens",
+                "cost_microunits",
+                "reserved",
             )
             if columns == legacy:
-                cursor.execute(
-                    f"ALTER TABLE {_TABLE} ADD COLUMN run_id TEXT NOT NULL DEFAULT ''"
-                )
+                cursor.execute(f"ALTER TABLE {_TABLE} ADD COLUMN run_id TEXT NOT NULL DEFAULT ''")
                 columns = tuple(
                     item[1]
                     for item in cursor.execute(f"PRAGMA table_info({_quote_identifier(_TABLE)})")
                 )
             expected = (
-                "lease_id", "run_id", "tenant_id", "model_id", "request_id", "attempt",
-                "timestamp_ms", "max_input_tokens", "max_output_tokens", "tokens",
-                "cost_microunits", "reserved", "slot_active", "slot_expires_at_ms",
+                "lease_id",
+                "run_id",
+                "tenant_id",
+                "model_id",
+                "request_id",
+                "attempt",
+                "timestamp_ms",
+                "max_input_tokens",
+                "max_output_tokens",
+                "tokens",
+                "cost_microunits",
+                "reserved",
+                "slot_active",
+                "slot_expires_at_ms",
                 "replay_blocked",
             )
-            legacy_with_run = legacy + ("run_id",)
-            legacy_with_run_slots = legacy_with_run + ("slot_active", "slot_expires_at_ms")
+            legacy_with_run = (*legacy, "run_id")
+            legacy_with_run_slots = (*legacy_with_run, "slot_active", "slot_expires_at_ms")
             prior_expected = expected[:-3]
             prior_with_slots = expected[:-1]
             if columns == prior_with_slots:
@@ -442,11 +457,16 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 "attempt",
             )
             signatures = _unique_index_signatures(cursor, _TABLE)
-            if columns in {
-                legacy_with_run,
-                legacy_with_run_slots,
-                prior_expected,
-            } or run_scoped_request_key in signatures or old_request_key not in signatures:
+            if (
+                columns
+                in {
+                    legacy_with_run,
+                    legacy_with_run_slots,
+                    prior_expected,
+                }
+                or run_scoped_request_key in signatures
+                or old_request_key not in signatures
+            ):
                 duplicate = cursor.execute(
                     f"SELECT 1 FROM {_TABLE} "
                     "GROUP BY tenant_id,model_id,request_id,attempt "
@@ -480,9 +500,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             "pricing_pin",
         )
         legacy = ("tenant_id", "model_id", "run_id", "pricing_pin")
-        columns = tuple(
-            row[1] for row in cursor.execute(f"PRAGMA table_info({_PRICING_TABLE})")
-        )
+        columns = tuple(row[1] for row in cursor.execute(f"PRAGMA table_info({_PRICING_TABLE})"))
         if columns == legacy:
             count = cursor.execute(f"SELECT COUNT(*) FROM {_PRICING_TABLE}").fetchone()
             if count is None or type(count[0]) is not int or count[0] != 0:
@@ -538,9 +556,8 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             slot_active = event.slot_active
             slot_expires_at_ms = event.slot_expires_at_ms
             replay_blocked = event.replay_blocked
-            if (
-                (reserved == 1 and (not has_slots or slot_active == 0))
-                or (event.run_id == "" and (reserved == 1 or slot_active == 1))
+            if (reserved == 1 and (not has_slots or slot_active == 0)) or (
+                event.run_id == "" and (reserved == 1 or slot_active == 1)
             ):
                 reserved = 0
                 slot_active = 0
@@ -698,11 +715,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
         if legacy_event is not None:
             raise RemoteProviderBudgetError("INVALID_STATE")
         total = cursor.execute(f"SELECT COUNT(*) FROM {_PRICING_TABLE}").fetchone()
-        if (
-            not _is_row(total)
-            or len(total) != 1
-            or type(total[0]) is not int
-        ):
+        if not _is_row(total) or len(total) != 1 or type(total[0]) is not int:
             raise RemoteProviderBudgetError("INVALID_STATE")
         if total[0] >= _MAX_TOTAL_EVENTS:
             raise RemoteProviderBudgetError("LIMIT_EXCEEDED")
@@ -849,10 +862,8 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
     @staticmethod
     def _rollback(cursor: sqlite3.Cursor | None, active: bool) -> None:
         if active and cursor is not None:
-            try:
+            with suppress(sqlite3.Error):
                 cursor.execute("ROLLBACK")
-            except sqlite3.Error:
-                pass
 
 
 def _stored_values(row: object) -> _StoredLease:
@@ -868,9 +879,7 @@ def _stored_values(row: object) -> _StoredLease:
         slot_active,
         slot_expires_at_ms,
         replay_blocked,
-    ) = cast(
-        tuple[int, int, int, int, int, int, int, int, int], tuple(row)
-    )
+    ) = cast(tuple[int, int, int, int, int, int, int, int, int], tuple(row))
     if (
         timestamp_ms < 0
         or timestamp_ms > _MAX_SQLITE_INTEGER
@@ -915,10 +924,7 @@ def _stored_values(row: object) -> _StoredLease:
 def _stored_lease(row: object) -> _StoredLease:
     if not _is_row(row) or len(row) not in {12, 14, 15}:
         raise RemoteProviderBudgetError("INVALID_STATE")
-    if any(
-        type(row[index]) is not str or (index != 1 and not row[index])
-        for index in range(5)
-    ):
+    if any(type(row[index]) is not str or (index != 1 and not row[index]) for index in range(5)):
         raise RemoteProviderBudgetError("INVALID_STATE")
     if any(type(row[index]) is not int for index in range(5, len(row))):
         raise RemoteProviderBudgetError("INVALID_STATE")
@@ -955,22 +961,17 @@ def _stored_lease(row: object) -> _StoredLease:
         or event.cost_microunits < 0
         or event.cost_microunits > _MAX_COST_MICROUNITS
         or event.reserved not in {0, 1}
-        or (event.reserved == 1 and event.tokens != event.max_input_tokens + event.max_output_tokens)
-        or event.slot_active not in {0, 1}
         or (
-            len(row) != 12
-            and event.reserved == 1
-            and event.slot_active != 1
+            event.reserved == 1 and event.tokens != event.max_input_tokens + event.max_output_tokens
         )
+        or event.slot_active not in {0, 1}
+        or (len(row) != 12 and event.reserved == 1 and event.slot_active != 1)
         or event.replay_blocked not in {0, 1}
         or (event.replay_blocked == 1 and (event.reserved == 1 or event.slot_active == 1))
         or (event.slot_active == 1 and event.slot_expires_at_ms <= event.timestamp_ms)
         or event.slot_expires_at_ms > event.timestamp_ms + _MAX_SLOT_TIMEOUT_MS
         or (event.slot_active == 0 and event.slot_expires_at_ms != 0)
-        or (
-            event.run_id != ""
-            and _IDENTIFIER.fullmatch(event.run_id) is None
-        )
+        or (event.run_id != "" and _IDENTIFIER.fullmatch(event.run_id) is None)
     ):
         raise RemoteProviderBudgetError("INVALID_STATE")
     if event.run_id:
@@ -998,31 +999,20 @@ def _quote_identifier(value: str) -> str:
 
 
 def _sqlite_object_exists(cursor: sqlite3.Cursor, name: str) -> bool:
-    row = cursor.execute(
-        "SELECT 1 FROM sqlite_master WHERE name=? LIMIT 1", (name,)
-    ).fetchone()
+    row = cursor.execute("SELECT 1 FROM sqlite_master WHERE name=? LIMIT 1", (name,)).fetchone()
     return row is not None
 
 
-def _unique_index_signatures(
-    cursor: sqlite3.Cursor, table: str
-) -> set[tuple[str, ...]]:
+def _unique_index_signatures(cursor: sqlite3.Cursor, table: str) -> set[tuple[str, ...]]:
     signatures: set[tuple[str, ...]] = set()
     rows = cursor.execute(f"PRAGMA index_list({_quote_identifier(table)})").fetchall()
     for row in rows:
-        if (
-            not _is_row(row)
-            or len(row) < 3
-            or type(row[1]) is not str
-            or type(row[2]) is not int
-        ):
+        if not _is_row(row) or len(row) < 3 or type(row[1]) is not str or type(row[2]) is not int:
             raise RemoteProviderBudgetError("INVALID_STATE")
         if row[2] != 1:
             continue
-        index_name = cast(str, row[1])
-        info_rows = cursor.execute(
-            f"PRAGMA index_info({_quote_identifier(index_name)})"
-        ).fetchall()
+        index_name = row[1]
+        info_rows = cursor.execute(f"PRAGMA index_info({_quote_identifier(index_name)})").fetchall()
         indexed: list[tuple[int, str]] = []
         for info in info_rows:
             if (
@@ -1033,7 +1023,7 @@ def _unique_index_signatures(
                 or not info[2]
             ):
                 raise RemoteProviderBudgetError("INVALID_STATE")
-            indexed.append((cast(int, info[0]), cast(str, info[2])))
+            indexed.append((info[0], info[2]))
         indexed.sort(key=lambda item: item[0])
         if any(sequence != index for index, (sequence, _) in enumerate(indexed)):
             raise RemoteProviderBudgetError("INVALID_STATE")

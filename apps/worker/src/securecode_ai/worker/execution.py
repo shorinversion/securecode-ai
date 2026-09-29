@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
 import base64
+import hashlib
 import json
 import os
 import signal
 import stat
 import subprocess
+import sys
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from time import monotonic
 from typing import cast
 
 from securecode_ai.adapters.dependency_scanning import ApprovedOsvScanner
+from securecode_ai.adapters.local_patch_status import LocalPatchStatusStore
 from securecode_ai.adapters.local_product_host import (
     LocalProductHost,
     LocalProductHostError,
@@ -29,7 +31,14 @@ from securecode_ai.adapters.local_product_runner import (
     run_local_product_repair,
     run_local_product_scan,
 )
-from securecode_ai.adapters.local_patch_status import LocalPatchStatusStore
+from securecode_ai.adapters.local_product_runner_config import (
+    LocalProductCancelledError,
+    LocalProductConfigurationError,
+    LocalProductRepairResult,
+    LocalProductScanResult,
+    LocalProductSupersededError,
+    LocalProductUnavailableError,
+)
 from securecode_ai.adapters.patch_artifact import (
     PatchArtifactError,
     PatchArtifactStore,
@@ -40,22 +49,15 @@ from securecode_ai.adapters.product_provider_runtime import (
     ProductProviderRuntime,
     load_product_provider_runtime,
 )
-from securecode_ai.adapters.local_product_runner_config import (
-    LocalProductCancelledError,
-    LocalProductConfigurationError,
-    LocalProductRepairResult,
-    LocalProductScanResult,
-    LocalProductSupersededError,
-    LocalProductUnavailableError,
-)
+from securecode_ai.adapters.remote_provider_budget import RemoteProviderCostReceipt
 from securecode_ai.contracts import (
     ArtifactRef,
     AuditRunOutcome,
     DataClass,
     ModelUsage,
     ProviderKind,
+    RunExecutionIdentity,
 )
-from securecode_ai.adapters.remote_provider_budget import RemoteProviderCostReceipt
 from securecode_ai.core.reports import ReportFormat
 
 from .protocol import (
@@ -160,9 +162,7 @@ class ExecutionControl:
                 if self._command is None:
                     return
                 if not self._cancel_callbacks:
-                    wait_for_setup = (
-                        self._execution_active and not self._cancel_setup_done.is_set()
-                    )
+                    wait_for_setup = self._execution_active and not self._cancel_setup_done.is_set()
                 elif not self._cancel_callback_dispatched:
                     self._cancel_callback_dispatched = True
                     callbacks = tuple(self._cancel_callbacks)
@@ -341,7 +341,9 @@ class ProductExecutor:
                         expected_configuration_sha256=expected.configuration.content_sha256,
                     )
                 except ProductProviderConfigurationError:
-                    raise ProductExecutionError("worker remote provider configuration failed") from None
+                    raise ProductExecutionError(
+                        "worker remote provider configuration failed"
+                    ) from None
                 configuration = provider_runtime.configuration
             else:
                 configuration = resolve_local_product_configuration(
@@ -490,9 +492,7 @@ def _require_exact_checkout(
         str(target),
     ]
     try:
-        top = _git_output(
-            [*command, "rev-parse", "--show-toplevel"], environment, control=control
-        )
+        top = _git_output([*command, "rev-parse", "--show-toplevel"], environment, control=control)
         head = _git_output(
             [*command, "rev-parse", "--verify", "HEAD"], environment, control=control
         )
@@ -567,17 +567,17 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
 def _kill_process_tree(process: subprocess.Popen[bytes]) -> None:
     """Kill the isolated Git process group so cancellation cannot orphan children."""
 
-    if os.name == "posix":
+    if sys.platform == "win32":
+        if process.poll() is None:
+            with suppress(OSError):
+                process.kill()
+    else:
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except OSError:
             if process.poll() is None:
                 with suppress(OSError):
                     process.kill()
-        return
-    if process.poll() is None:
-        with suppress(OSError):
-            process.kill()
 
 
 def _subprocess_creation_flags() -> int:
@@ -602,24 +602,24 @@ def _contribution_environment(job: WorkerJob, environment: Mapping[str, str]) ->
 
 
 def _remote_provider_requested(
-    expected: object, host: LocalProductHost, environment: Mapping[str, str]
+    expected: RunExecutionIdentity, host: LocalProductHost, environment: Mapping[str, str]
 ) -> bool:
     """Select the remote composition only from an explicit or identity-bound request."""
 
-    if any(
-        environment.get(name)
-        for name in (
-            "SECURECODE_REMOTE_PROFILE_FILE",
-            "SECURECODE_REMOTE_POLICY_FILE",
-            "SECURECODE_REMOTE_SPEND_DB",
+    if (
+        any(
+            environment.get(name)
+            for name in (
+                "SECURECODE_REMOTE_PROFILE_FILE",
+                "SECURECODE_REMOTE_POLICY_FILE",
+                "SECURECODE_REMOTE_SPEND_DB",
+            )
         )
-    ) or environment.get("SECURECODE_REMOTE_PROVIDER") == "1":
+        or environment.get("SECURECODE_REMOTE_PROVIDER") == "1"
+    ):
         return True
     try:
-        return (
-            expected.provider_profile.content_sha256
-            != host.profile.canonical_content_hash()
-        )
+        return expected.provider_profile.content_sha256 != host.profile.canonical_content_hash()
     except (AttributeError, TypeError, ValueError):
         raise ProductExecutionError("worker provider identity is invalid") from None
 
@@ -825,9 +825,7 @@ def _canonical_repair_patch_bundle(
     ).encode("ascii")
 
 
-def _evidence_graph_artifact(
-    scan: LocalProductScanResult, *, tenant_id: str
-) -> WorkerArtifact:
+def _evidence_graph_artifact(scan: LocalProductScanResult, *, tenant_id: str) -> WorkerArtifact:
     digest = hashlib.sha256(scan.graph_artifact).hexdigest()
     report_findings = scan.composition.report.findings
     if report_findings:

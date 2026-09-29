@@ -39,8 +39,8 @@ from .product_review_hashes import (
     _receipt_id,
     _skeptic_receipt_sha256,
 )
-from .product_scan import ProductCandidateFlow, ProductCandidatePreparationFailure
 from .product_rule_catalogue import ProductRuleMappingError
+from .product_scan import ProductCandidateFlow, ProductCandidatePreparationFailure
 
 
 def run_product_candidate_review(

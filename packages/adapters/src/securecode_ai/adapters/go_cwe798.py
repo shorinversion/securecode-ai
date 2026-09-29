@@ -606,7 +606,9 @@ def _is_credential_constructor(name: str) -> bool:
     return any(marker in name for marker in _CREDENTIAL_WORDS if " " not in marker)
 
 
-def _function_parts(function: Node, source: bytes, imports: dict[str, str]) -> tuple[str, str | None]:
+def _function_parts(
+    function: Node, source: bytes, imports: dict[str, str]
+) -> tuple[str, str | None]:
     if function.type == "identifier":
         return _text(source, function), None
     if function.type != "selector_expression":
@@ -647,19 +649,24 @@ def _lvalue_name(node: Node, source: bytes) -> str:
 
 def _is_credential_name(value: str) -> bool:
     normalized = _normalize(value)
-    return bool(normalized) and any(marker.replace(" ", "") in normalized for marker in _CREDENTIAL_WORDS)
+    return bool(normalized) and any(
+        marker.replace(" ", "") in normalized for marker in _CREDENTIAL_WORDS
+    )
 
 
 def _is_credential_literal_marker(value: str) -> bool:
     normalized = value.casefold().replace(" ", "")
-    return any(marker.replace("-", "").replace("_", "") in normalized for marker in _CREDENTIAL_LITERAL_MARKERS)
+    return any(
+        marker.replace("-", "").replace("_", "") in normalized
+        for marker in _CREDENTIAL_LITERAL_MARKERS
+    )
 
 
 def _is_credential_literal(source: bytes, node: Node) -> bool:
     value = _literal_value(source, node)
-    if not value or _is_placeholder(value):
+    if not value:
         return False
-    return True
+    return not _is_placeholder(value)
 
 
 def _is_placeholder(value: str) -> bool:
@@ -679,9 +686,7 @@ def _contains_embedded_credential(value: str) -> bool:
         return True
     if re.search(r"(?:^|\s)(?:akia|as ia|ghp_|github_pat_|xox[baprs]-)[a-z0-9_-]{8,}", lowered):
         return True
-    if "-----begin " in lowered and " private key-----" in lowered:
-        return True
-    return False
+    return "-----begin " in lowered and " private key-----" in lowered
 
 
 def _direct_literals(node: Node) -> tuple[Node, ...]:
@@ -691,7 +696,11 @@ def _direct_literals(node: Node) -> tuple[Node, ...]:
 
 
 def _literal_nodes(node: Node) -> tuple[Node, ...]:
-    return tuple(child for child in _preorder(node) if child.type in {"interpreted_string_literal", "raw_string_literal"})
+    return tuple(
+        child
+        for child in _preorder(node)
+        if child.type in {"interpreted_string_literal", "raw_string_literal"}
+    )
 
 
 def _literal_value(source: bytes, node: Node) -> str:
@@ -800,7 +809,9 @@ def _signal_id(
         "source": _range_value(source),
         "source_size_bytes": source_size_bytes,
     }
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 def _scan_sha256(
@@ -832,7 +843,9 @@ def _scan_sha256(
         ],
         "source_size_bytes": source_size_bytes,
     }
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 Cwe798ScanErrorCode = GoCwe798ScanErrorCode

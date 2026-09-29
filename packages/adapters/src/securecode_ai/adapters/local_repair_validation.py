@@ -19,8 +19,8 @@ from securecode_ai.contracts import (
 from securecode_ai.core.regression import RegressionResult
 from securecode_ai.core.sandbox import SandboxProfile
 from securecode_ai.core.validation import (
-    ValidationLadderResult,
     ValidationLadderRequest,
+    ValidationLadderResult,
     ValidationStage,
     run_validation_ladder,
 )

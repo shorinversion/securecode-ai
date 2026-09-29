@@ -88,6 +88,7 @@ class DockerCliOciRuntime:
         "_bundle_root",
         "_bundle_sha256",
         "_cancel_requested",
+        "_cancelled_process",
         "_closed",
         "_desktop_vm_isolation",
         "_docker",
@@ -100,9 +101,8 @@ class DockerCliOciRuntime:
         "_on_close",
         "_parent_head_sha",
         "_patch_sha256",
-        "_profile",
         "_process_lock",
-        "_cancelled_process",
+        "_profile",
     )
 
     def __init__(
@@ -492,9 +492,7 @@ class DockerCliOciRuntime:
                 with suppress(LocalRepairOciRuntimeError):
                     self._docker_bytes(("kill", name), timeout=5)
                 if cancelled:
-                    return b"", {}, False, True, max(
-                        0, int((time.monotonic() - started) * 1000)
-                    )
+                    return b"", {}, False, True, max(0, int((time.monotonic() - started) * 1000))
                 state = self._state(name)
                 break
             time.sleep(0.05)

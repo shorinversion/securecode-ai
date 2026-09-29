@@ -149,11 +149,7 @@ class DurableWorkflow:
             and expires > now
         ):
             return self._receipt(current)
-        if (
-            current.state is WorkflowState.CLAIMED
-            and expires is not None
-            and expires > now
-        ):
+        if current.state is WorkflowState.CLAIMED and expires is not None and expires > now:
             raise WorkflowConflict()
         return self._transition(
             current,

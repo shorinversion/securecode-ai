@@ -248,7 +248,12 @@ class GoCwe295ScanResult:
         )
         order = (
             tuple(
-                (item.sink.start_byte, item.sink.end_byte, item.source.start_byte, item.source.end_byte)
+                (
+                    item.sink.start_byte,
+                    item.sink.end_byte,
+                    item.source.start_byte,
+                    item.source.end_byte,
+                )
                 for item in self.signals
             )
             if valid_signals
@@ -523,7 +528,7 @@ def _assignment_fact(
 
 
 def _tls_composite(node: Node, source: bytes, imports: dict[str, str]) -> Node | None:
-    candidate = node
+    candidate: Node | None = node
     while candidate is not None and candidate.type != "composite_literal":
         candidate = candidate.parent
     if candidate is None:
@@ -598,11 +603,7 @@ def _body_rejects_invalid_certificate(body: Node, source: bytes) -> bool:
     }
     has_validation_name = bool(
         identifiers & _VALIDATION_NAMES
-        or any(
-            marker in name
-            for name in call_names
-            for marker in _VALIDATION_CALL_MARKERS
-        )
+        or any(marker in name for name in call_names for marker in _VALIDATION_CALL_MARKERS)
     )
     has_rejection_branch = any(
         node.type in {"if_statement", "expression_switch_statement", "type_switch_statement"}
@@ -746,12 +747,12 @@ Cwe295Signal = GoCwe295Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE295_SCAN_LIMITS",
     "Cwe295ScanError",
     "Cwe295ScanErrorCode",
     "Cwe295ScanLimits",
     "Cwe295ScanResult",
     "Cwe295Signal",
-    "DEFAULT_GO_CWE295_SCAN_LIMITS",
     "GoCwe295ScanError",
     "GoCwe295ScanErrorCode",
     "GoCwe295ScanLimits",

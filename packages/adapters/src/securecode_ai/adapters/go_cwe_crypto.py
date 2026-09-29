@@ -163,7 +163,8 @@ class GoCweCryptoScanResult:
             )
             or order != tuple(sorted(order))
             or len(order) != len(set(order))
-            or self.scan_sha256 != _scan_sha256(
+            or self.scan_sha256
+            != _scan_sha256(
                 self.repository_id,
                 self.revision,
                 self.path,

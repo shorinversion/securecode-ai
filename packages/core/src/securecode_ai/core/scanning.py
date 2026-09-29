@@ -21,9 +21,7 @@ from .repository import RepositoryFile
 
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _IDENTIFIER = re.compile(r"[a-z][a-z0-9_.-]{0,127}\Z")
-_DOTTED_NAME = re.compile(
-    r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z"
-)
+_DOTTED_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,31}\Z")
 _MAX_BUDGETS = (2_000_000, 60_000_000_000, 10_000, 16_384, 1_000_000, 2_000_000)
 
 

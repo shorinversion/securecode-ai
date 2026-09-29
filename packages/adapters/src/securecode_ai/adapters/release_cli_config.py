@@ -123,11 +123,7 @@ def parse_release_dependency_policy(value: object) -> DependencyPolicy:
 
 
 def _policy_values(value: object, *, required: bool) -> tuple[str, ...]:
-    if (
-        type(value) is not list
-        or len(value) > _MAX_POLICY_VALUES
-        or (required and not value)
-    ):
+    if type(value) is not list or len(value) > _MAX_POLICY_VALUES or (required and not value):
         raise LocalReleaseProviderError()
     values: list[str] = []
     for item in value:
@@ -394,10 +390,7 @@ def _verify_source(
             after = os.fstat(stream.fileno())
         if (
             size != before.st_size
-            or (
-                expected_sha256 is not None
-                and digest.hexdigest() != expected_sha256
-            )
+            or (expected_sha256 is not None and digest.hexdigest() != expected_sha256)
             or not _same_file_state(before, after)
         ):
             raise LocalReleaseProviderError()
@@ -415,11 +408,11 @@ def _canonical_json(value: object) -> bytes:
 
 __all__ = [
     "HmacReleaseAuthorizationVerifier",
+    "bind_release_sbom_inputs",
+    "parse_release_dependency_policy",
     "read_bounded_local_file",
     "read_protected_release_config",
     "read_protected_release_key",
-    "bind_release_sbom_inputs",
-    "parse_release_dependency_policy",
     "release_store_identity",
     "verify_release_layout",
     "verify_release_sources",

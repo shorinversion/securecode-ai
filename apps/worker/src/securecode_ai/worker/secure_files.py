@@ -28,12 +28,7 @@ def read_ascii_secret(path: Path, *, minimum: int, maximum: int) -> str:
         or _O_NOFOLLOW == 0
     ):
         raise ValueError("worker secret file is invalid")
-    directory_flags = (
-        os.O_RDONLY
-        | _O_CLOEXEC
-        | getattr(os, "O_DIRECTORY", 0)
-        | _O_NOFOLLOW
-    )
+    directory_flags = os.O_RDONLY | _O_CLOEXEC | getattr(os, "O_DIRECTORY", 0) | _O_NOFOLLOW
     descriptor = -1
     directory_descriptors: list[int] = []
     try:

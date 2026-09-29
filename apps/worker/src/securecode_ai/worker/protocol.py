@@ -526,7 +526,6 @@ def _canonical_sha256(document: Mapping[str, object]) -> str:
 __all__ = [
     "ProtocolError",
     "WorkerArtifact",
-    "WorkerRepairPatchBinding",
     "WorkerCommand",
     "WorkerContributionTrust",
     "WorkerEvent",
@@ -534,6 +533,7 @@ __all__ = [
     "WorkerFindingLocation",
     "WorkerJob",
     "WorkerOperation",
+    "WorkerRepairPatchBinding",
     "WorkerResourceBudget",
     "WorkerResourceUsage",
 ]

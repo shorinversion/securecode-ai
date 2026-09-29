@@ -76,14 +76,17 @@ class ApprovalRequest:
         if any(value is not None for value in patch_digests):
             if any(value is None for value in patch_digests):
                 raise ValueError("approval patch binding is incomplete")
-            for value in patch_digests:
-                _require_sha256(value)
+            for digest in patch_digests:
+                _require_sha256(digest)
             if self.approval_id.startswith("repair-"):
-                expected_id = "repair-" + hashlib.sha256(
-                    f"{self.run_id}\x00{self.finding_id}\x00sha256:{self.patch_sha256}".encode(
-                        "ascii"
-                    )
-                ).hexdigest()[:48]
+                expected_id = (
+                    "repair-"
+                    + hashlib.sha256(
+                        f"{self.run_id}\x00{self.finding_id}\x00sha256:{self.patch_sha256}".encode(
+                            "ascii"
+                        )
+                    ).hexdigest()[:48]
+                )
                 if self.approval_id != expected_id:
                     raise ValueError("repair approval identity is invalid")
         elif self.approval_id.startswith("repair-"):
@@ -200,9 +203,7 @@ class ApprovalLedger:
                     "ALTER TABLE approval_requests ADD COLUMN finding_fingerprint TEXT"
                 )
             if "revision_sha" not in existing_columns:
-                self._db.execute(
-                    "ALTER TABLE approval_requests ADD COLUMN revision_sha TEXT"
-                )
+                self._db.execute("ALTER TABLE approval_requests ADD COLUMN revision_sha TEXT")
             for column in (
                 "patch_sha256",
                 "validation_result_sha256",
@@ -468,14 +469,19 @@ class ApprovalLedger:
                WHERE r.tenant_id=? AND r.run_id=? AND f.finding_id=?""",
             (value.tenant_id, value.run_id, value.finding_id),
         ).fetchone()
-        if row is None or type(row) not in {tuple, sqlite3.Row} or len(row) != 7 or (
-            row[0] != value.repository_id
-            or row[1] != value.execution_identity_hash
-            or row[2] != value.revision_sha
-            or row[3] not in _APPROVAL_RUN_STATES
-            or row[4] != value.finding_id
-            or row[5] != value.revision_sha
-            or type(row[6]) is not str
+        if (
+            row is None
+            or type(row) not in {tuple, sqlite3.Row}
+            or len(row) != 7
+            or (
+                row[0] != value.repository_id
+                or row[1] != value.execution_identity_hash
+                or row[2] != value.revision_sha
+                or row[3] not in _APPROVAL_RUN_STATES
+                or row[4] != value.finding_id
+                or row[5] != value.revision_sha
+                or type(row[6]) is not str
+            )
         ):
             raise ApprovalConflict("approval finding scope does not match a stored run")
         try:
@@ -676,6 +682,7 @@ class ApprovalLedger:
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}\Z")
 _REASON_CODE = re.compile(r"[A-Z][A-Z0-9_]{0,63}\Z")
 _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _APPROVAL_RUN_STATES = frozenset({"SUCCEEDED", "FAILED"})
 _HEX = frozenset("0123456789abcdef")
 _REPAIR_BINDING_KEYS = frozenset(

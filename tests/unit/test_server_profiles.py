@@ -32,6 +32,9 @@ def test_profiles_are_immutable_and_repository_assignment_overrides_default() ->
     store.create(advisory, idempotency_key="key")
     assert store.create(advisory, idempotency_key="key") == advisory
     store.create(strict, idempotency_key="key-2")
+    # Only the active version of a profile may be assigned.
+    store.activate(tenant_id="t", profile_id="default", version=1, expected_active=None)
+    store.activate(tenant_id="t", profile_id="strict", version=1, expected_active=None)
     store.set_tenant_default(tenant_id="t", profile_id="default", version=1)
     store.assign_repository(tenant_id="t", repository_id="r", profile_id="strict", version=1)
     assert (
@@ -107,6 +110,7 @@ def test_policy_store_rejects_content_tampering_on_read() -> None:
         content={"rules": ["approved"]},
     )
     store.create(profile, idempotency_key="create-profile")
+    store.activate(tenant_id="t", profile_id="p", version=1, expected_active=None)
     store.set_tenant_default(tenant_id="t", profile_id="p", version=1)
     connection.execute(
         "UPDATE scan_policy_versions SET content_json = ? WHERE tenant_id = ? AND profile_id = ?",
@@ -129,6 +133,7 @@ def test_policy_store_rejects_malformed_content_on_read() -> None:
         content={"rules": ["approved"]},
     )
     store.create(profile, idempotency_key="create-profile")
+    store.activate(tenant_id="t", profile_id="p", version=1, expected_active=None)
     store.set_tenant_default(tenant_id="t", profile_id="p", version=1)
     connection.execute(
         "UPDATE scan_policy_versions SET content_json = ? WHERE tenant_id = ? AND profile_id = ?",

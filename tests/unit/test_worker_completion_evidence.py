@@ -12,6 +12,7 @@ import pytest
 from securecode_ai.contracts import AuditRun
 from securecode_ai.core.evidence_graph import EvidenceGraph
 from securecode_ai.core.reports import ReportFormat, build_deterministic_report, render_report
+from securecode_ai.server.artifact_tenant_namespace import artifact_tenant_path_component
 from securecode_ai.server.worker_completion_evidence import (
     load_verified_terminal_audit_run,
     verify_terminal_evidence,
@@ -69,9 +70,20 @@ def _terminal_artifacts(tmp_path: Path) -> _TerminalArtifacts:
             run_id TEXT NOT NULL,
             execution_identity_json TEXT NOT NULL
         );
+        CREATE TABLE artifact_upload_authorizations (
+            tenant_id TEXT NOT NULL,
+            authorization_id TEXT NOT NULL,
+            repository_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            execution_identity_hash TEXT NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            purpose TEXT NOT NULL
+        );
         CREATE TABLE run_artifacts (
             tenant_id TEXT NOT NULL,
             run_id TEXT NOT NULL,
+            authorization_id TEXT NOT NULL,
             purpose TEXT NOT NULL,
             content_sha256 TEXT NOT NULL,
             metadata_json TEXT NOT NULL
@@ -90,15 +102,29 @@ def _terminal_artifacts(tmp_path: Path) -> _TerminalArtifacts:
     root = tmp_path / "artifacts"
     for purpose, content in contents.items():
         digest = hashlib.sha256(content).hexdigest()
-        payload = root / tenant_id / digest[:2] / digest / "payload"
+        payload = root / artifact_tenant_path_component(tenant_id) / digest[:2] / digest / "payload"
         payload.parent.mkdir(parents=True, exist_ok=True)
         payload.write_bytes(content)
         metadata = _canonical(
             {"content_sha256": digest, "purpose": purpose, "size_bytes": len(content)}
         ).decode("utf-8")
+        authorization_id = f"authorization-{purpose}"
         connection.execute(
-            "INSERT INTO run_artifacts VALUES (?, ?, ?, ?, ?)",
-            (tenant_id, audit_run.run_id, purpose, digest, metadata),
+            "INSERT INTO artifact_upload_authorizations VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                tenant_id,
+                authorization_id,
+                audit_run.execution_identity.repository_revision.repository_id,
+                audit_run.run_id,
+                audit_run.execution_identity.execution_identity_hash,
+                digest,
+                len(content),
+                purpose,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO run_artifacts VALUES (?, ?, ?, ?, ?, ?)",
+            (tenant_id, audit_run.run_id, authorization_id, purpose, digest, metadata),
         )
     connection.commit()
     return _TerminalArtifacts(connection, root, audit_run)
@@ -106,7 +132,7 @@ def _terminal_artifacts(tmp_path: Path) -> _TerminalArtifacts:
 
 def _load(artifacts: _TerminalArtifacts) -> AuditRun | None:
     run = artifacts.audit_run
-    return load_verified_terminal_audit_run(
+    loaded = load_verified_terminal_audit_run(
         connection=artifacts.connection,
         artifact_root=artifacts.artifact_root,
         tenant_id=run.execution_identity.repository_revision.tenant_id,
@@ -115,6 +141,9 @@ def _load(artifacts: _TerminalArtifacts) -> AuditRun | None:
         outcome=run.audit_outcome.value,
         findings=(),
     )
+    # Without include_graph/include_findings the loader returns the bare run.
+    assert loaded is None or isinstance(loaded, AuditRun)
+    return loaded
 
 
 def test_loader_returns_only_the_verified_audit_run(tmp_path: Path) -> None:
@@ -144,7 +173,13 @@ def test_loader_rejects_payload_modified_after_metadata_was_written(tmp_path: Pa
     artifacts = _terminal_artifacts(tmp_path)
     run_bytes = _canonical(artifacts.audit_run.model_dump(mode="json"))
     digest = hashlib.sha256(run_bytes).hexdigest()
-    payload = artifacts.artifact_root / "tenant-1" / digest[:2] / digest / "payload"
+    payload = (
+        artifacts.artifact_root
+        / artifact_tenant_path_component("tenant-1")
+        / digest[:2]
+        / digest
+        / "payload"
+    )
     payload.write_bytes(run_bytes + b" ")
 
     with pytest.raises(WorkerQueueConflict):
@@ -156,7 +191,13 @@ def test_loader_rejects_noncanonical_audit_run_even_with_matching_hash(tmp_path:
     run = artifacts.audit_run
     raw = _canonical(run.model_dump(mode="json")) + b"\n"
     digest = hashlib.sha256(raw).hexdigest()
-    payload = artifacts.artifact_root / "tenant-1" / digest[:2] / digest / "payload"
+    payload = (
+        artifacts.artifact_root
+        / artifact_tenant_path_component("tenant-1")
+        / digest[:2]
+        / digest
+        / "payload"
+    )
     payload.parent.mkdir(parents=True, exist_ok=True)
     payload.write_bytes(raw)
     artifacts.connection.execute(

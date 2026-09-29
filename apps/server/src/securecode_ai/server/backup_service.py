@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from threading import Lock, RLock
-from typing import Protocol
+from typing import Protocol, cast
 
 from .backup_repository import (
     BackupConflict,
@@ -275,11 +275,14 @@ class BackupService:
             if item.state != "BACKED_UP" or item.version != expected or not item.backup_verified:
                 raise BackupConflict("restore precondition failed")
             self._require_residency(item)
-            if self.repo.restore_recovery(
-                tenant_id=item.tenant_id,
-                backup_id=item.backup_id,
-                expected_version=expected,
-            ) is not None:
+            if (
+                self.repo.restore_recovery(
+                    tenant_id=item.tenant_id,
+                    backup_id=item.backup_id,
+                    expected_version=expected,
+                )
+                is not None
+            ):
                 raise BackupConflict("restore was administratively resolved")
             if not self.repo.claim_transition(
                 tenant_id=tenant,
@@ -338,11 +341,7 @@ class BackupService:
         with self._transition_lock(tenant, backup):
             item = self.repo.get(tenant, backup)
             _require_manifest(item)
-            if (
-                item.state != "BACKED_UP"
-                or item.version != expected
-                or not item.backup_verified
-            ):
+            if item.state != "BACKED_UP" or item.version != expected or not item.backup_verified:
                 raise BackupConflict("restore resolution precondition failed")
             self._require_residency(item)
             restore_request_hash = _transition_hash("restore", tenant, backup, expected)
@@ -372,12 +371,12 @@ class BackupService:
     def receipt(self, *, tenant_id: str, backup_id: str) -> BackupReceipt:
         item = self.repo.get(tenant_id, backup_id)
         self._require_residency(item)
-        _require_manifest(item)
+        verified_manifest = _require_manifest(item)
         return BackupReceipt(
             tenant_id=item.tenant_id,
             backup_id=item.backup_id,
             state=item.state,
-            manifest_sha256=item.manifest_sha256,
+            manifest_sha256=verified_manifest,
             component_count=len(item.component_hashes),
             version=item.version,
             backup_verified=item.backup_verified,
@@ -432,9 +431,7 @@ class BackupService:
                 value,
                 expected,
                 idempotency_key=idempotency_key,
-                operation=(
-                    "complete-backup" if operation == "backup" else "complete-restore"
-                )
+                operation=("complete-backup" if operation == "backup" else "complete-restore")
                 if idempotency_key is not None
                 else None,
                 request_sha256=request_hash if idempotency_key is not None else None,
@@ -471,9 +468,7 @@ class BackupService:
                     expected=expected,
                     operation=operation,
                 )
-            raise BackupExecutorUnavailable(
-                "backup transition could not be committed"
-            ) from error
+            raise BackupExecutorUnavailable("backup transition could not be committed") from error
 
     def _resolve_transition_race(
         self,
@@ -502,11 +497,15 @@ class BackupService:
                 expected=expected,
                 operation=operation,
             )
-        if operation == "restore" and self.repo.restore_recovery(
-            tenant_id=item.tenant_id,
-            backup_id=item.backup_id,
-            expected_version=expected,
-        ) is not None:
+        if (
+            operation == "restore"
+            and self.repo.restore_recovery(
+                tenant_id=item.tenant_id,
+                backup_id=item.backup_id,
+                expected_version=expected,
+            )
+            is not None
+        ):
             raise BackupConflict("restore was administratively resolved")
         return self._recover_pending_transition(
             item,
@@ -543,11 +542,15 @@ class BackupService:
                 expected=expected,
                 operation=operation,
             )
-        if operation == "restore" and self.repo.restore_recovery(
-            tenant_id=item.tenant_id,
-            backup_id=item.backup_id,
-            expected_version=expected,
-        ) is not None:
+        if (
+            operation == "restore"
+            and self.repo.restore_recovery(
+                tenant_id=item.tenant_id,
+                backup_id=item.backup_id,
+                expected_version=expected,
+            )
+            is not None
+        ):
             raise BackupConflict("restore was administratively resolved")
         recover = getattr(self.executor, "recover_transition", None)
         if not callable(recover):
@@ -555,9 +558,7 @@ class BackupService:
         try:
             recovered = recover(item, operation=operation)
             if recovered is None:
-                raise BackupExecutorUnavailable(
-                    "backup transition outcome is indeterminate"
-                )
+                raise BackupExecutorUnavailable("backup transition outcome is indeterminate")
             validate_backup_record(recovered)
             _require_manifest(recovered)
             expected_state = "BACKED_UP" if operation == "backup" else "RESTORED"
@@ -581,17 +582,13 @@ class BackupService:
         except BackupExecutorUnavailable:
             raise
         except Exception as error:
-            raise BackupExecutorUnavailable(
-                "backup transition outcome is indeterminate"
-            ) from error
+            raise BackupExecutorUnavailable("backup transition outcome is indeterminate") from error
         try:
             saved = self.repo.save(
                 recovered,
                 expected,
                 idempotency_key=idempotency_key,
-                operation=(
-                    "complete-backup" if operation == "backup" else "complete-restore"
-                )
+                operation=("complete-backup" if operation == "backup" else "complete-restore")
                 if idempotency_key is not None
                 else None,
                 request_sha256=request_hash if idempotency_key is not None else None,
@@ -768,9 +765,11 @@ def _matches_manifest(item: BackupRecord, result: BackupExecutionResult) -> bool
     )
 
 
-def _require_manifest(record: BackupRecord) -> None:
-    if record.manifest_sha256 != manifest_sha256(record):
+def _require_manifest(record: BackupRecord) -> str:
+    expected = manifest_sha256(record)
+    if record.manifest_sha256 != expected:
         raise BackupConflict("backup manifest is invalid")
+    return expected
 
 
 def _transition_hash(operation: str, tenant: str, backup: str, expected: int) -> str:
@@ -787,6 +786,24 @@ def _validate_transition_inputs(tenant: object, backup: object, expected: object
         or expected < 1
     ):
         raise BackupConflict("backup precondition is invalid")
+
+
+def _validate_recovery_text(value: object, field: str, *, maximum: int) -> None:
+    del field  # field names are never echoed into conflict messages
+    if (
+        type(value) is not str
+        or not value.strip()
+        or len(value) > maximum
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
+        raise BackupConflict("backup recovery input is invalid")
+
+
+def _validate_recovery_identifier(value: object, field: str) -> None:
+    _validate_recovery_text(value, field, maximum=256)
+    text = cast(str, value)
+    if not text.isascii() or any(character.isspace() for character in text):
+        raise BackupConflict("backup recovery input is invalid")
 
 
 def _request_hash(operation: str, record: BackupRecord) -> str:

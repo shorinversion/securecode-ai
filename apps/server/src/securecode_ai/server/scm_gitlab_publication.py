@@ -36,13 +36,13 @@ class GitlabTerminalPublicationResolver:
 
     __slots__ = (
         "_api",
-        "_artifact_root",
         "_artifact_reader",
+        "_artifact_root",
         "_baseline",
         "_connection",
+        "_discussions",
         "_lineage",
         "_summary",
-        "_discussions",
     )
 
     def __init__(
@@ -264,9 +264,7 @@ class GitlabTerminalPublicationResolver:
             if record is None or record.root_cause_fingerprint != finding.root_cause_fingerprint:
                 raise ValueError
             if record.verdict == "CONFIRMED":
-                spans = locations_by_fingerprint.setdefault(
-                    finding.root_cause_fingerprint, set()
-                )
+                spans = locations_by_fingerprint.setdefault(finding.root_cause_fingerprint, set())
                 spans.update(
                     (location.path, location.start.line, location.end.line)
                     for location in finding.locations

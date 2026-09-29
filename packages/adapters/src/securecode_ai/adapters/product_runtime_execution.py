@@ -226,7 +226,7 @@ class AuthorizedLocalModelExecutor:
             connector = self._connector
             if not native and type(connector) is OpenAICompatibleLocalHttpConnector:
                 connector = connector.with_output_token_limit(request.budget.max_output_tokens)
-            typed_connector = cast(_ProviderConnector, connector)
+            typed_connector: _ProviderConnector = connector
             if native:
                 base_connector = typed_connector
                 executor = self
@@ -429,6 +429,7 @@ def _context(
             {
                 "evidence_id": aliases[0],
                 "evidence_ids": aliases,
+                "content_id": artifact.content_id,
                 "instruction_authority": "NONE",
                 "data_class": artifact.data_class.value,
                 "content": content.decode("utf-8"),

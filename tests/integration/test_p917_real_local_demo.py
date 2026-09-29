@@ -163,6 +163,78 @@ def test_ambiguous_full_file_patch_is_rejected_fail_closed(
     assert hashlib.sha256((repository / "app.py").read_bytes()).hexdigest() == original_hash
 
 
+def _echoed_line_patch_model(row: int) -> FakeModel:
+    return FakeModel(
+        [
+            {
+                "status": "SUCCEEDED",
+                "candidates": [{"path": "app.py", "line": 2, "cwe_id": "CWE-89"}],
+            },
+            {
+                "status": "SUCCEEDED",
+                "patch": (
+                    f"app.py\n{row:04d}|    return conn.execute("
+                    "'SELECT * FROM users WHERE name = ?', (value,))"
+                ),
+            },
+        ]
+    )
+
+
+def test_echoed_snapshot_line_number_is_accepted_only_for_anchored_row(
+    tmp_path: Path, demo_module: ModuleType
+) -> None:
+    repository, original_hash = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM users WHERE name = ' + value)\n",
+    )
+
+    manifest = _run(demo_module, repository, tmp_path / "out", _echoed_line_patch_model(2))
+
+    assert manifest["outcome"] == "COMPLETED"
+    assert manifest["patch"]["present"] is True
+    assert manifest["ephemeral_validation"]["status"] == "PASSED"
+    assert hashlib.sha256((repository / "app.py").read_bytes()).hexdigest() == original_hash
+
+
+def test_echoed_line_number_for_another_row_is_rejected(
+    tmp_path: Path, demo_module: ModuleType
+) -> None:
+    repository, _ = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM users WHERE name = ' + value)\n",
+    )
+
+    manifest = _run(demo_module, repository, tmp_path / "out", _echoed_line_patch_model(1))
+
+    assert manifest["outcome"] == "INDETERMINATE"
+    assert manifest["patch"]["present"] is False
+
+
+def test_patch_for_file_without_final_newline_is_a_valid_unified_diff(
+    tmp_path: Path, demo_module: ModuleType
+) -> None:
+    repository, _ = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM users WHERE name = ' + value)",
+    )
+    output = tmp_path / "out"
+
+    manifest = _run(demo_module, repository, output, _echoed_line_patch_model(2))
+
+    assert manifest["outcome"] == "COMPLETED"
+    patch = (output / "model-proposed.patch").read_text(encoding="utf-8")
+    assert patch.count("\\ No newline at end of file\n") == 2
+    assert all(
+        line.startswith(("--- ", "+++ ", "@@ ", " ", "-", "+", "\\ "))
+        for line in patch.splitlines()
+    )
+    path, old, new = demo_module._parse_unified_patch(patch)
+    assert path == "app.py"
+    assert not old.endswith(b"\n") and not new.endswith(b"\n")
+    assert new.endswith(b"(value,))")
+
+
 def test_safe_repo_still_calls_model_and_has_no_patch(
     tmp_path: Path, demo_module: ModuleType
 ) -> None:

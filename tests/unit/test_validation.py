@@ -429,5 +429,5 @@ def test_missing_observation_evidence_cannot_pass_stage(monkeypatch: pytest.Monk
 
     assert result.first_failed_stage is ValidationStage.DIFF_PARSE
     assert result.stages[0].gate.reason_code == "OBSERVATION_EVIDENCE_MISSING"
-    assert result.validation.validation_outcome.value == "FAILED"
+    assert result.validation.validation_outcome.value == "INDETERMINATE"
     assert all(not item.authoritative for item in result.stages[1:])

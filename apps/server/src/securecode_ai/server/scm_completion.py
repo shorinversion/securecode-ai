@@ -6,8 +6,8 @@ from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import cast
 
-from securecode_ai.contracts import AuditRunOutcome
 from securecode_ai.adapters.github_annotations import GithubAnnotationReceipt
+from securecode_ai.contracts import AuditRunOutcome
 from securecode_ai.core.scm_policy import ScmPolicyDecision, ScmPolicyEnforcement
 from securecode_ai.core.scm_run_state import (
     PublicationDisposition,
@@ -23,16 +23,16 @@ from .ports import (
     ServiceUnavailableError,
 )
 from .scm_completion_models import (
+    GithubAnnotationReceiptResolver,
     GitHubCheckWriterPort,
     GitHubCommentWriterPort,
-    GithubAnnotationReceiptResolver,
+    GithubHeadResolver,
     GithubSarifArtifactResolver,
     GithubSarifWriterPort,
-    GithubHeadResolver,
     GitlabHeadResolver,
+    GitlabStatusWriterPort,
     GitlabTerminalPublication,
     GitlabTerminalPublicationResolver,
-    GitlabStatusWriterPort,
     PolicyDecisionResolver,
     SCMCompletionDisposition,
     SCMCompletionError,
@@ -54,20 +54,20 @@ class SCMCompletionPublicationService:
     """Publish one policy-evaluated provider status for an exact durable run binding."""
 
     __slots__ = (
-        "_github_comment_writer",
         "_github_annotation_receipt",
+        "_github_comment_writer",
+        "_github_head",
         "_github_sarif_artifact",
         "_github_sarif_writer",
-        "_github_head",
         "_github_writer",
         "_gitlab_head",
         "_gitlab_terminal_publication",
         "_gitlab_writer",
         "_policy_decisions",
-        "_waiver_exception_resolver",
-        "_waiver_revision_resolver",
         "_publications",
         "_run_state",
+        "_waiver_exception_resolver",
+        "_waiver_revision_resolver",
     )
 
     def __init__(
@@ -85,8 +85,7 @@ class SCMCompletionPublicationService:
         gitlab_writer: GitlabStatusWriterPort | None = None,
         gitlab_terminal_publication: GitlabTerminalPublicationResolver | None = None,
         policy_decisions: PolicyDecisionResolver | None = None,
-        waiver_exception_resolver: Callable[[str, str, str, ScmPolicyDecision], bool]
-        | None = None,
+        waiver_exception_resolver: Callable[[str, str, str, ScmPolicyDecision], bool] | None = None,
         waiver_revision_resolver: Callable[[str, str, str], str] | None = None,
     ) -> None:
         try:
@@ -110,18 +109,9 @@ class SCMCompletionPublicationService:
                 and not callable(gitlab_terminal_publication)
             )
             or (policy_decisions is not None and not callable(policy_decisions))
-            or (
-                waiver_exception_resolver is not None
-                and not callable(waiver_exception_resolver)
-            )
-            or (
-                waiver_revision_resolver is not None
-                and not callable(waiver_revision_resolver)
-            )
-            or (
-                github_annotation_receipt is not None
-                and not callable(github_annotation_receipt)
-            )
+            or (waiver_exception_resolver is not None and not callable(waiver_exception_resolver))
+            or (waiver_revision_resolver is not None and not callable(waiver_revision_resolver))
+            or (github_annotation_receipt is not None and not callable(github_annotation_receipt))
             or (github_sarif_artifact is not None and not callable(github_sarif_artifact))
         ):
             raise TypeError("SCM completion dependency is missing")
@@ -231,9 +221,7 @@ class SCMCompletionPublicationService:
         gitlab_terminal_publication = self._gitlab_terminal_receipt(
             target, audit, outcome, publication
         )
-        self._require_gitlab_terminal_receipt(
-            target, outcome, gitlab_terminal_publication
-        )
+        self._require_gitlab_terminal_receipt(target, outcome, gitlab_terminal_publication)
 
         write_status, observed_head = self._publish(
             target,
@@ -574,7 +562,8 @@ class SCMCompletionPublicationService:
             completed = getattr(self._github_annotation_receipt, "for_completed", None)
             if not callable(completed):
                 raise SCMCompletionError("SCM annotation authorization is unavailable")
-            return completed(target, outcome, publication)
+            receipt: GithubAnnotationReceipt | None = completed(target, outcome, publication)
+            return receipt
         except (KeyboardInterrupt, SystemExit, GeneratorExit):
             raise
         except Exception:
@@ -875,15 +864,13 @@ class SCMCompletionPublicationService:
             raise SCMCompletionError("SCM provider is not configured")
 
         result = self._gitlab_write_result(
-            target,
-            self._gitlab_writer.publish_summary(gitlab_target(target), receipt.summary)
+            target, self._gitlab_writer.publish_summary(gitlab_target(target), receipt.summary)
         )
         if result[0] != "WRITTEN":
             return result
         for projection in receipt.discussions:
             result = self._gitlab_write_result(
-                target,
-                self._gitlab_writer.publish_discussion(gitlab_target(target), projection)
+                target, self._gitlab_writer.publish_discussion(gitlab_target(target), projection)
             )
             if result[0] != "WRITTEN":
                 return result

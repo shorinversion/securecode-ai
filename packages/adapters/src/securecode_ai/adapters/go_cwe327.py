@@ -48,7 +48,7 @@ _WEAK_PACKAGES = frozenset(
         "crypto/sha1",
     }
 )
-_WEAK_OPERATIONS: dict[tuple[str, str], "GoCwe327Operation"] = {}
+_WEAK_OPERATIONS: dict[tuple[str, str], GoCwe327Operation] = {}
 _IGNORED_PATH_PARTS = frozenset(
     {
         "doc",
@@ -196,9 +196,7 @@ class GoCwe327Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is GoCwe327Operation
+            if valid_identity and valid_ranges and type(self.operation) is GoCwe327Operation
             else None
         )
         signal_id = self.signal_id or expected_id

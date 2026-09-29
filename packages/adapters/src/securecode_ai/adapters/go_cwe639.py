@@ -584,7 +584,7 @@ def _lookup_for_call(
         else GoCwe639Operation.REPOSITORY_BY_ID
     )
     del imports
-    return operation, arguments.named_children
+    return operation, tuple(arguments.named_children)
 
 
 def _repository_receiver(receiver: str) -> bool:
@@ -622,8 +622,8 @@ def _assignment_pairs(node: Node) -> tuple[tuple[Node, ...], tuple[Node, ...]]:
         values_node = node.child_by_field_name("right")
     if names_node is None or values_node is None:
         return (), ()
-    names = names_node.named_children or (names_node,)
-    values = values_node.named_children or (values_node,)
+    names = tuple(names_node.named_children) or (names_node,)
+    values = tuple(values_node.named_children) or (values_node,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     return names, values
@@ -649,8 +649,7 @@ def _resolve(
         if normalized in visited:
             return ()
         return tuple(
-            _Flow(flow.source, flow.names | {normalized})
-            for flow in environment.get(name, ())
+            _Flow(flow.source, flow.names | {normalized}) for flow in environment.get(name, ())
         )
     if node.type in {
         "parenthesized_expression",
@@ -749,9 +748,11 @@ def _guard_dominates(
             continue
         if candidate.end_byte > sink.start_byte:
             continue
-        if candidate.type == "call_expression" and _is_guard_call(
-            candidate, source, imports
-        ) and _guard_matches(candidate, flow, source):
+        if (
+            candidate.type == "call_expression"
+            and _is_guard_call(candidate, source, imports)
+            and _guard_matches(candidate, flow, source)
+        ):
             return True
         if candidate.type == "if_statement" and _is_guard_statement(
             candidate, flow, source, imports
@@ -784,9 +785,7 @@ def _guard_matches(node: Node, flow: _Flow, source: bytes) -> bool:
     guard_names -= _IGNORED_GUARD_NAMES
     flow_names = flow.names - _IGNORED_GUARD_NAMES
     return any(
-        left == right
-        or (len(left) >= 3 and left in right)
-        or (len(right) >= 3 and right in left)
+        left == right or (len(left) >= 3 and left in right) or (len(right) >= 3 and right in left)
         for left in flow_names
         for right in guard_names
     )
@@ -803,9 +802,11 @@ def _is_guard_statement(
     if condition is None or consequence is None:
         return False
     for candidate in _preorder(condition):
-        if candidate.type == "call_expression" and _is_guard_call(
-            candidate, source, imports
-        ) and _guard_matches(candidate, flow, source):
+        if (
+            candidate.type == "call_expression"
+            and _is_guard_call(candidate, source, imports)
+            and _guard_matches(candidate, flow, source)
+        ):
             return _has_early_exit(consequence)
     text = _compact_text(source, condition).lower()
     if not any(marker in text for marker in _GUARD_MARKERS):
@@ -825,9 +826,7 @@ def _guard_text_matches(text: str, flow: _Flow) -> bool:
     values -= _IGNORED_GUARD_NAMES
     names = flow.names - _IGNORED_GUARD_NAMES
     return any(
-        left == right
-        or (len(left) >= 3 and left in right)
-        or (len(right) >= 3 and right in left)
+        left == right or (len(left) >= 3 and left in right) or (len(right) >= 3 and right in left)
         for left in names
         for right in values
     )
@@ -955,9 +954,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -991,9 +988,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1005,12 +1000,12 @@ Cwe639Signal = GoCwe639Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE639_SCAN_LIMITS",
     "Cwe639ScanError",
     "Cwe639ScanErrorCode",
     "Cwe639ScanLimits",
     "Cwe639ScanResult",
     "Cwe639Signal",
-    "DEFAULT_GO_CWE639_SCAN_LIMITS",
     "GoCwe639Operation",
     "GoCwe639ScanError",
     "GoCwe639ScanErrorCode",

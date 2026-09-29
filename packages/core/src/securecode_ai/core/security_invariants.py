@@ -8,6 +8,7 @@ interpret a model response.  It binds the assertion to the immutable
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -302,9 +303,11 @@ def evaluate_security_invariant(
         reason = InvariantEvaluationReason.MISSING_EVIDENCE
     elif checked_invariant.invariant_id == _COMMAND_SAFETY_ID and (
         checked_root.command_operation_evidence != checked_invariant.command_operation_evidence
-        or checked_finding is not None
-        and checked_finding.command_operation_evidence
-        != checked_invariant.command_operation_evidence
+        or (
+            checked_finding is not None
+            and checked_finding.command_operation_evidence
+            != checked_invariant.command_operation_evidence
+        )
     ):
         reason = InvariantEvaluationReason.CONFLICTING_EVIDENCE
     return _evaluation(checked_invariant, reason)
@@ -461,6 +464,9 @@ def _unchecked_invariant(**values: object) -> SecurityInvariant:
     """Create an internal hash preimage; callers must immediately revalidate it."""
 
     value = object.__new__(SecurityInvariant)
+    for name, field in SecurityInvariant.__dataclass_fields__.items():
+        if name not in values and field.default is not dataclasses.MISSING:
+            object.__setattr__(value, name, field.default)
     for name, item in values.items():
         object.__setattr__(value, name, item)
     return value

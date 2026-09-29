@@ -286,8 +286,7 @@ def _validate_policy(policy: OidcPolicy) -> None:
         or policy.tenant_claim
         in {"iss", "sub", "aud", "azp", "exp", "iat", "nonce", policy.subject_claim}
         or not _valid_tenant_map(policy.tenant_map)
-        or policy.subject_claim
-        in {"iss", "aud", "azp", "exp", "iat", "nonce", policy.tenant_claim}
+        or policy.subject_claim in {"iss", "aud", "azp", "exp", "iat", "nonce", policy.tenant_claim}
     ):
         raise OidcDenied()
 
@@ -372,8 +371,7 @@ def _valid_tenant_map(value: object) -> bool:
     except Exception:
         return False
     return len(items) <= 10_000 and all(
-        _bounded_text(source, _MAX_CLAIM_LENGTH)
-        and _bounded_text(tenant, _MAX_CLAIM_LENGTH)
+        _bounded_text(source, _MAX_CLAIM_LENGTH) and _bounded_text(tenant, _MAX_CLAIM_LENGTH)
         for source, tenant in items
     )
 

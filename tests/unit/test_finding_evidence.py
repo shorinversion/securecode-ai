@@ -24,8 +24,10 @@ from securecode_ai.contracts import (
     SourcePosition,
     TrustLabel,
 )
+from securecode_ai.server.artifact_tenant_namespace import artifact_tenant_path_component
 from securecode_ai.server.finding_evidence import FindingEvidenceReader
 from securecode_ai.server.persistence import NotFoundError, RepositoryError
+from securecode_ai.server.policy_store import PolicyStore
 from securecode_ai.server.ports import ServiceRequest, VerifiedIdentity
 from securecode_ai.server.service import DurableControlPlaneService
 
@@ -130,8 +132,15 @@ class _Repository:
         assert run_id == "run-1"
         return self.run
 
-    def list_artifacts(self, tenant_id: str, run_id: str) -> dict[str, object]:
+    def list_artifacts(
+        self,
+        tenant_id: str,
+        run_id: str,
+        cursor_token: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, object]:
         assert tenant_id == TENANT
+        assert cursor_token is None
         assert run_id == "run-1"
         return {"items": [self.artifact]}
 
@@ -141,7 +150,9 @@ def _fixture(tmp_path: Path) -> tuple[FindingEvidenceReader, Path, _Repository]:
     payload = _canonical(document)
     digest = hashlib.sha256(payload).hexdigest()
     artifact_root = tmp_path / "artifacts"
-    artifact_path = artifact_root / TENANT / digest[:2] / digest / "payload"
+    artifact_path = (
+        artifact_root / artifact_tenant_path_component(TENANT) / digest[:2] / digest / "payload"
+    )
     artifact_path.parent.mkdir(parents=True)
     artifact_path.write_bytes(payload)
     artifact = {
@@ -235,7 +246,11 @@ def test_rejects_cross_tenant_artifact_reference(tmp_path: Path) -> None:
 
 def test_service_exposes_evidence_only_to_authorized_repository(tmp_path: Path) -> None:
     reader, _, repository = _fixture(tmp_path)
-    service = DurableControlPlaneService(repository, finding_evidence=reader)  # type: ignore[arg-type]
+    service = DurableControlPlaneService(
+        repository,  # type: ignore[arg-type]
+        finding_evidence=reader,
+        policy_store=PolicyStore(),
+    )
     request = ServiceRequest(
         method="GET",
         route="/api/v1/findings/{finding_id}/evidence",
@@ -257,7 +272,11 @@ def test_service_exposes_evidence_only_to_authorized_repository(tmp_path: Path) 
 
 def test_service_denies_evidence_for_ungranted_repository(tmp_path: Path) -> None:
     reader, _, repository = _fixture(tmp_path)
-    service = DurableControlPlaneService(repository, finding_evidence=reader)  # type: ignore[arg-type]
+    service = DurableControlPlaneService(
+        repository,  # type: ignore[arg-type]
+        finding_evidence=reader,
+        policy_store=PolicyStore(),
+    )
     request = ServiceRequest(
         method="GET",
         route="/api/v1/findings/{finding_id}/evidence",

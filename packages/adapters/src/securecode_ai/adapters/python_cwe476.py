@@ -149,9 +149,7 @@ class PythonCwe476Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is PythonCwe476Operation
+            if valid_identity and valid_ranges and type(self.operation) is PythonCwe476Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -460,15 +458,19 @@ def _analyze_statement(
             line_starts,
             facts,
         )
-        orelse = _analyze_block(
-            statement.orelse,
-            false_flow,
-            nullable_functions,
-            limits,
-            source,
-            line_starts,
-            facts,
-        ) if statement.orelse else false_flow
+        orelse = (
+            _analyze_block(
+                statement.orelse,
+                false_flow,
+                nullable_functions,
+                limits,
+                source,
+                line_starts,
+                facts,
+            )
+            if statement.orelse
+            else false_flow
+        )
         return _merge_flows(body, orelse)
     if isinstance(statement, (ast.For, ast.AsyncFor)):
         _scan_expr(statement.iter, flow, nullable_functions, limits, source, line_starts, facts)
@@ -484,15 +486,19 @@ def _analyze_statement(
             line_starts,
             facts,
         )
-        orelse = _analyze_block(
-            statement.orelse,
-            flow,
-            nullable_functions,
-            limits,
-            source,
-            line_starts,
-            facts,
-        ) if statement.orelse else flow
+        orelse = (
+            _analyze_block(
+                statement.orelse,
+                flow,
+                nullable_functions,
+                limits,
+                source,
+                line_starts,
+                facts,
+            )
+            if statement.orelse
+            else flow
+        )
         return _merge_flows(flow, _merge_flows(body, orelse))
     if isinstance(statement, (ast.While,)):
         _scan_expr(statement.test, flow, nullable_functions, limits, source, line_starts, facts)
@@ -505,15 +511,19 @@ def _analyze_statement(
             line_starts,
             facts,
         )
-        orelse = _analyze_block(
-            statement.orelse,
-            flow,
-            nullable_functions,
-            limits,
-            source,
-            line_starts,
-            facts,
-        ) if statement.orelse else flow
+        orelse = (
+            _analyze_block(
+                statement.orelse,
+                flow,
+                nullable_functions,
+                limits,
+                source,
+                line_starts,
+                facts,
+            )
+            if statement.orelse
+            else flow
+        )
         return _merge_flows(flow, _merge_flows(body, orelse))
     if isinstance(statement, ast.Try):
         body = _analyze_block(
@@ -551,15 +561,20 @@ def _analyze_statement(
                 line_starts,
                 facts,
             )
-        return _merge_flows(merged, _analyze_block(
-            statement.orelse,
-            body,
-            nullable_functions,
-            limits,
-            source,
-            line_starts,
-            facts,
-        ) if statement.orelse else merged)
+        return _merge_flows(
+            merged,
+            _analyze_block(
+                statement.orelse,
+                body,
+                nullable_functions,
+                limits,
+                source,
+                line_starts,
+                facts,
+            )
+            if statement.orelse
+            else merged,
+        )
     if isinstance(statement, (ast.Return, ast.Raise)):
         value = statement.value if isinstance(statement, ast.Return) else statement.exc
         if value is not None:
@@ -590,7 +605,9 @@ def _analyze_statement(
                 _Nullability.MAYBE_NULL,
             }:
                 status = _join_nullability(status, _Nullability.MAYBE_NULL)
-        targets = tuple(statement.targets) if isinstance(statement, ast.Assign) else (statement.target,)
+        targets = (
+            tuple(statement.targets) if isinstance(statement, ast.Assign) else (statement.target,)
+        )
         for target in targets:
             _assign_target(target, status, values, nonnull)
         return _Flow(values, frozenset(nonnull))
@@ -601,7 +618,9 @@ def _analyze_statement(
         return _Flow(values, frozenset(nonnull))
     if isinstance(statement, ast.With):
         for item in statement.items:
-            _scan_expr(item.context_expr, flow, nullable_functions, limits, source, line_starts, facts)
+            _scan_expr(
+                item.context_expr, flow, nullable_functions, limits, source, line_starts, facts
+            )
             if item.optional_vars is not None:
                 status = _expr_nullability(item.context_expr, flow, nullable_functions, limits)
                 _assign_target(item.optional_vars, status, values, nonnull)
@@ -619,7 +638,9 @@ def _analyze_statement(
         _scan_expr(statement.subject, flow, nullable_functions, limits, source, line_starts, facts)
         branches = []
         for case in statement.cases:
-            _scan_expr(case.guard, flow, nullable_functions, limits, source, line_starts, facts) if case.guard else None
+            _scan_expr(
+                case.guard, flow, nullable_functions, limits, source, line_starts, facts
+            ) if case.guard else None
             branches.append(
                 _analyze_block(
                     case.body,
@@ -655,14 +676,28 @@ def _scan_expr(
         _scan_expr(node.value, flow, nullable_functions, limits, source, line_starts, facts)
         status = _expr_nullability(node.value, flow, nullable_functions, limits)
         if _is_nullable(status, node.value, flow):
-            _add_fact(node.value, node, PythonCwe476Operation.ATTRIBUTE_DEREFERENCE, source, line_starts, facts)
+            _add_fact(
+                node.value,
+                node,
+                PythonCwe476Operation.ATTRIBUTE_DEREFERENCE,
+                source,
+                line_starts,
+                facts,
+            )
         return
     if isinstance(node, ast.Subscript):
         _scan_expr(node.value, flow, nullable_functions, limits, source, line_starts, facts)
         _scan_expr(node.slice, flow, nullable_functions, limits, source, line_starts, facts)
         status = _expr_nullability(node.value, flow, nullable_functions, limits)
         if _is_nullable(status, node.value, flow):
-            _add_fact(node.value, node, PythonCwe476Operation.SUBSCRIPT_DEREFERENCE, source, line_starts, facts)
+            _add_fact(
+                node.value,
+                node,
+                PythonCwe476Operation.SUBSCRIPT_DEREFERENCE,
+                source,
+                line_starts,
+                facts,
+            )
         return
     for child in ast.iter_child_nodes(node):
         _scan_expr(child, flow, nullable_functions, limits, source, line_starts, facts)
@@ -744,15 +779,25 @@ def _expr_nullability(
             return _Nullability.MAYBE_NULL
         if name is not None and name.endswith(".pop") and len(node.args) < 2:
             return _Nullability.MAYBE_NULL
-        if name in {"getattr", "builtins.getattr"} and len(node.args) >= 3 and _is_none_literal(node.args[2]):
+        if (
+            name in {"getattr", "builtins.getattr"}
+            and len(node.args) >= 3
+            and _is_none_literal(node.args[2])
+        ):
             return _Nullability.MAYBE_NULL
-        if name in {"next", "builtins.next"} and len(node.args) >= 2 and _is_none_literal(node.args[1]):
+        if (
+            name in {"next", "builtins.next"}
+            and len(node.args) >= 2
+            and _is_none_literal(node.args[1])
+        ):
             return _Nullability.MAYBE_NULL
         if name in {"typing.cast", "cast"} and len(node.args) >= 2:
             return (
                 _Nullability.MAYBE_NULL
                 if _annotation_nullable(node.args[0])
-                else _expr_nullability(node.args[1], flow, nullable_functions, limits, depth + 1, seen)
+                else _expr_nullability(
+                    node.args[1], flow, nullable_functions, limits, depth + 1, seen
+                )
             )
         return _Nullability.UNKNOWN
     if isinstance(node, ast.BinOp):
@@ -799,7 +844,9 @@ def _assign_target(
 def _function_flow(function: ast.FunctionDef | ast.AsyncFunctionDef) -> _Flow:
     values: dict[str, _Nullability] = {}
     positional = [*function.args.posonlyargs, *function.args.args]
-    defaults = [None] * (len(positional) - len(function.args.defaults)) + list(function.args.defaults)
+    defaults = [None] * (len(positional) - len(function.args.defaults)) + list(
+        function.args.defaults
+    )
     for argument, default in zip(positional, defaults, strict=True):
         if _annotation_nullable(argument.annotation) or _is_none_literal(default):
             values[argument.arg] = _Nullability.MAYBE_NULL
@@ -855,9 +902,12 @@ def _guard_names(node: ast.expr | None) -> tuple[frozenset[str], frozenset[str]]
             names, _ = _guard_names(value)
             true.update(names)
         return frozenset(true), frozenset()
-    if isinstance(node, ast.Call) and _canonical_name(node.func) in {"isinstance", "issubclass"} and node.args:
-        if isinstance(node.args[0], ast.Name):
-            return frozenset({node.args[0].id}), frozenset()
+    if (
+        isinstance(node, ast.Call)
+        and _canonical_name(node.func) in {"isinstance", "issubclass"}
+        and node.args
+    ) and isinstance(node.args[0], ast.Name):
+        return frozenset({node.args[0].id}), frozenset()
     if isinstance(node, ast.Compare) and len(node.ops) == 1 and len(node.comparators) == 1:
         left, right = node.left, node.comparators[0]
         left_name = left.id if isinstance(left, ast.Name) else None
@@ -919,7 +969,12 @@ def _annotation_nullable(node: ast.AST | None) -> bool:
         if base in {"Annotated", "typing.Annotated"}:
             return _annotation_nullable(node.slice)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _annotation_nullable(node.left) or _annotation_nullable(node.right) or _is_none_literal(node.left) or _is_none_literal(node.right)
+        return (
+            _annotation_nullable(node.left)
+            or _annotation_nullable(node.right)
+            or _is_none_literal(node.left)
+            or _is_none_literal(node.right)
+        )
     return _is_none_literal(node)
 
 
@@ -977,9 +1032,16 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe476ScanError(PythonCwe476ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe476ScanError(PythonCwe476ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:

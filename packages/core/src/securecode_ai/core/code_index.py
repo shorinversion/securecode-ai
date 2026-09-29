@@ -136,13 +136,17 @@ class RepositoryCodeIndex(StaticCodeIndex):
         if type(limit) is not int or not 0 <= limit <= _MAX_ENTRIES:
             raise ValueError("code index query is invalid")
         index = self._indexes.get(query_id)
-        entries = () if index is None else (
-            CodeIndexEntry(
-                path=index.path,
-                content_sha256=index.content_sha256,
-                byte_length=index.source_byte_length,
-                language=index.language,
-            ),
+        entries = (
+            ()
+            if index is None
+            else (
+                CodeIndexEntry(
+                    path=index.path,
+                    content_sha256=index.content_sha256,
+                    byte_length=index.source_byte_length,
+                    language=index.language,
+                ),
+            )
         )
         return CodeIndexResult(entries, sum(entry.byte_length for entry in entries))
 

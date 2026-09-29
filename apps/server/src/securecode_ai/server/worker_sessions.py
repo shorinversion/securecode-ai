@@ -281,12 +281,8 @@ class WorkerSessions:
                 if value.outcome != outcome:
                     raise WorkerDenied()
                 return value
-            if (
-                value.command is WorkerCommand.SUPERSEDE
-                and outcome != "SUPERSEDED"
-            ) or (
-                value.command is WorkerCommand.CANCEL
-                and outcome not in {"CANCELLED", "SUPERSEDED"}
+            if (value.command is WorkerCommand.SUPERSEDE and outcome != "SUPERSEDED") or (
+                value.command is WorkerCommand.CANCEL and outcome not in {"CANCELLED", "SUPERSEDED"}
             ):
                 raise WorkerDenied()
             command = WorkerCommand.CONTINUE
@@ -331,8 +327,7 @@ class WorkerSessions:
             if command is current.command:
                 return current
             if current.command is WorkerCommand.SUPERSEDE or (
-                current.command is WorkerCommand.CANCEL
-                and command is WorkerCommand.CONTINUE
+                current.command is WorkerCommand.CANCEL and command is WorkerCommand.CONTINUE
             ):
                 raise WorkerDenied()
             updated = replace(current, version=_next_version(current), command=command)

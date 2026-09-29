@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Final, cast
 
-from .assurance_reports import AssurancePinsProvider, AssuranceReport, AssuranceReportError, generate
+from .assurance_reports import (
+    AssurancePinsProvider,
+    AssuranceReport,
+    AssuranceReportError,
+    generate,
+)
 from .assurance_repository import AssuranceRecord, AssuranceRepository
 
 _SUCCESS_OUTCOMES: Final = frozenset({"CONFIRMED", "EXECUTED", "PASS"})

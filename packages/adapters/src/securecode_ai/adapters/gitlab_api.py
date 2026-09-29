@@ -317,9 +317,7 @@ class GitlabRestAPI:
             except (SCMDiffError, TypeError, ValueError):
                 raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID) from None
             deleted = new_path == "/dev/null" or item.get("deleted_file") is True
-            changed.update(
-                (changed_path, line, old_path, deleted) for changed_path, line in parsed
-            )
+            changed.update((changed_path, line, old_path, deleted) for changed_path, line in parsed)
             if len(changed) > MAX_SCM_CHANGED_LINES:
                 raise GitlabAPIError(GitlabAPIErrorCode.RESPONSE_INVALID)
         return tuple(sorted(changed))
@@ -341,7 +339,8 @@ class GitlabRestAPI:
             "GET",
             path,
             None,
-            operation + "-"
+            operation
+            + "-"
             + hashlib.sha256(f"{project_id}\x00{base_sha}\x00{head_sha}".encode()).hexdigest(),
             expected_statuses=frozenset({200}),
         )

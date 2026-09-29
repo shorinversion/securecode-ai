@@ -159,9 +159,9 @@ class ArtifactRetentionPlanner:
                     cutoff=now - timedelta(days=days),
                     limit=max_items - len(results),
                 )
-                for candidate in run_candidates:
+                for run_candidate in run_candidates:
                     planned = self._plan_run_candidate(
-                        candidate=candidate,
+                        candidate=run_candidate,
                         profile=profile,
                         profile_sha256=profile_sha256,
                         now=now,
@@ -346,9 +346,7 @@ class ArtifactRetentionPlanner:
                 tenant_id=tenant_id,
                 run_id=run_id,
                 data_class=data_class,
-                fallback=(
-                    row["updated_at"] if data_class == "metadata" else row["created_at"]
-                ),
+                fallback=(row["updated_at"] if data_class == "metadata" else row["created_at"]),
             )
             if latest > cutoff:
                 continue
@@ -454,9 +452,7 @@ class ArtifactRetentionPlanner:
                 data_class=candidate.data_class,
             )
             days = (
-                profile.metadata_days
-                if candidate.data_class == "metadata"
-                else profile.audit_days
+                profile.metadata_days if candidate.data_class == "metadata" else profile.audit_days
             )
             if (
                 current is None
@@ -523,9 +519,7 @@ class ArtifactRetentionPlanner:
         require_identifier(stored_run_id, "run_id")
         require_identifier(repository_id, "repository_id")
         require_sha256(identity_hash, "execution_identity_hash")
-        latest = _parse_utc(
-            row["updated_at"] if data_class == "metadata" else row["created_at"]
-        )
+        latest = _parse_utc(row["updated_at"] if data_class == "metadata" else row["created_at"])
         if data_class == "audit":
             audit_row = cursor.execute(
                 """SELECT MAX(created_at) AS latest_at

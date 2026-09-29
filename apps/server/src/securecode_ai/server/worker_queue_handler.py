@@ -12,14 +12,21 @@ from pathlib import Path
 from typing import Final, cast
 
 from securecode_ai.adapters.scm_head import SCMHeadUnavailable
-from securecode_ai.contracts import AnalysisHealth, ArtifactRef, DataClass, EvidenceKind, TrustLabel
+from securecode_ai.contracts import (
+    AnalysisHealth,
+    ArtifactRef,
+    DataClass,
+    EvidenceKind,
+    RunExecutionIdentity,
+    TrustLabel,
+)
 from securecode_ai.core.baseline_fingerprints import (
     BaselineChangedScope,
     BaselineFingerprintComparison,
     BaselineFingerprintError,
 )
-from securecode_ai.core.scm_policy import ScmPolicyDocument
 from securecode_ai.core.evidence_graph import EvidenceGraph
+from securecode_ai.core.scm_policy import ScmPolicyDocument
 
 from .artifact_upload_verifier import LocalArtifactUploadVerifier
 from .baseline_store import BaselineStoreError, DurableBaselineStore
@@ -186,7 +193,7 @@ class WorkerQueueHandler:
             if verified_terminal is None:
                 audit_run = None
                 evidence_graph = None
-            elif type(verified_terminal) is tuple:
+            elif type(verified_terminal) is tuple and len(verified_terminal) == 2:
                 audit_run, evidence_graph = verified_terminal
             else:
                 raise WorkerQueueConflict()
@@ -351,9 +358,7 @@ class WorkerQueueHandler:
             "worker_sessions.artifacts.commit": base_keys
             | {"artifact_ref", "authorization_id", "purpose"},
         }.get(request.action)
-        if (
-            expected_keys is None or document.get("schema_version") != "0.2.0"
-        ):
+        if expected_keys is None or document.get("schema_version") != "0.2.0":
             raise WorkerQueueConflict()
         if request.action == "worker_sessions.artifacts.commit":
             if set(document) not in {
@@ -488,9 +493,7 @@ def _finding_locations(
         if finding.verdict != "CONFIRMED":
             continue
         locations = grouped.setdefault(finding.root_cause_fingerprint, set())
-        locations.update(
-            (item.path, item.start_line, item.end_line) for item in finding.locations
-        )
+        locations.update((item.path, item.start_line, item.end_line) for item in finding.locations)
     return tuple(
         (fingerprint, tuple(sorted(locations)))
         for fingerprint, locations in sorted(grouped.items())
@@ -628,15 +631,10 @@ def _completion_findings(
 ) -> tuple[WorkerFindingRecord, ...]:
     commits = outcome in _COMMIT_OUTCOMES
     if (
-        (
-            commits
-            and frozenset(document)
-            != _COMPLETION_KEYS | {"findings", "resource_usage"}
-        )
+        (commits and frozenset(document) != _COMPLETION_KEYS | {"findings", "resource_usage"})
         or (
             not commits
-            and frozenset(document)
-            not in {_COMPLETION_KEYS, _COMPLETION_KEYS | {"resource_usage"}}
+            and frozenset(document) not in {_COMPLETION_KEYS, _COMPLETION_KEYS | {"resource_usage"}}
         )
         or document.get("schema_version") != "0.2.0"
     ):
@@ -705,8 +703,8 @@ def _repair_binding(
         item = value.get(name)
         if type(item) is not str or not item:
             raise WorkerQueueConflict()
-    head_sha = value.get("head_sha")
-    if type(head_sha) is not str or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+    stored_head_sha = value.get("head_sha")
+    if type(stored_head_sha) is not str or re.fullmatch(r"[0-9a-f]{40}", stored_head_sha) is None:
         raise WorkerQueueConflict()
     for name in (
         "execution_identity_hash",
@@ -768,7 +766,7 @@ def _run_execution_identity(
     tenant_id: str,
     run_id: str,
     execution_identity_hash: str,
-):
+) -> RunExecutionIdentity:
     row = connection.execute(
         """SELECT execution_identity_json FROM worker_run_queue
            WHERE tenant_id=? AND run_id=?""",

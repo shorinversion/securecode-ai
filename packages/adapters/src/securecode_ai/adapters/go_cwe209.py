@@ -401,7 +401,7 @@ def scan_go_cwe209(
                 arguments = node.child_by_field_name("arguments")
                 if arguments is None:
                     continue
-                values = arguments.named_children
+                values = tuple(arguments.named_children)
                 selected = _sink_arguments(values, operation)
                 sink_range = _range(node)
                 for value in selected:
@@ -409,9 +409,7 @@ def scan_go_cwe209(
                         value, environment, source, imports, limits, 0, frozenset()
                     ):
                         if flow.source.end_byte > sink_range.end_byte:
-                            raise GoCwe209ScanError(
-                                GoCwe209ScanErrorCode.INTEGRITY_FAILURE
-                            )
+                            raise GoCwe209ScanError(GoCwe209ScanErrorCode.INTEGRITY_FAILURE)
                         raw.add((flow.source, sink_range, operation))
                         if len(raw) > limits.max_signals:
                             raise GoCwe209ScanError(GoCwe209ScanErrorCode.SIGNAL_LIMIT)
@@ -541,12 +539,12 @@ def _operation_for_call(
     field = function.child_by_field_name("field")
     if operand is None or field is None:
         return None
-    return _OPERATION_BY_CALL.get((imports.get(_compact_text(source, operand), ""), _text(source, field)))
+    return _OPERATION_BY_CALL.get(
+        (imports.get(_compact_text(source, operand), ""), _text(source, field))
+    )
 
 
-def _sink_arguments(
-    values: tuple[Node, ...], operation: GoCwe209Operation
-) -> tuple[Node, ...]:
+def _sink_arguments(values: tuple[Node, ...], operation: GoCwe209Operation) -> tuple[Node, ...]:
     if not values:
         return ()
     if operation is GoCwe209Operation.FMT_ERRORF:
@@ -568,15 +566,15 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     for name, value in zip(names, values, strict=False):
@@ -614,18 +612,16 @@ def _resolve(
         return (_Flow(_range(node)),) if _is_sensitive_name(name) else ()
     if node.type in {"parenthesized_expression", "unary_expression", "pointer_expression"}:
         return _dedupe_flows(
-            (
-                flow
-                for child in node.named_children
-                for flow in _resolve(
-                    child,
-                    environment,
-                    source,
-                    imports,
-                    limits,
-                    depth + 1,
-                    visited,
-                )
+            flow
+            for child in node.named_children
+            for flow in _resolve(
+                child,
+                environment,
+                source,
+                imports,
+                limits,
+                depth + 1,
+                visited,
             )
         )
     if node.type == "call_expression":
@@ -633,7 +629,7 @@ def _resolve(
         arguments = node.child_by_field_name("arguments")
         if arguments is None:
             return ()
-        values = arguments.named_children
+        call_values = tuple(arguments.named_children)
         if _is_sanitizer(node, source, imports):
             return ()
         qualified = _qualified_call(function, source, imports)
@@ -641,25 +637,22 @@ def _resolve(
             "fmt.Sprintf",
             "fmt.Sprint",
             "fmt.Sprintln",
-            "fmt.Sprint",
             "errors.Join",
             "strings.Join",
             "strings.Builder",
         }:
-            args = values[1:] if qualified == "fmt.Sprintf" else values
+            args = call_values[1:] if qualified == "fmt.Sprintf" else call_values
             return _dedupe_flows(
-                (
-                    flow
-                    for argument in args
-                    for flow in _resolve(
-                        argument,
-                        environment,
-                        source,
-                        imports,
-                        limits,
-                        depth + 1,
-                        visited,
-                    )
+                flow
+                for argument in args
+                for flow in _resolve(
+                    argument,
+                    environment,
+                    source,
+                    imports,
+                    limits,
+                    depth + 1,
+                    visited,
                 )
             )
         if function is not None and function.type == "selector_expression":
@@ -684,18 +677,16 @@ def _resolve(
         "type_conversion_expression",
     }:
         return _dedupe_flows(
-            (
-                flow
-                for child in node.named_children
-                for flow in _resolve(
-                    child,
-                    environment,
-                    source,
-                    imports,
-                    limits,
-                    depth + 1,
-                    visited,
-                )
+            flow
+            for child in node.named_children
+            for flow in _resolve(
+                child,
+                environment,
+                source,
+                imports,
+                limits,
+                depth + 1,
+                visited,
             )
         )
     return ()
@@ -774,14 +765,16 @@ def _is_sensitive_name(value: str) -> bool:
 
 def _name_tokens(value: str) -> frozenset[str]:
     return frozenset(
-        token.lower()
-        for token in re.findall(r"[A-Z]+(?=[A-Z][a-z]|\d|\Z)|[A-Z]?[a-z]+|\d+", value)
+        token.lower() for token in re.findall(r"[A-Z]+(?=[A-Z][a-z]|\d|\Z)|[A-Z]?[a-z]+|\d+", value)
     ) | frozenset(re.sub(r"[^a-z0-9]", "", value.lower()).split())
 
 
 def _mentions_sensitive_literal(value: str) -> bool:
     compact = re.sub(r"[^a-z0-9_-]", "", value.lower())
-    return any(marker in value.lower() or marker.replace("-", "") in compact for marker in _SENSITIVE_LITERAL_MARKERS)
+    return any(
+        marker in value.lower() or marker.replace("-", "") in compact
+        for marker in _SENSITIVE_LITERAL_MARKERS
+    )
 
 
 def _scopes(root: Node) -> tuple[Node, ...]:

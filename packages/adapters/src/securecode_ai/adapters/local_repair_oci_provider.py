@@ -285,9 +285,7 @@ class InstalledLocalOciValidationPort:
             identity = self._environment["SECURECODE_AI_VALIDATOR_IDENTITY"]
             docker_socket = Path(self._environment["SECURECODE_AI_VALIDATOR_DOCKER_SOCKET"])
             socket_uid = int(self._environment["SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID"], 10)
-            docker_sha256 = self._environment[
-                "SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256"
-            ]
+            docker_sha256 = self._environment["SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256"]
         except (KeyError, TypeError, ValueError):
             raise LocalRepairOciRuntimeError("OCI_RUNTIME_CONFIGURATION_INVALID") from None
         if (

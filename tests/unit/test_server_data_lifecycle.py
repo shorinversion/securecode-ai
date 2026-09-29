@@ -9,10 +9,29 @@ from securecode_ai.server.migrations import apply_schema
 from securecode_ai.server.residency import ResidencyDenied, ResidencyProfile, require_transfer
 
 
+class _RecordingStorage:
+    """Artifact deletions must purge bytes through the storage executor."""
+
+    def __init__(self) -> None:
+        self.tombstones: list[tuple[str, str, str]] = []
+
+    def execute_tombstone(
+        self,
+        *,
+        tenant_id: str,
+        content_sha256: str,
+        deletion_id: str,
+        repository_id: str,
+        identity_hash: str,
+    ) -> None:
+        self.tombstones.append((tenant_id, deletion_id, content_sha256))
+
+
 def test_deletion_requires_separate_approver_and_identity() -> None:
     connection = sqlite3.connect(":memory:")
     apply_schema(connection)
-    ledger = LifecycleLedger(connection)
+    storage = _RecordingStorage()
+    ledger = LifecycleLedger(connection, storage=storage)
     ledger.request(
         DeletionRequest("d", "t", "a" * 64, "artifact", "b" * 64, "requester", 1),
         repository_id="repo",
@@ -37,6 +56,7 @@ def test_deletion_requires_separate_approver_and_identity() -> None:
         identity_hash="b" * 64,
         expected_version=2,
     ).executed
+    assert storage.tombstones == [("t", "d", "a" * 64)]
 
 
 def test_residency_denies_unallowlisted_transfer() -> None:
@@ -69,7 +89,7 @@ def test_held_deletion_receipt_records_the_hold_actor() -> None:
 
 
 def test_releasing_a_hold_requires_a_fresh_deletion_approval() -> None:
-    ledger = LifecycleLedger.in_memory()
+    ledger = LifecycleLedger.in_memory(storage=_RecordingStorage())
     request = DeletionRequest("delete-held", "tenant", "a" * 64, "artifact", "b" * 64, "owner", 1)
     ledger.request(request, repository_id="repo", idempotency_key="request-key")
     approved = ledger.approve(

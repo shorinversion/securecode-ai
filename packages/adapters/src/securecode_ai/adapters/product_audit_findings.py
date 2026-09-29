@@ -288,13 +288,11 @@ def _zero_candidate_clean(
         or flow.graph.head_sha != revision.head_sha
         or host.source_catalogue.snapshot.head_sha != revision.head_sha
         or any(
-            index.repository_id != revision.repository_id
-            or index.revision != revision.head_sha
+            index.repository_id != revision.repository_id or index.revision != revision.head_sha
             for index in host.source_catalogue.indexes
         )
         or any(
-            anchor.tenant_id != revision.tenant_id
-            or anchor.head_sha != revision.head_sha
+            anchor.tenant_id != revision.tenant_id or anchor.head_sha != revision.head_sha
             for anchor in host.source_catalogue.anchors
         )
     ):
@@ -313,9 +311,8 @@ def _zero_candidate_clean(
             "reporting",
         )
     )
-    return (
-        {(unit.stage_id, unit.subject_id) for unit in required_units} == expected_units
-        and all(unit.satisfies_required_coverage for unit in required_units)
+    return {(unit.stage_id, unit.subject_id) for unit in required_units} == expected_units and all(
+        unit.satisfies_required_coverage for unit in required_units
     )
 
 

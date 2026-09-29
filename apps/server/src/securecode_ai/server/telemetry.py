@@ -129,8 +129,7 @@ class TelemetryRecorder:
             or type(duration_ms) is not int
             or not MIN_DURATION_MS <= duration_ms <= MAX_DURATION_MS
             or type(resolved_outcome) is not str
-            or resolved_outcome
-            not in _TELEMETRY_OUTCOMES | {"1xx", "2xx", "3xx", "4xx", "5xx"}
+            or resolved_outcome not in _TELEMETRY_OUTCOMES | {"1xx", "2xx", "3xx", "4xx", "5xx"}
         ):
             raise TelemetryError("telemetry observation is invalid")
         try:

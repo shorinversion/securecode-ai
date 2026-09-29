@@ -34,6 +34,7 @@ from securecode_ai.contracts import (
 from securecode_ai.contracts.domain import ACCEPTED_STAGE_CATALOGUE_PIN
 from securecode_ai.core.baseline_fingerprints import (
     BASELINE_FINGERPRINT_SCHEMA_VERSION,
+    BaselineChangedScope,
     BaselineFingerprintComparison,
 )
 from securecode_ai.core.scm_policy import (
@@ -42,6 +43,7 @@ from securecode_ai.core.scm_policy import (
     ScmPolicyDocument,
     ScmPolicyEnforcement,
     ScmPolicyErrorCode,
+    ScmPolicyFinding,
     ScmPolicyInputHashes,
     ScmPolicyMode,
     ScmPolicyRequest,
@@ -259,12 +261,52 @@ def _run(
     )
 
 
-def _policy(*, calibrated: bool) -> ScmPolicyDocument:
-    return ScmPolicyDocument(
+def _policy(*, calibrated: bool, mode: ScmPolicyMode | None = None) -> ScmPolicyDocument:
+    if mode is None:
+        return ScmPolicyDocument(
+            policy_id="policy-v1",
+            policy_version="1.0.0",
+            content_sha256=HASH_A,
+            calibration_record_sha256=HASH_B if calibrated else None,
+            calibration_verified=calibrated,
+        )
+    content: dict[str, object] = {"mode": mode.value}
+    if calibrated:
+        content["calibration_record_sha256"] = HASH_B
+    digest = hashlib.sha256(
+        json.dumps(content, separators=(",", ":"), sort_keys=True).encode("ascii")
+    ).hexdigest()
+    return ScmPolicyDocument.from_content(
         policy_id="policy-v1",
         policy_version="1.0.0",
-        content_sha256=HASH_A,
-        calibration_record_sha256=HASH_B if calibrated else None,
+        content_sha256=digest,
+        content=content,
+        calibration_verified=calibrated,
+    )
+
+
+def _findings(run: AuditRun) -> tuple[ScmPolicyFinding, ...]:
+    return tuple(
+        ScmPolicyFinding(
+            finding_id=finding_id,
+            revision_sha=HEAD,
+            root_cause_fingerprint=HASH_B,
+            severity="HIGH",
+            verdict="CONFIRMED",
+            blocking=finding_id in run.blocking_finding_ids,
+            tenant_id="tenant-1",
+        )
+        for finding_id in run.finding_ids
+    )
+
+
+def _changed_scope() -> BaselineChangedScope:
+    return BaselineChangedScope(
+        tenant_id="tenant-1",
+        base_sha=BASE,
+        head_sha=HEAD,
+        changed_lines=(("app.py", 10),),
+        finding_locations=((HASH_B, (("app.py", 10, 10),)),),
     )
 
 
@@ -281,9 +323,13 @@ def _comparison(*, new: bool = False) -> BaselineFingerprintComparison:
 
 
 def test_advisory_never_blocks_but_preserves_the_observed_outcome() -> None:
+    audit_run = _run(AuditRunOutcome.FAIL)
     decision = evaluate_scm_policy(
         ScmPolicyRequest(
-            _policy(calibrated=False), ScmPolicyMode.ADVISORY, _run(AuditRunOutcome.FAIL)
+            _policy(calibrated=False),
+            ScmPolicyMode.ADVISORY,
+            audit_run,
+            verified_findings=_findings(audit_run),
         )
     )
 
@@ -310,8 +356,12 @@ def test_connected_completion_records_an_idempotent_advisory_event() -> None:
     )
 
     with repository.transaction() as cursor:
-        first = record_run_advisory_policy(cursor, audit_run=audit_run)
-        replay = record_run_advisory_policy(cursor, audit_run=audit_run)
+        first = record_run_advisory_policy(
+            cursor, audit_run=audit_run, verified_findings=_findings(audit_run)
+        )
+        replay = record_run_advisory_policy(
+            cursor, audit_run=audit_run, verified_findings=_findings(audit_run)
+        )
 
     events = repository.list_events("tenant-1", audit_run.run_id, None, 10)
     items = events["items"]
@@ -354,6 +404,7 @@ def test_advisory_receipt_binds_verified_baseline_comparison() -> None:
             cursor,
             audit_run=audit_run,
             baseline_comparison=comparison,
+            verified_findings=_findings(audit_run),
         )
 
     events = repository.list_events("tenant-1", audit_run.run_id, None, 10)
@@ -370,7 +421,9 @@ def test_advisory_receipt_binds_verified_baseline_comparison() -> None:
 
 def test_precalibration_blocking_request_is_non_passing_and_denied() -> None:
     decision = evaluate_scm_policy(
-        ScmPolicyRequest(_policy(calibrated=False), ScmPolicyMode.NEW_CODE, _run())
+        ScmPolicyRequest(
+            _policy(calibrated=False, mode=ScmPolicyMode.NEW_CODE), ScmPolicyMode.NEW_CODE, _run()
+        )
     )
 
     assert decision.enforcement is ScmPolicyEnforcement.NON_PASS
@@ -379,20 +432,24 @@ def test_precalibration_blocking_request_is_non_passing_and_denied() -> None:
 
 
 def test_calibrated_new_code_allows_legacy_debt_and_blocks_new_finding() -> None:
+    audit_run = _run(AuditRunOutcome.FAIL)
     legacy = evaluate_scm_policy(
         ScmPolicyRequest(
-            _policy(calibrated=True),
+            _policy(calibrated=True, mode=ScmPolicyMode.NEW_CODE),
             ScmPolicyMode.NEW_CODE,
-            _run(AuditRunOutcome.FAIL),
+            audit_run,
             _comparison(),
+            verified_findings=_findings(audit_run),
         )
     )
     new = evaluate_scm_policy(
         ScmPolicyRequest(
-            _policy(calibrated=True),
+            _policy(calibrated=True, mode=ScmPolicyMode.NEW_CODE),
             ScmPolicyMode.NEW_CODE,
-            _run(AuditRunOutcome.FAIL),
+            audit_run,
             _comparison(new=True),
+            verified_findings=_findings(audit_run),
+            changed_scope=_changed_scope(),
         )
     )
 
@@ -404,12 +461,14 @@ def test_calibrated_new_code_allows_legacy_debt_and_blocks_new_finding() -> None
 
 
 def test_calibrated_strict_blocks_confirmed_finding() -> None:
+    audit_run = _run(AuditRunOutcome.FAIL)
     decision = evaluate_scm_policy(
         ScmPolicyRequest(
-            _policy(calibrated=True),
+            _policy(calibrated=True, mode=ScmPolicyMode.STRICT),
             ScmPolicyMode.STRICT,
-            _run(AuditRunOutcome.FAIL),
+            audit_run,
             _comparison(),
+            verified_findings=_findings(audit_run),
         )
     )
 
@@ -541,19 +600,25 @@ def test_unknown_mode_is_a_typed_non_passing_error_without_permission() -> None:
 
 
 def test_receipt_binds_policy_and_every_input_hash_without_raw_source() -> None:
+    audit_run = _run(AuditRunOutcome.FAIL)
+    policy = _policy(calibrated=True, mode=ScmPolicyMode.NEW_CODE)
     request = ScmPolicyRequest(
-        _policy(calibrated=True),
+        policy,
         ScmPolicyMode.NEW_CODE,
-        _run(AuditRunOutcome.FAIL),
+        audit_run,
         _comparison(new=True),
+        verified_findings=_findings(audit_run),
+        changed_scope=_changed_scope(),
     )
     first = evaluate_scm_policy(request)
     second = evaluate_scm_policy(request)
 
     assert first == second
     assert first.input_hashes is not None
-    assert first.input_hashes.policy_document_sha256 == HASH_A
+    assert first.input_hashes.policy_document_sha256 == policy.content_sha256
     assert first.input_hashes.baseline_comparison_sha256 is not None
+    assert first.input_hashes.changed_scope_sha256 is not None
+    assert first.enforcement is ScmPolicyEnforcement.BLOCK
     document = canonical_scm_policy_decision_json(first)
     assert "source" not in document.lower()
     assert "credentials" not in document.lower()

@@ -229,14 +229,10 @@ def build_openapi_document() -> dict[str, object]:
                 "description": "verified immutable artifact bytes",
                 "headers": {
                     "Cache-Control": {"schema": {"type": "string"}},
-                    "Content-Sha256": {
-                        "schema": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-                    },
+                    "Content-Sha256": {"schema": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
                 },
                 "content": {
-                    "application/octet-stream": {
-                        "schema": {"type": "string", "format": "binary"}
-                    }
+                    "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
                 },
             }
         if path == "/api/v1/runs/{run_id}/repair-patches/{finding_id}/content":
@@ -244,18 +240,14 @@ def build_openapi_document() -> dict[str, object]:
                 "description": "verified validated repair patch bundle",
                 "headers": {
                     "Cache-Control": {"schema": {"type": "string"}},
-                    "Content-Sha256": {
-                        "schema": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
-                    },
+                    "Content-Sha256": {"schema": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
                     "X-Securecode-Repair-Finding": {"schema": {"type": "string"}},
                     "X-Securecode-Repair-Patch-Sha256": {
                         "schema": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
                     },
                 },
                 "content": {
-                    "application/octet-stream": {
-                        "schema": {"type": "string", "format": "binary"}
-                    }
+                    "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
                 },
             }
         if path in {
@@ -359,10 +351,7 @@ def build_openapi_document() -> dict[str, object]:
                     "schema": {"type": "integer", "minimum": 1, "maximum": 100},
                 },
             ]
-        if (
-            path == "/api/v1/runs/{run_id}/repair-patches/{finding_id}/content"
-            and method == "get"
-        ):
+        if path == "/api/v1/runs/{run_id}/repair-patches/{finding_id}/content" and method == "get":
             parameters = operation.get("parameters")
             if not isinstance(parameters, list):
                 parameters = []
@@ -409,9 +398,7 @@ def build_openapi_document() -> dict[str, object]:
                 parameters = []
                 operation["parameters"] = parameters
             existing = {
-                (item.get("name"), item.get("in"))
-                for item in parameters
-                if isinstance(item, dict)
+                (item.get("name"), item.get("in")) for item in parameters if isinstance(item, dict)
             }
             for name in path_parameters:
                 if (name, "path") in existing:

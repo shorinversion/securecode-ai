@@ -21,6 +21,7 @@ import json
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TypeGuard
 
 from securecode_ai.core import ParseHealth, RepositoryFile, SourcePoint, SourceRange, SymbolIndex
 from tree_sitter import Language, Node, Parser
@@ -425,20 +426,14 @@ def _scan_ecmascript_cwe367(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe367ScanError(
-            EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe367ScanError(EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe367ScanError(
-            EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe367ScanError(EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe367ScanError(
-                EcmaScriptCwe367ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe367ScanError(EcmaScriptCwe367ScanErrorCode.ANALYSIS_UNAVAILABLE)
         module_aliases = _collect_module_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe367Operation]] = set()
         for scope in _scopes(root):
@@ -460,9 +455,7 @@ def _scan_ecmascript_cwe367(
     except EcmaScriptCwe367ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe367ScanError(
-            EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe367ScanError(EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe367Signal(
@@ -544,7 +537,9 @@ def _scan_scope(
             continue
         if _is_exclusive_sink(callee, values, source, aliases):
             continue
-        path_values = values[:2] if sink_kind in {"rename", "rename_sync", "promises_rename"} else values[:1]
+        path_values = (
+            values[:2] if sink_kind in {"rename", "rename_sync", "promises_rename"} else values[:1]
+        )
         sink_range = _range(node)
         for path_node in path_values:
             path_key = _path_key(path_node, source, aliases, 0, frozenset())
@@ -669,7 +664,7 @@ def _operation(check_kind: str, sink_kind: str) -> EcmaScriptCwe367Operation | N
     if sink is None:
         return None
     if prefix.startswith("promises_"):
-        value = f"fs.{prefix.replace('_', '.') }->{sink if sink.startswith('fs.') else 'fs.' + sink}"
+        value = f"fs.{prefix.replace('_', '.')}->{sink if sink.startswith('fs.') else 'fs.' + sink}"
     else:
         value = f"fs.{prefix}->fs.{sink}"
     try:
@@ -813,13 +808,11 @@ def _path_key(
         if callee is None:
             return None
         if _is_path_builder(callee):
-            parts = [
-                _path_key(value, source, aliases, depth + 1, seen)
-                for value in values
-            ]
-            if any(part is None for part in parts):
+            argument_keys = [_path_key(value, source, aliases, depth + 1, seen) for value in values]
+            present_keys = [key for key in argument_keys if key is not None]
+            if len(present_keys) != len(argument_keys):
                 return None
-            return _fingerprint_path(f"call:{callee}({','.join(parts)})")
+            return _fingerprint_path(f"call:{callee}({','.join(present_keys)})")
         # A deterministic call expression is still a local alias when it is
         # assigned and used again.  Hashing the compact expression keeps the
         # actual argument text out of the signal and allows conservative
@@ -952,8 +945,8 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
     parts = compact.split(".")
     if not _IDENTIFIER.fullmatch(parts[0]):
         return None
-    base = aliases.get(parts[0], parts[0])
-    return ".".join((base, *parts[1:])) if len(parts) > 1 else base
+    base_name = aliases.get(parts[0], parts[0])
+    return ".".join((base_name, *parts[1:])) if len(parts) > 1 else base_name
 
 
 def _normalise_callee(value: str | None) -> str | None:
@@ -963,7 +956,7 @@ def _normalise_callee(value: str | None) -> str | None:
     return value.replace("fs/promises.", "fs.promises.", 1)
 
 
-def _is_module_binding(value: str | None) -> bool:
+def _is_module_binding(value: str | None) -> TypeGuard[str]:
     if value is None or not value.startswith("module:"):
         return False
     canonical = value[7:]
@@ -1038,7 +1031,12 @@ def _static_property_name(node: Node, source: bytes) -> str | None:
 
 def _unwrap(node: Node) -> Node:
     current = node
-    while current.type in {"parenthesized_expression", "as_expression", "non_null_expression", "await_expression"}:
+    while current.type in {
+        "parenthesized_expression",
+        "as_expression",
+        "non_null_expression",
+        "await_expression",
+    }:
         named = tuple(current.named_children)
         if not named:
             break
@@ -1060,18 +1058,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe367ScanError(
-            EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe367ScanError(EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe367ScanError(
-            EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe367ScanError(EcmaScriptCwe367ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -1185,10 +1179,10 @@ __all__ = [
     "scan_ecmascript_toctou",
     "scan_javascript_cwe367",
     "scan_javascript_cwe367_toctou",
-    "scan_javascript_toctou",
     "scan_javascript_time_of_check_to_time_of_use",
+    "scan_javascript_toctou",
     "scan_typescript_cwe367",
     "scan_typescript_cwe367_toctou",
-    "scan_typescript_toctou",
     "scan_typescript_time_of_check_to_time_of_use",
+    "scan_typescript_toctou",
 ]

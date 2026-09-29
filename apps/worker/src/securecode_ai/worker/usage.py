@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Mapping
@@ -57,11 +58,11 @@ class WorkerUsageMeter:
     """Measure process resource use while one product execution is active."""
 
     __slots__ = (
-        "_cpu_started_ns",
         "_cgroup_cpu_started_ns",
+        "_cpu_started_ns",
         "_execution_identity_hash",
-        "_finished",
         "_finish_lock",
+        "_finished",
         "_memory_lock",
         "_memory_peak",
         "_memory_sampler",
@@ -70,8 +71,8 @@ class WorkerUsageMeter:
         "_model_observed",
         "_model_tokens",
         "_remote_receipts",
-        "_usage_lock",
         "_run_id",
+        "_usage_lock",
         "_wall_started_ns",
     )
 
@@ -193,10 +194,7 @@ class WorkerUsageMeter:
             ):
                 raise WorkerUsageError("worker model usage is inconsistent")
             tokens = result_tokens
-            if self._model_observed:
-                cost = self._model_cost_microunits
-            else:
-                cost = result_cost
+            cost = self._model_cost_microunits if self._model_observed else result_cost
         return WorkerResourceUsage(
             tokens=tokens,
             cost_microunits=cost,
@@ -284,11 +282,7 @@ class WorkerUsageMeter:
     def _validate_result_binding(self, result: object | None) -> None:
         if self._run_id is None and self._execution_identity_hash is None:
             return
-        bound_result = (
-            getattr(result, "scan", _MISSING)
-            if result is not None
-            else _MISSING
-        )
+        bound_result = getattr(result, "scan", _MISSING) if result is not None else _MISSING
         if bound_result is _MISSING:
             bound_result = result
         composition = getattr(bound_result, "composition", _MISSING)
@@ -538,19 +532,27 @@ def _cgroup_resident_memory_bytes() -> int | None:
     return None
 
 
-def _proc_resident_memory_bytes() -> int | None:
-    try:
-        values = Path("/proc/self/statm").read_text(encoding="ascii").split()
-        if len(values) < 2 or not values[1].isascii() or not values[1].isdecimal():
-            return None
-        page_size = os.sysconf("SC_PAGE_SIZE")
-        if type(page_size) is not int or page_size <= 0:
-            return None
-        resident_pages = int(values[1])
-        measured = resident_pages * page_size
-        return measured if measured <= _MAX_INTEGER else None
-    except (OSError, OverflowError, ValueError):
+if sys.platform == "win32":
+
+    def _proc_resident_memory_bytes() -> int | None:
+        # procfs and sysconf do not exist on Windows; reading them always failed.
         return None
+
+else:
+
+    def _proc_resident_memory_bytes() -> int | None:
+        try:
+            values = Path("/proc/self/statm").read_text(encoding="ascii").split()
+            if len(values) < 2 or not values[1].isascii() or not values[1].isdecimal():
+                return None
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            if type(page_size) is not int or page_size <= 0:
+                return None
+            resident_pages = int(values[1])
+            measured = resident_pages * page_size
+            return measured if measured <= _MAX_INTEGER else None
+        except (OSError, OverflowError, ValueError):
+            return None
 
 
 def _ps_resident_memory_bytes() -> int | None:

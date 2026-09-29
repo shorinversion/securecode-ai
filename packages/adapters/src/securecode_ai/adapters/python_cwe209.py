@@ -157,9 +157,7 @@ class PythonCwe209Signal:
                 self.operation,
                 self.sensitive_name,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is PythonCwe209Operation
+            if valid_identity and valid_ranges and type(self.operation) is PythonCwe209Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -674,6 +672,8 @@ def _collect_context(
             if node.name:
                 exception_names.add(node.name)
         elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            targets: tuple[ast.expr, ...]
+            value: ast.expr | None
             if isinstance(node, ast.Assign):
                 targets = tuple(node.targets)
                 value = node.value
@@ -685,10 +685,14 @@ def _collect_context(
                 for target in targets:
                     for name in _target_names(target):
                         assignments.setdefault(name, []).append((position, value))
-    return aliases, {
-        name: tuple(sorted(values, key=lambda item: item[0]))
-        for name, values in assignments.items()
-    }, frozenset(exception_names)
+    return (
+        aliases,
+        {
+            name: tuple(sorted(values, key=lambda item: item[0]))
+            for name, values in assignments.items()
+        },
+        frozenset(exception_names),
+    )
 
 
 def _record_raise(
@@ -798,7 +802,10 @@ def _exception_operation(
         return None
     if canonical in _HTTP_EXCEPTION_NAMES or canonical.rsplit(".", 1)[-1] in _HTTP_EXCEPTION_NAMES:
         return PythonCwe209Operation.RAISE_HTTP_EXCEPTION
-    if canonical in _VALIDATION_EXCEPTION_NAMES or canonical.rsplit(".", 1)[-1] in _VALIDATION_EXCEPTION_NAMES:
+    if (
+        canonical in _VALIDATION_EXCEPTION_NAMES
+        or canonical.rsplit(".", 1)[-1] in _VALIDATION_EXCEPTION_NAMES
+    ):
         return PythonCwe209Operation.RAISE_VALIDATION_ERROR
     if canonical in _EXCEPTION_NAMES or canonical.rsplit(".", 1)[-1] in _EXCEPTION_NAMES:
         return PythonCwe209Operation.RAISE_EXCEPTION
@@ -810,12 +817,10 @@ def _exception_operation(
 
 def _message_values(call: ast.Call, operation: PythonCwe209Operation) -> tuple[ast.expr, ...]:
     values: list[ast.expr] = []
-    if operation is PythonCwe209Operation.ABORT_WITH_MESSAGE:
-        for index, argument in enumerate(call.args):
-            if index == 0 and isinstance(argument, ast.Constant) and type(argument.value) is int:
-                continue
-            values.append(argument)
-    elif operation is PythonCwe209Operation.RAISE_HTTP_EXCEPTION:
+    if (
+        operation is PythonCwe209Operation.ABORT_WITH_MESSAGE
+        or operation is PythonCwe209Operation.RAISE_HTTP_EXCEPTION
+    ):
         for index, argument in enumerate(call.args):
             if index == 0 and isinstance(argument, ast.Constant) and type(argument.value) is int:
                 continue
@@ -825,8 +830,11 @@ def _message_values(call: ast.Call, operation: PythonCwe209Operation) -> tuple[a
     values.extend(
         keyword.value
         for keyword in call.keywords
-        if keyword.arg is None or keyword.arg in _EXCEPTION_MESSAGE_KEYWORDS
-        and keyword.arg not in _HTTP_METADATA_KEYWORDS
+        if keyword.arg is None
+        or (
+            keyword.arg in _EXCEPTION_MESSAGE_KEYWORDS
+            and keyword.arg not in _HTTP_METADATA_KEYWORDS
+        )
     )
     return tuple(values)
 
@@ -875,7 +883,9 @@ def _resolve_sensitive(
         return ()
     if isinstance(node, ast.Attribute):
         if _is_request_access(node, aliases, limits.max_resolution_depth):
-            return (_SensitiveFlow(_node_range(node, source, line_starts), _label(_dotted_name(node))),)
+            return (
+                _SensitiveFlow(_node_range(node, source, line_starts), _label(_dotted_name(node))),
+            )
         if _is_sensitive_name(node.attr):
             return (_SensitiveFlow(_node_range(node, source, line_starts), _label(node.attr)),)
         return _resolve_sensitive(
@@ -892,7 +902,11 @@ def _resolve_sensitive(
         )
     if isinstance(node, ast.Subscript):
         if _is_request_access(node, aliases, limits.max_resolution_depth):
-            return (_SensitiveFlow(_node_range(node, source, line_starts), _label(_dotted_name(node.value))),)
+            return (
+                _SensitiveFlow(
+                    _node_range(node, source, line_starts), _label(_dotted_name(node.value))
+                ),
+            )
         label = _subscript_label(node)
         if _is_sensitive_name(label):
             return (_SensitiveFlow(_node_range(node, source, line_starts), _label(label)),)
@@ -909,7 +923,9 @@ def _resolve_sensitive(
             seen,
         )
     if isinstance(node, ast.Call):
-        canonical = _canonical_reference(node.func, aliases, limits.max_resolution_depth) or _dotted_name(node.func)
+        canonical = _canonical_reference(
+            node.func, aliases, limits.max_resolution_depth
+        ) or _dotted_name(node.func)
         if _is_sanitizer(canonical):
             return ()
         if _is_request_source_call(node, canonical, aliases, limits.max_resolution_depth):
@@ -958,7 +974,18 @@ def _resolve_sensitive(
             depth + 1,
             seen,
         )
-    if isinstance(node, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.JoinedStr, ast.FormattedValue, ast.UnaryOp)):
+    if isinstance(
+        node,
+        (
+            ast.BinOp,
+            ast.BoolOp,
+            ast.Compare,
+            ast.IfExp,
+            ast.JoinedStr,
+            ast.FormattedValue,
+            ast.UnaryOp,
+        ),
+    ):
         return _dedupe_flows(
             flow
             for child in ast.iter_child_nodes(node)
@@ -1039,7 +1066,9 @@ def _is_request_source_call(
     if tail not in _REQUEST_METHODS:
         return False
     if isinstance(call.func, ast.Attribute):
-        receiver = _canonical_reference(call.func.value, aliases, max_depth) or _dotted_name(call.func.value)
+        receiver = _canonical_reference(call.func.value, aliases, max_depth) or _dotted_name(
+            call.func.value
+        )
         return _is_request_access_name(receiver)
     return False
 

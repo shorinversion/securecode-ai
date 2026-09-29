@@ -37,11 +37,13 @@ from .release_provider_support import (
     _TAG,
     HmacReleaseAuthority,
     LocalReleaseProviderError,
+    ReleaseSbomBinding,
+    ReleaseSbomInput,
     _authorization_from_manifest,
     _candidate_from_manifest,
     _canonical_artifact_checksums,
-    _canonical_sbom_binding,
     _canonical_json,
+    _canonical_sbom_binding,
     _destination_root,
     _ensure_directory,
     _ensure_directory_beneath,
@@ -56,8 +58,6 @@ from .release_provider_support import (
     _path_argument,
     _read_verified_file,
     _remote_matches,
-    ReleaseSbomInput,
-    ReleaseSbomBinding,
     _require_directory,
     _require_private_directory,
     _require_safe_ancestors,
@@ -139,13 +139,13 @@ class LocalReleaseProvider:
     __slots__ = (
         "_authorization",
         "_clock",
+        "_dependency_policy",
         "_destination_fd",
         "_destination_input",
         "_destination_root",
-        "_dependency_policy",
         "_evidence",
-        "_source_root",
         "_sbom_binding",
+        "_source_root",
         "_sources",
         "_store_identity_sha256",
     )
@@ -684,10 +684,7 @@ class LocalReleaseProvider:
                 after = os.fstat(stream.fileno())
             if (
                 size != before.st_size
-                or (
-                    expected_sha256 is not None
-                    and digest.hexdigest() != expected_sha256
-                )
+                or (expected_sha256 is not None and digest.hexdigest() != expected_sha256)
                 or not _same_file_state(before, after)
             ):
                 raise LocalReleaseProviderError()
@@ -862,6 +859,6 @@ __all__ = [
     "LocalReleaseProviderError",
     "ReleaseArtifactSource",
     "ReleaseEvidenceSource",
-    "ReleaseSbomInput",
     "ReleaseSbomBinding",
+    "ReleaseSbomInput",
 ]

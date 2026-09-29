@@ -114,9 +114,7 @@ class OsvMetadataRelay:
         return session_id, worker_id, run_id, identity_hash, batch
 
 
-def _response_document(
-    response: OsvBatchResponse, request: OsvBatchRequest
-) -> dict[str, object]:
+def _response_document(response: OsvBatchResponse, request: OsvBatchRequest) -> dict[str, object]:
     if (
         len(response.results) != len(request.purls)
         or tuple(item.purl for item in response.results) != request.purls

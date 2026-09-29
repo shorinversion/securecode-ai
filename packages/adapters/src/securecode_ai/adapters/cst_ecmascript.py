@@ -182,7 +182,7 @@ def _build_ecmascript_symbol_index(
         name=module_name.rsplit(".", 1)[-1],
         qualified_name=module_name,
         occurrence=0,
-        declaration=_range(root),
+        declaration=SourceRange(0, root.end_byte, SourcePoint(0, 0), _range(root).end_point),
         name_location=SourceRange(0, 0, SourcePoint(0, 0), SourcePoint(0, 0)),
         parent_symbol_id=None,
     )
@@ -274,9 +274,7 @@ def _build_ecmascript_symbol_index(
             child_parents = (*parents, symbol)
         else:
             child_parents = parents
-        traversal.extend(
-            (child, child_parents) for child in reversed(node.named_children)
-        )
+        traversal.extend((child, child_parents) for child in reversed(node.named_children))
     health = ParseHealth.RECOVERED_WITH_ERRORS if diagnostics else ParseHealth.HEALTHY
     try:
         return _build_symbol_index(

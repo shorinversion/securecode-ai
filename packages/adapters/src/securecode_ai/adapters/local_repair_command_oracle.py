@@ -70,9 +70,7 @@ _SHELL_CAPABLE = frozenset(
         "subprocess.Popen",
     }
 )
-_SAFE_QUOTERS = frozenset(
-    {"shlex.quote", "shlex.join", "pipes.quote", "subprocess.list2cmdline"}
-)
+_SAFE_QUOTERS = frozenset({"shlex.quote", "shlex.join", "pipes.quote", "subprocess.list2cmdline"})
 _LOCATION_KEYS = frozenset(
     {"schema_version", "extensions", "path", "start", "end", "content_sha256"}
 )
@@ -106,9 +104,7 @@ def validate_cwe78_manifest_contract(manifest: dict[str, Any]) -> None:
         type(evidence_ids) is not list
         or type(root_evidence) is not dict
         or type(required) is not list
-        or not {binding["scanner_signal_id"], *binding["evidence_ids"]}.issubset(
-            set(evidence_ids)
-        )
+        or not {binding["scanner_signal_id"], *binding["evidence_ids"]}.issubset(set(evidence_ids))
         or tuple(root_evidence.get(key) for key in _ROOT_EVIDENCE_KEYS)
         != (binding["source_evidence_id"], binding["flow_evidence_id"], binding["sink_evidence_id"])
         or set(required)
@@ -157,9 +153,7 @@ def compare_cwe78_repair_signals(
     _finding, _root_cause, _invariant, binding = _target_binding(manifest)
     parent = set(_scan_repository(parent_root, manifest, parent_revision))
     fixed = set(_scan_repository(fixed_root, manifest, fixed_revision))
-    target = {
-        item for item in parent if _same_target(item, binding)
-    }
+    target = {item for item in parent if _same_target(item, binding)}
     if len(target) != 1:
         raise CommandOracleError
     target_signal = next(iter(target))
@@ -172,9 +166,7 @@ def compare_cwe78_repair_signals(
     )
 
 
-def scan_cwe78_repository(
-    root: Path, manifest: dict[str, Any], revision: str
-) -> tuple[str, int]:
+def scan_cwe78_repository(root: Path, manifest: dict[str, Any], revision: str) -> tuple[str, int]:
     """Return a canonical hash and count for independently unsafe Python calls."""
 
     signals = _scan_repository(root, manifest, revision)
@@ -252,9 +244,7 @@ def _target_binding(
         type(evidence_ids) is not list
         or type(root_evidence) is not dict
         or type(required) is not list
-        or not {binding["scanner_signal_id"], *binding["evidence_ids"]}.issubset(
-            set(evidence_ids)
-        )
+        or not {binding["scanner_signal_id"], *binding["evidence_ids"]}.issubset(set(evidence_ids))
         or tuple(root_evidence.get(key) for key in _ROOT_EVIDENCE_KEYS)
         != (binding["source_evidence_id"], binding["flow_evidence_id"], binding["sink_evidence_id"])
         or set(required)
@@ -279,8 +269,8 @@ def _binding_core(value: object) -> dict[str, Any]:
     source_id = value.get("source_evidence_id")
     sink_id = value.get("sink_evidence_id")
     flow_id = value.get("flow_evidence_id")
-    _validate_location(source)
-    _validate_location(sink)
+    source = _validate_location(source)
+    sink = _validate_location(sink)
     if (
         type(scanner_signal_id) is not str
         or type(operation) is not str
@@ -313,7 +303,7 @@ def _binding_core(value: object) -> dict[str, Any]:
     }
 
 
-def _validate_location(value: object) -> None:
+def _validate_location(value: object) -> dict[str, Any]:
     if type(value) is not dict or set(value) != _LOCATION_KEYS:
         raise CommandOracleError
     start = value.get("start")
@@ -330,10 +320,15 @@ def _validate_location(value: object) -> None:
         or type(end) is not dict
         or set(start) != {"schema_version", "extensions", "line", "column"}
         or set(end) != {"schema_version", "extensions", "line", "column"}
-        or any(type(item.get(key)) is not int or item[key] < 1 for item in (start, end) for key in ("line", "column"))
+        or any(
+            type(item.get(key)) is not int or item[key] < 1
+            for item in (start, end)
+            for key in ("line", "column")
+        )
         or (start["line"], start["column"]) > (end["line"], end["column"])
     ):
         raise CommandOracleError
+    return value
 
 
 def _safe_path(root: Path, relative: str) -> Path:
@@ -367,7 +362,12 @@ def _imports(tree: ast.Module) -> dict[str, str]:
             for item in node.names:
                 if item.name in {"os", "subprocess", "shlex", "pipes"}:
                     aliases[item.asname or item.name] = item.name
-        elif isinstance(node, ast.ImportFrom) and node.module in {"os", "subprocess", "shlex", "pipes"}:
+        elif isinstance(node, ast.ImportFrom) and node.module in {
+            "os",
+            "subprocess",
+            "shlex",
+            "pipes",
+        }:
             for item in node.names:
                 if item.name != "*":
                     aliases[item.asname or item.name] = f"{node.module}.{item.name}"
@@ -415,7 +415,11 @@ def _is_unsafe(call: ast.Call, operation: str, detail: str, aliases: dict[str, s
         shell = _shell_mode(call)
         if shell is True or shell is None:
             raise CommandOracleError
-        first = argument.elts[0] if isinstance(argument, (ast.List, ast.Tuple)) and argument.elts else argument
+        first = (
+            argument.elts[0]
+            if isinstance(argument, (ast.List, ast.Tuple)) and argument.elts
+            else argument
+        )
         return not (isinstance(first, ast.Constant) and type(first.value) is str)
     if canonical != operation or detail != "untrusted_command_to_shell":
         raise CommandOracleError
@@ -452,7 +456,12 @@ def _node_range(node: ast.AST) -> tuple[int, int, int, int]:
     start_col = getattr(node, "col_offset", None)
     end_line = getattr(node, "end_lineno", None)
     end_col = getattr(node, "end_col_offset", None)
-    if any(type(value) is not int for value in (start_line, start_col, end_line, end_col)):
+    if (
+        type(start_line) is not int
+        or type(start_col) is not int
+        or type(end_line) is not int
+        or type(end_col) is not int
+    ):
         raise CommandOracleError
     return (start_line, start_col + 1, end_line, end_col + 1)
 
@@ -467,8 +476,10 @@ def _range_overlaps(left: tuple[int, int, int, int], right: tuple[int, int, int,
     return left[0] <= right[2] and right[0] <= left[2]
 
 
-def _scan_repository(root: Path, manifest: dict[str, Any], revision: str) -> tuple[Cwe78SignalIdentity, ...]:
-    _finding, _root_cause, _invariant, binding = _target_binding(manifest)
+def _scan_repository(
+    root: Path, manifest: dict[str, Any], revision: str
+) -> tuple[Cwe78SignalIdentity, ...]:
+    _finding, _root_cause, _invariant, _binding = _target_binding(manifest)
     paths = {
         item["path"]
         for item in manifest["finding"].get("locations", ())

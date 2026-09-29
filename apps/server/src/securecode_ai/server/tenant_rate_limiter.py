@@ -60,13 +60,13 @@ class TenantTokenBucketRateLimiter:
     """Atomically charge requests against a fixed, bounded per-tenant bucket."""
 
     __slots__ = (
-        "_capacity",
-        "_refill_per_second",
-        "_max_tenants",
-        "_idle_timeout_ns",
         "_buckets",
+        "_capacity",
+        "_idle_timeout_ns",
         "_last_now_ns",
         "_lock",
+        "_max_tenants",
+        "_refill_per_second",
     )
 
     def __init__(

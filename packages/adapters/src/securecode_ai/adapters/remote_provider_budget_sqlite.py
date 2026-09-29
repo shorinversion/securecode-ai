@@ -6,7 +6,7 @@ import re
 import sqlite3
 import time
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from secrets import token_hex
@@ -108,17 +108,13 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             return cls(connection, (policy,))
         except RemoteProviderBudgetError:
             if connection is not None:
-                try:
+                with suppress(sqlite3.Error):
                     connection.close()
-                except sqlite3.Error:
-                    pass
             raise
         except Exception:
             if connection is not None:
-                try:
+                with suppress(sqlite3.Error):
                     connection.close()
-                except sqlite3.Error:
-                    pass
             raise RemoteProviderBudgetError("INVALID_STATE") from None
 
     def reserve(self, request: RemoteProviderSpendRequest) -> RemoteProviderSpendLease:
@@ -315,17 +311,21 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
         with self._transaction() as cursor:
             row, _, _ = self._lease(cursor, lease, require_reserved=False)
             if row[10] == 1 or row[12] == 1:
+                timestamp_ms = row[11]
+                if type(timestamp_ms) is not int:  # already validated by _lease
+                    raise RemoteProviderBudgetError("INVALID_STATE")
                 cursor.execute(
                     f"UPDATE {_TABLE} SET timestamp_ms=?,reserved=0,slot_active=0,"
                     "slot_expires_at_ms=0,replay_blocked=1 "
                     "WHERE lease_id=? AND (reserved=1 OR slot_active=1)",
-                    (max(row[11], _now_ms()), row[0]),
+                    (max(timestamp_ms, _now_ms()), row[0]),
                 )
                 if cursor.rowcount != 1:
                     raise RemoteProviderBudgetError("INVALID_STATE")
-            elif row[8] != lease.max_input_tokens + lease.max_output_tokens:
-                raise RemoteProviderBudgetError("INVALID_STATE")
-            elif row[9] != lease.reserved_cost_microunits:
+            elif (
+                row[8] != lease.max_input_tokens + lease.max_output_tokens
+                or row[9] != lease.reserved_cost_microunits
+            ):
                 raise RemoteProviderBudgetError("INVALID_STATE")
         return _receipt(lease, lease.reserved_cost_microunits, maximum_charged=True)
 
@@ -347,9 +347,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 raise RemoteProviderBudgetError("INVALID_STATE") from None
 
     @staticmethod
-    def _reconcile_expired_slots(
-        cursor: sqlite3.Cursor, *, now_ms: int, max_items: int
-    ) -> int:
+    def _reconcile_expired_slots(cursor: sqlite3.Cursor, *, now_ms: int, max_items: int) -> int:
         rows = cursor.execute(
             f"SELECT lease_id FROM {_TABLE} WHERE slot_active=1 "
             "AND slot_expires_at_ms<=? ORDER BY slot_expires_at_ms,lease_id LIMIT ?",
@@ -381,9 +379,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 "slot_expires_at_ms INTEGER NOT NULL CHECK (slot_expires_at_ms >= 0),"
                 "replay_blocked INTEGER NOT NULL CHECK (replay_blocked IN (0, 1)))"
             )
-            columns = tuple(
-                row[1] for row in cursor.execute(f"PRAGMA table_info({_TABLE})")
-            )
+            columns = tuple(row[1] for row in cursor.execute(f"PRAGMA table_info({_TABLE})"))
             legacy = (
                 "lease_id",
                 "tenant_id",
@@ -398,8 +394,8 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 "cost_microunits",
                 "reserved",
             )
-            prior_expected = legacy + ("slot_active", "slot_expires_at_ms")
-            expected = prior_expected + ("replay_blocked",)
+            prior_expected = (*legacy, "slot_active", "slot_expires_at_ms")
+            expected = (*prior_expected, "replay_blocked")
             if columns == legacy:
                 cursor.execute(
                     f"ALTER TABLE {_TABLE} ADD COLUMN slot_active INTEGER NOT NULL DEFAULT 0"
@@ -431,11 +427,11 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 raise RemoteProviderBudgetError("INVALID_STATE")
             cursor.execute(f"DROP INDEX IF EXISTS {_TABLE}_request")
             cursor.execute(
-                f"CREATE UNIQUE INDEX IF NOT EXISTS { _TABLE }_request ON {_TABLE} "
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {_TABLE}_request ON {_TABLE} "
                 "(tenant_id,model_id,request_id,attempt)"
             )
             cursor.execute(
-                f"CREATE INDEX IF NOT EXISTS { _TABLE }_scope ON {_TABLE} "
+                f"CREATE INDEX IF NOT EXISTS {_TABLE}_scope ON {_TABLE} "
                 "(tenant_id,model_id,timestamp_ms)"
             )
             self._initialize_pricing_table(cursor)
@@ -452,9 +448,7 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             "pricing_pin",
         )
         legacy = ("tenant_id", "model_id", "run_id", "pricing_pin")
-        columns = tuple(
-            row[1] for row in cursor.execute(f"PRAGMA table_info({_PRICING_TABLE})")
-        )
+        columns = tuple(row[1] for row in cursor.execute(f"PRAGMA table_info({_PRICING_TABLE})"))
         if columns == legacy:
             count = cursor.execute(f"SELECT COUNT(*) FROM {_PRICING_TABLE}").fetchone()
             if count is None or type(count[0]) is not int or count[0] != 0:
@@ -494,7 +488,14 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
             raise RemoteProviderBudgetError("INVALID_STATE")
         if (
             tuple(row[:6])
-            != (lease.lease_id, lease.run_id, lease.tenant_id, lease.model_id, lease.request_id, lease.attempt)
+            != (
+                lease.lease_id,
+                lease.run_id,
+                lease.tenant_id,
+                lease.model_id,
+                lease.request_id,
+                lease.attempt,
+            )
             or tuple(row[6:8]) != (lease.max_input_tokens, lease.max_output_tokens)
             or row[8] != lease.max_input_tokens + lease.max_output_tokens
             or row[9] != lease.reserved_cost_microunits
@@ -685,10 +686,8 @@ class SqliteRemoteProviderBudget(RemoteProviderBudgetPort):
                 cursor.close()
 
     def _rollback(self, cursor: sqlite3.Cursor) -> None:
-        try:
+        with suppress(sqlite3.Error):
             cursor.execute("ROLLBACK")
-        except sqlite3.Error:
-            pass
 
 
 def build_sqlite_remote_provider_budget(

@@ -254,9 +254,7 @@ class PythonCwe798Signal:
                 self.operation,
                 self.credential_name,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe798Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe798Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -550,9 +548,7 @@ def _assignment_facts(
     if value is None:
         return ()
     target_names = tuple(
-        name
-        for target in _assignment_targets(node)
-        for name in _target_names(target)
+        name for target in _assignment_targets(node) for name in _target_names(target)
     )
     direct_facts: list[_CredentialFact] = []
     for target in _assignment_targets(node):
@@ -698,9 +694,7 @@ def _call_facts(
                     line_starts,
                 )
             )
-    return tuple(
-        (item.source, item.sink, item.operation, item.credential_name) for item in facts
-    )
+    return tuple((item.source, item.sink, item.operation, item.credential_name) for item in facts)
 
 
 def _default_facts(
@@ -743,9 +737,7 @@ def _default_facts(
                 line_starts,
             )
         )
-    return tuple(
-        (item.source, item.sink, item.operation, item.credential_name) for item in facts
-    )
+    return tuple((item.source, item.sink, item.operation, item.credential_name) for item in facts)
 
 
 def _resolve_literal(
@@ -781,7 +773,7 @@ def _collect_assignments(
     values: dict[str, list[tuple[tuple[int, int], ast.expr]]] = {}
     for node in _bounded_nodes(tree, max(1, max_depth * 10_000)):
         if isinstance(node, ast.Assign):
-            pairs = ((target, node.value) for target in node.targets)
+            pairs = tuple((target, node.value) for target in node.targets)
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             pairs = ((node.target, node.value),)
         else:
@@ -905,20 +897,38 @@ def _dotted_name(node: ast.AST) -> str:
 
 
 def _literal_value(node: ast.AST | None) -> str | bytes | int | float | None:
-    if isinstance(node, ast.Constant) and type(node.value) in {str, bytes, int, float}:
-        if isinstance(node.value, str) and not node.value.strip():
+    if isinstance(node, ast.Constant):
+        constant = node.value
+        # Exact type check: bool (an int subclass) is intentionally excluded.
+        if not isinstance(constant, (str, bytes, int, float)) or type(constant) not in {
+            str,
+            bytes,
+            int,
+            float,
+        }:
             return None
-        if isinstance(node.value, bytes) and not node.value:
+        if isinstance(constant, str) and not constant.strip():
             return None
-        return node.value
-    if isinstance(node, ast.JoinedStr) and all(isinstance(item, ast.Constant) for item in node.values):
-        value = "".join(str(item.value) for item in node.values)
-        return value if value.strip() else None
+        if isinstance(constant, bytes) and not constant:
+            return None
+        return constant
+    if isinstance(node, ast.JoinedStr):
+        constants = [item for item in node.values if isinstance(item, ast.Constant)]
+        if len(constants) == len(node.values):
+            value = "".join(str(item.value) for item in constants)
+            return value if value.strip() else None
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         left = _literal_value(node.left)
         right = _literal_value(node.right)
-        if type(left) is type(right) and isinstance(left, (str, bytes, int, float)):
-            return left + right
+        if type(left) is type(right):
+            if isinstance(left, str) and isinstance(right, str):
+                return left + right
+            if isinstance(left, bytes) and isinstance(right, bytes):
+                return left + right
+            if isinstance(left, int) and isinstance(right, int):
+                return left + right
+            if isinstance(left, float) and isinstance(right, float):
+                return left + right
     return None
 
 
@@ -939,7 +949,11 @@ def _suppressed_path(path: str) -> bool:
     normalised = path.replace("\\", "/").lower()
     parts = tuple(part for part in normalised.split("/") if part)
     stem = parts[-1] if parts else ""
-    return bool(set(parts) & _SUPPRESSED_PATH_PARTS) or stem.startswith("test_") or stem.endswith("_test.py")
+    return (
+        bool(set(parts) & _SUPPRESSED_PATH_PARTS)
+        or stem.startswith("test_")
+        or stem.endswith("_test.py")
+    )
 
 
 def _position(node: ast.AST) -> tuple[int, int]:
@@ -973,9 +987,16 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe798ScanError(PythonCwe798ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe798ScanError(PythonCwe798ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _span_range(

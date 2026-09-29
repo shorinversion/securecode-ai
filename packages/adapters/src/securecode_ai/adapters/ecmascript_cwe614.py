@@ -223,9 +223,7 @@ class EcmaScriptCwe614Signal:
                 self.operation,
                 self.cookie_name,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe614Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe614Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -425,20 +423,14 @@ def _scan_ecmascript_cwe614(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe614ScanError(
-            EcmaScriptCwe614ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe614ScanError(EcmaScriptCwe614ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe614ScanError(
-            EcmaScriptCwe614ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe614ScanError(EcmaScriptCwe614ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe614ScanError(
-                EcmaScriptCwe614ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe614ScanError(EcmaScriptCwe614ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe614Operation, str]] = set()
         for node in nodes:
@@ -466,9 +458,7 @@ def _scan_ecmascript_cwe614(
     except EcmaScriptCwe614ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe614ScanError(
-            EcmaScriptCwe614ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe614ScanError(EcmaScriptCwe614ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe614Signal(
@@ -604,7 +594,9 @@ def _document_cookie_candidate(
         return None
     if _has_secure_attribute(value):
         return None
-    return _candidate_tuple(right, _range(node), EcmaScriptCwe614Operation.DOCUMENT_COOKIE, cookie_name)
+    return _candidate_tuple(
+        right, _range(node), EcmaScriptCwe614Operation.DOCUMENT_COOKIE, cookie_name
+    )
 
 
 class _FlagState(StrEnum):
@@ -841,7 +833,11 @@ def _collect_pattern_aliases(
     pattern: Node, module: str, source: bytes, aliases: dict[str, str]
 ) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key = child.child_by_field_name("key") or child
         value = child.child_by_field_name("value") or key
@@ -1037,12 +1033,12 @@ scan_typescript_cookie_security = scan_typescript_cwe614
 scan_ecmascript_cookie_security = scan_ecmascript_cwe614
 
 __all__ = [
+    "DEFAULT_ECMASCRIPT_CWE614_SCAN_LIMITS",
     "Cwe614ScanError",
     "Cwe614ScanErrorCode",
     "Cwe614ScanLimits",
     "Cwe614ScanResult",
     "Cwe614Signal",
-    "DEFAULT_ECMASCRIPT_CWE614_SCAN_LIMITS",
     "EcmaScriptCwe614Operation",
     "EcmaScriptCwe614ScanError",
     "EcmaScriptCwe614ScanErrorCode",

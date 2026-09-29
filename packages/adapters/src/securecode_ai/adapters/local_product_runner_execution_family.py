@@ -6,7 +6,7 @@ from securecode_ai.contracts import DiscoveryCandidate
 from securecode_ai.core.evidence_graph import EvidenceGraph
 from securecode_ai.core.normalization import root_cause_location_fingerprint
 
-from .local_product_runner_config import _RULES
+from .product_rule_catalogue import PRODUCT_RULE_CWE as _RULES
 from .product_rule_catalogue import ProductRuleMappingError
 
 

@@ -33,9 +33,7 @@ _IDENTIFIER = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*\Z")
 _RULE_ID = "securecode-ecmascript-cwe918"
 _DETECTOR = "securecode-ecmascript-cwe918@1.0"
 
-_REQUEST_ROOTS = frozenset(
-    {"ctx", "context", "event", "httpRequest", "req", "request", "route"}
-)
+_REQUEST_ROOTS = frozenset({"ctx", "context", "event", "httpRequest", "req", "request", "route"})
 _REQUEST_FIELDS = frozenset(
     {
         "body",
@@ -423,20 +421,14 @@ def _scan_ecmascript_cwe918(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe918ScanError(
-            EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe918ScanError(
-            EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe918ScanError(
-                EcmaScriptCwe918ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe918Operation]] = set()
         for node in nodes:
@@ -469,9 +461,7 @@ def _scan_ecmascript_cwe918(
                         )
                     raw.add((_range(flow.source), sink, operation))
                     if len(raw) > limits.max_signals:
-                        raise EcmaScriptCwe918ScanError(
-                            EcmaScriptCwe918ScanErrorCode.SIGNAL_LIMIT
-                        )
+                        raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
             key=lambda item: (
@@ -485,9 +475,7 @@ def _scan_ecmascript_cwe918(
     except EcmaScriptCwe918ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe918ScanError(
-            EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE) from None
 
     if len(ordered) > limits.max_signals:
         raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.SIGNAL_LIMIT)
@@ -558,8 +546,7 @@ def _operation_for_sink(
     if canonical in {"fetch", "globalThis.fetch", "window.fetch"}:
         return EcmaScriptCwe918Operation.FETCH
     if canonical in _FETCH_MODULES or (
-        canonical.rsplit(".", 1)[0] in _FETCH_MODULES
-        and canonical.rsplit(".", 1)[-1] == "fetch"
+        canonical.rsplit(".", 1)[0] in _FETCH_MODULES and canonical.rsplit(".", 1)[-1] == "fetch"
     ):
         return (
             EcmaScriptCwe918Operation.UNDICI_FETCH
@@ -608,9 +595,7 @@ def _operation_for_sink(
     return None
 
 
-def _sink_arguments(
-    arguments: Node, operation: EcmaScriptCwe918Operation
-) -> tuple[Node, ...]:
+def _sink_arguments(arguments: Node, operation: EcmaScriptCwe918Operation) -> tuple[Node, ...]:
     values = arguments.named_children
     if not values:
         return ()
@@ -678,9 +663,7 @@ def _resolve_url_sources(
             return ()
         canonical = _canonical_expression(function, source, aliases)
         if _is_url_sanitizer(canonical):
-            flows = _resolve_children(
-                arguments, scope, source, aliases, limits, depth + 1, visited
-            )
+            flows = _resolve_children(arguments, scope, source, aliases, limits, depth + 1, visited)
             return tuple(_Flow(flow.source, sanitized=True) for flow in flows)
         if canonical in _URL_PARSERS or canonical in _PRESERVING_FUNCTIONS:
             return _resolve_children(arguments, scope, source, aliases, limits, depth + 1, visited)
@@ -791,9 +774,7 @@ def _call_url_source(callee: str) -> bool:
         )
     if callee in {"process.env.get", "Bun.env.get", "Deno.env.get"}:
         return True
-    if callee.endswith(".searchParams.get"):
-        return True
-    return False
+    return callee.endswith(".searchParams.get")
 
 
 def _enclosing_scope(node: Node, root: Node) -> Node:
@@ -826,9 +807,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -953,7 +938,9 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
         constructor = node.child_by_field_name("constructor") or node.child_by_field_name(
             "function"
         )
-        return _canonical_expression(constructor, source, aliases) if constructor is not None else None
+        return (
+            _canonical_expression(constructor, source, aliases) if constructor is not None else None
+        )
     if node.type in {"member_expression", "subscript_expression"}:
         object_node = node.child_by_field_name("object")
         property_node = node.child_by_field_name("property") or node.child_by_field_name("index")
@@ -1023,18 +1010,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe918ScanError(
-            EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe918ScanError(
-            EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe918ScanError(EcmaScriptCwe918ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -1085,9 +1068,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1121,9 +1102,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
