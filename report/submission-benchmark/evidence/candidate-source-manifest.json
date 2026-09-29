@@ -7,7 +7,7 @@
   {
     "bytes": 848,
     "path": "apps/cli/pyproject.toml",
-    "sha256": "4b4e7fa82744114031950137480e41c445f5cfc26f575cbeb2e5ce22fa5bc677"
+    "sha256": "c4c541aa69b471a7c4841f6086f37501cdc930900d0b74f9ca1daf8443163116"
   },
   {
     "bytes": 1477,
@@ -37,7 +37,7 @@
   {
     "bytes": 7962,
     "path": "apps/cli/src/securecode_ai/cli/application_profiles.py",
-    "sha256": "68b401532ad4449048246b15efc708ff147e9346d3e8cce357bb754c8eb1f04d"
+    "sha256": "66bb715d380aac316fd5b79c5bf421d398c112283f76078f9b4c60466799a5ee"
   },
   {
     "bytes": 12296,
@@ -142,7 +142,7 @@
   {
     "bytes": 842,
     "path": "apps/server/pyproject.toml",
-    "sha256": "e19c2f56d1012cee3d38426ed386f2758bd8814615440abd652bc1012892e73e"
+    "sha256": "cf494a9e90ef4ddb92d7e61aeb96f6d1adffab91d238c9441b46feb9669cd4bb"
   },
   {
     "bytes": 721,
@@ -872,7 +872,7 @@
   {
     "bytes": 970,
     "path": "apps/worker/pyproject.toml",
-    "sha256": "e619ac3973d6be57e51fe004eb66d10e4fbe364ed6966b61937f662747b421f2"
+    "sha256": "0bfbc750a5097afef16f5aa92390d2eb668cb151d979bad513488937e289b0d3"
   },
   {
     "bytes": 615,
@@ -957,7 +957,7 @@
   {
     "bytes": 915,
     "path": "packages/adapters/pyproject.toml",
-    "sha256": "0cec0688adf36488d134f9d0fbdf6eef6b228bcf38b1a8752ebe2065b6d32056"
+    "sha256": "c2e3f45500e3d35199cad9bf10c82037e9860a8682e3947887c610522bb55712"
   },
   {
     "bytes": 7792,
@@ -2317,7 +2317,7 @@
   {
     "bytes": 557,
     "path": "packages/contracts/pyproject.toml",
-    "sha256": "10426a4f82f73d252c9264cc37a7eb11a5b15ffba5ba0d70d04d47db9fce1548"
+    "sha256": "c23bd2cbd765c3d09391f660632ad036a666374aac4e4e372e923b7c2c4cb0e9"
   },
   {
     "bytes": 6839,
@@ -2487,7 +2487,7 @@
   {
     "bytes": 624,
     "path": "packages/core/pyproject.toml",
-    "sha256": "d3b5f4c2b8fd8ac591e499fae6a81032cdff2d8739f80567bbc3cadd8db0d8df"
+    "sha256": "94b08bffbcfa461f2be6580305f37f38b23581647601cc8e5462cfabf00abb83"
   },
   {
     "bytes": 11338,
@@ -2997,7 +2997,7 @@
   {
     "bytes": 2540,
     "path": "pyproject.toml",
-    "sha256": "52ba263ce54beebd9e1fae94912e6ef06422eb3cf95e2415b9ec7435c3cedd7d"
+    "sha256": "a7224e0c9f04cf0806b5d93c5cfc7b95ab6c9c168e2226fa2dff5ab468623f46"
   },
   {
     "bytes": 7763,
@@ -3012,6 +3012,6 @@
   {
     "bytes": 266083,
     "path": "uv.lock",
-    "sha256": "c70bd465fcb75ae1bd73c308c2f902ce5db582d9794389daca614c9b1e1e7c6f"
+    "sha256": "ea419f0cf5b8a047901b51266382b630f0fb4e7225e6b2070f90227cf6f2b0f0"
   }
 ]

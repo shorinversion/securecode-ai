@@ -21,7 +21,9 @@ COPY specs/contracts/provider-fixtures/valid.local-openai-compatible.json \
      /app/specs/contracts/provider-fixtures/valid.local-openai-compatible.json
 COPY specs/contracts/policy/fixtures/egress.valid.private-model-source.json \
      /app/specs/contracts/policy/fixtures/egress.valid.private-model-source.json
-COPY --chmod=0555 deploy/docker/demo-entrypoint.sh /app/demo-entrypoint.sh
+COPY deploy/docker/demo-entrypoint.sh /app/demo-entrypoint.sh
+# A Windows checkout with core.autocrlf may deliver CRLF; the Linux shell needs LF.
+RUN sed -i 's/\r$//' /app/demo-entrypoint.sh && chmod 0555 /app/demo-entrypoint.sh
 ENV PYTHONPATH=/app/apps/cli/src:/app/packages/adapters/src:/app/packages/contracts/src:/app/packages/core/src \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1

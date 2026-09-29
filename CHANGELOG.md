@@ -22,6 +22,15 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-29
+
+### Fixed
+
+- `quickstart.py --demo` падал в Docker после клонирования на Windows с
+  `core.autocrlf=true`: скрипт `demo-entrypoint.sh` получал окончания строк CRLF.
+  `.gitattributes` закрепляет LF для `*.sh`, а образ дополнительно удаляет `\r`.
+  Проверено в чистом клоне тега `v1.0.0`.
+
 ## [1.0.0] - 2026-09-29
 
 Первый выпуск: полное покрытие курсового задания ([docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md)).
