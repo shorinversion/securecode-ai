@@ -247,3 +247,50 @@ def test_policy_receipt_identity_mismatch_refuses_publication() -> None:
 
     assert run_state.outcome is None
     assert writer.projection is None
+
+
+def test_advisory_findings_publish_neutral_check_without_blocking() -> None:
+    decision = _decision(
+        enforcement=ScmPolicyEnforcement.ADVISORY,
+        blocks_merge=False,
+        mode=ScmPolicyMode.ADVISORY,
+        observed=AuditRunOutcome.FAIL,
+        rule_id="advisory_findings",
+    )
+    service, run_state, writer = _service(decision)
+
+    receipt = service.publish_if_bound(
+        tenant_id="tenant-1",
+        run_id="run-1",
+        execution_identity_hash=_IDENTITY_HASH,
+        worker_outcome="FAIL",
+    )
+
+    assert receipt.outcome is AuditRunOutcome.PASS
+    assert run_state.outcome is AuditRunOutcome.PASS
+    assert writer.projection is not None
+    assert writer.projection["conclusion"] == "neutral"
+    output = writer.projection["output"]
+    assert isinstance(output, dict)
+    assert "advisory" in output["title"]
+
+
+def test_advisory_clean_run_publishes_success() -> None:
+    decision = _decision(
+        enforcement=ScmPolicyEnforcement.ADVISORY,
+        blocks_merge=False,
+        mode=ScmPolicyMode.ADVISORY,
+        observed=AuditRunOutcome.PASS,
+        rule_id="advisory_clean",
+    )
+    service, _run_state, writer = _service(decision)
+
+    service.publish_if_bound(
+        tenant_id="tenant-1",
+        run_id="run-1",
+        execution_identity_hash=_IDENTITY_HASH,
+        worker_outcome="PASS",
+    )
+
+    assert writer.projection is not None
+    assert writer.projection["conclusion"] == "success"
