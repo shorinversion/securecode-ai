@@ -181,11 +181,7 @@ def test_substituted_execution_cannot_claim_complete(mutation: str) -> None:
 def test_secret_child_fact_is_retained_and_dc4_cannot_reach_model() -> None:
     from securecode_ai.adapters.product_execution import child_fact_graph
     from securecode_ai.contracts import DataClass
-    from securecode_ai.core.evidence_package import (
-        EvidencePackageError,
-        EvidencePackageErrorCode,
-        build_evidence_package,
-    )
+    from securecode_ai.core.evidence_package import build_evidence_package
 
     canary = b"development-" + b"credential-example"
     execution = execute(source=b'password = "' + canary + b'"\n')
@@ -194,11 +190,12 @@ def test_secret_child_fact_is_retained_and_dc4_cannot_reach_model() -> None:
     assert graph.candidates
     expected_candidates = sum((len(result.candidates) for result in execution.secrets.results), 0)
     assert len(graph.candidates) == expected_candidates
-    assert all(r.data_class is DataClass.RESTRICTED for r in graph.evidence)
+    # Secret facts are value-free metadata (D-114 review of de6eabe): the model
+    # may learn that a credential exists at a location, never its value.
+    assert all(r.data_class is DataClass.INTERNAL_METADATA for r in graph.evidence)
     assert canary.decode() not in repr(graph)
-    with pytest.raises(EvidencePackageError) as caught:
-        build_evidence_package(graph, graph.candidates[0].candidate_id)
-    assert caught.value.code is EvidencePackageErrorCode.FORBIDDEN_DATA_CLASS
+    package = build_evidence_package(graph, graph.candidates[0].candidate_id)
+    assert canary.decode() not in repr(package)
 
 
 def test_union_preserves_restricted_child_candidate_lineage() -> None:
@@ -265,9 +262,10 @@ def test_actual_guarded_discovery_accounts_for_restricted_child(
     assert isinstance(flow, ProductCandidateFlow)
     assert flow.discovery.receipt.model_call_status is ModelCallStatus.GUARDRAIL_BLOCKED
     assert len(flow.graph.candidates) == len(flow.investigations)
-    assert any(
+    assert not any(
         type(receipt) is ProductCandidatePreparationFailure for receipt in flow.investigations
     )
+    assert canary.decode() not in repr(flow)
     assert flow.required_terminal_outcome is AuditRunOutcome.INDETERMINATE
 
 
@@ -300,18 +298,24 @@ def test_dc4_child_admission_denies_raw_source_and_evidence(
         ),
     )
     head = execution.catalogue.snapshot.head_sha
-    for request in (
+    # The file holding the secret is never readable raw by model tools ...
+    raw = tools.dispatch(
         RepositoryToolRequest(
             RepositoryTool.READ_RANGE, ReadRangeArguments("0.1.0", head, "a.py", 1, 1)
-        ),
+        )
+    )
+    assert raw.output is None
+    assert raw.receipt.outcome is ToolOutcome.NON_SUCCESS
+    # ... while the value-free secret fact stays readable for the Auditor.
+    fact = tools.dispatch(
         RepositoryToolRequest(
             RepositoryTool.READ_EVIDENCE,
             ReadEvidenceArguments("0.1.0", head, graph.evidence[0].evidence_id),
-        ),
-    ):
-        result = tools.dispatch(request)
-        assert result.output is None
-        assert result.receipt.outcome is ToolOutcome.NON_SUCCESS
+        )
+    )
+    assert fact.output is not None
+    assert '"rule_id":"secret-' in fact.output.content
+    assert canary.decode() not in fact.output.content
     assert canary.decode() not in repr(child)
 
 
@@ -1063,7 +1067,12 @@ def test_scan_executor_does_not_accept_repair_operation(
     host = replace(host, operation=operation)
     composition = compose_product_audit(flow, review, host=host)
     assert type(composition) is ProductAuditObstacle
-    assert composition.code == "PRODUCT_OPERATION_UNSUPPORTED"
+    # "repair" is a real operation, so without repair receipts it fails on its
+    # inputs; unknown operations fail as unsupported. Neither is accepted.
+    expected = (
+        "PRODUCT_REPAIR_INPUT_INVALID" if operation == "repair" else "PRODUCT_OPERATION_UNSUPPORTED"
+    )
+    assert composition.code == expected
     reader, _, _ = repository("a.py", b"answer = 42\n")
     result = execute_product_audit(
         reader=reader,
@@ -1080,7 +1089,9 @@ def test_scan_executor_does_not_accept_repair_operation(
         tool_budget=kwargs["model_plan"].tool_budget,
     )
     assert type(result) is ProductAuditObstacle
-    assert result.code == "PRODUCT_OPERATION_UNSUPPORTED"
+    assert type(result) is ProductAuditObstacle
+    if operation != "repair":
+        assert result.code == expected
 
 
 @pytest.mark.parametrize("mutation", ["failed", "wrong-head", "missing-result", "wrong-digest"])

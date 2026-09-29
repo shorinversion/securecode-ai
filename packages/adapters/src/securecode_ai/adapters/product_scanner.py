@@ -7,6 +7,7 @@ does not qualify an OCI sandbox or a full SAST baseline.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic_ns
@@ -387,6 +388,16 @@ def scanner_facts_match_receipts(
         return False
 
 
+def _is_secret_child_payload(payload: bytes) -> bool:
+    """Whether a hash-verified child fact records a detected secret."""
+    try:
+        document = json.loads(payload)
+    except (UnicodeDecodeError, ValueError):
+        return True  # An unreadable fact cannot prove the file is secret-free.
+    rule_id = document.get("rule_id") if isinstance(document, dict) else None
+    return not isinstance(rule_id, str) or rule_id.startswith("secret-")
+
+
 def build_product_auditor_tools(
     catalogue: NativeSourceCatalogue,
     graph: EvidenceGraph,
@@ -422,6 +433,7 @@ def build_product_auditor_tools(
         static = {record.evidence_id: record for record in deterministic.graph.evidence}
     children = {}
     aliases = []
+    secret_paths: set[str] = set()
     files = {file.path: file for file in catalogue.snapshot.files}
     for record, payload in child_artifacts:
         artifact = record.artifact_ref
@@ -446,11 +458,16 @@ def build_product_auditor_tools(
         children[record.evidence_id] = record
         if record.data_class is not DataClass.RESTRICTED:
             aliases.append((record.evidence_id, payload, artifact.content_sha256))
+        if _is_secret_child_payload(payload):
+            secret_paths.add(record.location.path)
     restricted_paths = {
         record.location.path
         for record in graph.evidence
         if record.data_class is DataClass.RESTRICTED and record.location is not None
     }
+    # A value-free secret projection is INTERNAL_METADATA, but the file it
+    # points at still holds the secret: never let model tools read it raw.
+    restricted_paths.update(secret_paths)
     if any(path not in files for path in denied_source_paths):
         raise ValueError("Auditor denied source scope is invalid")
     restricted_paths.update(denied_source_paths)

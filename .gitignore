@@ -82,3 +82,7 @@ output/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Local quick-start output
+deploy/docker/.env
+deploy/docker/.local/

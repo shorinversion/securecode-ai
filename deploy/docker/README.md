@@ -127,6 +127,28 @@ read-only mounts. Values are not copied into telemetry.
 | `SECURECODE_WORKER_TOKEN`, `SECURECODE_WORKER_TOKEN_FILE` | worker | Alternative worker bearer-token sources; file is preferred. |
 | `SECURECODE_WORKER_REQUEST_TIMEOUT_SECONDS`, `SECURECODE_WORKER_POLL_SECONDS`, `SECURECODE_WORKER_MAX_BACKOFF_SECONDS` | worker | Bounded request, polling and retry timing. |
 | `SECURECODE_WORKER_ARTIFACT_HOSTS` | worker | Comma-separated HTTPS hosts permitted for artifact upload. |
+| `SECURECODE_AI_ARTIFACT_ROOT` | worker | Root for repair artifacts; defaults to `SECURECODE_DATA_DIR`. |
+| `SECURECODE_AI_VALIDATION_IMAGE` | worker | Pinned OCI image used by the repair validation ladder. |
+| `SECURECODE_AI_VALIDATOR_MODE`, `SECURECODE_AI_VALIDATOR_SOCKET`, `SECURECODE_AI_VALIDATOR_IDENTITY` | worker | Isolated validator broker mode, broker socket path and broker identity. |
+| `SECURECODE_AI_VALIDATOR_BUNDLE_ROOT` | worker | Absolute host-visible directory for validation bundles. |
+| `SECURECODE_AI_VALIDATOR_DOCKER_SOCKET`, `SECURECODE_AI_VALIDATOR_DOCKER_SOCKET_UID`, `SECURECODE_AI_VALIDATOR_DOCKER_EXECUTABLE_SHA256` | worker | Rootless Docker socket for the validator broker only, its owner UID and the pinned Docker CLI digest. |
+| `SECURECODE_REMOTE_PROVIDER` | worker | Set to `1` to opt into the remote model provider runtime. |
+| `SECURECODE_REMOTE_PROFILE_FILE`, `SECURECODE_REMOTE_POLICY_FILE`, `SECURECODE_REMOTE_SPEND_DB` | worker | Remote provider profile, egress policy and spend-ledger database paths. |
+| `SECURECODE_API_RATE_LIMIT_CAPACITY`, `SECURECODE_API_RATE_LIMIT_REFILL_PER_SECOND` | server | Per-tenant token-bucket rate limit, defaults `120` and `2`. |
+| `SECURECODE_API_MAX_SPEND_MICROUNITS` | server | Per-tenant spend ceiling for the API quota window. |
+| `SECURECODE_DATA_REGION`, `SECURECODE_TENANT_RESIDENCY_REGIONS` | server | Deployment data region and the tenant-to-region residency map. |
+| `SECURECODE_SCM_POLICY_REGISTRY_FILE` | server | Optional SCM policy registry document. |
+| `SECURECODE_GITHUB_SARIF_ENABLED` | server | Publish SARIF to GitHub code scanning; requires the GitHub adapter. |
+| `SECURECODE_ASSURANCE_PINS_FILE` | server | Optional assurance pin document; absent means assurance pins are unavailable. |
+| `SECURECODE_BACKUP_ENCRYPTION` | server | Prefix for the pinned backup-encryption process (`..._EXECUTABLE`, `..._EXECUTABLE_SHA256`, `..._TIMEOUT_SECONDS`). |
+| `SECURECODE_OTLP_ENDPOINT`, `SECURECODE_OTLP_TIMEOUT_MS`, `SECURECODE_OTLP_MAX_ATTEMPTS` | server | Optional OTLP/HTTP telemetry export endpoint, timeout (default `5000`) and attempts (default `3`). |
+| `SECURECODE_MAINTENANCE_TENANT_ID`, `SECURECODE_MAINTENANCE_TENANT_IDS` | server | One tenant or a comma-separated tenant list for the maintenance daemon; set exactly one. |
+| `SECURECODE_MAINTENANCE_OWNER_ID`, `SECURECODE_MAINTENANCE_INTERVAL_SECONDS` | server | Maintenance actor identity and run interval. |
+| `SECURECODE_RETENTION_METADATA_DAYS`, `SECURECODE_RETENTION_ARTIFACT_DAYS`, `SECURECODE_RETENTION_AUDIT_DAYS` | server | Retention periods applied by maintenance. |
+| `SECURECODE_RETENTION_PLAN_LIMIT`, `SECURECODE_RETENTION_EXECUTE_LIMIT` | server | Maximum items planned and executed per maintenance pass (execute default `32`). |
+| `SECURECODE_SYSTEM_BACKUP_RETENTION_DAYS` | server | System backup retention, default `90`. |
+| `SECURECODE_TENANT_ID`, `SECURECODE_REPOSITORY_ID`, `SECURECODE_HEAD_SHA`, `SECURECODE_BASE_SHA`, `SECURECODE_CHANGE_ID`, `SECURECODE_SCM_PROVIDER` | server | Run identity for the capacity-profile CLI (`securecode-capacity`); base, change and provider are optional. |
+| `SECURECODE_CONTROL_PLANE_TOKEN`, `SECURECODE_CONTROL_PLANE_TOKEN_FILE` | server | Alternative control-plane token sources for the capacity-profile CLI; set exactly one. |
 
 The worker also reads `CI_PROJECT_ID`, `CI_MERGE_REQUEST_IID` and
 `CI_COMMIT_SHA` when resolving GitLab merge-request work. Set all three
