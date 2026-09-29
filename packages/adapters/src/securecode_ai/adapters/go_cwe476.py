@@ -37,6 +37,7 @@ from .cst_go import _go_language
 _MAX_LIMITS = (2_000_000, 2_048, 64, 50_000)
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_SIGNAL_ID = re.compile(r"go-cwe476-[0-9a-f]{64}\Z")
 _RULE_ID = "securecode-go-cwe476"
 _DETECTOR = "securecode-go-cwe476@1.0"
 _DETAIL = "nullable_pointer_dereference"
@@ -166,7 +167,7 @@ class GoCwe476Signal:
             or type(self.operation) is not GoCwe476Operation
             or expected_id is None
             or type(signal_id) is not str
-            or _SHA256.fullmatch(signal_id) is None
+            or _SIGNAL_ID.fullmatch(signal_id) is None
             or signal_id != expected_id
             or self.rule_id != _RULE_ID
             or self.cwe != "CWE-476"
@@ -443,7 +444,7 @@ def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and node.type in _GO_SCOPES:
+        if node != scope and node.type in _GO_SCOPES:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(sorted(output, key=lambda item: (item.start_byte, item.end_byte)))
@@ -476,7 +477,7 @@ def _bounded_preorder(root: Node, limits: GoCwe476ScanLimits) -> tuple[Node, ...
 def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, _Binding]:
     output: dict[str, _Binding] = {}
     for node in nodes:
-        if not _within_scope(node, scope) or node is not scope:
+        if not _within_scope(node, scope):
             continue
         if node.type == "parameter_declaration":
             type_node = node.child_by_field_name("type")
@@ -488,8 +489,9 @@ def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, 
                 names = (name_node,)
             for item in names:
                 if item.type == "identifier" and _text(source, item) not in {"_", ""}:
+                    # A pointer parameter is caller-controlled, not a local nil proof.
                     output.setdefault(
-                        _text(source, item), _Binding(_text(source, item), _range(node), True)
+                        _text(source, item), _Binding(_text(source, item), _range(node), False)
                     )
         elif node.type == "var_spec":
             type_node = node.child_by_field_name("type")
@@ -510,7 +512,7 @@ def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, 
                     _Binding(
                         _text(source, item),
                         _range(node),
-                        not _proves_non_nil(value, source),
+                        _is_nil_value(value),
                     ),
                 )
         elif node.type == "method_declaration":
@@ -525,7 +527,7 @@ def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, 
                 if name_node is not None and name_node.type == "identifier":
                     name = _text(source, name_node)
                     if name not in {"", "_"}:
-                        output.setdefault(name, _Binding(name, _range(parameter), True))
+                        output.setdefault(name, _Binding(name, _range(parameter), False))
     return output
 
 
@@ -558,12 +560,22 @@ def _state_events(
                 continue
             value = values[position] if position < len(values) else None
             events[name].append(
-                _StateEvent(node.start_byte, _range(node), not _proves_non_nil(value, source))
+                _StateEvent(
+                    node.start_byte, _range(node), value is not None and _is_nil_value(value)
+                )
             )
     return {
         name: tuple(sorted(values, key=lambda event: event.position))
         for name, values in events.items()
     }
+
+
+def _is_nil_value(value: Node | None) -> bool:
+    """Return whether a declaration value is the Go zero pointer (omitted or literal nil)."""
+
+    while value is not None and value.type == "parenthesized_expression":
+        value = value.named_children[0] if value.named_children else None
+    return value is None or value.type == "nil"
 
 
 def _latest_event(events: tuple[_StateEvent, ...], position: int) -> _StateEvent | None:
@@ -652,7 +664,11 @@ def _is_non_nil_guarded(node: Node, name: str, source: bytes) -> bool:
         if block is None:
             break
         if block.type == "block":
-            statements = tuple(block.named_children)
+            statements = tuple(
+                item
+                for child in block.named_children
+                for item in (child.named_children if child.type == "statement_list" else (child,))
+            )
             index = next(
                 (
                     position
@@ -691,7 +707,11 @@ def _nil_check(condition: Node | None, name: str, source: bytes) -> str | None:
 
 
 def _terminates(node: Node) -> bool:
-    for item in node.named_children:
+    for item in (
+        entry
+        for child in node.named_children
+        for entry in (child.named_children if child.type == "statement_list" else (child,))
+    ):
         if item.type in {"return_statement", "continue_statement", "break_statement"}:
             return True
         if item.type == "expression_statement":
@@ -731,15 +751,6 @@ def _terminal_name_from_node(node: Node) -> str:
     )
 
 
-def _proves_non_nil(node: Node | None, source: bytes) -> bool:
-    if node is None:
-        return False
-    if node.type in {"composite_literal", "address_expression"}:
-        return True
-    text = "".join(_text(source, node).split())
-    return text.startswith("new(") or text.startswith("&")
-
-
 def _is_pointer_type(node: Node | None) -> bool:
     return node is not None and node.type == "pointer_type"
 
@@ -747,9 +758,9 @@ def _is_pointer_type(node: Node | None) -> bool:
 def _within_scope(node: Node, scope: Node) -> bool:
     current: Node | None = node
     while current is not None:
-        if current is scope:
+        if current == scope:
             return True
-        if current is not scope and current.type in _GO_SCOPES:
+        if current != scope and current.type in _GO_SCOPES:
             return False
         current = current.parent
     return False

@@ -624,7 +624,7 @@ def _with_depth(root: Node, *, stop_nested: bool = False) -> tuple[tuple[Node, i
     while stack:
         node, depth = stack.pop()
         output.append((node, depth))
-        if stop_nested and node is not root and node.type in _GO_SCOPES:
+        if stop_nested and node != root and node.type in _GO_SCOPES:
             continue
         stack.extend((child, depth + 1) for child in reversed(node.named_children))
     return tuple(output)

@@ -34,3 +34,19 @@ app.post("/login", async (req, res) => {
     result = scan_javascript_cwe307(_index(source))
 
     assert result.path == "src/login.js"
+
+
+def test_login_route_with_nested_callback_uses_node_equality() -> None:
+    # Regression: ``parent is handler`` compared distinct tree-sitter wrappers, so handler
+    # ownership was never recognised and no signal was produced.
+    source = b"""const express = require("express");
+const bcrypt = require("bcrypt");
+const app = express();
+app.post("/login", async (req, res) => {
+  const user = await db.find(req.body.name);
+  const ok = await bcrypt.compare(req.body.password, user.passwordHash);
+  res.send(ok);
+});
+"""
+
+    assert len(scan_javascript_cwe307(_index(source)).signals) == 1

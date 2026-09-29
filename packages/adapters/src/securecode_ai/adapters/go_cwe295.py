@@ -623,7 +623,7 @@ def _left_names(node: Node, source: bytes) -> tuple[str, ...]:
 
 
 def _scopes(root: Node) -> tuple[Node, ...]:
-    return tuple(node for node in _preorder(root) if node is root or node.type in _GO_SCOPES)
+    return tuple(node for node in _preorder(root) if node == root or node.type in _GO_SCOPES)
 
 
 def _scope_preorder(scope: Node) -> tuple[Node, ...]:
@@ -632,7 +632,7 @@ def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and node.type in _GO_SCOPES:
+        if node != scope and node.type in _GO_SCOPES:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(output)

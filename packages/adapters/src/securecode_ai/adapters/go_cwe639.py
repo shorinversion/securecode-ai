@@ -744,7 +744,7 @@ def _guard_dominates(
     imports: dict[str, str],
 ) -> bool:
     for candidate in _scope_preorder(scope):
-        if candidate is sink or candidate.start_byte >= sink.start_byte:
+        if candidate == sink or candidate.start_byte >= sink.start_byte:
             continue
         if candidate.end_byte > sink.start_byte:
             continue
@@ -842,7 +842,7 @@ def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and node.type in _GO_SCOPES:
+        if node != scope and node.type in _GO_SCOPES:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(output)

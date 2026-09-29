@@ -597,7 +597,7 @@ def _is_scope(node: Node) -> bool:
 
 
 def _scopes(root: Node) -> tuple[Node, ...]:
-    return tuple(node for node in _preorder(root) if node is root or _is_scope(node))
+    return tuple(node for node in _preorder(root) if node == root or _is_scope(node))
 
 
 def _scope_preorder(scope: Node) -> tuple[Node, ...]:
@@ -606,7 +606,7 @@ def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and _is_scope(node):
+        if node != scope and _is_scope(node):
             continue
         stack.extend(reversed(node.named_children))
     return tuple(output)

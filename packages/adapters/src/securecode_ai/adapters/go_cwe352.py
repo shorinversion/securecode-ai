@@ -602,7 +602,7 @@ def _scope_preorder(scope: Node, max_nodes: int, max_depth: int) -> tuple[Node, 
             raise GoCwe352ScanError(GoCwe352ScanErrorCode.NODE_LIMIT)
         if depth > max_depth:
             raise GoCwe352ScanError(GoCwe352ScanErrorCode.ANALYSIS_UNAVAILABLE)
-        if node is not scope and node.type in _FUNCTION_TYPES:
+        if node != scope and node.type in _FUNCTION_TYPES:
             continue
         stack.extend((child, depth + 1) for child in reversed(node.named_children))
     return tuple(output)
@@ -777,7 +777,7 @@ def _has_mutating_method_evidence(
 ) -> bool:
     parent = mutation.parent
     while parent is not None:
-        if parent is function:
+        if parent == function:
             break
         if parent.type == "if_statement":
             consequence = parent.child_by_field_name("consequence")

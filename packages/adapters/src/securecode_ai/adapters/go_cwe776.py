@@ -33,7 +33,7 @@ from tree_sitter import Language, Node, Parser
 from .cst import build_go_symbol_index
 from .cst_go import _go_language
 
-_MAX_LIMITS = (2_000_000, 2_048, 64, 2_048)
+_MAX_LIMITS = (2_000_000, 250_000, 512, 2_048)
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _RULE_ID = "securecode-go-cwe776"
@@ -727,7 +727,7 @@ def _parser_fact(
     if arguments is None:
         return None
     for child in _preorder(arguments):
-        if child is node or child.type != "call_expression":
+        if child == node or child.type != "call_expression":
             continue
         nested = child.child_by_field_name("function")
         if nested is None:

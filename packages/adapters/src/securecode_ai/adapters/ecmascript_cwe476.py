@@ -484,7 +484,7 @@ def _group_scope_nodes(root: Node, nodes: tuple[Node, ...]) -> dict[Node, tuple[
     for node in nodes:
         current = node.parent
         owner = root
-        while current is not None and current is not root:
+        while current is not None and current != root:
             if current.type in _SCOPES:
                 owner = current
                 break
@@ -880,7 +880,7 @@ def _type_evidence(node: Node) -> Node | None:
         examined += 1
         if current.type == "type_annotation":
             return current
-        if current is not node and current.type not in {
+        if current != node and current.type not in {
             "name",
             "pattern",
             "required_parameter",

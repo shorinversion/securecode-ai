@@ -32,6 +32,7 @@ from .cst_go import _go_language
 _MAX_LIMITS = (2_000_000, 2_048, 64)
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_SIGNAL_ID = re.compile(r"go-cwe209-[0-9a-f]{64}\Z")
 _RULE_ID = "securecode-go-cwe209"
 _DETECTOR = "securecode-go-cwe209@1.0"
 _DETAIL = "sensitive_value_in_error_message"
@@ -251,7 +252,7 @@ class GoCwe209Signal:
             or type(self.operation) is not GoCwe209Operation
             or type(signal_id) is not str
             or expected_id is None
-            or _SHA256.fullmatch(signal_id) is None
+            or _SIGNAL_ID.fullmatch(signal_id) is None
             or signal_id != expected_id
             or self.rule_id != _RULE_ID
             or self.cwe != "CWE-209"
@@ -778,7 +779,7 @@ def _mentions_sensitive_literal(value: str) -> bool:
 
 
 def _scopes(root: Node) -> tuple[Node, ...]:
-    return tuple(node for node in _preorder(root) if node is root or node.type in _GO_SCOPES)
+    return tuple(node for node in _preorder(root) if node == root or node.type in _GO_SCOPES)
 
 
 def _scope_preorder(scope: Node) -> tuple[Node, ...]:
@@ -787,7 +788,7 @@ def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and node.type in _GO_SCOPES:
+        if node != scope and node.type in _GO_SCOPES:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(output)

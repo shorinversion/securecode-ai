@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -259,44 +259,61 @@
 </header>
 <h1 id="securecode-ai-expanded-submission-benchmark">SecureCode AI:
 expanded submission benchmark</h1>
-<p><strong>Результат анализа завершён 27 сентября 2026 года.</strong>
-Все шесть конфигураций имеют проверяемые результаты на 600 кейсах, но
-часть сравнений является архивной или вычислена как парная композиция.
-Это диагностический бенчмарк, а не подтверждение точности полного
-SecureCode AI pipeline и не доказательство превосходства над SAST.</p>
-<p><strong>Analysis completed on 27 September 2026.</strong> All six
-configurations have auditable results on 600 cases, but some comparisons
-reuse archived outputs or are paired post-hoc compositions. This is a
-diagnostic benchmark, not an accuracy claim for the complete SecureCode
-AI pipeline and not evidence of superiority over SAST.</p>
+<p><strong>Детерминированный lane пересчитан 29 сентября 2026
+года</strong> после исправления сравнения узлов tree-sitter и лимитов
+Go-сканеров; модельные lanes DeepSeek — архивные прямые прогоны 27
+сентября, hybrid пересобран из них без новых запросов. Все шесть
+конфигураций имеют проверяемые результаты на 600 кейсах, но часть
+сравнений является архивной или вычислена как парная композиция. Это
+диагностический бенчмарк, а не подтверждение точности полного SecureCode
+AI pipeline и не доказательство превосходства над SAST.</p>
+<p><strong>The deterministic lane was rerun on 29 September
+2026</strong> after fixing tree-sitter node comparisons and Go scanner
+limits; the DeepSeek model lanes are the archived direct runs of 27
+September, and the hybrid lane was recomposed from them with no new API
+calls. All six configurations have auditable results on 600 cases, but
+some comparisons reuse archived outputs or are paired post-hoc
+compositions. This is a diagnostic benchmark, not an accuracy claim for
+the complete SecureCode AI pipeline and not evidence of superiority over
+SAST.</p>
 <h2 id="краткий-вывод">Краткий вывод</h2>
-<p>На held-out части hybrid-композиция получила recall 27.8%, Semgrep
-32.5%. Разница hybrid минус Semgrep равна -4.7 процентного пункта;
-lineage-cluster bootstrap 95% interval составляет от -13.9 до +4.7 п.п.
-Интервал включает ноль. Hybrid-композиция также завершила только 130 из
-240 held-out cases, поскольку deterministic scanner завершился ошибкой
-на 110 кейсах этой части.</p>
-<p>В полном корпусе сканер завершился на 347 из 600 кейсов. Оставшиеся
-253 ошибки сохранены в знаменателе как <code>scanner-failed</code>.
-Поэтому результат не подтверждает, что SecureCode AI полезнее
-статического анализатора. Он показывает конкретные текущие ограничения,
-а не успешность релизного критерия.</p>
+<p>На held-out части hybrid-композиция получила recall 32.8%, Semgrep
+32.5%. Разница hybrid минус Semgrep равна +0.3 процентного пункта;
+lineage-cluster bootstrap 95% interval составляет от -8.9 до +10.0 п.п.
+Интервал включает ноль: hybrid находится на уровне Semgrep,
+превосходство не доказано. Hybrid-композиция завершила 202 из 240
+held-out cases (было 130).</p>
+<p>В полном корпусе сканер завершился на 508 из 600 кейсов (было 347);
+recall детерминированного lane вырос с 19.7% до 25.7%. Оставшиеся 92
+ошибки сохранены в знаменателе как <code>scanner-failed</code>: это
+файлы, которые не парсятся (Python 2, частичный или некорректный JS/TS),
+и они приводят к явному <code>INDETERMINATE</code>, а не к молчаливому
+«чисто». Precision всех lanes около 50%: корпус состоит из пар «до/после
+исправления» одного файла, и файловый детектор часто срабатывает на обе
+версии.</p>
 <h2 id="executive-result">Executive result</h2>
-<p>On the held-out split, the derived hybrid lane reached 27.8% recall
-and Semgrep reached 32.5%. The hybrid-minus-Semgrep difference is -4.7
-percentage points; the lineage-cluster bootstrap 95% interval is -13.9
-to +4.7 pp and includes zero. The hybrid composition completed only 130
-of 240 held-out cases because the deterministic scanner failed on 110
-cases in that split.</p>
-<p>Across the full corpus, the scanner completed 347 of 600 cases. The
-other 253 failures remain visible as <code>scanner-failed</code>. These
-results do not show that SecureCode AI is more useful than static
-analysis. They document current limits and do not meet a release-quality
-claim.</p>
+<p>On the held-out split, the derived hybrid lane reached 32.8% recall
+and Semgrep reached 32.5%. The hybrid-minus-Semgrep difference is +0.3
+percentage points; the lineage-cluster bootstrap 95% interval is -8.9 to
++10.0 pp and includes zero: the hybrid is on par with Semgrep, and
+superiority is not shown. The hybrid composition completed 202 of 240
+held-out cases (previously 130).</p>
+<p>Across the full corpus, the scanner completed 508 of 600 cases
+(previously 347), and deterministic recall rose from 19.7% to 25.7%. The
+remaining 92 failures stay visible as <code>scanner-failed</code>: files
+that do not parse (Python 2, partial or malformed JS/TS) yield an
+explicit <code>INDETERMINATE</code>, never a silent clean result. Every
+lane’s precision is near 50% because the corpus pairs the vulnerable and
+fixed revision of the same file, and a file-level detector often fires
+on both.</p>
 <h2 id="corpus-and-protocol">Corpus and protocol</h2>
 <ul>
 <li>600 public CVEfixes v1.0.8 file revisions: 200 Python, 200
 JavaScript/TypeScript and 200 Go.</li>
+<li>The public source dataset is <a
+href="https://zenodo.org/records/13118970">CVEfixes v1.0.8 on
+Zenodo</a>. This repository retains only the source-free manifest, not
+the SQLite database or project source.</li>
 <li>300 vulnerable/fixed lineage pairs. Splits are development 240,
 calibration 120 and held-out 240, with no lineage crossing a split. Each
 language has 80/40/80 cases.</li>
@@ -308,23 +325,19 @@ language has 80/40/80 cases.</li>
 mismatches. The cache and source blobs are not included in this report.
 The dataset manifest records <code>NOASSERTION</code> for
 licensing.</li>
-<li>The archived candidate source manifest records 603 repository files,
-SHA-256
-<code>d12e34b2623a0747c1800aab344fb72dd34ef9f68e95609dc5653c20621939b1</code>.
-It was based on HEAD
-<code>88595ae7f50be5906defee9d06e6186ce66ee1f8</code> plus those
-content-pinned worktree files. The benchmark was not recomputed against this final
-worktree, so the metrics below remain archived for the prior candidate, not a
-fresh measurement of the current tree. The archived DeepSeek direct
-lanes use the earlier profile pin
+<li>The manifest’s NOASSERTION value is not a redistribution grant.
+Verify the dataset terms and the license of each upstream source before
+redistributing source files.</li>
+<li>The candidate source manifest pins the 603 repository files the
+deterministic lane was run from; <code>aggregate_benchmark.py</code>
+refuses to aggregate if any of them changed. The archived DeepSeek
+direct lanes use the earlier profile pin
 <code>c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0</code>,
 retained in <code>model-profile.json</code>.</li>
-<li>Latest scoped product suite on the current worktree: 140 tests passed across
-product audit, scanner, worker, CWE portfolio, portfolio pipeline and product
-reports. A full pytest run did not return a final count within the five-minute
-tool window. Ruff format/check and mypy passed on all eight changed
-production/test files. The full-tree canonical quality preflight still fails
-and these scoped checks do not update the archived benchmark candidate.</li>
+<li>A live 20-case DeepSeek <code>model_native</code> smoke run on 29
+September 2026 completed 20/20 calls (median latency about 1.1 s, cost
+$0.035); it confirms the provider path still works and is not part of
+the scored outputs.</li>
 <li>Model repetitions stay grouped by lineage in 5,000 deterministic
 bootstrap samples. Repeated cells are not treated as independent source
 cases.</li>
@@ -376,28 +389,28 @@ they made no new model requests.</p>
 <td>Deterministic only</td>
 <td style="text-align: right;">600 x 1</td>
 <td style="text-align: right;">600</td>
-<td style="text-align: right;">59</td>
-<td style="text-align: right;">61</td>
-<td style="text-align: right;">239</td>
-<td style="text-align: right;">241</td>
-<td style="text-align: right;">49.2%</td>
-<td style="text-align: right;">19.7%</td>
-<td style="text-align: right;">28.1%</td>
-<td style="text-align: right;">57.8%</td>
+<td style="text-align: right;">77</td>
+<td style="text-align: right;">80</td>
+<td style="text-align: right;">220</td>
+<td style="text-align: right;">223</td>
+<td style="text-align: right;">49.0%</td>
+<td style="text-align: right;">25.7%</td>
+<td style="text-align: right;">33.7%</td>
+<td style="text-align: right;">84.7%</td>
 <td style="text-align: right;">0</td>
 </tr>
 <tr>
 <td>Scanner-seeded, derived</td>
 <td style="text-align: right;">600 x 1</td>
 <td style="text-align: right;">600</td>
-<td style="text-align: right;">14</td>
-<td style="text-align: right;">14</td>
-<td style="text-align: right;">286</td>
-<td style="text-align: right;">286</td>
-<td style="text-align: right;">50.0%</td>
-<td style="text-align: right;">4.7%</td>
-<td style="text-align: right;">8.5%</td>
-<td style="text-align: right;">57.8%</td>
+<td style="text-align: right;">20</td>
+<td style="text-align: right;">21</td>
+<td style="text-align: right;">279</td>
+<td style="text-align: right;">280</td>
+<td style="text-align: right;">48.8%</td>
+<td style="text-align: right;">6.7%</td>
+<td style="text-align: right;">11.7%</td>
+<td style="text-align: right;">84.7%</td>
 <td style="text-align: right;">0</td>
 </tr>
 <tr>
@@ -432,14 +445,14 @@ they made no new model requests.</p>
 <td>Full hybrid, derived paired union</td>
 <td style="text-align: right;">600 x 3</td>
 <td style="text-align: right;">1,800</td>
-<td style="text-align: right;">288</td>
-<td style="text-align: right;">289</td>
-<td style="text-align: right;">611</td>
-<td style="text-align: right;">612</td>
+<td style="text-align: right;">322</td>
+<td style="text-align: right;">323</td>
+<td style="text-align: right;">577</td>
+<td style="text-align: right;">578</td>
 <td style="text-align: right;">49.9%</td>
-<td style="text-align: right;">32.0%</td>
-<td style="text-align: right;">39.0%</td>
-<td style="text-align: right;">57.8%</td>
+<td style="text-align: right;">35.8%</td>
+<td style="text-align: right;">41.7%</td>
+<td style="text-align: right;">84.7%</td>
 <td style="text-align: right;">0</td>
 </tr>
 <tr>
@@ -459,14 +472,13 @@ they made no new model requests.</p>
 </tbody>
 </table>
 <p>The precision, recall and F1 cluster-bootstrap intervals for every
-lane are in <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/aggregate.json"><code>aggregate.json</code></a>.
+lane are in <a href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/aggregate.json"><code>aggregate.json</code></a>.
 Full metrics by language, split and all 79 CWE groups are in <a
-href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/stratified-metrics.csv"><code>stratified-metrics.csv</code></a>.
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/stratified-metrics.csv"><code>stratified-metrics.csv</code></a>.
 The machine-readable hash record is <a
-href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/aggregate-output-manifest.json"><code>aggregate-output-manifest.json</code></a>.
-Read the standalone <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/report.html">HTML report</a> or printable
-<a href="benchmark.pdf">PDF
-report</a>.</p>
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/aggregate-output-manifest.json"><code>aggregate-output-manifest.json</code></a>.
+Read the standalone <a href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/report.html">HTML report</a> or printable
+<a href="benchmark.pdf">PDF report</a>.</p>
 <h2 id="held-out-results-by-language">Held-out results by language</h2>
 <p>All rows below use the 80 held-out cases per language. Model and
 hybrid metrics pool three predictions per case; Semgrep uses the first
@@ -528,14 +540,14 @@ scans.</p>
 <tr>
 <td>Python</td>
 <td>Full hybrid, derived</td>
-<td style="text-align: right;">73.8%</td>
-<td style="text-align: right;">51</td>
-<td style="text-align: right;">55</td>
-<td style="text-align: right;">65</td>
-<td style="text-align: right;">69</td>
-<td style="text-align: right;">48.1%</td>
-<td style="text-align: right;">42.5%</td>
-<td style="text-align: right;">45.1%</td>
+<td style="text-align: right;">90.0%</td>
+<td style="text-align: right;">60</td>
+<td style="text-align: right;">64</td>
+<td style="text-align: right;">56</td>
+<td style="text-align: right;">60</td>
+<td style="text-align: right;">48.4%</td>
+<td style="text-align: right;">50.0%</td>
+<td style="text-align: right;">49.2%</td>
 </tr>
 <tr>
 <td>Python</td>
@@ -576,7 +588,7 @@ scans.</p>
 <tr>
 <td>JavaScript/TypeScript</td>
 <td>Full hybrid, derived</td>
-<td style="text-align: right;">70.0%</td>
+<td style="text-align: right;">72.5%</td>
 <td style="text-align: right;">31</td>
 <td style="text-align: right;">32</td>
 <td style="text-align: right;">88</td>
@@ -624,14 +636,14 @@ scans.</p>
 <tr>
 <td>Go</td>
 <td>Full hybrid, derived</td>
-<td style="text-align: right;">18.8%</td>
-<td style="text-align: right;">18</td>
-<td style="text-align: right;">15</td>
-<td style="text-align: right;">105</td>
-<td style="text-align: right;">102</td>
-<td style="text-align: right;">54.5%</td>
-<td style="text-align: right;">15.0%</td>
-<td style="text-align: right;">23.5%</td>
+<td style="text-align: right;">90.0%</td>
+<td style="text-align: right;">27</td>
+<td style="text-align: right;">24</td>
+<td style="text-align: right;">96</td>
+<td style="text-align: right;">93</td>
+<td style="text-align: right;">52.9%</td>
+<td style="text-align: right;">22.5%</td>
+<td style="text-align: right;">31.6%</td>
 </tr>
 <tr>
 <td>Go</td>
@@ -655,7 +667,7 @@ denominators.</p>
 <ul>
 <li>Deterministic-only was freshly run from the pinned manifest in
 twelve validated 50-case shards. Merged output SHA-256:
-<code>27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf</code>.</li>
+<code>bbeecd39e71f30a8332832e8f8b07a4ee2cda8c9d564d00e1576b1be2f700927</code>.</li>
 <li>Model-native and one-shot outputs were complete archived direct
 classifications, not newly rerun in this pass. Their output SHA-256
 values are
@@ -675,7 +687,7 @@ repetition 1 only.</li>
 deterministic-positive cases. <code>full_hybrid</code> is a Boolean
 union of the same-case model-native prediction and deterministic signal
 for each repetition. Both are post-hoc analyses, recorded in <a
-href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/lane-composition.json"><code>lane-composition.json</code></a>,
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/lane-composition.json"><code>lane-composition.json</code></a>,
 with zero new API requests. They are not runs of the full SecureCode
 agent pipeline.</li>
 <li>Raw-cell API cost for the scored model-native and one-shot outputs
@@ -699,29 +711,49 @@ pricing page</a> on 27 September 2026.</li>
 <li>Archived direct model outputs predate the current scanner
 exception-accounting fix. Their archived plan and profile hashes remain
 available as <a
-href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/evidence/run-plan-direct-baselines.json"><code>run-plan-direct-baselines.json</code></a>
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/run-plan-direct-baselines.json"><code>run-plan-direct-baselines.json</code></a>
 and <a
-href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/evidence/model-profile.json"><code>model-profile.json</code></a>.</li>
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/model-profile.json"><code>model-profile.json</code></a>.</li>
 </ul>
 <h2 id="demo-evidence">Demo evidence</h2>
-<p>The current real-local rerun is recorded in <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/submission-benchmark/evidence/current-real-local-p917.json"><code>evidence/current-real-local-p917.json</code></a>. Ollama 0.34.4 served <code>qwen2.5-coder:7b-instruct-q4_K_M</code> (Q4_K_M, SHA-256 <code>dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364</code>) through literal loopback. Model and deterministic lanes agreed on one CWE-89 candidate at <code>app.py:4</code>. The separate repair request completed but produced no accepted patch (<code>NOT_PROPOSED</code>). Result: <code>INDETERMINATE</code>. Patch applicability, syntax, and security regression checks were not performed, and the original checkout stayed unchanged.</p>
-<p>The earlier receipt at <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/m-a2026/evidence/p917-real-local/p917-local-demo.json"><code>report/m-a2026/evidence/p917-real-local/p917-local-demo.json</code></a> records a separate Ollama 0.16.2 run with a proposed patch and ephemeral parse/rescan success. No behavioral security tests were run and the patch bytes are not included. Keep that historical demonstration separate from the current result. Neither one-case run is benchmark evidence or a general repair claim. The <a href="https://github.com/shorinversion/securecode-ai/blob/codex/v1-code-only/report/m-a2026/README.md">M-A2026 PDF and HTML</a> contain an earlier 312-cell development study and are a separate historical snapshot.</p>
+<p>The current real-local rerun is recorded in <a
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-real-local-p917.json"><code>evidence/current-real-local-p917.json</code></a>.
+Ollama 0.34.4 served <code>qwen2.5-coder:7b-instruct-q4_K_M</code>
+(<code>Q4_K_M</code>, digest
+<code>dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364</code>)
+through literal loopback. The model and deterministic lane agreed on one
+Python CWE-89 candidate at <code>app.py:4</code>; the separate local
+repair request completed but did not emit a patch
+(<code>NOT_PROPOSED</code>). The result is <code>INDETERMINATE</code>;
+patch applicability, syntax, and security regression checks were not
+performed, and the source checkout stayed unchanged.</p>
+<p>An earlier, separate local run is retained in <a
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/m-a2026/evidence/p917-real-local/p917-local-demo.json"><code>report/m-a2026/evidence/p917-real-local/p917-local-demo.json</code></a>.
+That run used Ollama 0.16.2 and recorded a proposed patch plus
+successful ephemeral parse/rescan, without changing the original
+checkout. It did not run behavioral security tests, and its patch bytes
+are not published. Do not merge it with the current run. Neither
+one-case run is benchmark evidence or a general repair claim. The <a
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/m-a2026/README.md">M-A2026 PDF and HTML</a> document an earlier
+312-cell development study and remain a separate historical
+snapshot.</p>
 <h2 id="interpretation-and-limitations">Interpretation and
 limitations</h2>
 <ol type="1">
-<li>The full-hybrid recall is 2.3 percentage points below Semgrep across
-all cases and 4.7 points below on held-out. The paired 95% interval
-includes zero. The release target of at least 90% lower-bound precision
-and at least 5 points recall improvement over SAST is not met.</li>
+<li>The full-hybrid recall is 1.4 percentage points above Semgrep across
+all cases and 0.3 points above on held-out. The paired 95% intervals
+include zero, so the lanes are statistically on par. The release target
+of at least 90% lower-bound precision and at least 5 points recall
+improvement over SAST is not met.</li>
 <li>The model-native and one-shot lanes classify public source directly
 with an API. They do not execute the complete product chain of scanners,
 EvidenceGraph, Auditor, Skeptic, validation and verdict.</li>
 <li>The scanner-seeded and full-hybrid configurations are paired
 post-hoc compositions. Their results are useful ablations, but they are
 not live end-to-end product runs.</li>
-<li>Deterministic scanner failures affect 253/600 cases. The scanner
-completed 154/200 Python, 148/200 JavaScript/TypeScript and 45/200 Go
-cases. Failed cells remain explicit in the CSV and completion
+<li>Deterministic scanner failures affect 92/600 cases (previously 253).
+The scanner completed 174/200 Python, 152/200 JavaScript/TypeScript and
+182/200 Go cases. Failed cells remain explicit in the CSV and completion
 denominators.</li>
 <li>Semgrep’s broad file-level any-finding rule has a different
 granularity from CWE-specific product findings. This is not a fully

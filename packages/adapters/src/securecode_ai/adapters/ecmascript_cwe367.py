@@ -968,7 +968,7 @@ def _is_module_binding(value: str | None) -> TypeGuard[str]:
 def _scopes(root: Node) -> tuple[Node, ...]:
     scopes: list[Node] = [root]
     for node in _preorder(root):
-        if node is not root and node.type in _FUNCTION_SCOPE_TYPES:
+        if node != root and node.type in _FUNCTION_SCOPE_TYPES:
             scopes.append(node)
     return tuple(scopes)
 

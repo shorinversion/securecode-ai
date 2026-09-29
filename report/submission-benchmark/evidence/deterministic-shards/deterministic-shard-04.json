@@ -12,7 +12,7 @@
     "tn": 16,
     "tp": 10,
     "unsafe": 0,
-    "valid": 0.74
+    "valid": 0.8
   },
   "cells": [
     {
@@ -448,7 +448,7 @@
       "ram_mb": 0,
       "regressions": 0,
       "repetition": 1,
-      "status": "scanner-failed",
+      "status": "completed",
       "tn": 0,
       "tokens": 0,
       "tp": 0,
@@ -866,7 +866,7 @@
       "ram_mb": 0,
       "regressions": 0,
       "repetition": 1,
-      "status": "scanner-failed",
+      "status": "completed",
       "tn": 1,
       "tokens": 0,
       "tp": 0,
@@ -888,7 +888,7 @@
       "ram_mb": 0,
       "regressions": 0,
       "repetition": 1,
-      "status": "scanner-failed",
+      "status": "completed",
       "tn": 0,
       "tokens": 0,
       "tp": 0,
