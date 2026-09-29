@@ -595,8 +595,6 @@ def execute_product_audit(
             for record in children.graph.evidence
             if record.artifact_ref is not None
         )
-        sessions = []
-
         def tools_for(graph: EvidenceGraph) -> RepositoryToolSession:
             return build_product_auditor_tools(
                 execution.catalogue,
@@ -608,9 +606,7 @@ def execute_product_audit(
             )
 
         def auditor_for(graph: EvidenceGraph) -> AuditorInvoker:
-            tools = tools_for(graph)
-            sessions.append(tools)
-            return auditor_factory(graph, tools)
+            return auditor_factory(graph, tools_for(graph))
 
         flow = run_product_candidate_flow(
             catalogue=execution.catalogue,
@@ -639,8 +635,9 @@ def execute_product_audit(
                 "PRODUCT_DISCOVERY_RECEIPT_BINDING_INVALID",
                 "model discovery receipt is not bound to the admitted plan",
             )
-        tools = sessions[0] if sessions else tools_for(flow.graph)
-        review = review_factory(flow, tools)
+        # The Skeptic is an independent second review: it gets its own tool
+        # session and budget instead of whatever the Auditor left unused.
+        review = review_factory(flow, tools_for(flow.graph))
         finalized = finalize_host(flow, review, bound)
         if (
             finalized.state_probe is not host.state_probe

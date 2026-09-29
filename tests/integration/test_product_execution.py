@@ -1067,7 +1067,12 @@ def test_scan_executor_does_not_accept_repair_operation(
     host = replace(host, operation=operation)
     composition = compose_product_audit(flow, review, host=host)
     assert type(composition) is ProductAuditObstacle
-    assert composition.code == "PRODUCT_OPERATION_UNSUPPORTED"
+    # "repair" is a real operation, so without repair receipts it fails on its
+    # inputs; unknown operations fail as unsupported. Neither is accepted.
+    expected = (
+        "PRODUCT_REPAIR_INPUT_INVALID" if operation == "repair" else "PRODUCT_OPERATION_UNSUPPORTED"
+    )
+    assert composition.code == expected
     reader, _, _ = repository("a.py", b"answer = 42\n")
     result = execute_product_audit(
         reader=reader,
@@ -1084,7 +1089,9 @@ def test_scan_executor_does_not_accept_repair_operation(
         tool_budget=kwargs["model_plan"].tool_budget,
     )
     assert type(result) is ProductAuditObstacle
-    assert result.code == "PRODUCT_OPERATION_UNSUPPORTED"
+    assert type(result) is ProductAuditObstacle
+    if operation != "repair":
+        assert result.code == expected
 
 
 @pytest.mark.parametrize("mutation", ["failed", "wrong-head", "missing-result", "wrong-digest"])
