@@ -1,138 +1,618 @@
-<!doctype html>
-<html lang="ru">
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ru" xml:lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SecureCode AI: итоговый отчёт и проверка готовности</title>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>SecureCode AI: итоговый отчёт</title>
   <style>
-    :root { color-scheme: light; --ink:#172033; --muted:#56647a; --blue:#2155a5; --line:#d8e0ea; --pale:#f2f6fb; --amber:#fff3df; --red:#7b2424; --green:#245b3c; }
-    * { box-sizing:border-box; }
-    body { margin:0; background:#eef2f7; color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
-    main { width:min(1040px, calc(100% - 32px)); margin:32px auto; padding:36px; background:#fff; border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 36px #14243a12; }
-    h1,h2,h3 { line-height:1.2; } h1 { margin:0; font-size:2.25rem; } h2 { margin-top:2.2em; padding-bottom:.35em; border-bottom:2px solid var(--line); color:var(--blue); } h3 { margin-top:1.4em; }
-    p,li { max-width:90ch; } a { color:#174d9a; } code { overflow-wrap:anywhere; background:var(--pale); padding:.12em .32em; border-radius:4px; }
-    .lead { font-size:1.13rem; color:#34445e; } .meta { color:var(--muted); }
-    .callout { padding:18px 20px; border-left:5px solid #b76a12; background:var(--amber); border-radius:8px; }
-    .ok { color:var(--green); font-weight:700; } .partial { color:#86500b; font-weight:700; } .missing { color:var(--red); font-weight:700; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin:20px 0; }
-    .card { padding:16px; background:var(--pale); border:1px solid var(--line); border-radius:10px; }
-    .card strong { display:block; color:var(--blue); }
-    table { width:100%; border-collapse:collapse; margin:18px 0; font-size:.94rem; }
-    th,td { text-align:left; vertical-align:top; border:1px solid var(--line); padding:9px 10px; }
-    th { background:#e8eef7; }
-    .architecture { display:grid; grid-template-columns:1fr auto 1fr auto 1fr; align-items:center; gap:10px; margin:18px 0; }
-    .architecture div { min-height:84px; display:grid; place-items:center; text-align:center; padding:12px; background:var(--pale); border:1px solid var(--line); border-radius:9px; }
-    .arrow { color:var(--blue); font-size:1.5rem; font-weight:700; }
-    footer { margin-top:44px; padding-top:14px; border-top:1px solid var(--line); color:var(--muted); font-size:.9rem; }
-    @media(max-width:680px) { main { padding:22px; } h1 { font-size:1.8rem; } .architecture { grid-template-columns:1fr; } .arrow { transform:rotate(90deg); justify-self:center; } table { font-size:.82rem; } }
-    @media print { body { background:#fff; } main { width:100%; margin:0; border:0; box-shadow:none; } a { color:inherit; text-decoration:none; } }
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <style>
+  :root { color-scheme: light; --ink: #172033; --muted: #526079; --blue: #2355a6; --pale: #eef3fa; --rule: #d7dfea; }
+  html { background: #f3f5f8; }
+  body { max-width: 1120px; margin: 32px auto; padding: 42px 54px; background: #fff; color: var(--ink); font: 16px/1.6 "Segoe UI", Arial, sans-serif; box-shadow: 0 8px 32px #17203318; }
+  h1, h2, h3 { color: var(--blue); line-height: 1.25; }
+  h1 { font-size: 2rem; border-bottom: 2px solid var(--rule); padding-bottom: .45em; }
+  h2 { margin-top: 2em; font-size: 1.4rem; }
+  h3 { margin-top: 1.5em; font-size: 1.1rem; }
+  p, li { max-width: 100ch; }
+  table { width: 100%; border-collapse: collapse; margin: 1.2em 0 1.8em; font-size: .9rem; }
+  th { background: var(--blue); color: #fff; text-align: left; }
+  th, td { border: 1px solid var(--rule); padding: .55em .65em; vertical-align: top; }
+  tr:nth-child(even) td { background: var(--pale); }
+  code { background: #f0f3f7; border-radius: 3px; padding: .1em .28em; overflow-wrap: anywhere; }
+  pre { background: #f0f3f7; padding: 1em; overflow-x: auto; border-left: 3px solid var(--blue); }
+  a { color: #174b9a; }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 3em 0; }
+  @media print { html { background: #fff; } body { max-width: none; margin: 0; padding: 12mm; box-shadow: none; font-size: 10pt; } h1, h2, h3 { break-after: avoid; } table, tr { break-inside: avoid; } a { color: inherit; text-decoration: none; } }
+  @media (max-width: 800px) { body { margin: 0; padding: 22px; } table { display: block; overflow-x: auto; } }
   </style>
 </head>
 <body>
-<main>
-  <p class="meta">Проверка материалов и результатов на 27 сентября 2026 года</p>
-  <h1>SecureCode AI</h1>
-  <p class="lead">Локальный прототип аудита безопасности Python, JavaScript, TypeScript и Go с детерминированными инструментами, локальной LLM, проверяемыми свидетельствами и контролируемым предложением исправлений.</p>
-  <div class="callout"><strong>Итог:</strong> проект реализует значительную часть требуемого прототипа и содержит воспроизводимые эксперименты. Реальный вызов квантованной локальной Qwen завершился обнаружением кандидата, но не созданием патча. Бенчмарк не показывает преимущество над Semgrep. Полный тестовый прогон текущего дерева не прошёл, поэтому этот комплект нельзя представлять как полностью проверенный релиз или доказательство превосходства LLM.</div>
-
-  <h2>Что делает система</h2>
-  <div class="architecture" aria-label="Поток анализа">
-    <div>Локальный Git checkout<br>точная ревизия</div><span class="arrow">→</span>
-    <div>AST, правила, секреты,<br>зависимости и локальная LLM</div><span class="arrow">→</span>
-    <div>Finding и CWE,<br>Auditor / Architect, evidence</div>
-  </div>
-  <p>Предлагаемое исправление хранится отдельно от исходного checkout. В продуктовой реализации есть контролируемая валидация, approval, отчёты и CLI/API для CI. Это прототип, не готовый корпоративный SaaS и не подтверждённый production deployment.</p>
-
-  <h2>Фактический запуск локальной модели</h2>
-  <div class="grid">
-    <div class="card"><strong>Runtime</strong>Ollama 0.34.4, локальный loopback</div>
-    <div class="card"><strong>Модель</strong>qwen2.5-coder:7b-instruct-q4_K_M, Q4_K_M</div>
-    <div class="card"><strong>SHA-256 digest</strong><code>dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364</code></div>
-    <div class="card"><strong>Передача исходника</strong><code>http://127.0.0.1:11434/v1</code>, облачные API не использовались</div>
-  </div>
-  <p>На одном локальном Python-примере модель вернула один CWE-89 кандидат на строке 4; детерминированный поиск также вернул один сигнал, расположения совпали. Запрос на генерацию исправления дошёл до локальной модели, но ответ не содержал принятого patch-кандидата.</p>
-  <table>
-    <thead><tr><th>Проверка</th><th>Результат текущего локального прогона</th></tr></thead>
-    <tbody>
-      <tr><td>Обнаружение моделью</td><td>Выполнено: 1 кандидат CWE-89, файл <code>app.py</code>, строка 4</td></tr>
-      <tr><td>Согласие с детерминированным поиском</td><td>Сигнал найден обоими путями, локация совпала</td></tr>
-      <tr><td>Патч предложен</td><td>Нет: <code>NOT_PROPOSED</code></td></tr>
-      <tr><td>Применимость патча</td><td>Не оценивалась, принятого diff нет</td></tr>
-      <tr><td>Синтаксическая проверка патча</td><td>Не запускалась, патч не предложен</td></tr>
-      <tr><td>Проверка тестами безопасности</td><td>Не запускалась</td></tr>
-      <tr><td>Изменение исходного checkout</td><td>Нет</td></tr>
-      <tr><td>Вердикт продукта</td><td><code>INDETERMINATE</code>, product pass не заявлен</td></tr>
-    </tbody>
-  </table>
-  <p>Обезличенная квитанция: <a href="submission-benchmark/evidence/current-real-local-p917.json">current-real-local-p917.json</a>. Предыдущий отдельный учебный прогон на Ollama 0.16.2 сохранил предложенный patch, ephemeral parse/rescan завершились успешно, исходный checkout не менялся. Он не проверял поведенческую безопасность и не заменяет нынешний прогон; эти исторические данные находятся в <a href="m-a2026/evidence/p917-real-local/p917-local-demo.json">архивной квитанции M-A2026</a>.</p>
-
-<h3>Установленный product CLI</h3>
-  <p>Отдельно выполнена команда <code>uv run --locked --offline --no-sync securecode scan demo/fixtures/real-local-cwe89 --format json --output tmp/final-real-product-scan-20260927.json</code>. В процессе не было переменных <code>SECURECODE_*</code>, <code>DEEPSEEK_*</code>, <code>OPENAI_*</code> или <code>OLLAMA_*</code>. CLI вернул код 3 и сообщение <code>analysis result is indeterminate</code>; файл отчёта не появился. Этот запуск не является успешным полным аудитом, а квитанция не подтверждает отдельный вызов модели в установленном pipeline. Обезличенное наблюдение: <a href="submission-benchmark/evidence/current-real-product-cli-scan.json">current-real-product-cli-scan.json</a>.</p>
-
-<h2>Классификация наблюдаемого сигнала</h2>
-  <p>Сигнал CWE-89 в <code>app.py:4</code> относится по существующему taxonomy mapping к OWASP Top 10 2021, <code>A03:2021 Injection</code>. Это классификация сигнала, а не подтверждённая уязвимость: итог локального прогона остаётся <code>INDETERMINATE</code>. Продуктовый receipt пока не формирует эту OWASP-категорию автоматически; она показана здесь как классификация текущего наблюдения.</p>
-
-  <h2>Эксперименты на публичном корпусе</h2>
-  <p>В манифесте 600 файловых ревизий CVEfixes v1.0.8: по 200 на Python, JavaScript/TypeScript и Go; 300 lineage-групп и сплиты 240/120/240 без перехода пары между split. Исходники набора в репозиторий не включены. Воспроизводимый анализ использует seed <code>20260927</code> и 5&nbsp;000 парных bootstrap итераций.</p>
-  <table>
-    <thead><tr><th>Конфигурация</th><th>Завершение</th><th>Precision</th><th>Recall</th><th>F1</th><th>Статус результата</th></tr></thead>
-    <tbody>
-      <tr><td>Deterministic only</td><td>347/600, 253 ошибки</td><td>49.2%</td><td>19.7%</td><td>28.1%</td><td>Архивированный результат прежнего кандидата</td></tr>
-      <tr><td>DeepSeek model-native</td><td>600/600, 3 повтора</td><td>50.5%</td><td>16.8%</td><td>25.2%</td><td>Архивированные прямые классификации</td></tr>
-      <tr><td>DeepSeek one-shot</td><td>600/600, 3 повтора</td><td>52.0%</td><td>22.7%</td><td>31.6%</td><td>Архивированные прямые классификации</td></tr>
-      <tr><td>Full hybrid</td><td>347/600; 253 scanner failures</td><td>49.9%</td><td>32.0%</td><td>39.0%</td><td>Производная парная композиция, не запуск полного pipeline</td></tr>
-      <tr><td>Semgrep 1.177.0</td><td>600/600</td><td>50.0%</td><td>34.3%</td><td>40.7%</td><td>Скоринг одной строки из трёх идентичных повторов</td></tr>
-    </tbody>
-  </table>
-  <p>На held-out split recall full hybrid равен 27.8%, Semgrep 32.5%; разница −4.7 процентного пункта, парный 95% интервал от −13.9 до +4.7 п.п. включает ноль. Hybrid не лучше Semgrep в этом эксперименте. Прямые DeepSeek-ответы не проходили полный SecureCode pipeline с EvidenceGraph, Auditor, Skeptic, валидацией и итоговым verdict. Выполненного исследования генерации патчей на всём корпусе нет.</p>
-  <p>Benchmark aggregate привязан к immutable source manifest прежнего кандидата и не пересчитывался на текущем дереве. Показанные метрики остаются архивными и не являются замером текущего кода.</p>
-  <p>Подробные знаменатели, метрики по языкам и CWE, хеши и ограничения приведены в <a href="submission-benchmark/README.md">benchmark README</a>, <a href="submission-benchmark/report.html">HTML-отчёте экспериментов</a>, <a href="submission-benchmark/aggregate.json">машиночитаемом агрегате</a> и <a href="submission-benchmark/stratified-metrics.csv">таблице срезов</a>.</p>
-
-  <h2>Готовность по требованиям</h2>
-  <table>
-    <thead><tr><th>Требование</th><th>Статус</th><th>Доказательство или ограничение</th></tr></thead>
-    <tbody>
-      <tr><td>GitHub/GitLab repository link and open access</td><td class="partial">Частично</td><td>Репозиторий GitHub открыт для публичного доступа. Обновлённые материалы подготовлены локально; доставка текущего кандидата в удалённую ветку ещё не подтверждена.</td></tr>
-      <tr><td>Воспроизводимость по README на чистой среде</td><td class="partial">Частично</td><td>Архив v10 распакован в чистый временный каталог; <code>uv sync --locked --offline --group quality</code>, 140 продуктовых тестов, offline P4 demo и live Qwen P9.17 demo повторены. Полный pytest не завершился с итоговым счётом. Docker backend собран и запущен на Cloud.ru; внутренняя HTTPS-проверка готовности успешна. Сквозной онлайн-аудит пока не подтверждён.</td></tr>
-      <tr><td>Локальная квантованная LLM</td><td class="partial">Частично</td><td>Реальная Qwen Q4_K_M на Ollama 0.34.4 обнаружила CWE-89. Текущий локальный прогон не создал patch.</td></tr>
-      <tr><td>Роли Auditor и Architect</td><td class="partial">Частично</td><td><code>packages/core/.../auditor.py</code>, <code>architect.py</code> и оркестрация имеются. Реальный прогон P9.17 не подтверждает их полное взаимодействие.</td></tr>
-      <tr><td>AST, секреты, зависимости, проверка кода</td><td class="partial">Частично</td><td>Адаптеры и валидация присутствуют. Полный реальный прогон всех инструментов одним сценарием не зафиксирован.</td></tr>
-      <tr><td>Локальный репозиторий и языки</td><td class="partial">Частично</td><td>Поддержка Python, JS/TS и Go реализована; текущая модельная демонстрация только на Python. Scanner завершился лишь на 347 из 600 кейсов.</td></tr>
-      <tr><td>Единый контракт файла, строк, фрагмента и CWE</td><td class="partial">Частично</td><td><code>FindingCase</code> хранит путь, интервал строк, CWE и ссылку на EvidenceGraph. Фрагмент можно запросить через ограниченный evidence tool, но в едином finding/receipt поле фрагмента нет; обезличенный P9.17 receipt его не содержит.</td></tr>
-      <tr><td>Генерация diff-патча</td><td class="partial">Частично</td><td>Architect умеет создавать отдельный patch artifact; в текущем real-local прогоне Qwen не предложила diff, статус <code>NOT_PROPOSED</code>.</td></tr>
-      <tr><td>Offline reference validation</td><td class="partial">Частично</td><td>В P4 receipt у vulnerable fixture один CWE-89 signal, у safe control ноль; валидация сообщает ноль сигналов на ephemeral candidate, а исходный checkout не менялся. Это узкая проверка pinned rule и не доказывает syntax correctness или security regression; <code>product_outcome=NOT_EVALUATED</code>.</td></tr>
-      <tr><td>Применимость текущего патча</td><td class="partial">Частично</td><td>Патча нет, поэтому применимость не оценивалась, <code>NOT_EVALUATED</code>. Исторический reference-патч в отдельном offline demo не является результатом текущего real-local прогона.</td></tr>
-      <tr><td>Синтаксическая корректность патча</td><td class="partial">Частично</td><td>В текущем прогоне парсинг неприменим, <code>NOT_APPLICABLE</code>, поскольку patch не был предложен.</td></tr>
-      <tr><td>Прохождение security regression</td><td class="partial">Частично</td><td>Тест безопасности патча не запускался, <code>NOT_RUN</code>; успешный результат не заявляется.</td></tr>
-      <tr><td>OWASP Top 10 в отчёте аудита</td><td class="partial">Частично</td><td>Этот отчёт относит наблюдаемый сигнал CWE-89 к A03:2021 Injection по существующему mapping. Сервис пока не сериализует OWASP-категорию в текущий продуктовый receipt автоматически.</td></tr>
-       <tr><td>README на русском и английском, зависимости, тесты</td><td class="partial">Частично</td><td>README, <code>pyproject.toml</code>, <code>uv.lock</code> и тесты есть. Целевой продуктовый набор прошёл 140 тестов; полный pytest не завершился в пятиминутное окно инструмента и итогового счёта нет. Общий canonical quality preflight остаётся FAIL.</td></tr>
-      <tr><td>Демонстрационный notebook</td><td class="ok">Выполнено</td><td>Python-ячейки обоих ноутбуков исполнены в этом проходе; M-A2026 notebook читает текущую redacted квитанцию Qwen.</td></tr>
-      <tr><td>Итоговый HTML с экспериментами и ограничениями</td><td class="ok">Выполнено</td><td>Этот отчёт плюс подробный benchmark HTML. В них явно указаны реальные результаты и ограничения.</td></tr>
-      <tr><td>Ссылки на данные и воспроизводимость</td><td class="ok">Выполнено</td><td><a href="https://zenodo.org/records/13118970">CVEfixes v1.0.8</a>, source-free manifest, скрипт построения и фиксированный seed агрегатора. Лицензии исходных репозиториев требуют отдельной проверки.</td></tr>
-       <tr><td>Веб-сервис, Docker и инструкция</td><td class="partial">Частично</td><td>ASGI API, non-root Dockerfiles с healthcheck и инструкция есть. <code>docker-compose -f deploy/docker/compose.yaml config --quiet</code> проходит с 54 временными placeholder-переменными. На этом хосте доступен standalone Docker Compose v5.5.1, но нет команды <code>docker compose</code>. Образы не собраны, сервисы не запущены. Browser dashboard отсутствует.</td></tr>
-       <tr><td>Сценарий и запись скринкаста на 2–5 минут</td><td class="partial">Частично</td><td>Подготовлен сценарий на 3 минуты; видеофайл не записан.</td></tr>
-    </tbody>
-  </table>
-
-  <h2>Проверки и ограничения</h2>
-  <ul>
-    <li>Офлайн reference demo завершается с одним сигналом уязвимого Python fixture и нулём у safe control. Это узкая демонстрация, не оценка точности продукта.</li>
-    <li>Последний полный canonical quality был FAIL: Ruff format, lint и mypy полного дерева не прошли, поэтому unit-stage был пропущен. Целевой продуктовый набор на текущих байтах прошёл 140 тестов, включая portfolio pipeline и отчёты; Ruff format/check и mypy прошли на восьми изменённых production/test файлах. Полный pytest не завершился в пятиминутное окно инструмента и итогового счёта нет. Архивный benchmark не пересчитывался, поскольку текущий worktree отличается от замороженного кандидата.</li>
-    <li>Архивный M-A2026 пакет показывает NOT_READY. Он не обновлён под все изменения рабочего дерева.</li>
-    <li>Репозиторий приватный, публичная лицензия не выбрана. Доступ проверяющему и правила индивидуальной сдачи требуют решения владельца.</li>
-  </ul>
-
-  <h2>Материалы</h2>
-  <ul>
-    <li><a href="../README.md">README и запуск проекта</a></li>
-    <li><a href="submission-benchmark/evidence/current-real-local-p917.json">Обезличенная квитанция текущего локального запуска</a></li>
-    <li><a href="../site/cwe89-demo.html">HTML reference demo</a></li>
-    <li><a href="../notebooks/m_a2026_submission.ipynb">Учебный notebook</a></li>
-    <li><a href="../deploy/docker/README.md">Docker Compose инструкция</a></li>
-    <li><a href="../docs/SUBMISSION_VIDEO_SCRIPT.md">Сценарий скринкаста</a></li>
-    <li><a href="../site/benchmark.pdf">PDF отчёт benchmark</a></li>
-  </ul>
-  <footer>Подготовлено по содержимому текущего рабочего дерева. Репозиторий не опубликован, проект автоматически не отправлялся. Метрики и статусы не предполагают отсутствующие evidence.</footer>
-</main>
+<header id="title-block-header">
+<h1 class="title">SecureCode AI: итоговый отчёт</h1>
+</header>
+<p><em>Состояние на 29 сентября 2026 года. Исходное задание: <a
+href="../docs/PROJECT_BRIEF.md">docs/PROJECT_BRIEF.md</a>.</em></p>
+<h2 id="постановка-задачи">1. Постановка задачи</h2>
+<p>Статические анализаторы (SAST) работают по жёстким правилам, дают
+много ложных срабатываний и не понимают контекст, а отправлять приватный
+код в публичные облачные API нельзя. Цель проекта — прототип
+<strong>локального</strong> ассистента, который:</p>
+<ul>
+<li>загружает исходный код Python/JavaScript/Go из локального
+репозитория;</li>
+<li>анализирует его набором инструментов на базе
+<code>ast</code>/<code>tree-sitter</code> (AST, секреты, уязвимые
+зависимости, валидация кода);</li>
+<li>с помощью мультиагентной системы на локальной квантованной LLM
+находит уязвимости (агент <strong>Аудитор</strong>) и предлагает
+безопасные исправления (агент <strong>Архитектор</strong>);</li>
+<li>выдаёт отчёт <code>.md</code>/<code>.html</code> с классификацией по
+OWASP Top 10 и готовыми diff-патчами.</li>
+</ul>
+<h2 id="решение">2. Решение</h2>
+<pre class="text"><code>Git-снимок (точная ревизия, Python / JS / Go)
+        │
+        ├── детерминированный lane: CST/AST, 30+ CWE-сканеров, секреты, зависимости (OSV)
+        └── модельный lane: Аудитор на LLM ищет уязвимости независимо от сканеров
+        │
+        ▼
+  EvidenceGraph (единый контракт) → Аудитор → Скептик → решение по находке
+        │
+        ▼
+  Архитектор: patch → проверка в эфемерной копии (парсинг, повторный скан)
+        │
+        ▼
+  Отчёт: JSON / SARIF / Markdown / HTML с OWASP Top 10 и diff</code></pre>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Модуль задания</th>
+<th>Реализация</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Загрузка данных</td>
+<td><code>native_sources.py</code>: чтение файлов из неизменяемого
+Git-снимка, определение языка, лимиты</td>
+</tr>
+<tr>
+<td>Tools Library</td>
+<td><code>cst_python.py</code>, <code>cst_ecmascript.py</code>,
+<code>cst_go.py</code> (AST и таблицы символов); поиск секретов в
+<code>secret_detection.py</code> и смежных модулях;
+<code>dependency_scanning*.py</code> (pip/npm/Go, OSV);
+<code>local_repair_validation.py</code>; 30+ CWE-сканеров</td>
+</tr>
+<tr>
+<td>Единый контракт</td>
+<td><code>packages/contracts</code>: <code>Evidence</code>,
+<code>SourceLocation</code> (файл, строки, SHA-256),
+<code>DiscoveryCandidate</code>, <code>FindingCase</code> (CWE ID); JSON
+Schema в <code>contracts/schemas</code></td>
+</tr>
+<tr>
+<td>Оркестратор агентов</td>
+<td><code>product_audit.py</code>, <code>product_review*.py</code>:
+Аудитор, Скептик, бюджеты и tool-сессии; демо
+<code>demo/p917_real_local_demo.py</code></td>
+</tr>
+<tr>
+<td>Auto-Fix</td>
+<td>Архитектор выдаёт unified diff; патч проверяется во временной копии
+и никогда не применяется к исходному checkout</td>
+</tr>
+<tr>
+<td>Отчёты</td>
+<td><code>reports_render.py</code> (MD/HTML/SARIF с OWASP),
+<code>security-report.md/.html</code> демо</td>
+</tr>
+</tbody>
+</table>
+<p>Модель подключается через OpenAI-совместимый интерфейс. Основной
+вариант — локальная <strong>Qwen 2.5 Coder 7B Instruct, квантование
+Q4_K_M</strong> в Ollama 0.34.4 (только loopback, digest модели
+проверяется до и после вызова). Второй вариант — DeepSeek по отдельно
+одобренному владельцем профилю с лимитом расходов; условия хранения
+данных у провайдера не проверены, поэтому этот путь предназначен только
+для кода, который можно раскрыть.</p>
+<h2 id="эксперименты-и-метрики">3. Эксперименты и метрики</h2>
+<h3 id="сквозной-прогон-аудитор-архитектор">3.1. Сквозной прогон Аудитор
+→ Архитектор</h3>
+<p>Фикстура с SQL-инъекцией
+(<code>demo/fixtures/real-local-cwe89</code>). Аудитор ищет уязвимость
+независимо от сканера; при совпадении Архитектор предлагает patch,
+который проверяется в эфемерной копии.</p>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+<col style="width: 16%" />
+</colgroup>
+<thead>
+<tr>
+<th>Модель</th>
+<th>Итог</th>
+<th>Находка</th>
+<th>Патч</th>
+<th>Проверка патча</th>
+<th>Стоимость</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen 2.5 Coder 7B Q4_K_M (Ollama, локально)</td>
+<td><code>COMPLETED</code></td>
+<td>CWE-89, <code>app.py:5</code>, A03:2021 Injection, совпала со
+сканером</td>
+<td>параметризованный запрос</td>
+<td>парсинг OK, повторный скан 0 сигналов,
+<code>git apply --check</code> OK</td>
+<td>локально</td>
+</tr>
+<tr>
+<td>DeepSeek Flash</td>
+<td><code>COMPLETED</code></td>
+<td>то же</td>
+<td>то же</td>
+<td>то же</td>
+<td>2 вызова, $0.00014</td>
+</tr>
+</tbody>
+</table>
+<p>Квитанции: <a
+href="submission-benchmark/evidence/current-real-local-p917.json">current-real-local-p917.json</a>,
+<a
+href="submission-benchmark/evidence/current-deepseek-p917.json">current-deepseek-p917.json</a>.
+Исходный код и сырой ответ модели в квитанции не попадают.</p>
+<h3 id="инструменты-на-демо-проекте">3.2. Инструменты на
+демо-проекте</h3>
+<p><a
+href="../notebooks/securecode_demo.ipynb">notebooks/securecode_demo.ipynb</a>
+(сохранён с выводами) на проекте из <code>app.py</code>,
+<code>server.js</code>, <code>main.go</code> и
+<code>requirements.txt</code>: найдены захардкоженный пароль (значение
+скрыто), CWE-798, SQL-инъекция и CWE-306 в JS, 10 известных уязвимостей
+<code>requests==2.19.0</code> по данным OSV.</p>
+<h3 id="бенчмарк-на-600-кейсах-cvefixes">3.3. Бенчмарк на 600 кейсах
+CVEfixes</h3>
+<p>600 файловых ревизий CVEfixes v1.0.8 (<a
+href="https://zenodo.org/records/13118970">Zenodo</a>): по 200 на
+Python, JavaScript/TypeScript и Go, 300 пар «уязвимая / исправленная
+версия», сплиты 240/120/240 без пересечения пар. Интервалы —
+lineage-cluster bootstrap, 5 000 итераций, seed 20260927.</p>
+<table>
+<thead>
+<tr>
+<th>Конфигурация</th>
+<th style="text-align: right;">Завершено</th>
+<th style="text-align: right;">Precision</th>
+<th style="text-align: right;">Recall</th>
+<th style="text-align: right;">F1</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Детерминированные сканеры</td>
+<td style="text-align: right;">508/600</td>
+<td style="text-align: right;">49.0%</td>
+<td style="text-align: right;">25.7%</td>
+<td style="text-align: right;">33.7%</td>
+</tr>
+<tr>
+<td>DeepSeek, прямая классификация</td>
+<td style="text-align: right;">600/600</td>
+<td style="text-align: right;">50.5%</td>
+<td style="text-align: right;">16.8%</td>
+<td style="text-align: right;">25.2%</td>
+</tr>
+<tr>
+<td>DeepSeek, one-shot</td>
+<td style="text-align: right;">600/600</td>
+<td style="text-align: right;">52.0%</td>
+<td style="text-align: right;">22.7%</td>
+<td style="text-align: right;">31.6%</td>
+</tr>
+<tr>
+<td>Hybrid (сканеры ∪ DeepSeek)</td>
+<td style="text-align: right;">508/600</td>
+<td style="text-align: right;">49.9%</td>
+<td style="text-align: right;">35.8%</td>
+<td style="text-align: right;">41.7%</td>
+</tr>
+<tr>
+<td>Semgrep 1.177.0</td>
+<td style="text-align: right;">600/600</td>
+<td style="text-align: right;">50.0%</td>
+<td style="text-align: right;">34.3%</td>
+<td style="text-align: right;">40.7%</td>
+</tr>
+</tbody>
+</table>
+<p>На held-out части recall hybrid 32.8% против 32.5% у Semgrep; разница
++0.3 п.п., 95% интервал от −8.9 до +10.0 п.п. включает ноль.
+<strong>Hybrid на уровне Semgrep, превосходство не доказано.</strong>
+Исправление сравнения узлов tree-sitter и дефектов Go-сканеров подняло
+recall детерминированного lane с 19.7% до 25.7% и сократило число сбоев
+сканера с 253 до 92 (оставшиеся — непарсящиеся файлы: Python 2,
+фрагменты JS). Precision всех конфигураций около 50%: корпус состоит из
+пар одного файла до и после исправления, и файловый детектор часто
+срабатывает на обе версии. Подробности: <a
+href="submission-benchmark/report.html">отчёт бенчмарка</a>.</p>
+<h3 id="качество-кода">3.4. Качество кода</h3>
+<p><code>scripts/quality.py</code> и CI на Python 3.12–3.14: ruff
+format/lint, mypy для Linux и Windows, 3292 теста (unit и интеграционные
+тесты демо), покрытие ядра не ниже 80%, проверка секретов и
+зависимостей.</p>
+<h2 id="соответствие-заданию">4. Соответствие заданию</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Требование</th>
+<th>Статус</th>
+<th>Где / как проверить</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Локальная квантованная LLM</td>
+<td>выполнено</td>
+<td>Qwen Q4_K_M в Ollama;
+<code>quickstart.py --demo --provider local</code></td>
+</tr>
+<tr>
+<td>Мультиагентность: Аудитор и Архитектор</td>
+<td>выполнено</td>
+<td>демо P9.17 (оба агента на живой модели); продуктовый конвейер
+Аудитор → Скептик → решение покрыт интеграционными тестами</td>
+</tr>
+<tr>
+<td>Tools: AST, секреты, уязвимые версии библиотек, валидация кода</td>
+<td>выполнено</td>
+<td>notebook, раздел 2; <code>local_repair_validation.py</code></td>
+</tr>
+<tr>
+<td>Загрузчик Python/JS/Go</td>
+<td>выполнено</td>
+<td><code>native_sources.py</code>; notebook (находки в <code>.py</code>
+и <code>.js</code>)</td>
+</tr>
+<tr>
+<td>Единый контракт: код, CWE ID, строки</td>
+<td>выполнено</td>
+<td><code>packages/contracts</code>, JSON Schema; notebook, раздел
+3</td>
+</tr>
+<tr>
+<td>Auto-Fix в формате diff</td>
+<td>выполнено</td>
+<td><code>model-proposed.patch</code> в выводе демо;
+<code>git apply --check</code></td>
+</tr>
+<tr>
+<td>Отчёт .md/.html с OWASP Top 10</td>
+<td>выполнено</td>
+<td><code>security-report.md/.html</code> демо</td>
+</tr>
+<tr>
+<td>Документация (README ru/en)</td>
+<td>выполнено</td>
+<td><a href="../README.md">README</a></td>
+</tr>
+<tr>
+<td>Unit-тесты</td>
+<td>выполнено</td>
+<td><code>tests/unit</code>, <code>scripts/quality.py</code>, CI</td>
+</tr>
+<tr>
+<td>Notebook с прогоном аудита</td>
+<td>выполнено</td>
+<td><code>notebooks/securecode_demo.ipynb</code></td>
+</tr>
+<tr>
+<td>Файл зависимостей</td>
+<td>выполнено</td>
+<td><code>pyproject.toml</code>, <code>uv.lock</code></td>
+</tr>
+<tr>
+<td>Итоговый отчёт с метриками</td>
+<td>выполнено</td>
+<td>этот отчёт, <a
+href="submission-benchmark/report.html">бенчмарк</a></td>
+</tr>
+<tr>
+<td>Dockerfile и инструкция</td>
+<td>выполнено для демо</td>
+<td><code>deploy/docker/demo.Dockerfile</code>,
+<code>quickstart.py --demo</code>; полный стек сервер + worker
+(<code>--up</code>) на Linux не перепроверялся</td>
+</tr>
+<tr>
+<td>Датасеты ссылками</td>
+<td>выполнено</td>
+<td>CVEfixes на Zenodo; в репозитории только манифест без
+исходников</td>
+</tr>
+<tr>
+<td>Скринкаст 2–5 минут</td>
+<td>есть, устарел</td>
+<td><code>docs/media/securecode-demo.mp4</code> (4:12) снят до
+исправлений 29 сентября</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ограничения">5. Ограничения</h2>
+<ul>
+<li>Модельная демонстрация охватывает одно правило (CWE-89 в Python);
+общего вердикта о безопасности репозитория она не даёт.</li>
+<li>Патч проверяется парсингом и повторным сканированием, но не
+поведенческими тестами.</li>
+<li>Бенчмарк оценивает файловую классификацию; модельные конфигурации —
+прямые запросы к DeepSeek, а не полный конвейер с Аудитором и Скептиком.
+Hybrid — парная композиция сохранённых результатов, а не отдельный
+прогон.</li>
+<li>92 из 600 кейсов не анализируются сканерами (непарсящийся код); они
+учтены как незавершённые, а не как «чистые».</li>
+<li>Precision около 50% ограничивает практическую пользу без доработки
+детекторов.</li>
+<li>Полный <code>securecode scan</code> требует защищённого одобрения
+хоста; для проверяющего предназначены демо и notebook.</li>
+</ul>
+<h2 id="выводы">6. Выводы</h2>
+<p>Прототип закрывает требования задания: локальная квантованная модель
+в роли Аудитора и Архитектора находит SQL-инъекцию, предлагает
+параметризованный запрос, патч проверяется и попадает в отчёт с OWASP
+Top 10; инструменты анализа покрывают AST, секреты, уязвимые зависимости
+и три языка. Тот же сценарий работает на облачной модели без изменений
+кода. На публичном корпусе комбинация сканеров и LLM достигает уровня
+Semgrep по recall, но не превосходит его статистически значимо; главные
+направления развития — точность детекторов, покрытие непарсящегося кода
+и оценка полного агентного конвейера на корпусе.</p>
+<h2 id="воспроизведение">7. Воспроизведение</h2>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/shorinversion/securecode-ai <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> securecode-ai</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> deploy/docker/quickstart.py <span class="at">--demo</span>                   <span class="co"># нужен только Docker</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> deploy/docker/quickstart.py <span class="at">--demo</span> <span class="at">--provider</span> local  <span class="co"># uv + Ollama, модель скачается</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run <span class="at">--with</span> nbconvert <span class="at">--with</span> ipykernel jupyter nbconvert <span class="at">--to</span> notebook <span class="at">--execute</span> notebooks/securecode_demo.ipynb</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run <span class="at">--locked</span> python <span class="at">-I</span> scripts/quality.py                <span class="co"># линтеры, типы, тесты</span></span></code></pre></div>
 </body>
 </html>

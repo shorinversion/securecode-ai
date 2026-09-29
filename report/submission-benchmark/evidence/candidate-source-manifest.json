@@ -625,14 +625,14 @@
     "sha256": "5ff19f01a0fef9cd89653ecf00be23febe86afcbf58a268fd766f99caa5b3a83"
   },
   {
-    "bytes": 45590,
+    "bytes": 46204,
     "path": "apps/server/src/securecode_ai/server/scm_completion.py",
-    "sha256": "762641b5ab0d46113b7e3dc148ea8ee426aff33fee953475ee9e75c5ef45b8b3"
+    "sha256": "450161f315a78b1de93f2b666652d982be527155aa64ac06d1f25bf4d8b571c0"
   },
   {
-    "bytes": 12074,
+    "bytes": 12787,
     "path": "apps/server/src/securecode_ai/server/scm_completion_models.py",
-    "sha256": "f19444c9f882c8ff17ad01e633f98a65293e1fd2b42142d1950a8fb04af181e7"
+    "sha256": "1a67a4157389fe18ed0490ccafdf830577dd187a2475443bff2538f482505d52"
   },
   {
     "bytes": 1099,
@@ -1055,9 +1055,9 @@
     "sha256": "48bb8ece70977832e661a3a78aedae0d227b38381f898a8566e2e7b277db3c4e"
   },
   {
-    "bytes": 22480,
+    "bytes": 22551,
     "path": "packages/adapters/src/securecode_ai/adapters/dependency_scanning.py",
-    "sha256": "02ba697d593937c533048ccd87ceec60a738d6c8767e7079d16f9ce7ed15fe42"
+    "sha256": "163b09b01e9cd1887766d77322529f98cefab6e6a8e75656c5f09e9d1bfb0542"
   },
   {
     "bytes": 9686,
@@ -1080,9 +1080,9 @@
     "sha256": "ccadc318dc2285e383f41be665aace2cd07e62c8790f9f8a65b71c9553333507"
   },
   {
-    "bytes": 13722,
+    "bytes": 14118,
     "path": "packages/adapters/src/securecode_ai/adapters/dependency_scanning_osv.py",
-    "sha256": "e969c46fc7adef1dc9eab9f7bb6d1e237e9ce3ab19a1e6861eb40c83036364b4"
+    "sha256": "b95ffd229a7840e773f2e3b6ad00f91405111a1bbcadcfc0339996eba28b1c0e"
   },
   {
     "bytes": 18416,
