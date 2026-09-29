@@ -5,8 +5,8 @@
     "seed": 20260927
   },
   "candidate_source_files": 603,
-  "candidate_source_manifest_sha256": "d12e34b2623a0747c1800aab344fb72dd34ef9f68e95609dc5653c20621939b1",
-  "created_at_utc": "2026-09-27T08:02:56+00:00",
+  "candidate_source_manifest_sha256": "68ca86f9aea78c94a80b820a0e761901f008aac6ffd7aad18c7b6662e972e384",
+  "created_at_utc": "2026-09-29T15:41:29+00:00",
   "dataset": {
     "cases": 600,
     "content_sha256": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
@@ -26,11 +26,11 @@
   },
   "input_sha256": {
     "cvefixes-manifest.json": "82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c",
-    "deepseek-full-hybrid-600x3.json": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
+    "deepseek-full-hybrid-600x3.json": "8212f5870c3cb110d9fef07240bc001fec96ee3b8f287f08237604ceb2239bf2",
     "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
     "deepseek-one-shot-600x3.json": "5b567b6493d2e20437acd6b5efde02c83c7b21ef34fc2b23c4bf84235ca8b467",
-    "deepseek-scanner-seeded-600x1.json": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8",
-    "deterministic-600x1.json": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
+    "deepseek-scanner-seeded-600x1.json": "7564a777171db65dc15757acfbf3d35cc0c3f554d005620eb99ce8e6da6bf3c1",
+    "deterministic-600x1.json": "bbeecd39e71f30a8332832e8f8b07a4ee2cda8c9d564d00e1576b1be2f700927",
     "semgrep-600x3.json": "209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6"
   },
   "lanes": {
@@ -40,26 +40,26 @@
       "cells": 600,
       "cluster_bootstrap_95_percentile_intervals": {
         "f1": [
-          0.23076923076923075,
-          0.3257918552036199
+          0.2904761904761905,
+          0.3788187372708757
         ],
         "precision": [
-          0.47368421052631576,
-          0.5076923076923077
+          0.47530864197530864,
+          0.5033557046979866
         ],
         "recall": [
-          0.15,
-          0.24333333333333335
+          0.20666666666666667,
+          0.30666666666666664
         ]
       },
-      "completed_cases": 347,
-      "completed_cells": 347,
-      "completion_rate": 0.5783333333333334,
-      "f1": 0.28095238095238095,
-      "failed_cells": 253,
-      "false_positives_per_kloc": 0.12297717664562614,
-      "fn": 241,
-      "fp": 61,
+      "completed_cases": 508,
+      "completed_cells": 508,
+      "completion_rate": 0.8466666666666667,
+      "f1": 0.336980306345733,
+      "failed_cells": 92,
+      "false_positives_per_kloc": 0.1612815431418048,
+      "fn": 223,
+      "fp": 80,
       "kloc_denominator": 496.027,
       "latency_call_count": 0,
       "latency_p50_ms": null,
@@ -67,21 +67,21 @@
       "localization_rate": 0.0,
       "localized_vulnerable_cells": 0,
       "output_file": "deterministic-600x1.json",
-      "output_sha256": "27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf",
-      "precision": 0.49166666666666664,
+      "output_sha256": "bbeecd39e71f30a8332832e8f8b07a4ee2cda8c9d564d00e1576b1be2f700927",
+      "precision": 0.49044585987261147,
       "provenance": "fresh",
       "ram_measurements_present": false,
       "raw_output_cells": 600,
-      "recall": 0.19666666666666666,
+      "recall": 0.25666666666666665,
       "regression_observations": 0,
       "scored_repetitions": 1,
       "status_counts": {
-        "completed": 347,
-        "scanner-failed": 253
+        "completed": 508,
+        "scanner-failed": 92
       },
-      "tn": 239,
+      "tn": 220,
       "tokens": 0,
-      "tp": 59,
+      "tp": 77,
       "unsafe_patch_observations": 0,
       "vram_measurements_present": false,
       "vulnerable_cells": 300
@@ -92,26 +92,26 @@
       "cells": 1800,
       "cluster_bootstrap_95_percentile_intervals": {
         "f1": [
-          0.3465703971119134,
-          0.42975206611570244
+          0.3751705320600273,
+          0.4538322269161134
         ],
         "precision": [
-          0.47884940778341795,
-          0.5187376725838264
+          0.48125,
+          0.5165876777251185
         ],
         "recall": [
-          0.2677777777777778,
-          0.37333333333333335
+          0.30333333333333334,
+          0.41333333333333333
         ]
       },
-      "completed_cases": 347,
-      "completed_cells": 1041,
-      "completion_rate": 0.5783333333333334,
-      "f1": 0.3899796885578876,
-      "failed_cells": 759,
-      "false_positives_per_kloc": 0.19420985819992326,
-      "fn": 612,
-      "fp": 289,
+      "completed_cases": 508,
+      "completed_cells": 1524,
+      "completion_rate": 0.8466666666666667,
+      "f1": 0.4168284789644013,
+      "failed_cells": 276,
+      "false_positives_per_kloc": 0.21705807681167893,
+      "fn": 578,
+      "fp": 323,
       "kloc_denominator": 1488.081,
       "latency_call_count": 1800,
       "latency_p50_ms": 980.5,
@@ -119,21 +119,21 @@
       "localization_rate": 0.0,
       "localized_vulnerable_cells": 0,
       "output_file": "deepseek-full-hybrid-600x3.json",
-      "output_sha256": "e826ea8b32102564e3e4b74bf4d08de513b84b7bb3f5cff4d13452aeb2108424",
-      "precision": 0.49913344887348354,
+      "output_sha256": "8212f5870c3cb110d9fef07240bc001fec96ee3b8f287f08237604ceb2239bf2",
+      "precision": 0.4992248062015504,
       "provenance": "paired-derived",
       "ram_measurements_present": false,
       "raw_output_cells": 1800,
-      "recall": 0.32,
+      "recall": 0.35777777777777775,
       "regression_observations": 0,
       "scored_repetitions": 3,
       "status_counts": {
-        "completed": 1041,
-        "scanner-failed": 759
+        "completed": 1524,
+        "scanner-failed": 276
       },
-      "tn": 611,
+      "tn": 577,
       "tokens": 17044488,
-      "tp": 288,
+      "tp": 322,
       "unsafe_patch_observations": 0,
       "vram_measurements_present": false,
       "vulnerable_cells": 900
@@ -242,52 +242,52 @@
     },
     "scanner_seeded": {
       "cases": 600,
-      "cell_cost_usd": 0.178044,
+      "cell_cost_usd": 0.212641,
       "cells": 600,
       "cluster_bootstrap_95_percentile_intervals": {
         "f1": [
-          0.0445859872611465,
-          0.12462908011869436
+          0.07339449541284404,
+          0.16201117318435754
         ],
         "precision": [
-          0.4230769230769231,
-          0.5789473684210527
+          0.42105263157894735,
+          0.5555555555555556
         ],
         "recall": [
-          0.023333333333333334,
-          0.07
+          0.04,
+          0.09666666666666666
         ]
       },
-      "completed_cases": 347,
-      "completed_cells": 347,
-      "completion_rate": 0.5783333333333334,
-      "f1": 0.08536585365853659,
-      "failed_cells": 253,
-      "false_positives_per_kloc": 0.028224270049815838,
-      "fn": 286,
-      "fp": 14,
+      "completed_cases": 508,
+      "completed_cells": 508,
+      "completion_rate": 0.8466666666666667,
+      "f1": 0.11730205278592375,
+      "failed_cells": 92,
+      "false_positives_per_kloc": 0.042336405074723756,
+      "fn": 280,
+      "fp": 21,
       "kloc_denominator": 496.027,
-      "latency_call_count": 120,
-      "latency_p50_ms": 1063.5,
+      "latency_call_count": 157,
+      "latency_p50_ms": 1053.0,
       "latency_p95_ms": 1687.0,
       "localization_rate": 0.0,
       "localized_vulnerable_cells": 0,
       "output_file": "deepseek-scanner-seeded-600x1.json",
-      "output_sha256": "7c9e9d9de79fc3bc3374db1040470942bbee73658b01a3eb467459b1fcf2f7e8",
-      "precision": 0.5,
+      "output_sha256": "7564a777171db65dc15757acfbf3d35cc0c3f554d005620eb99ce8e6da6bf3c1",
+      "precision": 0.4878048780487805,
       "provenance": "paired-derived",
       "ram_measurements_present": false,
       "raw_output_cells": 600,
-      "recall": 0.04666666666666667,
+      "recall": 0.06666666666666667,
       "regression_observations": 0,
       "scored_repetitions": 1,
       "status_counts": {
-        "completed": 347,
-        "scanner-failed": 253
+        "completed": 508,
+        "scanner-failed": 92
       },
-      "tn": 286,
-      "tokens": 1183396,
-      "tp": 14,
+      "tn": 279,
+      "tokens": 1412946,
+      "tp": 20,
       "unsafe_patch_observations": 0,
       "vram_measurements_present": false,
       "vulnerable_cells": 300
@@ -358,22 +358,22 @@
     "all": {
       "bootstrap_iterations": 5000,
       "cluster_bootstrap_95_percentile_interval": [
-        -0.0822222222222222,
-        0.03222222222222221
+        -0.04444444444444445,
+        0.07
       ],
       "comparison": "full_hybrid minus semgrep recall",
-      "observed_difference": -0.023333333333333317,
+      "observed_difference": 0.014444444444444426,
       "paired_lineage_groups": 300,
       "seed": 20260927
     },
     "held-out": {
       "bootstrap_iterations": 5000,
       "cluster_bootstrap_95_percentile_interval": [
-        -0.13888888888888892,
-        0.04722222222222222
+        -0.0888888888888889,
+        0.09999999999999998
       ],
       "comparison": "full_hybrid minus semgrep recall",
-      "observed_difference": -0.04722222222222222,
+      "observed_difference": 0.002777777777777768,
       "paired_lineage_groups": 120,
       "seed": 20260927
     }

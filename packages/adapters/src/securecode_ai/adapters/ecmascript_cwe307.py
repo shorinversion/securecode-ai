@@ -835,7 +835,7 @@ def _decorators(node: Node) -> tuple[Node, ...]:
 
 def _nested_function(node: Node, handler: Node) -> bool:
     parent = node.parent
-    while parent is not None and parent is not handler:
+    while parent is not None and parent != handler:
         if parent.type in _FUNCTION_TYPES:
             return True
         parent = parent.parent

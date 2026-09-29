@@ -332,9 +332,7 @@ def _python_scope_calls(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[
     stack: list[ast.AST] = list(reversed(scope.body))
     while stack:
         node = stack.pop()
-        if node is not scope and isinstance(
-            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
-        ):
+        if node != scope and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             continue
         if isinstance(node, ast.Call):
             calls.append(node)
@@ -402,7 +400,7 @@ def _python_latest_assignment(
     stack: list[ast.AST] = list(reversed(scope.body))
     while stack:
         node = stack.pop()
-        if node is not scope and isinstance(
+        if node != scope and isinstance(
             node,
             (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef),
         ):

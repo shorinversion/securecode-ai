@@ -485,8 +485,9 @@ control-plane database или SCM write credentials.
   171 model cell завершилась fail-closed ошибкой structured output. Это
   диагностический результат, не release benchmark.
 - Расширенный submission benchmark на 600 кейсах: deterministic scanner завершил
-  347 кейсов и ошибся на 253. Derived hybrid получил 27.8% recall на held-out
-  против 32.5% у Semgrep; это не полный SecureCode pipeline и не доказательство
+  508 кейсов и ошибся на 92 (непарсящиеся файлы). Derived hybrid получил 32.8%
+  recall на held-out против 32.5% у Semgrep (интервал включает ноль, то есть
+  на уровне SAST); это не полный SecureCode pipeline и не доказательство
   преимущества над SAST. Подробный двуязычный отчёт, метрики по языкам/CWE,
   ошибки и SHA-256 находятся в [submission benchmark](report/submission-benchmark/README.md).
 - Архивные benchmark-метрики привязаны к source manifest прежнего кандидата и не
@@ -1096,8 +1097,9 @@ Read [data classification](specs/security/data-classification.md),
   failed closed on structured output. It is a diagnostic study, not a release
   benchmark.
 - An expanded 600-case submission benchmark is recorded separately. The
-  deterministic scanner completed 347 cases and failed on 253. Derived hybrid
-  recall is 27.8% on held-out versus 32.5% for Semgrep. This is not the complete
+  deterministic scanner completed 508 cases and failed on 92 (unparseable files).
+  Derived hybrid recall is 32.8% on held-out versus 32.5% for Semgrep (the
+  interval includes zero, so on par with SAST). This is not the complete
   SecureCode pipeline and does not demonstrate superiority over SAST. See the
   [bilingual report](report/submission-benchmark/README.md) for stratified
   metrics, failure counts and hashes.

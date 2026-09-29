@@ -842,7 +842,7 @@ def _resource_calls(
 ) -> tuple[tuple[Node, EcmaScriptCwe306Operation], ...]:
     result: list[tuple[Node, EcmaScriptCwe306Operation]] = []
     for node in _walk_nodes(function):
-        if node is function or node.type != "call_expression" or _nested_function(node, function):
+        if node == function or node.type != "call_expression" or _nested_function(node, function):
             continue
         target = node.child_by_field_name("function")
         if target is None:
@@ -993,7 +993,7 @@ def _walk_nodes(root: Node) -> tuple[Node, ...]:
 
 def _nested_function(node: Node, function: Node) -> bool:
     parent = node.parent
-    while parent is not None and parent is not function:
+    while parent is not None and parent != function:
         if parent.type in _FUNCTION_TYPES:
             return True
         parent = parent.parent

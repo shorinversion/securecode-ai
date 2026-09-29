@@ -59,7 +59,7 @@ def _preorder(root: Node) -> tuple[Node, ...]:
 
 
 def _lexical_scopes(root: Node, callable_types: frozenset[str]) -> tuple[Node, ...]:
-    return tuple(node for node in _preorder(root) if node is root or node.type in callable_types)
+    return tuple(node for node in _preorder(root) if node == root or node.type in callable_types)
 
 
 def _scope_preorder(scope: Node, callable_types: frozenset[str]) -> tuple[Node, ...]:
@@ -68,7 +68,7 @@ def _scope_preorder(scope: Node, callable_types: frozenset[str]) -> tuple[Node, 
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and node.type in callable_types:
+        if node != scope and node.type in callable_types:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(output)
