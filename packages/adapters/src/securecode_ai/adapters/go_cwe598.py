@@ -29,20 +29,45 @@ _DETECTOR = "securecode-go-cwe598@1.0"
 _DETAIL = "sensitive_value_in_url_query"
 _HTTP_PACKAGE = "net/http"
 _URL_PACKAGE = "net/url"
-_HTTP_METHODS = frozenset({"Delete", "Get", "Head", "Options", "Patch", "Post", "Put", "NewRequest", "NewRequestWithContext"})
+_HTTP_METHODS = frozenset(
+    {
+        "Delete",
+        "Get",
+        "Head",
+        "Options",
+        "Patch",
+        "Post",
+        "Put",
+        "NewRequest",
+        "NewRequestWithContext",
+    }
+)
 _REDIRECTS = frozenset({"Redirect", "RedirectHandler"})
 _URL_QUERY_METHODS = frozenset({"QueryEscape", "Values.Encode"})
 _GO_SCOPES = frozenset({"function_declaration", "method_declaration", "func_literal"})
 _VALUE_KIND = "pass" + "word"
 _QUERY_KIND = "api" + "_" + "key"
 _SENSITIVE_WORDS = {
-    "pass" + "word": _VALUE_KIND, "passwd": _VALUE_KIND, "passphrase": _VALUE_KIND,
-    "token": "auth_token", "accesstoken": "auth_token", "refreshtoken": "auth_token",
-    "authtoken": "auth_token", "bearertoken": "auth_token", "idtoken": "auth_token",
-    "jwt": "auth_token", "authorization": "auth_token", "credential": "auth_token",
-    "credentials": "auth_token", "session": "session_id", "sessionid": "session_id",
-    "sessionkey": "session_id", "sessiontoken": "session_id", "apikey": _QUERY_KIND,
-    "client" + ("sec" + "ret"): _QUERY_KIND, "sec" + "ret": _QUERY_KIND,
+    "pass" + "word": _VALUE_KIND,
+    "passwd": _VALUE_KIND,
+    "passphrase": _VALUE_KIND,
+    "token": "auth_token",
+    "accesstoken": "auth_token",
+    "refreshtoken": "auth_token",
+    "authtoken": "auth_token",
+    "bearertoken": "auth_token",
+    "idtoken": "auth_token",
+    "jwt": "auth_token",
+    "authorization": "auth_token",
+    "credential": "auth_token",
+    "credentials": "auth_token",
+    "session": "session_id",
+    "sessionid": "session_id",
+    "sessionkey": "session_id",
+    "sessiontoken": "session_id",
+    "apikey": _QUERY_KIND,
+    "client" + ("sec" + "ret"): _QUERY_KIND,
+    "sec" + "ret": _QUERY_KIND,
 }
 
 
@@ -81,7 +106,10 @@ class GoCwe598ScanLimits:
 
     def __post_init__(self) -> None:
         values = (self.max_source_bytes, self.max_signals, self.max_expression_depth)
-        if any(type(value) is not int or value < 1 or value > ceiling for value, ceiling in zip(values, _LIMITS, strict=True)):
+        if any(
+            type(value) is not int or value < 1 or value > ceiling
+            for value, ceiling in zip(values, _LIMITS, strict=True)
+        ):
             raise ValueError("Go CWE-598 scan limits are invalid")
 
 
@@ -117,12 +145,16 @@ class GoCwe598Signal:
 
     def __post_init__(self) -> None:
         identity_valid = (
-            type(self.repository_id) is str and bool(self.repository_id)
+            type(self.repository_id) is str
+            and bool(self.repository_id)
             and len(self.repository_id.encode("utf-8")) <= 1024
-            and type(self.revision) is str and _SHA1.fullmatch(self.revision) is not None
-            and type(self.path) is str and type(self.content_sha256) is str
+            and type(self.revision) is str
+            and _SHA1.fullmatch(self.revision) is not None
+            and type(self.path) is str
+            and type(self.content_sha256) is str
             and _SHA256.fullmatch(self.content_sha256) is not None
-            and type(self.source_size_bytes) is int and self.source_size_bytes >= 0
+            and type(self.source_size_bytes) is int
+            and self.source_size_bytes >= 0
             and self.sensitive_kind in {_VALUE_KIND, "auth_token", "session_id", _QUERY_KIND}
         )
         if identity_valid:
@@ -131,22 +163,38 @@ class GoCwe598Signal:
             except (TypeError, ValueError):
                 identity_valid = False
         ranges_valid = (
-            type(self.source) is SourceRange and type(self.sink) is SourceRange
+            type(self.source) is SourceRange
+            and type(self.sink) is SourceRange
             and self.source.end_byte <= self.source_size_bytes
             and self.sink.end_byte <= self.source_size_bytes
         )
         expected = (
-            _signal_id(self.repository_id, self.revision, self.path, self.content_sha256,
-                       self.source_size_bytes, self.source, self.sink, self.operation,
-                       self.sensitive_kind)
-            if identity_valid and ranges_valid and type(self.operation) is GoCwe598Operation else None
+            _signal_id(
+                self.repository_id,
+                self.revision,
+                self.path,
+                self.content_sha256,
+                self.source_size_bytes,
+                self.source,
+                self.sink,
+                self.operation,
+                self.sensitive_kind,
+            )
+            if identity_valid and ranges_valid and type(self.operation) is GoCwe598Operation
+            else None
         )
         signal_id = self.signal_id or expected
         if (
-            not identity_valid or not ranges_valid or type(self.operation) is not GoCwe598Operation
-            or type(signal_id) is not str or _SHA256.fullmatch(signal_id) is None
-            or signal_id != expected or self.rule_id != _RULE_ID or self.cwe != "CWE-598"
-            or self.detector != _DETECTOR or self.detail != _DETAIL
+            not identity_valid
+            or not ranges_valid
+            or type(self.operation) is not GoCwe598Operation
+            or type(signal_id) is not str
+            or _SHA256.fullmatch(signal_id) is None
+            or signal_id != expected
+            or self.rule_id != _RULE_ID
+            or self.cwe != "CWE-598"
+            or self.detector != _DETECTOR
+            or self.detail != _DETAIL
         ):
             raise ValueError("Go CWE-598 signal is invalid")
         if not self.signal_id:
@@ -183,29 +231,66 @@ class GoCwe598ScanResult:
 
     def __post_init__(self) -> None:
         identity_valid = (
-            type(self.repository_id) is str and bool(self.repository_id)
-            and type(self.revision) is str and _SHA1.fullmatch(self.revision) is not None
-            and type(self.path) is str and type(self.content_sha256) is str
+            type(self.repository_id) is str
+            and bool(self.repository_id)
+            and type(self.revision) is str
+            and _SHA1.fullmatch(self.revision) is not None
+            and type(self.path) is str
+            and type(self.content_sha256) is str
             and _SHA256.fullmatch(self.content_sha256) is not None
-            and type(self.source_size_bytes) is int and self.source_size_bytes >= 0
+            and type(self.source_size_bytes) is int
+            and self.source_size_bytes >= 0
         )
         if identity_valid:
             try:
                 RepositoryFile(self.path, self.source_size_bytes, self.content_sha256)
             except (TypeError, ValueError):
                 identity_valid = False
-        valid_signals = type(self.signals) is tuple and all(type(item) is GoCwe598Signal for item in self.signals)
-        order = tuple((s.sink.start_byte, s.sink.end_byte, s.source.start_byte, s.source.end_byte,
-                       s.operation.value, s.sensitive_kind) for s in self.signals) if valid_signals else ()
-        same_identity = all((s.repository_id, s.revision, s.path, s.content_sha256, s.source_size_bytes)
-                            == (self.repository_id, self.revision, self.path, self.content_sha256,
-                                self.source_size_bytes) for s in self.signals)
+        valid_signals = type(self.signals) is tuple and all(
+            type(item) is GoCwe598Signal for item in self.signals
+        )
+        order = (
+            tuple(
+                (
+                    s.sink.start_byte,
+                    s.sink.end_byte,
+                    s.source.start_byte,
+                    s.source.end_byte,
+                    s.operation.value,
+                    s.sensitive_kind,
+                )
+                for s in self.signals
+            )
+            if valid_signals
+            else ()
+        )
+        same_identity = all(
+            (s.repository_id, s.revision, s.path, s.content_sha256, s.source_size_bytes)
+            == (
+                self.repository_id,
+                self.revision,
+                self.path,
+                self.content_sha256,
+                self.source_size_bytes,
+            )
+            for s in self.signals
+        )
         if (
-            not identity_valid or not valid_signals or order != tuple(sorted(order))
-            or len({s.signal_id for s in self.signals}) != len(self.signals) or not same_identity
+            not identity_valid
+            or not valid_signals
+            or order != tuple(sorted(order))
+            or len({s.signal_id for s in self.signals}) != len(self.signals)
+            or not same_identity
             or _SHA256.fullmatch(self.scan_sha256) is None
-            or self.scan_sha256 != _scan_sha256(self.repository_id, self.revision, self.path,
-                                                self.content_sha256, self.source_size_bytes, self.signals)
+            or self.scan_sha256
+            != _scan_sha256(
+                self.repository_id,
+                self.revision,
+                self.path,
+                self.content_sha256,
+                self.source_size_bytes,
+                self.signals,
+            )
         ):
             raise ValueError("Go CWE-598 scan result is invalid")
 
@@ -233,8 +318,11 @@ def scan_go_cwe598(
     source = symbol_index.source
     try:
         rebuilt = build_go_symbol_index(
-            repository_id=symbol_index.repository_id, revision=symbol_index.revision,
-            path=symbol_index.path, content_sha256=symbol_index.content_sha256, source=source,
+            repository_id=symbol_index.repository_id,
+            revision=symbol_index.revision,
+            path=symbol_index.path,
+            content_sha256=symbol_index.content_sha256,
+            source=source,
         )
         if rebuilt != symbol_index:
             raise ValueError("index mismatch")
@@ -269,7 +357,9 @@ def scan_go_cwe598(
                     continue
                 operation, value_nodes = sink
                 for value_node in value_nodes:
-                    for flow in _resolve(value_node, env, query_values, source, imports, limits, 0, frozenset()):
+                    for flow in _resolve(
+                        value_node, env, query_values, source, imports, limits, 0, frozenset()
+                    ):
                         if flow.in_query:
                             raw.add((flow.source, _range(node), operation, flow.kind))
                             if len(raw) > limits.max_signals:
@@ -279,24 +369,50 @@ def scan_go_cwe598(
     except Exception:
         raise GoCwe598ScanError(GoCwe598ScanErrorCode.INTEGRITY_FAILURE) from None
 
-    ordered = tuple(sorted(raw, key=lambda item: (item[1].start_byte, item[1].end_byte,
-                                                   item[0].start_byte, item[0].end_byte,
-                                                   item[2].value, item[3])))
+    ordered = tuple(
+        sorted(
+            raw,
+            key=lambda item: (
+                item[1].start_byte,
+                item[1].end_byte,
+                item[0].start_byte,
+                item[0].end_byte,
+                item[2].value,
+                item[3],
+            ),
+        )
+    )
     if len(ordered) > limits.max_signals:
         raise GoCwe598ScanError(GoCwe598ScanErrorCode.SIGNAL_LIMIT)
-    signals = tuple(GoCwe598Signal(
-        repository_id=symbol_index.repository_id, revision=symbol_index.revision,
-        path=symbol_index.path, content_sha256=symbol_index.content_sha256,
-        source_size_bytes=symbol_index.source_byte_length, source=item[0], sink=item[1],
-        operation=item[2], sensitive_kind=item[3],
-    ) for item in ordered)
+    signals = tuple(
+        GoCwe598Signal(
+            repository_id=symbol_index.repository_id,
+            revision=symbol_index.revision,
+            path=symbol_index.path,
+            content_sha256=symbol_index.content_sha256,
+            source_size_bytes=symbol_index.source_byte_length,
+            source=item[0],
+            sink=item[1],
+            operation=item[2],
+            sensitive_kind=item[3],
+        )
+        for item in ordered
+    )
     return GoCwe598ScanResult(
-        repository_id=symbol_index.repository_id, revision=symbol_index.revision,
-        path=symbol_index.path, content_sha256=symbol_index.content_sha256,
-        source_size_bytes=symbol_index.source_byte_length, signals=signals,
-        scan_sha256=_scan_sha256(symbol_index.repository_id, symbol_index.revision,
-                                 symbol_index.path, symbol_index.content_sha256,
-                                 symbol_index.source_byte_length, signals),
+        repository_id=symbol_index.repository_id,
+        revision=symbol_index.revision,
+        path=symbol_index.path,
+        content_sha256=symbol_index.content_sha256,
+        source_size_bytes=symbol_index.source_byte_length,
+        signals=signals,
+        scan_sha256=_scan_sha256(
+            symbol_index.repository_id,
+            symbol_index.revision,
+            symbol_index.path,
+            symbol_index.content_sha256,
+            symbol_index.source_byte_length,
+            signals,
+        ),
     )
 
 
@@ -311,8 +427,14 @@ def _validate_request(symbol_index: SymbolIndex, limits: GoCwe598ScanLimits) -> 
         raise GoCwe598ScanError(GoCwe598ScanErrorCode.ANALYSIS_UNAVAILABLE)
 
 
-def _capture_assignment(node: Node, env: dict[str, tuple[_Flow, ...]], query_values: set[str],
-                        source: bytes, imports: dict[str, str], limits: GoCwe598ScanLimits) -> None:
+def _capture_assignment(
+    node: Node,
+    env: dict[str, tuple[_Flow, ...]],
+    query_values: set[str],
+    source: bytes,
+    imports: dict[str, str],
+    limits: GoCwe598ScanLimits,
+) -> None:
     left = node.child_by_field_name("left")
     right = node.child_by_field_name("right")
     if node.type == "var_spec":
@@ -320,8 +442,8 @@ def _capture_assignment(node: Node, env: dict[str, tuple[_Flow, ...]], query_val
     if left is None or right is None:
         return
     lhs = left.named_children if left.type in {"expression_list", "identifier_list"} else [left]
-    rhs = right.named_children if right.type in {"expression_list", "expression_list"} else [right]
-    for target, value in zip(lhs, rhs):
+    rhs = right.named_children if right.type in {"expression_list"} else [right]
+    for target, value in zip(lhs, rhs, strict=False):
         if target.type != "identifier":
             continue
         name = _text(source, target)
@@ -340,8 +462,14 @@ def _capture_assignment(node: Node, env: dict[str, tuple[_Flow, ...]], query_val
             env.pop(name, None)
 
 
-def _capture_query_setter(call: Node, env: dict[str, tuple[_Flow, ...]], query_values: set[str],
-                          source: bytes, imports: dict[str, str], limits: GoCwe598ScanLimits) -> None:
+def _capture_query_setter(
+    call: Node,
+    env: dict[str, tuple[_Flow, ...]],
+    query_values: set[str],
+    source: bytes,
+    imports: dict[str, str],
+    limits: GoCwe598ScanLimits,
+) -> None:
     function = call.child_by_field_name("function")
     arguments = call.child_by_field_name("arguments")
     if function is None or arguments is None or function.type != "selector_expression":
@@ -349,9 +477,13 @@ def _capture_query_setter(call: Node, env: dict[str, tuple[_Flow, ...]], query_v
     field = function.child_by_field_name("field")
     operand = function.child_by_field_name("operand")
     args = arguments.named_children
-    if (field is None or operand is None or len(args) < 2
-            or _text(source, field) not in {"Set", "Add"}
-            or _compact_text(source, operand) not in query_values):
+    if (
+        field is None
+        or operand is None
+        or len(args) < 2
+        or _text(source, field) not in {"Set", "Add"}
+        or _compact_text(source, operand) not in query_values
+    ):
         return
     key = _literal_text(source, args[0])
     kind = _sensitive_kind(key) if key is not None else None
@@ -366,8 +498,9 @@ def _capture_query_setter(call: Node, env: dict[str, tuple[_Flow, ...]], query_v
     env[receiver] = _dedupe((*env.get(receiver, ()), *flows), limits)
 
 
-def _sink_for_call(function: Node, args: list[Node], source: bytes, imports: dict[str, str],
-                   query_values: set[str]) -> tuple[GoCwe598Operation, tuple[Node, ...]] | None:
+def _sink_for_call(
+    function: Node, args: list[Node], source: bytes, imports: dict[str, str], query_values: set[str]
+) -> tuple[GoCwe598Operation, tuple[Node, ...]] | None:
     if function.type != "selector_expression":
         return None
     operand, field = function.child_by_field_name("operand"), function.child_by_field_name("field")
@@ -383,19 +516,35 @@ def _sink_for_call(function: Node, args: list[Node], source: bytes, imports: dic
         if name in _HTTP_METHODS:
             if name in {"NewRequest", "NewRequestWithContext"}:
                 url_index = 1 if name == "NewRequest" else 2
-                return (GoCwe598Operation.HTTP_REQUEST, (args[url_index],)) if len(args) > url_index else None
+                return (
+                    (GoCwe598Operation.HTTP_REQUEST, (args[url_index],))
+                    if len(args) > url_index
+                    else None
+                )
             return (GoCwe598Operation.HTTP_REQUEST, (args[0],)) if args else None
     if name in {"Set", "Add", "SetCanonical"} and args:
         receiver = _compact_text(source, operand)
         key = _literal_text(source, args[0])
-        if receiver.endswith("Header()") and key is not None and key.lower() == "location" and len(args) > 1:
+        if (
+            receiver.endswith("Header()")
+            and key is not None
+            and key.lower() == "location"
+            and len(args) > 1
+        ):
             return GoCwe598Operation.LOCATION_HEADER, (args[1],)
     return None
 
 
-def _resolve(node: Node, env: dict[str, tuple[_Flow, ...]], query_values: set[str], source: bytes,
-             imports: dict[str, str], limits: GoCwe598ScanLimits, depth: int,
-             visited: frozenset[str]) -> tuple[_Flow, ...]:
+def _resolve(
+    node: Node,
+    env: dict[str, tuple[_Flow, ...]],
+    query_values: set[str],
+    source: bytes,
+    imports: dict[str, str],
+    limits: GoCwe598ScanLimits,
+    depth: int,
+    visited: frozenset[str],
+) -> tuple[_Flow, ...]:
     if depth > limits.max_expression_depth:
         raise GoCwe598ScanError(GoCwe598ScanErrorCode.ANALYSIS_UNAVAILABLE)
     if node.type == "identifier":
@@ -417,7 +566,9 @@ def _resolve(node: Node, env: dict[str, tuple[_Flow, ...]], query_values: set[st
         args = args_node.named_children
         compact = _compact_text(source, function)
         qualified = _qualified_call(function, source, imports)
-        if qualified == "url.Values.Encode" or (compact.endswith(".Encode") and compact.rsplit(".", 1)[0] in query_values):
+        if qualified == "url.Values.Encode" or (
+            compact.endswith(".Encode") and compact.rsplit(".", 1)[0] in query_values
+        ):
             receiver = compact.rsplit(".", 1)[0]
             return tuple(_Flow(flow.source, flow.kind, True) for flow in env.get(receiver, ()))
         if compact.endswith(".Get") and args:
@@ -427,26 +578,62 @@ def _resolve(node: Node, env: dict[str, tuple[_Flow, ...]], query_values: set[st
             if kind and (receiver.endswith(".URL.Query()") or receiver in query_values):
                 return (_Flow(_range(node), kind),)
         if qualified == "url.QueryEscape" and args:
-            return tuple(_Flow(flow.source, flow.kind, flow.in_query) for flow in _resolve(
-                args[0], env, query_values, source, imports, limits, depth + 1, visited))
+            return tuple(
+                _Flow(flow.source, flow.kind, flow.in_query)
+                for flow in _resolve(
+                    args[0], env, query_values, source, imports, limits, depth + 1, visited
+                )
+            )
         if compact in {"fmt.Sprintf", "fmt.Appendf"} and args:
             return _format_flows(args, env, query_values, source, imports, limits, depth, visited)
         # A query key and its value must be visibly paired in this expression.
-        return _query_expression_flows(node, env, query_values, source, imports, limits, depth, visited)
+        return _query_expression_flows(
+            node, env, query_values, source, imports, limits, depth, visited
+        )
     if node.type == "binary_expression":
-        return _query_expression_flows(node, env, query_values, source, imports, limits, depth, visited)
-    if node.type in {"parenthesized_expression", "unary_expression", "selector_expression", "index_expression"}:
-        return _merge((_resolve(child, env, query_values, source, imports, limits, depth + 1, visited)
-                       for child in node.named_children), limits)
-    if node.type in {"composite_literal", "literal_value", "element_list", "keyed_element", "slice_expression"}:
-        return _merge((_resolve(child, env, query_values, source, imports, limits, depth + 1, visited)
-                       for child in node.named_children), limits)
+        return _query_expression_flows(
+            node, env, query_values, source, imports, limits, depth, visited
+        )
+    if node.type in {
+        "parenthesized_expression",
+        "unary_expression",
+        "selector_expression",
+        "index_expression",
+    }:
+        return _merge(
+            (
+                _resolve(child, env, query_values, source, imports, limits, depth + 1, visited)
+                for child in node.named_children
+            ),
+            limits,
+        )
+    if node.type in {
+        "composite_literal",
+        "literal_value",
+        "element_list",
+        "keyed_element",
+        "slice_expression",
+    }:
+        return _merge(
+            (
+                _resolve(child, env, query_values, source, imports, limits, depth + 1, visited)
+                for child in node.named_children
+            ),
+            limits,
+        )
     return ()
 
 
-def _query_expression_flows(node: Node, env: dict[str, tuple[_Flow, ...]], query_values: set[str],
-                            source: bytes, imports: dict[str, str], limits: GoCwe598ScanLimits,
-                            depth: int, visited: frozenset[str]) -> tuple[_Flow, ...]:
+def _query_expression_flows(
+    node: Node,
+    env: dict[str, tuple[_Flow, ...]],
+    query_values: set[str],
+    source: bytes,
+    imports: dict[str, str],
+    limits: GoCwe598ScanLimits,
+    depth: int,
+    visited: frozenset[str],
+) -> tuple[_Flow, ...]:
     children = _expression_leaves(node)
     result: list[_Flow] = []
     for index, child in enumerate(children[:-1]):
@@ -464,9 +651,16 @@ def _query_expression_flows(node: Node, env: dict[str, tuple[_Flow, ...]], query
     return _dedupe(result, limits)
 
 
-def _format_flows(args: list[Node], env: dict[str, tuple[_Flow, ...]], query_values: set[str],
-                  source: bytes, imports: dict[str, str], limits: GoCwe598ScanLimits,
-                  depth: int, visited: frozenset[str]) -> tuple[_Flow, ...]:
+def _format_flows(
+    args: list[Node],
+    env: dict[str, tuple[_Flow, ...]],
+    query_values: set[str],
+    source: bytes,
+    imports: dict[str, str],
+    limits: GoCwe598ScanLimits,
+    depth: int,
+    visited: frozenset[str],
+) -> tuple[_Flow, ...]:
     if len(args) < 2:
         return ()
     pattern = _literal_text(source, args[0])
@@ -478,7 +672,9 @@ def _format_flows(args: list[Node], env: dict[str, tuple[_Flow, ...]], query_val
         kind = _query_key_kind(segment)
         if not kind or index + 1 >= len(args) - 1:
             continue
-        for flow in _resolve(args[index + 1], env, query_values, source, imports, limits, depth + 1, visited):
+        for flow in _resolve(
+            args[index + 1], env, query_values, source, imports, limits, depth + 1, visited
+        ):
             result.append(_Flow(flow.source, kind, True))
     return _dedupe(result, limits)
 
@@ -512,19 +708,34 @@ def _sensitive_kind(value: str | None) -> str | None:
         if word in {"apikey", "sec" + "ret"}:
             return _QUERY_KIND
         if index + 1 < len(normalized) and (word, normalized[index + 1]) in {
-            ("api", "key"), ("client", "secret"), ("access", "token"),
-            ("refresh", "token"), ("auth", "token"), ("bearer", "token"),
-            ("session", "id"), ("session", "key"), ("session", "token"),
+            ("api", "key"),
+            ("client", "secret"),
+            ("access", "token"),
+            ("refresh", "token"),
+            ("auth", "token"),
+            ("bearer", "token"),
+            ("session", "id"),
+            ("session", "key"),
+            ("session", "token"),
         }:
-            return _QUERY_KIND if word in {"api", "client"} else "session_id" if word == "session" else "auth_token"
+            return (
+                _QUERY_KIND
+                if word in {"api", "client"}
+                else "session_id"
+                if word == "session"
+                else "auth_token"
+            )
     return None
 
 
 def _is_url_values(value: str, imports: dict[str, str]) -> bool:
     compact = value.replace(" ", "")
-    return any(package == _URL_PACKAGE and compact.startswith(f"{alias}.Values")
-               and compact[len(f"{alias}.Values"):].startswith("{")
-               for alias, package in imports.items())
+    return any(
+        package == _URL_PACKAGE
+        and compact.startswith(f"{alias}.Values")
+        and compact[len(f"{alias}.Values") :].startswith("{")
+        for alias, package in imports.items()
+    )
 
 
 def _expression_leaves(node: Node) -> tuple[Node, ...]:
@@ -599,49 +810,94 @@ def _dedupe(flows: Iterable[_Flow], limits: GoCwe598ScanLimits) -> tuple[_Flow, 
 
 
 def _merge(groups: Iterable[Iterable[_Flow]], limits: GoCwe598ScanLimits) -> tuple[_Flow, ...]:
-    unique = {(item.source.start_byte, item.source.end_byte, item.kind, item.in_query): item
-              for group in groups for item in group}
+    unique = {
+        (item.source.start_byte, item.source.end_byte, item.kind, item.in_query): item
+        for group in groups
+        for item in group
+    }
     if len(unique) > limits.max_signals:
         raise GoCwe598ScanError(GoCwe598ScanErrorCode.SIGNAL_LIMIT)
     return tuple(unique[key] for key in sorted(unique))
 
 
 def _range(node: Node) -> SourceRange:
-    return SourceRange(node.start_byte, node.end_byte,
-                       SourcePoint(node.start_point.row, node.start_point.column),
-                       SourcePoint(node.end_point.row, node.end_point.column))
+    return SourceRange(
+        node.start_byte,
+        node.end_byte,
+        SourcePoint(node.start_point.row, node.start_point.column),
+        SourcePoint(node.end_point.row, node.end_point.column),
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:
-    return {"start_byte": location.start_byte, "end_byte": location.end_byte,
-            "start_row": location.start_point.row, "start_column": location.start_point.column,
-            "end_row": location.end_point.row, "end_column": location.end_point.column}
+    return {
+        "start_byte": location.start_byte,
+        "end_byte": location.end_byte,
+        "start_row": location.start_point.row,
+        "start_column": location.start_point.column,
+        "end_row": location.end_point.row,
+        "end_column": location.end_point.column,
+    }
 
 
-def _signal_id(repository_id: str, revision: str, path: str, content_sha256: str,
-               source_size_bytes: int, source: SourceRange, sink: SourceRange,
-               operation: GoCwe598Operation, sensitive_kind: str) -> str:
-    payload = {"repository_id": repository_id, "revision": revision, "path": path,
-               "content_sha256": content_sha256, "source_size_bytes": source_size_bytes,
-               "source": _range_value(source), "sink": _range_value(sink),
-               "operation": operation.value, "sensitive_kind": sensitive_kind,
-               "rule_id": _RULE_ID, "detector": _DETECTOR}
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=True, sort_keys=True,
-                                     separators=(",", ":")).encode("ascii")).hexdigest()
+def _signal_id(
+    repository_id: str,
+    revision: str,
+    path: str,
+    content_sha256: str,
+    source_size_bytes: int,
+    source: SourceRange,
+    sink: SourceRange,
+    operation: GoCwe598Operation,
+    sensitive_kind: str,
+) -> str:
+    payload = {
+        "repository_id": repository_id,
+        "revision": revision,
+        "path": path,
+        "content_sha256": content_sha256,
+        "source_size_bytes": source_size_bytes,
+        "source": _range_value(source),
+        "sink": _range_value(sink),
+        "operation": operation.value,
+        "sensitive_kind": sensitive_kind,
+        "rule_id": _RULE_ID,
+        "detector": _DETECTOR,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
+            "ascii"
+        )
+    ).hexdigest()
 
 
-def _scan_sha256(repository_id: str, revision: str, path: str, content_sha256: str,
-                 source_size_bytes: int, signals: tuple[GoCwe598Signal, ...]) -> str:
-    payload = {"repository_id": repository_id, "revision": revision, "path": path,
-               "content_sha256": content_sha256, "source_size_bytes": source_size_bytes,
-               "rule_id": _RULE_ID, "detector": _DETECTOR,
-               "signals": [signal.signal_id for signal in signals]}
-    return hashlib.sha256(json.dumps(payload, ensure_ascii=True, sort_keys=True,
-                                     separators=(",", ":")).encode("ascii")).hexdigest()
+def _scan_sha256(
+    repository_id: str,
+    revision: str,
+    path: str,
+    content_sha256: str,
+    source_size_bytes: int,
+    signals: tuple[GoCwe598Signal, ...],
+) -> str:
+    payload = {
+        "repository_id": repository_id,
+        "revision": revision,
+        "path": path,
+        "content_sha256": content_sha256,
+        "source_size_bytes": source_size_bytes,
+        "rule_id": _RULE_ID,
+        "detector": _DETECTOR,
+        "signals": [signal.signal_id for signal in signals],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
+            "ascii"
+        )
+    ).hexdigest()
 
 
 def _text(source: bytes, node: Node) -> str:
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="strict")
+    return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -663,9 +919,18 @@ Cwe598Signal = GoCwe598Signal
 scan_go_cwe598_sensitive_url_data = scan_go_cwe598
 
 __all__ = [
-    "Cwe598ScanError", "Cwe598ScanErrorCode", "Cwe598ScanLimits", "Cwe598ScanResult",
-    "Cwe598Signal", "DEFAULT_GO_CWE598_SCAN_LIMITS", "GoCwe598Operation",
-    "GoCwe598ScanError", "GoCwe598ScanErrorCode", "GoCwe598ScanLimits",
-    "GoCwe598ScanResult", "GoCwe598Signal", "scan_go_cwe598",
+    "DEFAULT_GO_CWE598_SCAN_LIMITS",
+    "Cwe598ScanError",
+    "Cwe598ScanErrorCode",
+    "Cwe598ScanLimits",
+    "Cwe598ScanResult",
+    "Cwe598Signal",
+    "GoCwe598Operation",
+    "GoCwe598ScanError",
+    "GoCwe598ScanErrorCode",
+    "GoCwe598ScanLimits",
+    "GoCwe598ScanResult",
+    "GoCwe598Signal",
+    "scan_go_cwe598",
     "scan_go_cwe598_sensitive_url_data",
 ]

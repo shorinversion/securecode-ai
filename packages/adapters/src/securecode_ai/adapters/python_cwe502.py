@@ -212,24 +212,32 @@ class PythonCwe502ScanResult:
         valid_signals = type(self.signals) is tuple and all(
             type(item) is PythonCwe502Signal for item in self.signals
         )
-        order = tuple(
-            (
-                item.sink.start_byte,
-                item.sink.end_byte,
-                item.source.start_byte,
-                item.source.end_byte,
-                item.operation.value,
+        order = (
+            tuple(
+                (
+                    item.sink.start_byte,
+                    item.sink.end_byte,
+                    item.source.start_byte,
+                    item.source.end_byte,
+                    item.operation.value,
+                )
+                for item in self.signals
             )
-            for item in self.signals
-        ) if valid_signals else ()
-        same_identity = all(
-            item.repository_id == self.repository_id
-            and item.revision == self.revision
-            and item.path == self.path
-            and item.content_sha256 == self.content_sha256
-            and item.source_size_bytes == self.source_size_bytes
-            for item in self.signals
-        ) if valid_signals else False
+            if valid_signals
+            else ()
+        )
+        same_identity = (
+            all(
+                item.repository_id == self.repository_id
+                and item.revision == self.revision
+                and item.path == self.path
+                and item.content_sha256 == self.content_sha256
+                and item.source_size_bytes == self.source_size_bytes
+                for item in self.signals
+            )
+            if valid_signals
+            else False
+        )
         if (
             not valid_identity
             or not valid_signals
@@ -853,9 +861,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

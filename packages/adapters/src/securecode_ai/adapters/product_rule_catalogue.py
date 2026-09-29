@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
-
 # Keep this catalogue aligned with the rule IDs passed or constructed by
 # FirstPartyStaticWorker._fact_to_raw_signal.  The suffix form is the worker's
 # stable fallback for modules whose signal rule ID is not forwarded directly.

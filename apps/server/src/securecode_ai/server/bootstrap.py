@@ -5,9 +5,8 @@ from __future__ import annotations
 import os
 import re
 import secrets
-import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Final, Protocol
 
@@ -15,14 +14,13 @@ from securecode_ai.contracts import RunExecutionIdentity
 
 from .application import ServerApp, create_app
 from .approvals import ApprovalLedger
-from .backup_lifecycle import BackupLifecycleAdapter
 from .artifact_read import LocalCommittedArtifactReader
 from .artifact_store import LocalArtifactStore, TenantNamespacedArtifactStore
 from .artifact_upload import AuthorizedLocalArtifactUploadService
 from .artifact_upload_handler import ArtifactUploadHandler
 from .artifact_upload_verifier import LocalArtifactUploadVerifier
-from .assurance_repository import AssuranceRepository
 from .assurance_pins_source import build_assurance_pins_provider
+from .assurance_repository import AssuranceRepository
 from .assurance_service import AssuranceService
 from .assurance_verifiers import load_assurance_verifier_registry
 from .audit_log import AuditLog
@@ -32,6 +30,7 @@ from .auth_configuration import (
     build_oidc_verifier,
 )
 from .auth_runtime import CompositeIdentityVerifier
+from .backup_lifecycle import BackupLifecycleAdapter
 from .baseline_store import DurableBaselineStore
 from .bootstrap_identity import (
     BootstrapIdentity,
@@ -45,8 +44,10 @@ from .feedback_repository import FeedbackRepository
 from .feedback_service import FeedbackService
 from .finding_evidence import FindingEvidenceReader
 from .idempotency import SqliteRequestReplayStore
+from .oidc_login import OidcSourceRateLimitPort
 from .openapi import CAPABILITIES
 from .operations_audit import AuditTelemetryControlPlane
+from .operations_handler_backup import BackupScopeRepository
 from .operations_handler_evidence import (
     AssuranceOperationsHandler,
     FeedbackOperationsHandler,
@@ -56,23 +57,20 @@ from .operations_handler_governance import (
     LifecycleOperationsHandler,
     LifecycleScopeRepository,
 )
-from .operations_handler_backup import BackupScopeRepository
 from .operations_handler_waivers import WaiverOperationsHandler
 from .operations_runtime import build_operational_handlers
 from .operations_telemetry import OperationsTelemetry
-from .telemetry import build_request_telemetry
 from .persistence import DevelopmentRepository
 from .policy_operations import PolicyOperationsHandler
 from .policy_store import PolicyStore
-from .oidc_login import OidcSourceRateLimitPort
 from .ports import (
     ControlPlaneService,
     IdentityVerifier,
     VerifiedIdentity,
 )
 from .reloading_identity import ReloadingIdentityVerifier
-from .residency_registry import load_residency_registry
 from .request_quota import MAX_SPEND_MICROUNITS
+from .residency_registry import load_residency_registry
 from .resource_configuration import (
     TenantProvisioningResourceService,
     load_resource_configuration,
@@ -101,8 +99,8 @@ from .scm_policy_registry import (
     PolicyStoreScmPolicyResolver,
     load_scm_policy_registry,
 )
-from .scm_publication_store import SqliteSCMPublicationStore
 from .scm_publication_runtime import build_scm_publication_service
+from .scm_publication_store import SqliteSCMPublicationStore
 from .scm_reconciler import SCMPublicationReconciler
 from .scm_resolution import SCMRunResolutionHandler
 from .scm_runtime import build_scm_handlers
@@ -117,6 +115,8 @@ from .sqlite_database import (
 from .sqlite_rate_limiter import SqliteTenantTokenBucketRateLimiter
 from .sqlite_request_quota import SqliteQuotaLedger
 from .storage_executor import LocalArtifactStorageExecutor
+from .telemetry import build_request_telemetry
+from .waivers import WaiverLedger
 from .worker_artifact_authorization import (
     HmacSha256ArtifactReceiptSigner,
     SignedArtifactAuthorizationHandler,
@@ -130,7 +130,6 @@ from .worker_resource_accounting import (
     WorkerResourceAccountingService,
 )
 from .worker_resource_store import SqliteWorkerReservationBindingStore
-from .waivers import WaiverLedger
 
 _ID: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 
@@ -175,9 +174,7 @@ class _ConnectedRunIdentityResolverAdapter:
         operation = document.get("operation", "SCAN")
         if type(operation) is not str or operation not in {"SCAN", "REPAIR"}:
             raise ValueError("connected operation is invalid")
-        identity_document = {
-            key: value for key, value in document.items() if key != "operation"
-        }
+        identity_document = {key: value for key, value in document.items() if key != "operation"}
         resolved = self._resolver.resolve(
             authenticated_tenant_id=authenticated_tenant_id,
             document=identity_document,
@@ -576,7 +573,7 @@ def build_local_app(
         approval_ledger,
         connection=connection,
         refresh_verdict=(
-            scm_publisher.refresh_after_waiver if scm_publisher is not None else None
+            _waiver_verdict_refresher(scm_publisher) if scm_publisher is not None else None
         ),
     )
     lifecycle = LifecycleOperationsHandler(
@@ -601,16 +598,14 @@ def build_local_app(
         load_assurance_verifier_registry(values),
         assurance_pins_provider,
     )
-    operational_values = dict(values)
+    operational_values: dict[str, object] = dict(values)
     operational_values["_SECURECODE_INTERNAL_BACKUP_ARTIFACT_STORE"] = (
         TenantNamespacedArtifactStore(LocalArtifactStore(data_dir / "backup-records"))
     )
-    operational_values["_SECURECODE_INTERNAL_BACKUP_SCOPE_REPOSITORY"] = (
-        BackupScopeRepository(connection)
+    operational_values["_SECURECODE_INTERNAL_BACKUP_SCOPE_REPOSITORY"] = BackupScopeRepository(
+        connection
     )
-    operations = build_operational_handlers(
-        operational_values, connection, residency=residency
-    )
+    operations = build_operational_handlers(operational_values, connection, residency=residency)
     service: ControlPlaneService = CompositeService(
         core=RunAdmissionRoutingService(
             admission=admission,
@@ -756,9 +751,7 @@ def build_local_app(
             roles=frozenset({"artifact_uploader"}),
             workload=True,
         ),
-        background_reconcile=(
-            (scm_reconciler.trigger if scm_reconciler is not None else None)
-        ),
+        background_reconcile=(scm_reconciler.trigger if scm_reconciler is not None else None),
         shutdown_callback=shutdown_resources,
         capabilities=tuple(
             sorted(
@@ -768,6 +761,21 @@ def build_local_app(
             )
         ),
     )
+
+
+def _waiver_verdict_refresher(
+    publisher: SCMCompletionPublicationService,
+) -> Callable[[str, str, str], object]:
+    """Adapt the keyword-only publisher refresh to the waiver handler's positional port."""
+
+    def refresh(tenant_id: str, run_id: str, identity_hash: str) -> object:
+        return publisher.refresh_after_waiver(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            execution_identity_hash=identity_hash,
+        )
+
+    return refresh
 
 
 def _quota_integer(

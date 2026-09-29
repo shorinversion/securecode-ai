@@ -237,12 +237,7 @@ def _secret_fact_id(
     source span while exposing no value-derived identifier.
     """
 
-    if (
-        type(tenant_id) is not str
-        or not tenant_id
-        or type(ordinal) is not int
-        or ordinal < 0
-    ):
+    if type(tenant_id) is not str or not tenant_id or type(ordinal) is not int or ordinal < 0:
         raise ValueError("PRODUCT_SECRET_FACT_METADATA_INVALID")
     location = candidate.location
     material = (

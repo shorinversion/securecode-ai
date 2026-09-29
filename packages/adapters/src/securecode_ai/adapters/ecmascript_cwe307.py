@@ -63,7 +63,9 @@ _LIMITER_MODULES = frozenset(
         "@fastify/rate-limit",
     }
 )
-_ROUTE_METHODS = frozenset({"all", "delete", "get", "head", "options", "patch", "post", "put", "use"})
+_ROUTE_METHODS = frozenset(
+    {"all", "delete", "get", "head", "options", "patch", "post", "put", "use"}
+)
 _VERIFY_METHODS = frozenset(
     {
         "authenticate",
@@ -209,9 +211,7 @@ class EcmaScriptCwe307Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe307Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe307Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -381,7 +381,11 @@ def _scan_ecmascript_cwe307(
         raise EcmaScriptCwe307ScanError(EcmaScriptCwe307ScanErrorCode.SOURCE_LIMIT)
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe307ScanError(EcmaScriptCwe307ScanErrorCode.ANALYSIS_UNAVAILABLE)
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -420,12 +424,12 @@ def _scan_ecmascript_cwe307(
             candidate = _route_candidate(node, source, aliases, bindings)
             if candidate is None:
                 continue
-            handler, path, receiver, arguments = candidate
+            handler = candidate.handler
             if _route_is_limited(
                 node,
-                path,
-                receiver,
-                arguments,
+                candidate.path,
+                candidate.receiver,
+                candidate.arguments,
                 source,
                 aliases,
                 globally_limited,
@@ -450,10 +454,10 @@ def _scan_ecmascript_cwe307(
         for method in nodes:
             if method.type != "method_definition":
                 continue
-            candidate = _nest_candidate(method, source, aliases)
-            if candidate is None:
+            nest = _nest_candidate(method, source, aliases)
+            if nest is None:
                 continue
-            handler, limited = candidate
+            handler, limited = nest
             if limited:
                 continue
             verification = _find_password_verification(handler, source, aliases)
@@ -695,12 +699,9 @@ def _find_password_verification(
             _is_password_expression(argument, source, bindings, frozenset())
             for argument in arguments
         )
-        local_authenticate = (
-            leaf == "authenticate"
-            and any(
-                (_string_value(argument, source) or "").lower() in {"local", "password", "credentials"}
-                for argument in arguments
-            )
+        local_authenticate = leaf == "authenticate" and any(
+            (_string_value(argument, source) or "").lower() in {"local", "password", "credentials"}
+            for argument in arguments
         )
         if password_argument or _PASSWORD_NAME.search(leaf) or local_authenticate:
             return node
@@ -744,9 +745,13 @@ def _is_password_expression(
         if bound is not None:
             return _is_password_expression(bound, source, bindings, visited | {name})
     if current.type in {"member_expression", "subscript_expression"}:
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         object_node = current.child_by_field_name("object")
-        if property_node is not None and _PASSWORD_NAME.search(_compact_text(source, property_node)):
+        if property_node is not None and _PASSWORD_NAME.search(
+            _compact_text(source, property_node)
+        ):
             return True
         if object_node is not None and _is_credential_container(object_node, source):
             return True
@@ -782,7 +787,10 @@ def _nest_candidate(
             route_path = path or method_name
     if not has_route or not _LOGIN_WORDS.search(route_path or method_name):
         return None
-    limited = any(_is_limiter_decorator(item, source, aliases) for item in (*class_decorators, *method_decorators))
+    limited = any(
+        _is_limiter_decorator(item, source, aliases)
+        for item in (*class_decorators, *method_decorators)
+    )
     return method, limited
 
 
@@ -885,7 +893,7 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
             if item.type == "identifier":
                 aliases[_node_text(source, item)] = module
             elif item.type == "namespace_import":
-                names = item.named_children
+                names = tuple(item.named_children)
                 if names:
                     aliases[_node_text(source, names[-1])] = module
             elif item.type in {"named_imports", "named_import"}:
@@ -906,7 +914,9 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
 def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) -> str | None:
     current = _unwrap(node)
     if current.type in {"call_expression", "new_expression"}:
-        function = current.child_by_field_name("function") or current.child_by_field_name("constructor")
+        function = current.child_by_field_name("function") or current.child_by_field_name(
+            "constructor"
+        )
         arguments = current.child_by_field_name("arguments")
         if function is None:
             return None
@@ -918,7 +928,9 @@ def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) ->
         return _canonical_expression(function, source, aliases)
     if current.type in {"member_expression", "subscript_expression"}:
         base = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         if base is None or property_node is None:
             named = tuple(current.named_children)
             if len(named) < 2:
@@ -975,18 +987,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe307ScanError(
-            EcmaScriptCwe307ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe307ScanError(EcmaScriptCwe307ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe307ScanError(
-            EcmaScriptCwe307ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe307ScanError(EcmaScriptCwe307ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:

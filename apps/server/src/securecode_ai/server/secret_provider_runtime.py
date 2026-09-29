@@ -21,9 +21,7 @@ class SubprocessSecretProvider:
         self._process = process
 
     def supports_required_operations(self) -> bool:
-        response = self._process.request(
-            {"operation": "capabilities", "schema_version": 1}
-        )
+        response = self._process.request({"operation": "capabilities", "schema_version": 1})
         if (
             set(response) != {"operations", "schema_version", "status"}
             or not _schema_version_is_v1(response.get("schema_version"))

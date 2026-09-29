@@ -46,9 +46,13 @@ def _failure(status: int, *, dispatched: bool = False) -> GatewayReply:
         504,
     }:
         status = 502
-    if type(dispatched) is not bool:
-        dispatched = True
-    return GatewayReply(status, b'{"error":"gateway_request_unavailable"}', dispatched)
+    # Widen to ``object``: the runtime check guards untyped direct callers.
+    supplied_dispatched: object = dispatched
+    return GatewayReply(
+        status,
+        b'{"error":"gateway_request_unavailable"}',
+        supplied_dispatched if type(supplied_dispatched) is bool else True,
+    )
 
 
 def _exchange_request_sha256(method: str, path: str, body: bytes | None) -> str:

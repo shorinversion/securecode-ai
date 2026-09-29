@@ -47,6 +47,9 @@ class _FakeApi:
             raise AssertionError("unexpected additional request")
         return self._responses.pop(0)
 
+    def repository_path_for_id(self, installation_id: str, repository_id: str) -> str:
+        return "/repositories/" + repository_id
+
 
 def _head_response(status: int = 200, sha: str = HEAD) -> GitHubResponse:
     return GitHubResponse(
@@ -80,11 +83,15 @@ def _check_document(
         "external_id": external_id,
         "status": status,
         "conclusion": conclusion,
+        "output": dict(_OUTPUT),
     }
 
 
+_OUTPUT = {"title": "SecureCode AI summary", "summary": "No blocking findings."}
+
+
 def _projection() -> dict[str, object]:
-    return {"conclusion": "neutral", "output": {"title": "SecureCode AI summary"}}
+    return {"conclusion": "neutral", "output": dict(_OUTPUT)}
 
 
 def test_head_returns_exact_commit_sha() -> None:
@@ -137,7 +144,9 @@ def test_write_check_creates_check_run_when_head_matches() -> None:
         [
             _head_response(sha=HEAD),
             _listing_response([]),
+            _head_response(sha=HEAD),
             GitHubResponse(status=201, document=_check_document(), headers={}),
+            _head_response(sha=HEAD),
         ]
     )
     writer = GitHubWriter(api)  # type: ignore[arg-type]
@@ -152,7 +161,7 @@ def test_write_check_creates_check_run_when_head_matches() -> None:
     )
     assert receipt.status == "WRITTEN"
     assert receipt.remote_check_id == "777"
-    create = api.calls[2]
+    create = api.calls[3]
     assert create["method"] == "POST"
     assert create["path"] == repository_path(OWNER, REPO) + "/check-runs"
     assert create["idempotency_key"] == DELIVERY_KEY
@@ -171,7 +180,9 @@ def test_write_check_updates_existing_check_without_head_sha() -> None:
         [
             _head_response(sha=HEAD),
             _listing_response([existing]),
+            _head_response(sha=HEAD),
             GitHubResponse(status=200, document=existing, headers={}),
+            _head_response(sha=HEAD),
         ]
     )
     writer = GitHubWriter(api)  # type: ignore[arg-type]
@@ -186,7 +197,7 @@ def test_write_check_updates_existing_check_without_head_sha() -> None:
     )
     assert receipt.status == "WRITTEN"
     assert receipt.remote_check_id == "555"
-    update = api.calls[2]
+    update = api.calls[3]
     assert update["method"] == "PATCH"
     assert update["path"] == repository_path(OWNER, REPO) + "/check-runs/555"
     assert update["document"] is not None
@@ -370,6 +381,7 @@ def test_create_receipt_rejects_mismatched_check(document: Any) -> None:
         [
             _head_response(sha=HEAD),
             _listing_response([]),
+            _head_response(sha=HEAD),
             GitHubResponse(status=201, document=document, headers={}),
         ]
     )

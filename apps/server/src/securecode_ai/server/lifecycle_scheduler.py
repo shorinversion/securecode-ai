@@ -181,7 +181,7 @@ class ApprovedDeletionScheduler:
         try:
             cursor.execute(f"SAVEPOINT {_CLAIM_PURGE_SAVEPOINT}")
             active = True
-            changed = cursor.execute(
+            changed: int = cursor.execute(
                 """DELETE FROM lifecycle_scheduler_claims
                    WHERE rowid IN (
                        SELECT c.rowid

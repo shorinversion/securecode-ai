@@ -116,19 +116,24 @@ def _validate_input(
         )
     except UnicodeEncodeError:
         valid_repository_id = False
-    expected = {
-        "yarn.lock": DependencyManifestKind.YARN_LOCK,
-        "pnpm-lock.yaml": DependencyManifestKind.PNPM_LOCK,
-        "bun.lock": DependencyManifestKind.BUN_LOCK,
-        "bun.lockb": DependencyManifestKind.BUN_LOCK,
-    }.get(file.path.rsplit("/", 1)[-1]) if type(file) is RepositoryFile else None
+    expected = (
+        {
+            "yarn.lock": DependencyManifestKind.YARN_LOCK,
+            "pnpm-lock.yaml": DependencyManifestKind.PNPM_LOCK,
+            "bun.lock": DependencyManifestKind.BUN_LOCK,
+            "bun.lockb": DependencyManifestKind.BUN_LOCK,
+        }.get(file.path.rsplit("/", 1)[-1])
+        if type(file) is RepositoryFile
+        else None
+    )
     if (
         not valid_repository_id
         or type(revision) is not str
         or _REVISION.fullmatch(revision) is None
         or type(manifest) is not DependencyManifestEntry
         or manifest.ecosystem is not DependencyEcosystem.JAVASCRIPT
-        or manifest.kind not in {
+        or manifest.kind
+        not in {
             DependencyManifestKind.YARN_LOCK,
             DependencyManifestKind.PNPM_LOCK,
             DependencyManifestKind.BUN_LOCK,
@@ -260,7 +265,11 @@ def _yarn_selectors(raw: str) -> tuple[tuple[str, str], ...]:
     for part in parts:
         selector = _yarn_scalar(part)
         split = selector.rfind("@")
-        if split <= 0 or not _valid_npm_name(selector[:split]) or not _YARN_RANGE.fullmatch(selector[split + 1 :]):
+        if (
+            split <= 0
+            or not _valid_npm_name(selector[:split])
+            or not _YARN_RANGE.fullmatch(selector[split + 1 :])
+        ):
             raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
         entries[selector] = selector[:split]
     if not entries or len(entries) > 100:
@@ -295,14 +304,26 @@ def _parse_pnpm(source: bytes, limits: DependencyScanLimits) -> set[tuple[str, s
     if type(version) is not str or version not in {"6.0", "9.0"}:
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
     allowed = {
-        "lockfileVersion", "settings", "importers", "packages", "snapshots",
-        "dependencies", "devDependencies", "optionalDependencies", "specifiers",
-        "time", "neverBuiltDependencies", "onlyBuiltDependencies", "overrides",
-        "patchedDependencies", "packageExtensionsChecksum", "pnpmfileChecksum",
+        "lockfileVersion",
+        "settings",
+        "importers",
+        "packages",
+        "snapshots",
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "specifiers",
+        "time",
+        "neverBuiltDependencies",
+        "onlyBuiltDependencies",
+        "overrides",
+        "patchedDependencies",
+        "packageExtensionsChecksum",
+        "pnpmfileChecksum",
     }
-    if set(document) - allowed or type(document.get("packages")) is not dict:
+    package_records = document.get("packages")
+    if set(document) - allowed or type(package_records) is not dict:
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-    package_records = document["packages"]
     pins: set[tuple[str, str]] = set()
     for package_id, record in package_records.items():
         name, package_version = _pnpm_package_id(package_id, version)
@@ -432,7 +453,12 @@ def _strip_yaml_comment(value: str) -> str:
             depth -= 1
             if depth < 0:
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-        elif quote is None and depth == 0 and char == "#" and (index == 0 or value[index - 1].isspace()):
+        elif (
+            quote is None
+            and depth == 0
+            and char == "#"
+            and (index == 0 or value[index - 1].isspace())
+        ):
             return value[:index].rstrip()
     if quote is not None or depth != 0:
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
@@ -550,7 +576,16 @@ def _parse_bun(source: bytes, limits: DependencyScanLimits) -> set[tuple[str, st
         or type(document.get("workspaces")) is not dict
         or type(document.get("packages")) is not dict
         or set(document)
-        - {"lockfileVersion", "configVersion", "workspaces", "packages", "patchedDependencies", "overrides", "trustedDependencies", "peer"}
+        - {
+            "lockfileVersion",
+            "configVersion",
+            "workspaces",
+            "packages",
+            "patchedDependencies",
+            "overrides",
+            "trustedDependencies",
+            "peer",
+        }
     ):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
     packages = document["packages"]
@@ -638,7 +673,11 @@ def _valid_npm_name(value: str) -> bool:
         return False
     if value.startswith("@"):
         parts = value.split("/")
-        return len(parts) == 2 and _NPM_SCOPE.fullmatch(parts[0]) is not None and _NPM_PART.fullmatch(parts[1]) is not None
+        return (
+            len(parts) == 2
+            and _NPM_SCOPE.fullmatch(parts[0]) is not None
+            and _NPM_PART.fullmatch(parts[1]) is not None
+        )
     return "/" not in value and _NPM_PART.fullmatch(value) is not None
 
 
@@ -647,9 +686,7 @@ def _decode_text(source: bytes) -> str:
         text = source.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID) from None
-    if text.startswith("\ufeff") or any(
-        ord(char) < 32 and char not in "\t\n\r" for char in text
-    ):
+    if text.startswith("\ufeff") or any(ord(char) < 32 and char not in "\t\n\r" for char in text):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
     if "\x7f" in text or any(
         char == "\r" and (index + 1 == len(text) or text[index + 1] != "\n")

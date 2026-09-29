@@ -1,0 +1,82 @@
+schema_version: 0.1-draft
+task:
+  id: P9.22
+  type: implementation
+  objective: Restore the assignment core path (workflow fan-in, scanner robustness, local Auditor/Architect Auto-Fix, gateway evidence identity) and recover lost regression tests without relaxing validation.
+  baseline_id: securecode-definition-0.2.0
+  baseline_content_sha256: "\x64\x65\x64\x62\x34\x33\x62\x65\x38\x62\x61\x30\x35\x35\x64\x66\x61\x34\x37\x38\x35\x38\x62\x39\x37\x35\x36\x33\x30\x62\x34\x63\x38\x37\x30\x61\x66\x33\x62\x65\x64\x32\x64\x64\x61\x38\x34\x32\x62\x30\x65\x38\x34\x32\x32\x63\x38\x33\x35\x34\x62\x35\x63\x39"  # pragma: allowlist secret
+  baseline_commit_sha: "\x66\x35\x63\x64\x34\x65\x66\x32\x61\x30\x66\x37\x31\x33\x30\x64\x31\x36\x63\x62\x32\x63\x32\x30\x36\x30\x39\x31\x39\x30\x38\x62\x65\x37\x31\x62\x30\x37\x30\x32"  # pragma: allowlist secret
+  starting_commit_sha: "\x64\x65\x36\x65\x61\x62\x65\x61\x62\x66\x35\x64\x63\x64\x62\x61\x30\x34\x32\x66\x35\x31\x63\x33\x32\x63\x33\x32\x37\x65\x64\x38\x36\x36\x33\x31\x35\x31\x31\x62"  # pragma: allowlist secret
+  spec_refs:
+  - SC-PROD-001
+execution:
+  primary_integrator: claude-code
+  owner_role: release-candidate-integrator
+  mode: single_writer
+  exclusive_path_lease:
+  - .gitignore
+  - README.md
+  - apps/worker/src/securecode_ai/worker/protocol.py
+  - demo/p917_real_local_demo.py
+  - docs/BRANCH_RECOVERY.md
+  - docs/CONTEXT.md
+  - docs/SUBMISSION_FORM_DRAFT.md
+  - packages/adapters/src/securecode_ai/adapters/cst_ecmascript.py
+  - packages/adapters/src/securecode_ai/adapters/cst_go.py
+  - packages/adapters/src/securecode_ai/adapters/cst_python.py
+  - packages/adapters/src/securecode_ai/adapters/cwe_portfolio_helpers.py
+  - packages/adapters/src/securecode_ai/adapters/product_runtime_execution.py
+  - packages/adapters/src/securecode_ai/adapters/python_cwe400.py
+  - packages/adapters/src/securecode_ai/adapters/python_cwe598.py
+  - packages/contracts/src/securecode_ai/contracts/runtime_contract_journal.py
+  - packages/core/src/securecode_ai/core/runtime_transition.py
+  - report/final-submission.html
+  - report/submission-benchmark/README.md
+  - report/submission-benchmark/report.html
+  - site/benchmark.html
+  - site/benchmark.pdf
+  - site/cwe89-demo.html
+  - site/final-submission.html
+  - tests/integration/test_p917_real_local_demo.py
+  - tests/unit/test_cwe_portfolio.py
+  - tests/unit/test_local_provider_gateway.py
+  - tests/unit/test_server_oidc_login.py
+  - tests/unit/test_server_telemetry.py
+  - tests/unit/test_workflow_runtime.py
+  - work/task-packets/P9.22.yaml
+scope:
+  allowed_paths:
+  - .gitignore
+  - README.md
+  - apps/worker/src/securecode_ai/worker/protocol.py
+  - demo/p917_real_local_demo.py
+  - docs/BRANCH_RECOVERY.md
+  - docs/CONTEXT.md
+  - docs/SUBMISSION_FORM_DRAFT.md
+  - packages/adapters/src/securecode_ai/adapters/cst_ecmascript.py
+  - packages/adapters/src/securecode_ai/adapters/cst_go.py
+  - packages/adapters/src/securecode_ai/adapters/cst_python.py
+  - packages/adapters/src/securecode_ai/adapters/cwe_portfolio_helpers.py
+  - packages/adapters/src/securecode_ai/adapters/product_runtime_execution.py
+  - packages/adapters/src/securecode_ai/adapters/python_cwe400.py
+  - packages/adapters/src/securecode_ai/adapters/python_cwe598.py
+  - packages/contracts/src/securecode_ai/contracts/runtime_contract_journal.py
+  - packages/core/src/securecode_ai/core/runtime_transition.py
+  - report/final-submission.html
+  - report/submission-benchmark/README.md
+  - report/submission-benchmark/report.html
+  - site/benchmark.html
+  - site/benchmark.pdf
+  - site/cwe89-demo.html
+  - site/final-submission.html
+  - tests/integration/test_p917_real_local_demo.py
+  - tests/unit/test_cwe_portfolio.py
+  - tests/unit/test_local_provider_gateway.py
+  - tests/unit/test_server_oidc_login.py
+  - tests/unit/test_server_telemetry.py
+  - tests/unit/test_workflow_runtime.py
+  - work/task-packets/P9.22.yaml
+  forbidden_paths:
+  - specs/**
+  max_changed_files: 64
+  max_diff_lines: 12000

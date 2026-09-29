@@ -15,14 +15,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO, Final
 
+from .artifact_tenant_namespace import (
+    ArtifactTenantNamespaceError,
+    artifact_tenant_path_component,
+)
 from .artifact_upload import (
     ArtifactUploadConflict,
     _parse_receipt,
     _unique_object_pairs,
-)
-from .artifact_tenant_namespace import (
-    ArtifactTenantNamespaceError,
-    artifact_tenant_path_component,
 )
 from .data_lifecycle_models import LifecycleConflict, require_identifier, require_sha256
 from .filesystem_paths import lexical_absolute_path
@@ -257,9 +257,7 @@ class LocalArtifactStorageExecutor:
             legal_hold=legal_hold == 1,
         )
 
-    def _validated_receipt(
-        self, target: Path, binding: _DeletionBinding
-    ) -> Mapping[str, object]:
+    def _validated_receipt(self, target: Path, binding: _DeletionBinding) -> Mapping[str, object]:
         _require_plain_directory(target)
         entries = {entry.name for entry in target.iterdir()}
         if not {"payload", "receipt.json"}.issubset(entries) or not entries.issubset(
@@ -316,9 +314,7 @@ class LocalArtifactStorageExecutor:
                 try:
                     parsed_candidate = _parse_receipt(candidate)
                 except (ArtifactUploadConflict, TypeError, ValueError):
-                    raise LifecycleConflict(
-                        "artifact authorization receipt is invalid"
-                    ) from None
+                    raise LifecycleConflict("artifact authorization receipt is invalid") from None
                 if (
                     parsed_candidate.authorization_id != authorization_directory.name
                     or parsed_candidate.tenant_id != binding.tenant_id
@@ -373,24 +369,26 @@ class LocalArtifactStorageExecutor:
         ).fetchone()
         if row is None or tuple(str(row[index]) for index in range(4)) != expected:
             raise LifecycleConflict("artifact authorization scope conflicts")
-        if any(
-            receipt.get(name) != row[name]
-            for name in (
-                "worker_id",
-                "repository_id",
-                "run_id",
-                "execution_identity_hash",
-                "content_id",
-                "content_sha256",
-                "size_bytes",
-                "data_class",
-                "purpose",
-                "signer_key_id",
-                "authorization_signature",
+        if (
+            any(
+                receipt.get(name) != row[name]
+                for name in (
+                    "worker_id",
+                    "repository_id",
+                    "run_id",
+                    "execution_identity_hash",
+                    "content_id",
+                    "content_sha256",
+                    "size_bytes",
+                    "data_class",
+                    "purpose",
+                    "signer_key_id",
+                    "authorization_signature",
+                )
             )
-        ) or receipt.get("authorized_at") != row["issued_at"] or receipt.get(
-            "authorization_expires_at"
-        ) != row["expires_at"]:
+            or receipt.get("authorized_at") != row["issued_at"]
+            or receipt.get("authorization_expires_at") != row["expires_at"]
+        ):
             raise LifecycleConflict("artifact authorization receipt conflicts")
         foreign = self._db.execute(
             """SELECT 1 FROM artifact_upload_authorizations

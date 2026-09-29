@@ -218,9 +218,7 @@ class SecretService:
                     request_hash,
                 ):
                     raise SecretDenied("IDEMPOTENCY_CONFLICT")
-                return None, self._receipt_at_now(
-                    self._load(cursor, tenant_id, replay["grant_id"])
-                )
+                return None, self._receipt_at_now(self._load(cursor, tenant_id, replay["grant_id"]))
 
             grant_id = (
                 "grant-"
@@ -554,9 +552,7 @@ class SecretService:
         """Persist grant expiry without coupling it to provider availability."""
 
         _require_identifier(tenant_id, "tenant_id")
-        if max_items is not None and (
-            type(max_items) is not int or not 1 <= max_items <= 10_000
-        ):
+        if max_items is not None and (type(max_items) is not int or not 1 <= max_items <= 10_000):
             raise SecretDenied("INVALID_LIMIT")
         effective_now = self._now() if now is None else now
         if type(effective_now) is not int or effective_now < 0:
@@ -651,11 +647,9 @@ class SecretService:
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise SecretDenied("INVALID_LIMIT")
         now = self._now()
-        query = (
-            """SELECT grant_id, attempts, next_attempt_at
+        query = """SELECT grant_id, attempts, next_attempt_at
                FROM secret_provider_revocations
                WHERE tenant_id=? AND completed_at IS NULL AND next_attempt_at<=?"""
-        )
         parameters: tuple[object, ...] = (tenant_id, now)
         if grant_id is not None:
             query += " AND grant_id=?"
@@ -734,10 +728,8 @@ class SecretService:
                 if cursor.rowcount == 1:
                     completed += 1
 
-        pending_query = (
-            """SELECT 1 FROM secret_provider_revocations
+        pending_query = """SELECT 1 FROM secret_provider_revocations
                WHERE tenant_id=? AND completed_at IS NULL LIMIT 1"""
-        )
         pending_parameters: tuple[object, ...] = (tenant_id,)
         if grant_id is not None:
             pending_query = pending_query.replace(

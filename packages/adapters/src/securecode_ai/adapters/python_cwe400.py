@@ -162,9 +162,7 @@ class PythonCwe400Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe400Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe400Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -377,7 +375,9 @@ _FLOW_PRESERVING_METHODS = frozenset(
         "upper",
     }
 )
-_READ_METHODS = frozenset({"read", "read1", "readall", "read_all", "readinto", "readline", "readlines"})
+_READ_METHODS = frozenset(
+    {"read", "read1", "readall", "read_all", "readinto", "readline", "readlines"}
+)
 _DECOMPRESS_NAMES = frozenset(
     {
         "bz2.decompress",
@@ -553,13 +553,17 @@ def _scan_statements(
                     )
                 else:
                     child_flows.pop(statement.args.kwarg.arg, None)
-            _scan_statements(statement.body, child_aliases, child_flows, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, child_flows, source, line_starts, limits, output
+            )
             aliases[statement.name] = None
             flows.pop(statement.name, None)
             continue
         if isinstance(statement, ast.ClassDef):
             child_aliases, child_flows = dict(aliases), dict(flows)
-            _scan_statements(statement.body, child_aliases, child_flows, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, child_flows, source, line_starts, limits, output
+            )
             aliases[statement.name] = None
             flows.pop(statement.name, None)
             continue
@@ -573,43 +577,63 @@ def _scan_statements(
         _record_with_bindings(statement, aliases, flows, source, line_starts, limits)
         _record_scope_bindings(statement, aliases, flows)
 
-        if isinstance(statement, ast.If):
+        if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While)):
             left_aliases, left_flows = dict(aliases), dict(flows)
             right_aliases, right_flows = dict(aliases), dict(flows)
-            _scan_statements(statement.body, left_aliases, left_flows, source, line_starts, limits, output)
-            _scan_statements(statement.orelse, right_aliases, right_flows, source, line_starts, limits, output)
-            _merge_bindings(aliases, flows, left_aliases, left_flows, right_aliases, right_flows)
-        elif isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
-            left_aliases, left_flows = dict(aliases), dict(flows)
-            right_aliases, right_flows = dict(aliases), dict(flows)
-            _scan_statements(statement.body, left_aliases, left_flows, source, line_starts, limits, output)
-            _scan_statements(statement.orelse, right_aliases, right_flows, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, left_aliases, left_flows, source, line_starts, limits, output
+            )
+            _scan_statements(
+                statement.orelse, right_aliases, right_flows, source, line_starts, limits, output
+            )
             _merge_bindings(aliases, flows, left_aliases, left_flows, right_aliases, right_flows)
         elif isinstance(statement, (ast.With, ast.AsyncWith)):
             child_aliases, child_flows = dict(aliases), dict(flows)
-            _scan_statements(statement.body, child_aliases, child_flows, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, child_flows, source, line_starts, limits, output
+            )
             _merge_bindings(aliases, flows, aliases, flows, child_aliases, child_flows)
         elif isinstance(statement, ast.Try):
             branches: list[tuple[dict[str, str | None], dict[str, tuple[_Flow, ...]]]] = []
             body_aliases, body_flows = dict(aliases), dict(flows)
-            _scan_statements(statement.body, body_aliases, body_flows, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, body_aliases, body_flows, source, line_starts, limits, output
+            )
             branches.append((body_aliases, body_flows))
             for handler in statement.handlers:
                 branch_aliases, branch_flows = dict(aliases), dict(flows)
                 if handler.name is not None:
                     branch_aliases[handler.name] = None
                     branch_flows.pop(handler.name, None)
-                _scan_statements(handler.body, branch_aliases, branch_flows, source, line_starts, limits, output)
+                _scan_statements(
+                    handler.body, branch_aliases, branch_flows, source, line_starts, limits, output
+                )
                 branches.append((branch_aliases, branch_flows))
             if statement.orelse:
                 branch_aliases, branch_flows = dict(aliases), dict(flows)
-                _scan_statements(statement.orelse, branch_aliases, branch_flows, source, line_starts, limits, output)
+                _scan_statements(
+                    statement.orelse,
+                    branch_aliases,
+                    branch_flows,
+                    source,
+                    line_starts,
+                    limits,
+                    output,
+                )
                 branches.append((branch_aliases, branch_flows))
             _merge_many_bindings(aliases, flows, branches)
         else:
             for child_statements in _nested_statement_lists(statement):
                 child_aliases, child_flows = dict(aliases), dict(flows)
-                _scan_statements(child_statements, child_aliases, child_flows, source, line_starts, limits, output)
+                _scan_statements(
+                    child_statements,
+                    child_aliases,
+                    child_flows,
+                    source,
+                    line_starts,
+                    limits,
+                    output,
+                )
                 _merge_bindings(aliases, flows, aliases, flows, child_aliases, child_flows)
 
 
@@ -627,7 +651,9 @@ def _scan_statement_calls(
         node = stack.pop()
         if node is not statement and isinstance(node, ast.stmt):
             continue
-        if node is not statement and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if node is not statement and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
             continue
         if isinstance(node, ast.Call):
             _record_call(node, aliases, flows, source, line_starts, limits, output)
@@ -666,8 +692,6 @@ def _operation_for_call(
 ) -> PythonCwe400Operation | None:
     if canonical is None:
         canonical = _dotted_name(call.func)
-    if canonical is None:
-        return None
     tail = canonical.rsplit(".", 1)[-1]
     if tail == "read":
         return PythonCwe400Operation.STREAM_READ
@@ -713,7 +737,11 @@ def _operation_for_call(
     if canonical.endswith(".extractfile"):
         return PythonCwe400Operation.TAR_EXTRACT
     if canonical in _ARCHIVE_NAMES:
-        return PythonCwe400Operation.SHUTIL_UNPACK_ARCHIVE if canonical == "shutil.unpack_archive" else None
+        return (
+            PythonCwe400Operation.SHUTIL_UNPACK_ARCHIVE
+            if canonical == "shutil.unpack_archive"
+            else None
+        )
     if tail in {"decompress", "inflate", "unzip"}:
         return PythonCwe400Operation.DECOMPRESSION
     if tail in {"extractall", "extract", "unpack_archive"}:
@@ -781,8 +809,7 @@ def _has_explicit_limit(
         if call.args and _positive_or_symbolic_limit(call.args[0], source):
             return True
         return any(
-            keyword.arg in _LIMIT_KEYWORDS
-            and _positive_or_symbolic_limit(keyword.value, source)
+            keyword.arg in _LIMIT_KEYWORDS and _positive_or_symbolic_limit(keyword.value, source)
             for keyword in call.keywords
         )
     if operation in {
@@ -802,20 +829,27 @@ def _has_explicit_limit(
         PythonCwe400Operation.SHUTIL_UNPACK_ARCHIVE,
     }:
         for keyword in call.keywords:
-            if keyword.arg in {"max_members", "max_entries", "limit"}:
-                if _positive_or_symbolic_limit(keyword.value, source):
-                    return True
-            if keyword.arg in {"members", "member"}:
-                if not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None):
-                    return True
+            if keyword.arg in {
+                "max_members",
+                "max_entries",
+                "limit",
+            } and _positive_or_symbolic_limit(keyword.value, source):
+                return True
+            if keyword.arg in {"members", "member"} and not (
+                isinstance(keyword.value, ast.Constant) and keyword.value.value is None
+            ):
+                return True
         return False
     if operation in {PythonCwe400Operation.ZIP_EXTRACT, PythonCwe400Operation.TAR_EXTRACT}:
         return True
     if operation in {PythonCwe400Operation.JSON_LOAD, PythonCwe400Operation.JSON_LOADS}:
-        return any(
-            keyword.arg in {"parse_int", "parse_float", "object_pairs_hook"}
-            for keyword in call.keywords
-        ) and False
+        return (
+            any(
+                keyword.arg in {"parse_int", "parse_float", "object_pairs_hook"}
+                for keyword in call.keywords
+            )
+            and False
+        )
     if canonical and _looks_limited(canonical):
         return True
     return _bounded_expression(call, aliases, source, limits.max_resolution_depth)
@@ -839,9 +873,12 @@ def _bounded_expression(
     max_depth: int,
 ) -> bool:
     for argument in (*call.args, *(keyword.value for keyword in call.keywords)):
-        if isinstance(argument, ast.Subscript) and isinstance(argument.slice, ast.Slice):
-            if argument.slice.upper is not None:
-                return True
+        if (
+            isinstance(argument, ast.Subscript)
+            and isinstance(argument.slice, ast.Slice)
+            and argument.slice.upper is not None
+        ):
+            return True
         canonical = _canonical_reference(argument, aliases, max_depth)
         if canonical and _looks_limited(canonical):
             return True
@@ -873,7 +910,9 @@ def _resolve_flows(
             return ()
         return flows.get(node.id, ())
     if isinstance(node, (ast.Await, ast.NamedExpr)):
-        return _resolve_flows(node.value, aliases, flows, source, line_starts, limits, depth + 1, seen)
+        return _resolve_flows(
+            node.value, aliases, flows, source, line_starts, limits, depth + 1, seen
+        )
     if isinstance(node, ast.Call):
         canonical = _canonical_reference(node.func, aliases, limits.max_resolution_depth)
         if canonical is None:
@@ -882,40 +921,56 @@ def _resolve_flows(
             bounded = True
         else:
             bounded = _bounded_expression(node, aliases, source, limits.max_resolution_depth)
-        if canonical in _FLOW_PRESERVING_CALLS or (
-            canonical is not None and canonical.rsplit(".", 1)[-1] in _FLOW_PRESERVING_METHODS
-        ) or (
-            canonical is not None and canonical.rsplit(".", 1)[-1] in _READ_METHODS
-        ) or canonical in _DECOMPRESS_NAMES or canonical in _ARCHIVE_NAMES:
+        if (
+            canonical in _FLOW_PRESERVING_CALLS
+            or (canonical is not None and canonical.rsplit(".", 1)[-1] in _FLOW_PRESERVING_METHODS)
+            or (canonical is not None and canonical.rsplit(".", 1)[-1] in _READ_METHODS)
+            or canonical in _DECOMPRESS_NAMES
+            or canonical in _ARCHIVE_NAMES
+        ):
             return _dedupe_flows(
                 _with_bounded(flow, bounded)
                 for argument in _flow_arguments(node)
-                for flow in _resolve_flows(argument, aliases, flows, source, line_starts, limits, depth + 1, seen)
+                for flow in _resolve_flows(
+                    argument, aliases, flows, source, line_starts, limits, depth + 1, seen
+                )
             )
         return ()
     if isinstance(node, ast.Attribute):
-        return _resolve_flows(node.value, aliases, flows, source, line_starts, limits, depth + 1, seen)
+        return _resolve_flows(
+            node.value, aliases, flows, source, line_starts, limits, depth + 1, seen
+        )
     if isinstance(node, ast.Subscript):
         bounded = isinstance(node.slice, ast.Slice) and node.slice.upper is not None
         return _dedupe_flows(
             _with_bounded(flow, bounded)
-            for flow in _resolve_flows(node.value, aliases, flows, source, line_starts, limits, depth + 1, seen)
+            for flow in _resolve_flows(
+                node.value, aliases, flows, source, line_starts, limits, depth + 1, seen
+            )
         )
     if isinstance(node, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.JoinedStr)):
         return _dedupe_flows(
             flow
             for child in ast.iter_child_nodes(node)
             if isinstance(child, ast.expr)
-            for flow in _resolve_flows(child, aliases, flows, source, line_starts, limits, depth + 1, seen)
+            for flow in _resolve_flows(
+                child, aliases, flows, source, line_starts, limits, depth + 1, seen
+            )
         )
     if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
         return _dedupe_flows(
             flow
             for child in ast.iter_child_nodes(node)
             if isinstance(child, ast.expr)
-            for flow in _resolve_flows(child, aliases, flows, source, line_starts, limits, depth + 1, seen)
+            for flow in _resolve_flows(
+                child, aliases, flows, source, line_starts, limits, depth + 1, seen
+            )
         )
     return ()
+
+
+def _with_bounded(flow: _Flow, bounded: bool) -> _Flow:
+    return _Flow(flow.source, flow.bounded or bounded)
 
 
 def _dedupe_flows(flows: Iterable[_Flow]) -> tuple[_Flow, ...]:
@@ -950,7 +1005,9 @@ def _is_source_container(canonical: str | None) -> bool:
     if canonical in _REQUEST_ROOTS:
         return False
     base, _, attribute = canonical.rpartition(".")
-    return (base in _REQUEST_ROOTS or base.endswith(".request")) and attribute in _REQUEST_ATTRIBUTES
+    return (
+        base in _REQUEST_ROOTS or base.endswith(".request")
+    ) and attribute in _REQUEST_ATTRIBUTES
 
 
 def _is_source_access_call(canonical: str) -> bool:
@@ -969,9 +1026,11 @@ def _is_parameter_source(name: str, call: ast.Call, tree: ast.AST) -> bool:
     if scope is None:
         return False
     parameters = (*scope.args.posonlyargs, *scope.args.args, *scope.args.kwonlyargs)
-    return any(parameter.arg == name for parameter in parameters) or (
-        scope.args.vararg is not None and scope.args.vararg.arg == name
-    ) or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    return (
+        any(parameter.arg == name for parameter in parameters)
+        or (scope.args.vararg is not None and scope.args.vararg.arg == name)
+        or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    )
 
 
 def _record_assignment(
@@ -1013,12 +1072,8 @@ def _record_with_bindings(
         target = item.optional_vars
         if target is None:
             continue
-        resolved = _resolve_flows(
-            item.context_expr, aliases, flows, source, line_starts, limits, 0
-        )
-        canonical = _canonical_reference(
-            item.context_expr, aliases, limits.max_resolution_depth
-        )
+        resolved = _resolve_flows(item.context_expr, aliases, flows, source, line_starts, limits, 0)
+        canonical = _canonical_reference(item.context_expr, aliases, limits.max_resolution_depth)
         for name in _target_names(target):
             aliases[name] = canonical
             if resolved:
@@ -1040,7 +1095,11 @@ def _record_import_from(statement: ast.ImportFrom, aliases: dict[str, str | None
             continue
         name = imported.asname or imported.name
         canonical = f"{module}.{imported.name}"
-        aliases[name] = canonical if module in _KNOWN_MODULES or module.startswith(tuple(_KNOWN_MODULES)) else None
+        aliases[name] = (
+            canonical
+            if module in _KNOWN_MODULES or module.startswith(tuple(_KNOWN_MODULES))
+            else None
+        )
 
 
 def _record_scope_bindings(
@@ -1103,7 +1162,9 @@ def _merge_many_bindings(
         return
     merged_aliases, merged_flows = dict(branches[0][0]), dict(branches[0][1])
     for branch_aliases, branch_flows in branches[1:]:
-        _merge_bindings(merged_aliases, merged_flows, merged_aliases, merged_flows, branch_aliases, branch_flows)
+        _merge_bindings(
+            merged_aliases, merged_flows, merged_aliases, merged_flows, branch_aliases, branch_flows
+        )
     target_aliases.clear()
     target_aliases.update(merged_aliases)
     target_flows.clear()
@@ -1120,7 +1181,12 @@ def _nested_statement_lists(statement: ast.stmt) -> tuple[list[ast.stmt], ...]:
     if isinstance(statement, (ast.With, ast.AsyncWith)):
         return (statement.body,)
     if isinstance(statement, ast.Try):
-        return statement.body, statement.orelse, statement.finalbody, *(handler.body for handler in statement.handlers)
+        return (
+            statement.body,
+            statement.orelse,
+            statement.finalbody,
+            *(handler.body for handler in statement.handlers),
+        )
     if isinstance(statement, ast.Match):
         return tuple(case.body for case in statement.cases)
     return ()
@@ -1165,10 +1231,14 @@ def _canonical_reference(
 
 def _looks_limited(value: str) -> bool:
     pieces = [piece for piece in re.split(r"[^a-z0-9]+", value.lower()) if piece]
-    return any(piece in _LIMIT_WORDS or any(word in piece for word in _LIMIT_WORDS) for piece in pieces)
+    return any(
+        piece in _LIMIT_WORDS or any(word in piece for word in _LIMIT_WORDS) for piece in pieces
+    )
 
 
-def _enclosing_function(call: ast.Call, tree: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+def _enclosing_function(
+    call: ast.Call, tree: ast.AST
+) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     call_line = getattr(call, "lineno", -1)
     candidates: list[tuple[int, int, ast.FunctionDef | ast.AsyncFunctionDef]] = []
     for item in ast.walk(tree):
@@ -1230,14 +1300,23 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe400ScanError(PythonCwe400ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe400ScanError(PythonCwe400ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _compact(source: bytes, node: ast.AST) -> str:
     location = _node_range(node, source, _line_starts(source))
-    return b"".join(source[location.start_byte : location.end_byte].split()).decode("ascii", "ignore")
+    return b"".join(source[location.start_byte : location.end_byte].split()).decode(
+        "ascii", "ignore"
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:
@@ -1274,7 +1353,9 @@ def _signal_id(
         "source": _range_value(source),
         "source_size_bytes": source_size_bytes,
     }
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 def _scan_sha256(
@@ -1305,7 +1386,9 @@ def _scan_sha256(
         ],
         "source_size_bytes": source_size_bytes,
     }
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 Cwe400ScanErrorCode = PythonCwe400ScanErrorCode

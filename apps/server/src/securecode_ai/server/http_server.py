@@ -42,12 +42,12 @@ class HttpServerLimits:
 class AsgiHttpServer:
     __slots__ = (
         "_app",
+        "_connections",
+        "_lifecycle_lock",
         "_limits",
         "_scheme",
         "_semaphore",
         "_server",
-        "_connections",
-        "_lifecycle_lock",
     )
 
     def __init__(self, app: object, limits: HttpServerLimits | None = None) -> None:
@@ -105,10 +105,7 @@ class AsgiHttpServer:
                 await server.wait_closed()
             try:
                 current = asyncio.current_task()
-                deadline = (
-                    asyncio.get_running_loop().time()
-                    + self._limits.shutdown_timeout_seconds
-                )
+                deadline = asyncio.get_running_loop().time() + self._limits.shutdown_timeout_seconds
                 while True:
                     pending = tuple(
                         task
@@ -318,11 +315,7 @@ class _ResponseCollector:
                 raise ValueError("response already started")
             status = event.get("status")
             headers = event.get("headers", [])
-            if (
-                type(status) is not int
-                or not 200 <= status <= 599
-                or type(headers) is not list
-            ):
+            if type(status) is not int or not 200 <= status <= 599 or type(headers) is not list:
                 raise ValueError("invalid response start")
             self.status = status
             self.headers = _validated_response_headers(headers)
@@ -409,23 +402,15 @@ def _validated_response_headers(value: list[object]) -> list[tuple[bytes, bytes]
             or not name
             or any(
                 not (
-                    48 <= byte <= 57
-                    or 65 <= byte <= 90
-                    or 97 <= byte <= 122
-                    or byte in token_bytes
+                    48 <= byte <= 57 or 65 <= byte <= 90 or 97 <= byte <= 122 or byte in token_bytes
                 )
                 for byte in name
             )
-            or any(
-                (byte < 32 and byte != 9) or byte == 127
-                for byte in content
-            )
+            or any((byte < 32 and byte != 9) or byte == 127 for byte in content)
         ):
             raise ValueError("invalid response header")
         normalized = name.lower()
-        if normalized in forbidden or (
-            normalized == b"content-length" and normalized in names
-        ):
+        if normalized in forbidden or (normalized == b"content-length" and normalized in names):
             raise ValueError("duplicate or hop-by-hop response header")
         total_size += len(name) + len(content) + 4
         if total_size > _MAX_HEADER_BYTES:

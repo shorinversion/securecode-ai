@@ -11,11 +11,11 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any, Final
-import re
 
 SCHEMA_VERSION: Final = "securecode.release-provenance.v1"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -176,7 +176,10 @@ def _require_attestation_digest(value: object, *, what: str) -> str:
 
 
 def _require_clean_tree(root: Path) -> None:
-    for arguments in (("diff", "--quiet", "HEAD", "--"), ("diff", "--cached", "--quiet", "HEAD", "--")):
+    for arguments in (
+        ("diff", "--quiet", "HEAD", "--"),
+        ("diff", "--cached", "--quiet", "HEAD", "--"),
+    ):
         try:
             completed = subprocess.run(
                 ["git", *arguments],
@@ -222,17 +225,13 @@ def build_release_attestation(
     lock = root / "uv.lock"
     lock_sha256 = _sha256_bytes(_read_regular(lock, what="uv.lock"))
     return {
-        "artifact_digest": _require_attestation_digest(
-            artifact_digest, what="artifact digest"
-        ),
+        "artifact_digest": _require_attestation_digest(artifact_digest, what="artifact digest"),
         "builder_id": _require_attestation_text(builder_id, what="builder identity"),
         "image_digest": _require_attestation_digest(image_digest, what="image digest"),
         "lock_sha256": lock_sha256,
         "source_commit": commit,
         "source_tree": source_tree,
-        "workflow_sha256": _require_attestation_hash(
-            workflow_sha256, what="workflow hash"
-        ),
+        "workflow_sha256": _require_attestation_hash(workflow_sha256, what="workflow hash"),
     }
 
 

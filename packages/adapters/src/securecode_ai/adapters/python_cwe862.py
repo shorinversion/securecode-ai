@@ -48,7 +48,16 @@ _AUTHENTICATION = frozenset(
     }
 )
 _AUTH_DEPENDENCIES = frozenset(
-    {"authuser", "currentprincipal", "currentuser", "getauthuser", "getcurrentprincipal", "getcurrentuser", "getprincipal", "requirecurrentuser"}
+    {
+        "authuser",
+        "currentprincipal",
+        "currentuser",
+        "getauthuser",
+        "getcurrentprincipal",
+        "getcurrentuser",
+        "getprincipal",
+        "requirecurrentuser",
+    }
 )
 _AUTHZ = frozenset(
     {
@@ -83,7 +92,27 @@ _MUTATIONS = {
     "write": "resource_update",
 }
 _RESOURCE_WORDS = frozenset(
-    {"account", "accounts", "database", "db", "entity", "entities", "manager", "model", "models", "object", "objects", "record", "records", "repo", "repository", "service", "store", "user", "users"}
+    {
+        "account",
+        "accounts",
+        "database",
+        "db",
+        "entity",
+        "entities",
+        "manager",
+        "model",
+        "models",
+        "object",
+        "objects",
+        "record",
+        "records",
+        "repo",
+        "repository",
+        "service",
+        "store",
+        "user",
+        "users",
+    }
 )
 
 
@@ -124,7 +153,10 @@ class PythonCwe862ScanLimits:
 
     def __post_init__(self) -> None:
         values = (self.max_source_bytes, self.max_signals, self.max_resolution_depth)
-        if any(type(value) is not int or value < 1 or value > cap for value, cap in zip(values, _MAX, strict=True)):
+        if any(
+            type(value) is not int or value < 1 or value > cap
+            for value, cap in zip(values, _MAX, strict=True)
+        ):
             raise ValueError("Python CWE-862 scan limits are invalid")
 
 
@@ -148,15 +180,43 @@ class PythonCwe862Signal:
     detail: str = _DETAIL
 
     def __post_init__(self) -> None:
-        if not _valid_identity(self.repository_id, self.revision, self.path, self.content_sha256, self.source_size_bytes):
+        if not _valid_identity(
+            self.repository_id,
+            self.revision,
+            self.path,
+            self.content_sha256,
+            self.source_size_bytes,
+        ):
             raise ValueError("Python CWE-862 signal identity is invalid")
-        if type(self.endpoint) is not SourceRange or type(self.sink) is not SourceRange or not self.endpoint.contains(self.sink):
+        if (
+            type(self.endpoint) is not SourceRange
+            or type(self.sink) is not SourceRange
+            or not self.endpoint.contains(self.sink)
+        ):
             raise ValueError("Python CWE-862 signal ranges are invalid")
-        if self.endpoint.end_byte > self.source_size_bytes or type(self.operation) is not PythonCwe862Operation:
+        if (
+            self.endpoint.end_byte > self.source_size_bytes
+            or type(self.operation) is not PythonCwe862Operation
+        ):
             raise ValueError("Python CWE-862 signal evidence is invalid")
-        expected = _signal_id(self.repository_id, self.revision, self.path, self.content_sha256, self.source_size_bytes, self.endpoint, self.sink, self.operation)
+        expected = _signal_id(
+            self.repository_id,
+            self.revision,
+            self.path,
+            self.content_sha256,
+            self.source_size_bytes,
+            self.endpoint,
+            self.sink,
+            self.operation,
+        )
         value = self.signal_id or expected
-        if value != expected or self.rule_id != _RULE or self.cwe != "CWE-862" or self.detector != _DETECTOR or self.detail != _DETAIL:
+        if (
+            value != expected
+            or self.rule_id != _RULE
+            or self.cwe != "CWE-862"
+            or self.detector != _DETECTOR
+            or self.detail != _DETAIL
+        ):
             raise ValueError("Python CWE-862 signal metadata is invalid")
         if not self.signal_id:
             object.__setattr__(self, "signal_id", expected)
@@ -181,16 +241,55 @@ class PythonCwe862ScanResult:
     scan_sha256: str
 
     def __post_init__(self) -> None:
-        if not _valid_identity(self.repository_id, self.revision, self.path, self.content_sha256, self.source_size_bytes):
+        if not _valid_identity(
+            self.repository_id,
+            self.revision,
+            self.path,
+            self.content_sha256,
+            self.source_size_bytes,
+        ):
             raise ValueError("Python CWE-862 scan identity is invalid")
-        if type(self.signals) is not tuple or any(type(item) is not PythonCwe862Signal for item in self.signals):
+        if type(self.signals) is not tuple or any(
+            type(item) is not PythonCwe862Signal for item in self.signals
+        ):
             raise ValueError("Python CWE-862 scan signals are invalid")
-        keys = tuple((item.sink.start_byte, item.sink.end_byte, item.endpoint.start_byte, item.operation.value) for item in self.signals)
+        keys = tuple(
+            (
+                item.sink.start_byte,
+                item.sink.end_byte,
+                item.endpoint.start_byte,
+                item.operation.value,
+            )
+            for item in self.signals
+        )
         if keys != tuple(sorted(set(keys))):
             raise ValueError("Python CWE-862 scan signal order is invalid")
-        if any((item.repository_id, item.revision, item.path, item.content_sha256, item.source_size_bytes) != (self.repository_id, self.revision, self.path, self.content_sha256, self.source_size_bytes) for item in self.signals):
+        if any(
+            (
+                item.repository_id,
+                item.revision,
+                item.path,
+                item.content_sha256,
+                item.source_size_bytes,
+            )
+            != (
+                self.repository_id,
+                self.revision,
+                self.path,
+                self.content_sha256,
+                self.source_size_bytes,
+            )
+            for item in self.signals
+        ):
             raise ValueError("Python CWE-862 scan signal identity mismatch")
-        expected = _scan_sha256(self.repository_id, self.revision, self.path, self.content_sha256, self.source_size_bytes, self.signals)
+        expected = _scan_sha256(
+            self.repository_id,
+            self.revision,
+            self.path,
+            self.content_sha256,
+            self.source_size_bytes,
+            self.signals,
+        )
         if self.scan_sha256 != expected:
             raise ValueError("Python CWE-862 scan digest is invalid")
 
@@ -209,7 +308,12 @@ def scan_python_cwe862(
     limits: PythonCwe862ScanLimits = DEFAULT_PYTHON_CWE862_SCAN_LIMITS,
 ) -> PythonCwe862ScanResult:
     """Find authenticated mutation handlers with no recognised local authz."""
-    if type(symbol_index) is not SymbolIndex or symbol_index.language != "python" or type(ast_analysis) is not PythonAstAnalysis or type(limits) is not PythonCwe862ScanLimits:
+    if (
+        type(symbol_index) is not SymbolIndex
+        or symbol_index.language != "python"
+        or type(ast_analysis) is not PythonAstAnalysis
+        or type(limits) is not PythonCwe862ScanLimits
+    ):
         raise PythonCwe862ScanError(PythonCwe862ScanErrorCode.REQUEST_INVALID)
     if len(symbol_index.source) > limits.max_source_bytes:
         raise PythonCwe862ScanError(PythonCwe862ScanErrorCode.SOURCE_LIMIT)
@@ -218,7 +322,11 @@ def scan_python_cwe862(
         tree = open_python_ast(ast_analysis)
     except (PythonAstError, AttributeError, TypeError, ValueError):
         raise PythonCwe862ScanError(PythonCwe862ScanErrorCode.INTEGRITY_FAILURE) from None
-    if validated.status is not PythonAstStatus.PARSED or ast_analysis.status is not PythonAstStatus.PARSED or ast_analysis.symbol_index_sha256 != validated.symbol_index_sha256:
+    if (
+        validated.status is not PythonAstStatus.PARSED
+        or ast_analysis.status is not PythonAstStatus.PARSED
+        or ast_analysis.symbol_index_sha256 != validated.symbol_index_sha256
+    ):
         raise PythonCwe862ScanError(PythonCwe862ScanErrorCode.ANALYSIS_UNAVAILABLE)
     try:
         aliases = _aliases(tree, limits.max_resolution_depth)
@@ -233,7 +341,11 @@ def scan_python_cwe862(
                 continue
             for call in _calls(function, limits.max_resolution_depth):
                 operation = _mutation(call, aliases, limits.max_resolution_depth)
-                if operation is None or not _resource_selected(call, function, aliases, limits.max_resolution_depth) or _authorized(function, call, aliases, limits.max_resolution_depth):
+                if (
+                    operation is None
+                    or not _resource_selected(call, function, aliases, limits.max_resolution_depth)
+                    or _authorized(function, call, aliases, limits.max_resolution_depth)
+                ):
                     continue
                 endpoint_range = _range(function, source, starts)
                 sink_range = _range(call, source, starts)
@@ -246,13 +358,61 @@ def scan_python_cwe862(
         raise
     except (MemoryError, RecursionError, TypeError, ValueError):
         raise PythonCwe862ScanError(PythonCwe862ScanErrorCode.INTEGRITY_FAILURE) from None
-    ordered = tuple(sorted(facts, key=lambda item: (item[1].start_byte, item[1].end_byte, item[0].start_byte, item[2].value)))
-    signals = tuple(PythonCwe862Signal(symbol_index.repository_id, symbol_index.revision, symbol_index.path, symbol_index.content_sha256, symbol_index.source_byte_length, endpoint, sink, operation) for endpoint, sink, operation in ordered)
-    return PythonCwe862ScanResult(symbol_index.repository_id, symbol_index.revision, symbol_index.path, symbol_index.content_sha256, symbol_index.source_byte_length, signals, _scan_sha256(symbol_index.repository_id, symbol_index.revision, symbol_index.path, symbol_index.content_sha256, symbol_index.source_byte_length, signals))
+    ordered = tuple(
+        sorted(
+            facts,
+            key=lambda item: (
+                item[1].start_byte,
+                item[1].end_byte,
+                item[0].start_byte,
+                item[2].value,
+            ),
+        )
+    )
+    signals = tuple(
+        PythonCwe862Signal(
+            symbol_index.repository_id,
+            symbol_index.revision,
+            symbol_index.path,
+            symbol_index.content_sha256,
+            symbol_index.source_byte_length,
+            endpoint,
+            sink,
+            operation,
+        )
+        for endpoint, sink, operation in ordered
+    )
+    return PythonCwe862ScanResult(
+        symbol_index.repository_id,
+        symbol_index.revision,
+        symbol_index.path,
+        symbol_index.content_sha256,
+        symbol_index.source_byte_length,
+        signals,
+        _scan_sha256(
+            symbol_index.repository_id,
+            symbol_index.revision,
+            symbol_index.path,
+            symbol_index.content_sha256,
+            symbol_index.source_byte_length,
+            signals,
+        ),
+    )
 
 
 def _valid_identity(repository_id: str, revision: str, path: str, digest: str, size: int) -> bool:
-    valid = type(repository_id) is str and bool(repository_id) and len(repository_id.encode("utf-8")) <= 1024 and type(revision) is str and _SHA1.fullmatch(revision) is not None and type(path) is str and type(digest) is str and _SHA256.fullmatch(digest) is not None and type(size) is int and size >= 0
+    valid = (
+        type(repository_id) is str
+        and bool(repository_id)
+        and len(repository_id.encode("utf-8")) <= 1024
+        and type(revision) is str
+        and _SHA1.fullmatch(revision) is not None
+        and type(path) is str
+        and type(digest) is str
+        and _SHA256.fullmatch(digest) is not None
+        and type(size) is int
+        and size >= 0
+    )
     if valid:
         try:
             RepositoryFile(path, size, digest)
@@ -275,7 +435,11 @@ def _nodes(tree: ast.AST, max_depth: int) -> tuple[ast.AST, ...]:
 
 
 def _functions(tree: ast.AST, max_depth: int) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    return tuple(node for node in _nodes(tree, max_depth) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
+    return tuple(
+        node
+        for node in _nodes(tree, max_depth)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
 
 
 def _aliases(tree: ast.AST, max_depth: int) -> dict[str, str | None]:
@@ -302,7 +466,9 @@ def _reference(node: ast.AST | None, aliases: dict[str, str | None], depth: int 
     return None
 
 
-def _is_endpoint(function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: dict[str, str | None], max_depth: int) -> bool:
+def _is_endpoint(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: dict[str, str | None], max_depth: int
+) -> bool:
     for decorator in function.decorator_list:
         node = decorator.func if isinstance(decorator, ast.Call) else decorator
         name = _reference(node, aliases) or ""
@@ -312,16 +478,26 @@ def _is_endpoint(function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: dict
         if tail != "route":
             return True
         if isinstance(decorator, ast.Call):
-            methods = next((item.value for item in decorator.keywords if item.arg == "methods"), None)
-            if isinstance(methods, (ast.List, ast.Tuple, ast.Set)) and any(isinstance(value, ast.Constant) and str(value.value).lower() in {"post", "put", "patch", "delete"} for value in methods.elts):
+            methods = next(
+                (item.value for item in decorator.keywords if item.arg == "methods"), None
+            )
+            if isinstance(methods, (ast.List, ast.Tuple, ast.Set)) and any(
+                isinstance(value, ast.Constant)
+                and str(value.value).lower() in {"post", "put", "patch", "delete"}
+                for value in methods.elts
+            ):
                 return True
     return False
 
 
-def _authenticated(function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: dict[str, str | None], max_depth: int) -> bool:
+def _authenticated(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: dict[str, str | None], max_depth: int
+) -> bool:
     for decorator in function.decorator_list:
         node = decorator.func if isinstance(decorator, ast.Call) else decorator
-        if _normalise((_reference(node, aliases) or "").rsplit(".", 1)[-1]) in {_normalise(item) for item in _AUTHENTICATION}:
+        if _normalise((_reference(node, aliases) or "").rsplit(".", 1)[-1]) in {
+            _normalise(item) for item in _AUTHENTICATION
+        }:
             return True
         if isinstance(decorator, ast.Call) and any(
             _dependency_auth(argument, aliases, max_depth)
@@ -336,17 +512,12 @@ def _authenticated(function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: di
         ):
             return True
     defaults = (*function.args.defaults, *function.args.kw_defaults)
-    if any(
-        item is not None and _dependency_auth(item, aliases, max_depth)
-        for item in defaults
-    ):
-        return True
-    return False
+    return bool(
+        any(item is not None and _dependency_auth(item, aliases, max_depth) for item in defaults)
+    )
 
 
-def _dependency_auth(
-    node: ast.AST, aliases: dict[str, str | None], max_depth: int
-) -> bool:
+def _dependency_auth(node: ast.AST, aliases: dict[str, str | None], max_depth: int) -> bool:
     dependency_names = {_normalise(item) for item in _AUTH_DEPENDENCIES}
     for candidate in _bounded_expr(node, max_depth):
         if not isinstance(candidate, ast.Call):
@@ -355,8 +526,7 @@ def _dependency_auth(
         if name not in {"depends", "security"}:
             continue
         if any(
-            _normalise((_reference(argument, aliases) or "").rsplit(".", 1)[-1])
-            in dependency_names
+            _normalise((_reference(argument, aliases) or "").rsplit(".", 1)[-1]) in dependency_names
             for argument in (
                 *candidate.args,
                 *(item.value for item in candidate.keywords),
@@ -366,7 +536,12 @@ def _dependency_auth(
     return False
 
 
-def _authorized(function: ast.FunctionDef | ast.AsyncFunctionDef, sink: ast.Call, aliases: dict[str, str | None], max_depth: int) -> bool:
+def _authorized(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    sink: ast.Call,
+    aliases: dict[str, str | None],
+    max_depth: int,
+) -> bool:
     for decorator in function.decorator_list:
         for node in _bounded_expr(decorator, max_depth):
             name = _reference(node.func if isinstance(node, ast.Call) else node, aliases) or ""
@@ -376,7 +551,9 @@ def _authorized(function: ast.FunctionDef | ast.AsyncFunctionDef, sink: ast.Call
     for node in _function_nodes(function, max_depth):
         if not isinstance(node, ast.Call) or _position(node) >= _position(sink):
             continue
-        if _normalise((_reference(node.func, aliases) or "").rsplit(".", 1)[-1]) not in {_normalise(item) for item in _AUTHZ}:
+        if _normalise((_reference(node.func, aliases) or "").rsplit(".", 1)[-1]) not in {
+            _normalise(item) for item in _AUTHZ
+        }:
             continue
         arguments = (*node.args, *(item.value for item in node.keywords))
         # An authorization helper without a resource argument is not evidence
@@ -389,16 +566,20 @@ def _authorized(function: ast.FunctionDef | ast.AsyncFunctionDef, sink: ast.Call
     return False
 
 
-def _function_nodes(function: ast.FunctionDef | ast.AsyncFunctionDef, max_depth: int) -> tuple[ast.AST, ...]:
+def _function_nodes(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, max_depth: int
+) -> tuple[ast.AST, ...]:
     result: list[ast.AST] = []
-    stack = [function]
+    stack: list[ast.AST] = [function]
     limit = max_depth * 10_000
     while stack:
         node = stack.pop()
         result.append(node)
         if len(result) > limit:
             raise PythonCwe862ScanError(PythonCwe862ScanErrorCode.SIGNAL_LIMIT)
-        if node is not function and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+        if node is not function and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
             continue
         stack.extend(reversed(tuple(ast.iter_child_nodes(node))))
     return tuple(result)
@@ -416,11 +597,17 @@ def _bounded_expr(node: ast.AST, max_depth: int) -> tuple[ast.AST, ...]:
     return tuple(result)
 
 
-def _calls(function: ast.FunctionDef | ast.AsyncFunctionDef, max_depth: int) -> tuple[ast.Call, ...]:
-    return tuple(node for node in _function_nodes(function, max_depth) if isinstance(node, ast.Call))
+def _calls(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, max_depth: int
+) -> tuple[ast.Call, ...]:
+    return tuple(
+        node for node in _function_nodes(function, max_depth) if isinstance(node, ast.Call)
+    )
 
 
-def _mutation(call: ast.Call, aliases: dict[str, str | None], max_depth: int) -> PythonCwe862Operation | None:
+def _mutation(
+    call: ast.Call, aliases: dict[str, str | None], max_depth: int
+) -> PythonCwe862Operation | None:
     name = _reference(call.func, aliases) or ""
     tail = _normalise(name.rsplit(".", 1)[-1])
     operation = _MUTATIONS.get(tail)
@@ -428,16 +615,30 @@ def _mutation(call: ast.Call, aliases: dict[str, str | None], max_depth: int) ->
         return None
     receiver = _reference(call.func.value, aliases) or ""
     parts = {_normalise(item) for item in receiver.split(".")}
-    if parts & _RESOURCE_WORDS or any(item.endswith(("repo", "repository", "dao", "manager", "service", "store")) for item in parts):
+    if parts & _RESOURCE_WORDS or any(
+        item.endswith(("repo", "repository", "dao", "manager", "service", "store"))
+        for item in parts
+    ):
         return PythonCwe862Operation(operation)
     return None
 
 
-def _resource_selected(call: ast.Call, function: ast.FunctionDef | ast.AsyncFunctionDef, aliases: dict[str, str | None], max_depth: int) -> bool:
-    parameters = {item.arg for item in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)}
+def _resource_selected(
+    call: ast.Call,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    aliases: dict[str, str | None],
+    max_depth: int,
+) -> bool:
+    parameters = {
+        item.arg
+        for item in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+    }
     for node in (*call.args, *(item.value for item in call.keywords)):
         for candidate in _bounded_expr(node, max_depth):
-            if isinstance(candidate, ast.Name) and (candidate.id in parameters or _normalise(candidate.id).endswith(("id", "key", "uuid"))):
+            if isinstance(candidate, ast.Name) and (
+                candidate.id in parameters
+                or _normalise(candidate.id).endswith(("id", "key", "uuid"))
+            ):
                 return True
     return False
 
@@ -483,14 +684,71 @@ def _range(node: ast.AST, source: bytes, starts: tuple[int, ...]) -> SourceRange
 
 
 def _range_json(value: SourceRange) -> dict[str, int]:
-    return {"end_byte": value.end_byte, "end_column": value.end_point.column, "end_row": value.end_point.row, "start_byte": value.start_byte, "start_column": value.start_point.column, "start_row": value.start_point.row}
+    return {
+        "end_byte": value.end_byte,
+        "end_column": value.end_point.column,
+        "end_row": value.end_point.row,
+        "start_byte": value.start_byte,
+        "start_column": value.start_point.column,
+        "start_row": value.start_point.row,
+    }
 
 
-def _signal_id(repository_id: str, revision: str, path: str, digest: str, size: int, endpoint: SourceRange, sink: SourceRange, operation: PythonCwe862Operation) -> str:
-    value = {"content_sha256": digest, "cwe": "CWE-862", "detector": _DETECTOR, "endpoint": _range_json(endpoint), "operation": operation.value, "path": path, "repository_id": repository_id, "revision": revision, "rule_id": _RULE, "sink": _range_json(sink), "source_size_bytes": size}
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+def _signal_id(
+    repository_id: str,
+    revision: str,
+    path: str,
+    digest: str,
+    size: int,
+    endpoint: SourceRange,
+    sink: SourceRange,
+    operation: PythonCwe862Operation,
+) -> str:
+    value = {
+        "content_sha256": digest,
+        "cwe": "CWE-862",
+        "detector": _DETECTOR,
+        "endpoint": _range_json(endpoint),
+        "operation": operation.value,
+        "path": path,
+        "repository_id": repository_id,
+        "revision": revision,
+        "rule_id": _RULE,
+        "sink": _range_json(sink),
+        "source_size_bytes": size,
+    }
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
-def _scan_sha256(repository_id: str, revision: str, path: str, digest: str, size: int, signals: tuple[PythonCwe862Signal, ...]) -> str:
-    value = {"content_sha256": digest, "cwe": "CWE-862", "detector": _DETECTOR, "path": path, "repository_id": repository_id, "revision": revision, "rule_id": _RULE, "signals": [{"endpoint": _range_json(item.endpoint), "operation": item.operation.value, "signal_id": item.signal_id, "sink": _range_json(item.sink)} for item in signals], "source_size_bytes": size}
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+def _scan_sha256(
+    repository_id: str,
+    revision: str,
+    path: str,
+    digest: str,
+    size: int,
+    signals: tuple[PythonCwe862Signal, ...],
+) -> str:
+    value = {
+        "content_sha256": digest,
+        "cwe": "CWE-862",
+        "detector": _DETECTOR,
+        "path": path,
+        "repository_id": repository_id,
+        "revision": revision,
+        "rule_id": _RULE,
+        "signals": [
+            {
+                "endpoint": _range_json(item.endpoint),
+                "operation": item.operation.value,
+                "signal_id": item.signal_id,
+                "sink": _range_json(item.sink),
+            }
+            for item in signals
+        ],
+        "source_size_bytes": size,
+    }
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()

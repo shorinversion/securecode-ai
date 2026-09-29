@@ -86,10 +86,7 @@ class SessionStore:
             or not all(type(role) is Role for role in principal.roles)
             or type(principal.repository_grants) is not frozenset
             or len(principal.repository_grants) > 128
-            or not all(
-                _safe_identity_value(value)
-                for value in principal.repository_grants
-            )
+            or not all(_safe_identity_value(value) for value in principal.repository_grants)
         ):
             raise SessionError()
         token = _token()
@@ -247,9 +244,7 @@ class SessionStore:
         with self._lock:
             if self._connection is None:
                 principal = self.verify_session(token)
-                rotated = self.issue_session(
-                    principal, lifetime_seconds=lifetime_seconds
-                )
+                rotated = self.issue_session(principal, lifetime_seconds=lifetime_seconds)
                 try:
                     self.revoke_session(token)
                 except Exception:
@@ -264,9 +259,7 @@ class SessionStore:
                 savepoint_active = True
                 principal = self.verify_session(token)
                 self.revoke_session(token)
-                rotated = self.issue_session(
-                    principal, lifetime_seconds=lifetime_seconds
-                )
+                rotated = self.issue_session(principal, lifetime_seconds=lifetime_seconds)
                 connection.execute("RELEASE session_rotate")
                 savepoint_active = False
                 return rotated
@@ -405,9 +398,7 @@ class SessionStore:
                    )""",
                 (now.isoformat(timespec="microseconds"), _CAPABILITY_CLEANUP_BATCH),
             )
-            count = connection.execute(
-                "SELECT COUNT(*) FROM auth_capabilities"
-            ).fetchone()
+            count = connection.execute("SELECT COUNT(*) FROM auth_capabilities").fetchone()
             if count is None or type(count[0]) is not int:
                 raise SessionError()
             if count[0] >= self._max_sessions:
@@ -505,22 +496,18 @@ class SessionStore:
             if expiry.tzinfo is None or expiry.astimezone(UTC) <= now:
                 raise SessionError()
             if (
-                (
-                    stored_tenant,
-                    stored_repository,
-                    stored_run,
-                    stored_action,
-                    stored_identity_hash,
-                )
-                != (
-                    tenant_id,
-                    repository_id,
-                    run_id,
-                    action,
-                    execution_identity_hash,
-                )
-                or used != 0
-            ):
+                stored_tenant,
+                stored_repository,
+                stored_run,
+                stored_action,
+                stored_identity_hash,
+            ) != (
+                tenant_id,
+                repository_id,
+                run_id,
+                action,
+                execution_identity_hash,
+            ) or used != 0:
                 raise SessionError()
             changed = connection.execute(
                 """UPDATE auth_capabilities SET used=1

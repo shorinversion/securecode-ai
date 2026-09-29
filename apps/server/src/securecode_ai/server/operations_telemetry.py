@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from collections import Counter
 from collections.abc import Mapping
@@ -154,14 +155,9 @@ class OperationsTelemetry:
                 candidate = dict(resource_usage)
             except Exception:
                 candidate = {}
-            if (
-                set(candidate) == _RESOURCE_FIELDS
-                and all(
-                    type(key) is str
-                    and type(value) is int
-                    and 0 <= value <= _MAX_RESOURCE_VALUE
-                    for key, value in candidate.items()
-                )
+            if set(candidate) == _RESOURCE_FIELDS and all(
+                type(key) is str and type(value) is int and 0 <= value <= _MAX_RESOURCE_VALUE
+                for key, value in candidate.items()
             ):
                 safe_resource_usage = candidate
         try:
@@ -189,9 +185,7 @@ class OperationsTelemetry:
             )
             self._counts[operation, outcome] += 1
             self._latency[operation] += elapsed_ms
-            buckets = self._latency_histogram.setdefault(
-                operation, [0] * len(_LATENCY_BUCKETS_MS)
-            )
+            buckets = self._latency_histogram.setdefault(operation, [0] * len(_LATENCY_BUCKETS_MS))
             buckets[bucket_index] += 1
             if safe_resource_usage is not None:
                 key = (operation, outcome)
@@ -265,7 +259,7 @@ class OperationsTelemetry:
             connection.execute(f"RELEASE SAVEPOINT {savepoint}")
             if not outer_transaction:
                 connection.commit()
-        except sqlite3.Error as failure:
+        except sqlite3.Error:
             try:
                 connection.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
                 connection.execute(f"RELEASE SAVEPOINT {savepoint}")
@@ -285,7 +279,7 @@ class OperationsTelemetry:
                    FROM operations_telemetry_buckets
                    ORDER BY operation, outcome, bucket_index"""
             ).fetchall()
-        except sqlite3.Error as failure:
+        except sqlite3.Error:
             raise RuntimeError("durable telemetry store is unavailable") from None
         for row in rows:
             if not _valid_durable_row(row):
@@ -296,9 +290,7 @@ class OperationsTelemetry:
             count = row[3]
             self._counts[operation, outcome] += count
             self._latency[operation] += row[4]
-            buckets = self._latency_histogram.setdefault(
-                operation, [0] * len(_LATENCY_BUCKETS_MS)
-            )
+            buckets = self._latency_histogram.setdefault(operation, [0] * len(_LATENCY_BUCKETS_MS))
             buckets[bucket_index] += count
             samples = row[5]
             if samples:
@@ -377,10 +369,8 @@ class OperationsTelemetry:
             except sqlite3.Error:
                 pass
             if not outer_transaction:
-                try:
+                with contextlib.suppress(sqlite3.Error):
                     connection.rollback()
-                except sqlite3.Error:
-                    pass
             raise RuntimeError("durable telemetry write failed") from failure
 
 

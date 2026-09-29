@@ -9,15 +9,15 @@ import re
 import stat
 from pathlib import Path
 
+from .artifact_tenant_namespace import (
+    ArtifactTenantNamespaceError,
+    artifact_tenant_path_component,
+)
 from .artifact_upload import (
     ArtifactUploadConflict,
     ArtifactUploadRejected,
     _parse_receipt,
     _unique_object_pairs,
-)
-from .artifact_tenant_namespace import (
-    ArtifactTenantNamespaceError,
-    artifact_tenant_path_component,
 )
 from .filesystem_paths import lexical_absolute_path
 from .worker_artifact_authorization import ArtifactUploadAuthorization

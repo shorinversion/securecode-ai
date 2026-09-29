@@ -499,7 +499,11 @@ def _scan_ecmascript_cwe798(
 def _collect_binding_fact(
     node: Node,
     source: bytes,
-    raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str]],
+    raw: set[
+        tuple[
+            SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str
+        ]
+    ],
 ) -> None:
     if node.type == "variable_declarator":
         name = node.child_by_field_name("name")
@@ -532,7 +536,11 @@ def _collect_binding_fact(
 def _collect_pair_fact(
     node: Node,
     source: bytes,
-    raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str]],
+    raw: set[
+        tuple[
+            SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str
+        ]
+    ],
 ) -> None:
     key = node.child_by_field_name("key")
     value = node.child_by_field_name("value")
@@ -560,7 +568,11 @@ def _collect_pair_fact(
 def _collect_default_fact(
     node: Node,
     source: bytes,
-    raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str]],
+    raw: set[
+        tuple[
+            SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str
+        ]
+    ],
 ) -> None:
     left = node.child_by_field_name("left")
     right = node.child_by_field_name("right")
@@ -585,7 +597,11 @@ def _collect_default_fact(
 def _collect_call_facts(
     node: Node,
     source: bytes,
-    raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str]],
+    raw: set[
+        tuple[
+            SourceRange, SourceRange, EcmaScriptCwe798Operation, EcmaScriptCwe798CredentialKind, str
+        ]
+    ],
 ) -> None:
     function = node.child_by_field_name("function") or node.child_by_field_name("constructor")
     arguments = node.child_by_field_name("arguments")
@@ -645,7 +661,9 @@ def _is_credential_literal(node: Node, source: bytes) -> bool:
 
 def _looks_user_argument(node: Node, source: bytes) -> bool:
     text = _compact_text(source, node)
-    return bool(re.search(r"(?:^|[_$.-])(?:user|username|login|email|identity)(?:$|[_$.-])", text, re.I))
+    return bool(
+        re.search(r"(?:^|[_$.-])(?:user|username|login|email|identity)(?:$|[_$.-])", text, re.I)
+    )
 
 
 def _static_literal(node: Node, source: bytes) -> Node | None:

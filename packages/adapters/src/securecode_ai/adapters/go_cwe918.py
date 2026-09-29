@@ -386,7 +386,7 @@ def _http_sink_kind(node: Node, source: bytes, imports: dict[str, str]) -> str |
 
 
 def _sink_arguments(kind: str, arguments: Node) -> tuple[Node, ...]:
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     if not values:
         return ()
     if kind == "Do":
@@ -406,23 +406,21 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     for name, value in zip(names, values, strict=False):
         if name.type != "identifier":
             continue
-        environment[_text(source, name)] = _resolve(
-            value, environment, source, imports, limits, 0
-        )
+        environment[_text(source, name)] = _resolve(value, environment, source, imports, limits, 0)
 
 
 def _resolve(
@@ -462,7 +460,7 @@ def _resolve(
             return ()
         builder = _qualified_call(function, source, imports)
         if builder in {"http.NewRequest", "http.NewRequestWithContext"}:
-            values = arguments.named_children
+            values = tuple(arguments.named_children)
             url_index = 2 if builder.endswith("WithContext") else 1
             if len(values) <= url_index:
                 return ()
@@ -470,7 +468,7 @@ def _resolve(
                 values[url_index], environment, source, imports, limits, depth + 1, visited
             )
         if builder in {"url.Parse", "url.JoinPath"}:
-            values = arguments.named_children
+            values = tuple(arguments.named_children)
             if builder == "url.Parse":
                 values = values[:1]
             return _dedupe_flows(
@@ -494,7 +492,11 @@ def _resolve(
             "url.QueryEscape",
             "url.PathEscape",
         }:
-            values = arguments.named_children[1:] if builder == "fmt.Sprintf" else arguments.named_children
+            values = tuple(
+                arguments.named_children[1:]
+                if builder == "fmt.Sprintf"
+                else arguments.named_children
+            )
             return _dedupe_flows(
                 (
                     flow
@@ -508,7 +510,11 @@ def _resolve(
         if function is not None and function.type == "selector_expression":
             operand = function.child_by_field_name("operand")
             field = function.child_by_field_name("field")
-            if operand is not None and field is not None and _text(source, field) in _URL_STRING_METHODS:
+            if (
+                operand is not None
+                and field is not None
+                and _text(source, field) in _URL_STRING_METHODS
+            ):
                 return _resolve(operand, environment, source, imports, limits, depth + 1, visited)
         return ()
     if node.type in {"binary_expression", "index_expression", "slice_expression"}:
@@ -616,9 +622,7 @@ def _preorder(root: Node) -> tuple[Node, ...]:
     return tuple(output)
 
 
-def _dedupe_flows(
-    flows: Iterable[_Flow], limits: GoCwe918ScanLimits
-) -> tuple[_Flow, ...]:
+def _dedupe_flows(flows: Iterable[_Flow], limits: GoCwe918ScanLimits) -> tuple[_Flow, ...]:
     unique: dict[tuple[int, int], _Flow] = {}
     for flow in flows:
         unique[(flow.source.start_byte, flow.source.end_byte)] = flow

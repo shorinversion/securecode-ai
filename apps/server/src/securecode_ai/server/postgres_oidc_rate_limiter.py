@@ -16,6 +16,7 @@ never reach this durable store.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Sequence
 from typing import Final, Protocol, TypeVar
 
@@ -109,15 +110,14 @@ class DbApiPostgresOidcRateLimitExecution:
             return result
         except BaseException:
             if connection is not None and callable(getattr(connection, "rollback", None)):
-                try:
+                with contextlib.suppress(BaseException):
                     connection.rollback()
-                except BaseException:
-                    pass
             raise
         finally:
-            if cursor is not None and callable(getattr(cursor, "close", None)):
+            close_cursor = getattr(cursor, "close", None)
+            if cursor is not None and callable(close_cursor):
                 try:
-                    cursor.close()
+                    close_cursor()
                 finally:
                     if connection is not None:
                         connection.close()
@@ -213,11 +213,7 @@ class PostgresOidcSourceRateLimiter:
             if row is None:
                 cursor.execute("SELECT COUNT(*) FROM oidc_login_source_rate_limit")
                 count_row = cursor.fetchone()
-                if (
-                    count_row is None
-                    or len(count_row) != 1
-                    or type(count_row[0]) is not int
-                ):
+                if count_row is None or len(count_row) != 1 or type(count_row[0]) is not int:
                     raise OidcDenied()
                 if count_row[0] >= _DEFAULT_MAX_ENTRIES:
                     return False

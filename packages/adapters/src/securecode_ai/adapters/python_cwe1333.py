@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import itertools
 import json
 import re
 from dataclasses import dataclass
@@ -440,9 +441,7 @@ def _scan_statements(
     source: bytes,
     line_starts: tuple[int, ...],
     limits: PythonCwe1333ScanLimits,
-    output: list[
-        tuple[SourceRange, SourceRange, PythonCwe1333Operation, PythonCwe1333Hazard]
-    ],
+    output: list[tuple[SourceRange, SourceRange, PythonCwe1333Operation, PythonCwe1333Hazard]],
 ) -> None:
     for statement in statements:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -545,9 +544,7 @@ def _scan_statement_calls(
     source: bytes,
     line_starts: tuple[int, ...],
     limits: PythonCwe1333ScanLimits,
-    output: list[
-        tuple[SourceRange, SourceRange, PythonCwe1333Operation, PythonCwe1333Hazard]
-    ],
+    output: list[tuple[SourceRange, SourceRange, PythonCwe1333Operation, PythonCwe1333Hazard]],
 ) -> None:
     for node in _statement_nodes(statement):
         if isinstance(node, ast.Call):
@@ -561,9 +558,7 @@ def _record_call(
     source: bytes,
     line_starts: tuple[int, ...],
     limits: PythonCwe1333ScanLimits,
-    output: list[
-        tuple[SourceRange, SourceRange, PythonCwe1333Operation, PythonCwe1333Hazard]
-    ],
+    output: list[tuple[SourceRange, SourceRange, PythonCwe1333Operation, PythonCwe1333Hazard]],
 ) -> None:
     operation = _operation_for_callable(call.func, aliases, limits.max_resolution_depth)
     if operation is None:
@@ -746,8 +741,9 @@ def _regex_hazard(pattern: str) -> PythonCwe1333Hazard | None:
         return None
 
 
+# Tokens come from the private re parser; keep the tuple-shape check defensive.
 def _sequence_hazard(
-    sequence: tuple[tuple[Any, Any], ...],
+    sequence: tuple[object, ...],
     depth: int,
     enclosing_unbounded: bool = False,
 ) -> PythonCwe1333Hazard | None:
@@ -778,22 +774,20 @@ def _sequence_hazard(
             if hazard is not None:
                 return hazard
             if _is_backtracking_repeat(operator, minimum, maximum):
-                repeat_summaries.append(
-                    (index, _first_sequence(tuple(body), depth + 1), unbounded)
-                )
+                repeat_summaries.append((index, _first_sequence(tuple(body), depth + 1), unbounded))
             continue
         for child in _child_sequences(operator, argument):
             hazard = _sequence_hazard(tuple(child), depth + 1, enclosing_unbounded)
             if hazard is not None:
                 return hazard
 
-    for left, right in zip(repeat_summaries, repeat_summaries[1:]):
+    for left, right in itertools.pairwise(repeat_summaries):
         if (left[2] or right[2]) and _first_overlap(left[1], right[1]):
             return PythonCwe1333Hazard.OVERLAPPING_QUANTIFIERS
     return None
 
 
-def _has_variable_repeat(sequence: tuple[tuple[Any, Any], ...], depth: int) -> bool:
+def _has_variable_repeat(sequence: tuple[object, ...], depth: int) -> bool:
     if depth > 64:
         return False
     for token in sequence:
@@ -857,13 +851,10 @@ def _child_sequences(operator: Any, argument: Any) -> tuple[tuple[Any, ...], ...
         return (tuple(argument),)
     if _is_operator(operator, "BRANCH") and isinstance(argument, tuple) and len(argument) > 1:
         return tuple(tuple(branch) for branch in argument[1])
-    if _is_operator(operator, "ASSERT") or _is_operator(operator, "ASSERT_NOT"):
-        if (
-            isinstance(argument, tuple)
-            and len(argument) > 1
-            and isinstance(argument[1], (list, tuple))
-        ):
-            return (tuple(argument[1]),)
+    if (_is_operator(operator, "ASSERT") or _is_operator(operator, "ASSERT_NOT")) and (
+        isinstance(argument, tuple) and len(argument) > 1 and isinstance(argument[1], (list, tuple))
+    ):
+        return (tuple(argument[1]),)
     if _is_operator(operator, "GROUPREF_EXISTS") and isinstance(argument, tuple):
         return tuple(tuple(item) for item in argument[1:] if isinstance(item, (list, tuple)))
     return ()
@@ -1027,9 +1018,7 @@ def _categories_overlap(left: str, right: str) -> bool:
         return right != left[4:]
     if right.startswith("not_"):
         return left != right[4:]
-    if {left, right} == {"digit", "word"}:
-        return True
-    return False
+    return {left, right} == {"digit", "word"}
 
 
 def _target_names(node: ast.AST) -> tuple[str, ...]:
@@ -1146,9 +1135,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1178,9 +1165,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

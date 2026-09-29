@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Final, cast
+from typing import Final, TypeGuard, cast
 
 from securecode_ai.contracts import AuditRun, AuditRunOutcome
 
@@ -43,9 +43,7 @@ _POLICY_GATE_KEYS: Final = frozenset(
         "require_mandatory_coverage",
     }
 )
-_POLICY_ROOT_KEYS: Final = frozenset(
-    {"gate", "schema_version", "calibration_record_sha256"}
-)
+_POLICY_ROOT_KEYS: Final = frozenset({"gate", "schema_version", "calibration_record_sha256"})
 
 
 class ScmPolicyMode(StrEnum):
@@ -137,9 +135,13 @@ class ScmPolicyRules:
         ):
             raise ValueError("SCM policy confidence threshold is invalid")
         needs_human = gate.get("needs_human", ())
-        if not isinstance(needs_human, Sequence) or isinstance(needs_human, (str, bytes, bytearray)):
+        if not isinstance(needs_human, Sequence) or isinstance(
+            needs_human, (str, bytes, bytearray)
+        ):
             raise ValueError("SCM policy human review rules are invalid")
-        if any(type(item) is not str or _RISK_LABEL.fullmatch(item) is None for item in needs_human):
+        if any(
+            type(item) is not str or _RISK_LABEL.fullmatch(item) is None for item in needs_human
+        ):
             raise ValueError("SCM policy human review rules are invalid")
         human_labels = tuple(sorted(needs_human))
         require_coverage = gate.get("require_mandatory_coverage", True)
@@ -194,10 +196,7 @@ class ScmPolicyFinding:
             or tuple(sorted(self.risk_labels)) != self.risk_labels
             or (
                 self.tenant_id is not None
-                and (
-                    type(self.tenant_id) is not str
-                    or _ID.fullmatch(self.tenant_id) is None
-                )
+                and (type(self.tenant_id) is not str or _ID.fullmatch(self.tenant_id) is None)
             )
         ):
             raise ValueError("SCM policy finding metadata is invalid")
@@ -265,18 +264,23 @@ class ScmPolicyDocument:
             or (self.rules is not None and type(self.rules) is not ScmPolicyRules)
         ):
             raise ValueError("SCM policy document metadata is invalid")
-        if self.mode is not None and self.mode is not ScmPolicyMode.ADVISORY and self.content is None:
+        if (
+            self.mode is not None
+            and self.mode is not ScmPolicyMode.ADVISORY
+            and self.content is None
+        ):
             raise ValueError("SCM policy blocking mode is not bound to content")
         if self.content is not None:
             if not isinstance(self.content, Mapping):
                 raise ValueError("SCM policy content is invalid")
             try:
-                frozen_content = _freeze_policy_json(self.content)
+                # self.content is a Mapping (checked above), so freezing yields a mapping proxy.
+                frozen_content = cast(Mapping[str, object], _freeze_policy_json(self.content))
                 canonical = _canonical_json(frozen_content)
                 content_rules = ScmPolicyRules.from_content(frozen_content)
                 gate, root = _policy_content_parts(frozen_content)
                 raw_mode = gate.get("mode")
-                parsed_mode = None if raw_mode is None else ScmPolicyMode(raw_mode)
+                parsed_mode = None if raw_mode is None else _parse_mode(raw_mode)
                 embedded_calibration = root.get("calibration_record_sha256")
                 if embedded_calibration is not None and not _is_sha(embedded_calibration):
                     raise ValueError("SCM policy calibration hash is invalid")
@@ -288,11 +292,7 @@ class ScmPolicyDocument:
                 raise ValueError("SCM policy rules do not match content")
             if self.rules is None:
                 object.__setattr__(self, "rules", content_rules)
-            if (
-                self.mode is not None
-                and parsed_mode is not None
-                and self.mode is not parsed_mode
-            ):
+            if self.mode is not None and parsed_mode is not None and self.mode is not parsed_mode:
                 raise ValueError("SCM policy mode conflicts with content")
             if (
                 self.mode is not None
@@ -320,6 +320,15 @@ class ScmPolicyDocument:
             object.__setattr__(self, "content", frozen_content)
         if self.rules is None:
             object.__setattr__(self, "rules", ScmPolicyRules())
+
+    @property
+    def resolved_rules(self) -> ScmPolicyRules:
+        """Return the rules that ``__post_init__`` always populates."""
+
+        rules = self.rules
+        if rules is None:
+            raise ValueError("SCM policy rules are unavailable")
+        return rules
 
     @property
     def calibrated(self) -> bool:
@@ -350,7 +359,7 @@ class ScmPolicyDocument:
         raw_mode = gate.get("mode")
         if raw_mode is not None:
             try:
-                parsed_mode = ScmPolicyMode(raw_mode)
+                parsed_mode = _parse_mode(raw_mode)
             except (TypeError, ValueError):
                 raise ValueError("SCM policy mode is invalid") from None
             if selected_mode is not None and selected_mode is not parsed_mode:
@@ -397,19 +406,20 @@ class ScmPolicyInputHashes:
     changed_scope_sha256: str | None = None
 
     def __post_init__(self) -> None:
-        if not all(
-            _is_sha(value)
-            for value in (
-                self.policy_document_sha256,
-                self.audit_run_sha256,
-                self.execution_identity_sha256,
+        if (
+            not all(
+                _is_sha(value)
+                for value in (
+                    self.policy_document_sha256,
+                    self.audit_run_sha256,
+                    self.execution_identity_sha256,
+                )
             )
-        ) or (
-            self.baseline_comparison_sha256 is not None
-            and not _is_sha(self.baseline_comparison_sha256)
-        ) or (
-            self.changed_scope_sha256 is not None
-            and not _is_sha(self.changed_scope_sha256)
+            or (
+                self.baseline_comparison_sha256 is not None
+                and not _is_sha(self.baseline_comparison_sha256)
+            )
+            or (self.changed_scope_sha256 is not None and not _is_sha(self.changed_scope_sha256))
         ):
             raise ValueError("SCM policy input hashes are invalid")
 
@@ -530,9 +540,7 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
                     "calibration_verified": policy.calibration_verified,
                     "verified_findings": tuple(item.metadata() for item in verified_findings),
                     "changed_scope": (
-                        None
-                        if changed_scope is None
-                        else _changed_scope_document(changed_scope)
+                        None if changed_scope is None else _changed_scope_document(changed_scope)
                     ),
                 }
             )
@@ -588,7 +596,10 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
             ScmPolicyErrorCode.HUMAN_REVIEW_REQUIRED,
         )
     if mode is ScmPolicyMode.ADVISORY:
-        if audit_run.audit_outcome in {AuditRunOutcome.PASS, AuditRunOutcome.FAIL} and not coverage_ready:
+        if (
+            audit_run.audit_outcome in {AuditRunOutcome.PASS, AuditRunOutcome.FAIL}
+            and not coverage_ready
+        ):
             return _decision(
                 policy,
                 mode,
@@ -601,11 +612,15 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
                 ("mandatory_coverage_incomplete",),
                 ScmPolicyErrorCode.MANDATORY_COVERAGE_INCOMPLETE,
             )
-        if audit_run.audit_outcome is AuditRunOutcome.FAIL and _blocking_findings_match(
-            audit_run,
-            verified_findings,
-            comparison=None,
-        ) is None:
+        if (
+            audit_run.audit_outcome is AuditRunOutcome.FAIL
+            and _blocking_findings_match(
+                audit_run,
+                verified_findings,
+                comparison=None,
+            )
+            is None
+        ):
             return _decision(
                 policy,
                 mode,
@@ -656,7 +671,7 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
             ("baseline_identity_mismatch",),
             ScmPolicyErrorCode.BASELINE_IDENTITY_MISMATCH,
         )
-    if mode is ScmPolicyMode.NEW_CODE and changed_scope is not None:
+    if mode is ScmPolicyMode.NEW_CODE and changed_scope is not None and comparison is not None:
         try:
             changed_scope.validate_for(comparison)
         except (TypeError, ValueError):
@@ -672,11 +687,8 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
                 ("changed_scope_invalid",),
                 ScmPolicyErrorCode.CHANGED_SCOPE_REQUIRED,
             )
-    if (
-        mode is not ScmPolicyMode.ADVISORY
-        and audit_run.audit_outcome is AuditRunOutcome.PASS
-        and not coverage_ready
-    ):
+    # ADVISORY returned above, so every remaining mode requires mandatory coverage.
+    if audit_run.audit_outcome is AuditRunOutcome.PASS and not coverage_ready:
         return _decision(
             policy,
             mode,
@@ -733,7 +745,8 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
             ("unmapped_blocking_finding",),
             ScmPolicyErrorCode.UNMAPPED_BLOCKING_FINDING,
         )
-    if policy.rules.min_confidence is not None:
+    rules = policy.resolved_rules
+    if rules.min_confidence is not None:
         return _decision(
             policy,
             mode,
@@ -749,14 +762,11 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
     eligible = tuple(
         item
         for item in matched
-        if item.verdict in policy.rules.block_verdicts
-        and item.severity in policy.rules.block_severities
+        if item.verdict in rules.block_verdicts and item.severity in rules.block_severities
     )
-    if mode is ScmPolicyMode.NEW_CODE:
+    if mode is ScmPolicyMode.NEW_CODE and comparison is not None:
         try:
-            proven_new = set(
-                comparison.new_code_fingerprints(changed_scope=changed_scope)
-            )
+            proven_new = set(comparison.new_code_fingerprints(changed_scope=changed_scope))
         except (TypeError, ValueError):
             proven_new = set()
         relations = tuple(
@@ -780,11 +790,7 @@ def evaluate_scm_policy(request: object) -> ScmPolicyDecision:
                 False,
                 False,
                 False,
-                (
-                    "changed_scope_required"
-                    if changed_scope is None
-                    else "changed_scope_unproven",
-                ),
+                ("changed_scope_required" if changed_scope is None else "changed_scope_unproven",),
                 ScmPolicyErrorCode.CHANGED_SCOPE_REQUIRED,
             )
         if BaselineFindingRelation.NEW not in relations:
@@ -944,7 +950,7 @@ def _human_review_required(
     policy: ScmPolicyDocument,
     verified_findings: tuple[ScmPolicyFinding, ...],
 ) -> bool:
-    labels = set(policy.rules.human_review_risk_labels)
+    labels = set(policy.resolved_rules.human_review_risk_labels)
     return any(
         item.verdict == "CONFLICTING" or bool(labels & set(item.risk_labels))
         for item in verified_findings
@@ -1072,8 +1078,14 @@ def _invalid_decision(error_code: ScmPolicyErrorCode) -> ScmPolicyDecision:
     )
 
 
-def _is_sha(value: object) -> bool:
+def _is_sha(value: object) -> TypeGuard[str]:
     return type(value) is str and _SHA256.fullmatch(value) is not None
+
+
+def _parse_mode(value: object) -> ScmPolicyMode:
+    if not isinstance(value, str):
+        raise ValueError("SCM policy mode is invalid")
+    return ScmPolicyMode(value)
 
 
 def _is_commit(value: object) -> bool:
@@ -1097,8 +1109,10 @@ def _policy_content_parts(
     else:
         if any(
             type(key) is not str
-            or key not in _POLICY_GATE_KEYS
-            and key not in {"schema_version", "calibration_record_sha256"}
+            or (
+                key not in _POLICY_GATE_KEYS
+                and key not in {"schema_version", "calibration_record_sha256"}
+            )
             for key in content
         ):
             raise ValueError("SCM policy document contains an unknown field")

@@ -193,7 +193,10 @@ def load_scm_policy_registry(path: Path) -> ScmPolicyRegistry:
         except (TypeError, ValueError):
             raise ValueError("SCM policy registry is invalid") from None
         version_key = (tenant_id, policy_id, policy_version)
-        if version_key in version_hashes or (tenant_id, policy_id, policy_version, digest) in documents:
+        if (
+            version_key in version_hashes
+            or (tenant_id, policy_id, policy_version, digest) in documents
+        ):
             raise ValueError("SCM policy version is duplicated")
         version_hashes[version_key] = digest
         documents[(tenant_id, policy_id, policy_version, digest)] = policy

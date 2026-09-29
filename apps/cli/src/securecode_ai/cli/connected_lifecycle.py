@@ -73,15 +73,19 @@ class WaiverDraft:
     policy_scope: str | None = None
 
     def __post_init__(self) -> None:
-        if any(
-            not _identifier(value)
-            for value in (
-                self.waiver_id,
-                self.approval_id,
-                self.repository_id,
-                self.run_id,
+        if (
+            any(
+                not _identifier(value)
+                for value in (
+                    self.waiver_id,
+                    self.approval_id,
+                    self.repository_id,
+                    self.run_id,
+                )
             )
-        ) or not _sha256(self.execution_identity_hash) or not _utc_timestamp(self.expires_at):
+            or not _sha256(self.execution_identity_hash)
+            or not _utc_timestamp(self.expires_at)
+        ):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         if self.policy_scope is not None and not _identifier(self.policy_scope):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
@@ -212,7 +216,10 @@ def _validated_secret_receipt(
     if not isinstance(document, dict) or set(document) != fields:
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
     if (
-        not all(_identifier(document.get(name)) for name in ("tenant_id", "workload_id", "grant_id", "repository_id"))
+        not all(
+            _identifier(document.get(name))
+            for name in ("tenant_id", "workload_id", "grant_id", "repository_id")
+        )
         or type(document.get("purpose")) is not str
         or document.get("purpose") not in _SECRET_PURPOSES
         or not _sha256(document.get("handle_sha256"))
@@ -230,10 +237,7 @@ def _validated_secret_receipt(
             expected_repository_id is not None
             and document["repository_id"] != expected_repository_id
         )
-        or (
-            expected_workload_id is not None
-            and document["workload_id"] != expected_workload_id
-        )
+        or (expected_workload_id is not None and document["workload_id"] != expected_workload_id)
     ):
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
     return {name: document[name] for name in fields}
@@ -267,8 +271,10 @@ def _validated_backup_receipt(
         or not _identifier(document.get("repository_id"))
         or type(document.get("state")) is not str
         or document.get("state") not in _BACKUP_STATES
-        or document.get("manifest_sha256") is not None
-        and not _sha256(document.get("manifest_sha256"))
+        or (
+            document.get("manifest_sha256") is not None
+            and not _sha256(document.get("manifest_sha256"))
+        )
         or type(document.get("component_count")) is not int
         or not 1 <= document["component_count"] <= 10_000
         or type(document.get("version")) is not int
@@ -277,15 +283,25 @@ def _validated_backup_receipt(
         or type(document.get("restore_verified")) is not bool
         or any(
             value is not None and (type(value) is not int or value < 0)
-            for value in (document.get("rpo_seconds"), document.get("rto_seconds"), document.get("completed_at"))
+            for value in (
+                document.get("rpo_seconds"),
+                document.get("rto_seconds"),
+                document.get("completed_at"),
+            )
         )
-        or document["restore_verified"] and not document["backup_verified"]
-        or document["state"] == "PLANNED"
-        and (document["backup_verified"] or document["restore_verified"])
-        or document["state"] == "BACKED_UP"
-        and (not document["backup_verified"] or document["restore_verified"])
-        or document["state"] == "RESTORED"
-        and (not document["backup_verified"] or not document["restore_verified"])
+        or (document["restore_verified"] and not document["backup_verified"])
+        or (
+            document["state"] == "PLANNED"
+            and (document["backup_verified"] or document["restore_verified"])
+        )
+        or (
+            document["state"] == "BACKED_UP"
+            and (not document["backup_verified"] or document["restore_verified"])
+        )
+        or (
+            document["state"] == "RESTORED"
+            and (not document["backup_verified"] or not document["restore_verified"])
+        )
         or (expected_backup_id is not None and document["backup_id"] != expected_backup_id)
         or (
             expected_repository_id is not None
@@ -379,12 +395,12 @@ def _validated_deletion_receipt(
         or not 1 <= document["version"] <= 2_147_483_647
         or type(document.get("legal_hold")) is not bool
         or type(document.get("executed")) is not bool
-        or document["executed"] and document["state"] != "EXECUTED"
-        or document["legal_hold"] and document["state"] != "HELD"
-        or document["state"] == "EXECUTED" and not document["executed"]
-        or document["state"] == "HELD" and not document["legal_hold"]
-        or document["state"] == "REQUESTED" and (document["legal_hold"] or document["executed"])
-        or document["state"] == "APPROVED" and (document["legal_hold"] or document["executed"])
+        or (document["executed"] and document["state"] != "EXECUTED")
+        or (document["legal_hold"] and document["state"] != "HELD")
+        or (document["state"] == "EXECUTED" and not document["executed"])
+        or (document["state"] == "HELD" and not document["legal_hold"])
+        or (document["state"] == "REQUESTED" and (document["legal_hold"] or document["executed"]))
+        or (document["state"] == "APPROVED" and (document["legal_hold"] or document["executed"]))
         or (expected_deletion_id is not None and document["deletion_id"] != expected_deletion_id)
         or (
             expected_repository_id is not None
@@ -432,7 +448,9 @@ def grant_secret(
         expected_repository_id=draft.repository_id,
         expected_workload_id=draft.workload_id,
     )
-    return ConnectedCollection(run_id=draft.workload_id, kind=ResultKind.FINDINGS, document=safe_document)
+    return ConnectedCollection(
+        run_id=draft.workload_id, kind=ResultKind.FINDINGS, document=safe_document
+    )
 
 
 def read_secret_grant(
@@ -481,7 +499,12 @@ def rotate_secret(
         settings,
         "secret-rotate",
         grant_id,
-        {"purpose": purpose, "reference": reference, "workload_id": workload_id, "if_match": if_match},
+        {
+            "purpose": purpose,
+            "reference": reference,
+            "workload_id": workload_id,
+            "if_match": if_match,
+        },
         idempotency_key,
     )
     client = api if api is not None else HttpConnectedApi(settings.base_url)
@@ -512,7 +535,9 @@ def revoke_secret(
 
     if not _identifier(grant_id) or not _version_precondition(if_match, minimum=1):
         raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
-    key = _operation_key(settings, "secret-revoke", grant_id, {"if_match": if_match}, idempotency_key)
+    key = _operation_key(
+        settings, "secret-revoke", grant_id, {"if_match": if_match}, idempotency_key
+    )
     client = api if api is not None else HttpConnectedApi(settings.base_url)
     document = client.mutate(
         "/api/v1/secret-grants/" + grant_id + ":revoke",
@@ -596,7 +621,9 @@ def create_backup(
         expected_backup_id=draft.backup_id,
         expected_repository_id=draft.repository_id,
     )
-    return ConnectedCollection(run_id=draft.backup_id, kind=ResultKind.FINDINGS, document=safe_document)
+    return ConnectedCollection(
+        run_id=draft.backup_id, kind=ResultKind.FINDINGS, document=safe_document
+    )
 
 
 def read_backup(
@@ -846,7 +873,12 @@ def hold_deletion(
         settings,
         "deletion-legal-hold",
         deletion_id,
-        {"enabled": enabled, "identity_hash": identity_hash, "reason": reason, "if_match": if_match},
+        {
+            "enabled": enabled,
+            "identity_hash": identity_hash,
+            "reason": reason,
+            "if_match": if_match,
+        },
         idempotency_key,
     )
     client = api if api is not None else HttpConnectedApi(settings.base_url)

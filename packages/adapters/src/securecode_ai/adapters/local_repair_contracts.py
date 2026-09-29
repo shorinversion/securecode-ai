@@ -179,7 +179,8 @@ def build_local_repair_binding(finding: FindingCase, graph: EvidenceGraph) -> Lo
                         for item in locations_by_flow.get(flow.evidence_id, ())
                         if item.location is not None
                     }
-                ) >= 2
+                )
+                >= 2
             ),
             None,
         )

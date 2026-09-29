@@ -418,9 +418,12 @@ def _run_stage(stage: str, manifest: dict[str, Any]) -> tuple[int, dict[str, obj
 
 def _target_cwe(manifest: dict[str, Any]) -> str:
     finding = manifest.get("finding")
-    if type(finding) is not dict or type(finding.get("cwe_id")) is not str:
+    if type(finding) is not dict:
         raise ChildProtocolError
-    return finding["cwe_id"]
+    cwe_id = finding.get("cwe_id")
+    if type(cwe_id) is not str:
+        raise ChildProtocolError
+    return cwe_id
 
 
 def _evaluate_root_cause(root: Path, manifest: dict[str, Any]) -> str:
@@ -650,12 +653,14 @@ def _process_security_canaries() -> bool:
     ):
         return False
     for name in ("CapInh", "CapPrm", "CapEff", "CapAmb"):
-        value = fields.get(name)
-        if value is None or not value or any(
-            character not in "0123456789abcdefABCDEF" for character in value
+        capability = fields.get(name)
+        if (
+            capability is None
+            or not capability
+            or any(character not in "0123456789abcdefABCDEF" for character in capability)
         ):
             return False
-        if int(value, 16) != 0:
+        if int(capability, 16) != 0:
             return False
     return True
 

@@ -449,9 +449,7 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
             ("index", "oidc_nonce_replays_expiry"),
             ("index", "oidc_login_source_rate_limit_expiry"),
         }
-        previous_expected = (
-            expected_before_backup_transitions - added_auth_tables - {checkpoint}
-        )
+        previous_expected = expected_before_backup_transitions - added_auth_tables - {checkpoint}
         pre_occurrence = previous_expected - {occurrence, occurrence_index}
         metadata = ("table", "schema_metadata")
         update_metadata = False
@@ -462,9 +460,8 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 connection.execute(statement)
             insert_metadata = True
         elif metadata not in existing:
-            if (
-                existing - {checkpoint} != pre_occurrence - {metadata}
-                or not is_exact_legacy_schema(connection)
+            if existing - {checkpoint} != pre_occurrence - {metadata} or not is_exact_legacy_schema(
+                connection
             ):
                 raise SchemaVersionError("unversioned database schema is incompatible")
             connection.execute(_STATEMENTS[0])
@@ -519,6 +516,7 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
             elif version == _QUOTA_SCHEMA_VERSION:
                 quota_previous_expected = previous_expected - {
                     ("table", "request_quota_windows"),
+                    ("index", "request_quota_started_idx"),
                 }
                 if not quota_previous_expected.issubset(existing):
                     raise SchemaVersionError("database schema is incomplete")
@@ -531,7 +529,8 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                 update_metadata = True
             elif version == _PREVIOUS_SCHEMA_VERSION:
                 if not (
-                    expected_before_backup_transitions - {checkpoint}
+                    expected_before_backup_transitions
+                    - {checkpoint}
                     - {
                         ("table", "auth_capabilities"),
                         ("index", "auth_capabilities_expiry_used_idx"),
@@ -566,9 +565,9 @@ def _apply_sqlite_schema(connection: sqlite3.Connection) -> None:
                     ("table", "oidc_login_source_rate_limit"),
                     ("index", "oidc_login_source_rate_limit_expiry"),
                 }
-                if not (
-                    expected_before_backup_transitions - source_rate_objects
-                ).issubset(existing):
+                if not (expected_before_backup_transitions - source_rate_objects).issubset(
+                    existing
+                ):
                     raise SchemaVersionError("database schema is incomplete")
                 if existing & source_rate_objects:
                     raise SchemaVersionError("database source rate schema is incomplete")
@@ -653,8 +652,7 @@ def _require_recorded_version(connection: sqlite3.Connection) -> None:
 def _require_checkpoint_shape(connection: sqlite3.Connection) -> None:
     rows = connection.execute("PRAGMA table_info(workflow_checkpoints)").fetchall()
     actual = tuple(
-        (str(row[1]), str(row[2]).upper(), int(row[3]), row[4], int(row[5]))
-        for row in rows
+        (str(row[1]), str(row[2]).upper(), int(row[3]), row[4], int(row[5])) for row in rows
     )
     expected = (
         ("tenant_id", "TEXT", 1, None, 1),
@@ -736,8 +734,7 @@ def _require_tenant_key_shapes(connection: sqlite3.Connection) -> None:
 def _require_capability_shape(connection: sqlite3.Connection) -> None:
     rows = connection.execute("PRAGMA table_info(auth_capabilities)").fetchall()
     actual = tuple(
-        (str(row[1]), str(row[2]).upper(), int(row[3]), row[4], int(row[5]))
-        for row in rows
+        (str(row[1]), str(row[2]).upper(), int(row[3]), row[4], int(row[5])) for row in rows
     )
     expected = (
         ("token_hash", "TEXT", 1, None, 1),
@@ -754,13 +751,13 @@ def _require_capability_shape(connection: sqlite3.Connection) -> None:
     for row in connection.execute("PRAGMA index_list(auth_capabilities)"):
         if len(row) < 3 or type(row[1]) is not str or type(row[2]) is not int:
             continue
-        columns = tuple(
-            str(item[2])
-            for item in connection.execute(f"PRAGMA index_info({row[1]})")
-        )
-        if row[1] == "auth_capabilities_expiry_used_idx" and row[2] == 0:
-            if columns == ("used", "expires_at", "token_hash"):
-                return
+        columns = tuple(str(item[2]) for item in connection.execute(f"PRAGMA index_info({row[1]})"))
+        if (
+            row[1] == "auth_capabilities_expiry_used_idx"
+            and row[2] == 0
+            and columns == ("used", "expires_at", "token_hash")
+        ):
+            return
     raise SchemaVersionError("database capability index is incompatible")
 
 

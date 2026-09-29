@@ -6,7 +6,8 @@ import hashlib
 import json
 import os
 import re
-import runpy
+import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path, PurePosixPath
@@ -32,6 +33,7 @@ from securecode_ai.adapters.release_provider import (
 )
 from securecode_ai.contracts import CliExitCode
 from securecode_ai.core.release_candidate import ReleaseArtifact, ReleaseCandidate
+from securecode_ai.core.release_provenance import checksums as release_checksums
 from securecode_ai.core.release_publisher import (
     AuthorizedPublishRequest,
     PublishAuthorization,
@@ -39,7 +41,6 @@ from securecode_ai.core.release_publisher import (
     ReleasePublisher,
     RemoteRelease,
 )
-from securecode_ai.core.release_provenance import checksums as release_checksums
 from securecode_ai.core.supply_chain import DependencyPolicy
 
 _MAX_CONFIG_BYTES: Final = 1024 * 1024
@@ -145,17 +146,13 @@ def run_release_command(tokens: tuple[str, ...], *, stdout: TextIO, stderr: Text
             ):
                 raise ReleaseCliError()
             authorization = _read_object(authorization_path, _MAX_AUTHORIZATION_BYTES)
-            parsed_authorization = _parse_authorization(
-                authorization, candidate.candidate_sha256
-            )
+            parsed_authorization = _parse_authorization(authorization, candidate.candidate_sha256)
             verifier = HmacReleaseAuthorizationVerifier(
                 read_protected_release_key(authority[0]), authority[1]
             )
-            if (
-                parsed_authorization.store_identity_sha256
-                != release_store_identity(destination_root)
-                or not verifier.verify(parsed_authorization, now=int(time.time()))
-            ):
+            if parsed_authorization.store_identity_sha256 != release_store_identity(
+                destination_root
+            ) or not verifier.verify(parsed_authorization, now=int(time.time())):
                 raise ReleaseCliError()
         elif provenance_inputs is not None:
             raise ReleaseCliError()
@@ -294,15 +291,19 @@ def _parse_config(
     ReleaseSbomInput | None,
     dict[str, str] | None,
 ]:
-    if frozenset(value) not in {
-        _CONFIG_KEYS,
-        _SBOM_CONFIG_KEYS,
-        _PUBLISH_CONFIG_KEYS,
-        _PUBLISH_SBOM_CONFIG_KEYS,
-        _SBOM_INPUT_CONFIG_KEYS,
-        _PUBLISH_SBOM_INPUT_CONFIG_KEYS,
-        _PUBLISH_GENERATED_CONFIG_KEYS,
-    } or value["schema_version"] != 1:
+    if (
+        frozenset(value)
+        not in {
+            _CONFIG_KEYS,
+            _SBOM_CONFIG_KEYS,
+            _PUBLISH_CONFIG_KEYS,
+            _PUBLISH_SBOM_CONFIG_KEYS,
+            _SBOM_INPUT_CONFIG_KEYS,
+            _PUBLISH_SBOM_INPUT_CONFIG_KEYS,
+            _PUBLISH_GENERATED_CONFIG_KEYS,
+        }
+        or value["schema_version"] != 1
+    ):
         raise ReleaseCliError()
     source_root = _text(value["source_root"])
     destination_root = _text(value["destination_root"])
@@ -433,18 +434,8 @@ def _generate_release_evidence(
     """Generate release evidence through the repository producer interfaces."""
 
     root = Path(source_root).resolve(strict=True)
-    repository_root = Path(__file__).resolve().parents[5]
-    sbom_api = runpy.run_path(str(repository_root / "scripts" / "sbom.py"))
-    provenance_api = runpy.run_path(str(repository_root / "scripts" / "release_provenance.py"))
-    report = sbom_api["build_sbom"](
-        lock=root / "uv.lock",
-        pyproject=root / "pyproject.toml",
-    )
+    scripts = Path(__file__).resolve().parents[5] / "scripts"
     assessment_path = root.joinpath(*PurePosixPath(sbom_inputs.assessment_relative_path).parts)
-    release_sbom = sbom_api["build_release_sbom"](
-        document=report,
-        assessment=assessment_path,
-    )
     evidence_paths = {item.evidence_id: item.relative_path for item in evidence}
     release_sbom_path = evidence_paths["sbom_sha256"]
     inventory_path = evidence_paths["provenance_sha256"] + ".inventory.json"
@@ -478,63 +469,90 @@ def _generate_release_evidence(
         for item in artifacts
     )
     with tempfile.TemporaryDirectory(prefix=".release-evidence-", dir=root) as temporary:
-        temporary_sbom = Path(temporary) / "sbom.json"
-        temporary_sbom.write_bytes(release_sbom)
-        manifest, checksums = provenance_api["build_provenance"](
-            root=root,
-            sbom=temporary_sbom,
-            artifacts=artifact_checksums,
+        work = Path(temporary)
+        _run_release_script(
+            scripts / "sbom.py",
+            "--lock",
+            str(root / "uv.lock"),
+            "--pyproject",
+            str(root / "pyproject.toml"),
+            "--output",
+            str(work / "report.json"),
+            "--assessment",
+            str(assessment_path),
+            "--release-output",
+            str(work / "release-sbom.json"),
         )
-    attestation = provenance_api["build_release_attestation"](
-        root=root,
-        builder_id=provenance_inputs["builder_id"],
-        workflow_sha256=provenance_inputs["workflow_sha256"],
-        artifact_digest=selected_artifact.checksum_sha256,
-        image_digest=provenance_inputs["image_digest"],
-    )
+        report_bytes = (work / "report.json").read_bytes()
+        release_sbom = (work / "release-sbom.json").read_bytes()
+        _run_release_script(
+            scripts / "release_provenance.py",
+            "--root",
+            str(root),
+            "--sbom",
+            str(work / "release-sbom.json"),
+            "--output",
+            str(work / "inventory.json"),
+            "--checksums",
+            str(work / "checksums.txt"),
+            *(
+                value
+                for path, digest in artifact_checksums
+                for value in ("--artifact", path, digest)
+            ),
+            "--attestation-output",
+            str(work / "attestation.json"),
+            "--builder-id",
+            provenance_inputs["builder_id"],
+            "--workflow-sha256",
+            provenance_inputs["workflow_sha256"],
+            "--artifact-digest",
+            selected_artifact.checksum_sha256,
+            "--image-digest",
+            provenance_inputs["image_digest"],
+        )
+        inventory_bytes = (work / "inventory.json").read_bytes()
+        checksum_bytes = (work / "checksums.txt").read_bytes()
+        attestation = json.loads((work / "attestation.json").read_bytes())
+    if type(attestation) is not dict:
+        raise ReleaseCliError()
     attestation_bytes = _canonical_json(attestation).encode("ascii")
-    checksum_bytes = checksums.encode("ascii")
     canonical_artifact_checksums = release_checksums(
-        {
-            artifact.artifact_id: artifact.checksum_sha256
-            for artifact in candidate.artifacts
-        }
+        {artifact.artifact_id: artifact.checksum_sha256 for artifact in candidate.artifacts}
     )
     if (
         hashlib.sha256(release_sbom).hexdigest() != candidate.sbom_sha256
         or hashlib.sha256(attestation_bytes).hexdigest() != candidate.provenance_sha256
-        or hashlib.sha256(canonical_artifact_checksums).hexdigest()
-        != candidate.checksums_sha256
+        or hashlib.sha256(canonical_artifact_checksums).hexdigest() != candidate.checksums_sha256
         or attestation["source_tree"] != candidate.source_tree_sha256
     ):
         raise ReleaseCliError()
 
-    report_bytes = json.dumps(
-        report,
-        ensure_ascii=True,
-        allow_nan=False,
-        indent=2,
-        sort_keys=True,
-    ).encode("ascii") + b"\n"
     _write_generated_source(root, sbom_inputs.report_relative_path, report_bytes)
     _write_generated_source(
         root,
         release_sbom_path,
         release_sbom,
     )
-    _write_generated_source(
-        root,
-        inventory_path,
-        json.dumps(
-            manifest,
-            ensure_ascii=True,
-            allow_nan=False,
-            indent=2,
-            sort_keys=True,
-        ).encode("ascii") + b"\n",
-    )
+    _write_generated_source(root, inventory_path, inventory_bytes)
     _write_generated_source(root, evidence_paths["checksums_sha256"], checksum_bytes)
     _write_generated_source(root, evidence_paths["provenance_sha256"], attestation_bytes)
+
+
+def _run_release_script(script: Path, *arguments: str) -> None:
+    """Run one repository evidence producer in an isolated interpreter."""
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-I", str(script), *arguments],
+            capture_output=True,
+            check=False,
+            timeout=600,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise ReleaseCliError() from None
+    if completed.returncode != 0:
+        raise ReleaseCliError()
 
 
 def _write_generated_source(root: Path, relative_path: str, payload: bytes) -> None:

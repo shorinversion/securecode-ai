@@ -15,9 +15,8 @@ from securecode_ai.contracts import ModelUsage, RunExecutionIdentity
 from securecode_ai.core.reports import ReportFormat
 
 from . import local_product_runner_execution as _execution_module
-from .dependency_scanning import ApprovedOsvScanner
-from .remote_provider_budget import RemoteProviderCostReceipt
 from .config import EffectiveConfiguration
+from .dependency_scanning import ApprovedOsvScanner
 from .git_snapshot import OfflineGitObjectReader as OfflineGitObjectReader
 from .local_product_host import (
     LocalProductHost,
@@ -31,13 +30,14 @@ from .local_product_runner_config import (
     LocalProductSupersededError,
     LocalProductUnavailableError,
 )
-from .product_provider_runtime import ProductProviderRuntime
 from .local_product_runner_config import _git as _git
 from .local_product_runner_config import _pin as _pin
 from .local_product_runner_config import _retain_evidence_graph as _retain_evidence_graph
 from .local_product_runner_config import (
     resolve_local_product_configuration as resolve_local_product_configuration,
 )
+from .product_provider_runtime import ProductProviderRuntime
+from .remote_provider_budget import RemoteProviderCostReceipt
 
 for _local_product_type in (
     LocalProductConfigurationError,
@@ -182,10 +182,10 @@ __all__ = [
     "LocalProductScanResult",
     "LocalProductSupersededError",
     "LocalProductUnavailableError",
+    "ProductProviderRuntime",
     "resolve_local_product_configuration",
     "run_local_product_repair",
     "run_local_product_scan",
-    "ProductProviderRuntime",
 ]
 
 
@@ -367,9 +367,7 @@ def _completed_repairs(value: object) -> list[dict[str, object]]:
             "patch_id": patch_id,
             "artifact_selector": selector,
             "patch_sha256": patch_sha256,
-            "validation_result_sha256": _summary_sha(
-                item.get("validation_result_sha256")
-            ),
+            "validation_result_sha256": _summary_sha(item.get("validation_result_sha256")),
             "manifest_sha256": _summary_sha(item.get("manifest_sha256")),
             "patch_status_sha256": _summary_sha(item.get("patch_status_sha256")),
             "loop_receipt_sha256": _summary_sha(item.get("loop_receipt_sha256")),
@@ -408,7 +406,9 @@ def _repair_audit(value: object) -> dict[str, object] | None:
         if isinstance(text, str) and text.isascii() and _SUMMARY_ID.fullmatch(text):
             projected[name] = text
     for name in ("run_id", "execution_identity_hash", "json_report_sha256"):
-        identifier = _summary_sha(value.get(name)) if "sha" in name else _summary_id(value.get(name))
+        identifier = (
+            _summary_sha(value.get(name)) if "sha" in name else _summary_id(value.get(name))
+        )
         if identifier is not None:
             projected[name] = identifier
     for name in ("coverage_complete",):
@@ -438,9 +438,7 @@ def _repair_audit(value: object) -> dict[str, object] | None:
                 hashes = unit.get(name, [])
                 if isinstance(hashes, (list, tuple)):
                     unit_value[name] = [
-                        digest
-                        for item in hashes
-                        if (digest := _summary_sha(item)) is not None
+                        digest for item in hashes if (digest := _summary_sha(item)) is not None
                     ]
             if unit_value:
                 projected_units.append(unit_value)

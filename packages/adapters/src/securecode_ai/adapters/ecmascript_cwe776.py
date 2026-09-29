@@ -257,9 +257,7 @@ class EcmaScriptCwe776Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe776Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe776Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -428,7 +426,11 @@ def _scan_ecmascript_cwe776(
         raise EcmaScriptCwe776ScanError(EcmaScriptCwe776ScanErrorCode.SOURCE_LIMIT)
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe776ScanError(EcmaScriptCwe776ScanErrorCode.ANALYSIS_UNAVAILABLE)
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -439,7 +441,11 @@ def _scan_ecmascript_cwe776(
         )
         if rebuilt != symbol_index:
             raise ValueError("symbol index mismatch")
-        grammar = _javascript_language() if expected_language == "javascript" else _typescript_language(tsx=symbol_index.path.endswith(".tsx"))
+        grammar = (
+            _javascript_language()
+            if expected_language == "javascript"
+            else _typescript_language(tsx=symbol_index.path.endswith(".tsx"))
+        )
         source = symbol_index.source
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
@@ -545,7 +551,7 @@ def _call_fact(
         return None
     canonical = _canonical_expression(function, source, aliases)
     arguments = node.child_by_field_name("arguments")
-    values = arguments.named_children if arguments is not None else ()
+    values = tuple(arguments.named_children) if arguments is not None else ()
     if node.type == "new_expression" and canonical in _PARSER_CONSTRUCTORS:
         risky, configuration = _configuration_state(values, source, objects)
         if risky is not None and configuration is not None:
@@ -589,7 +595,9 @@ def _direct_operation(canonical: str | None) -> EcmaScriptCwe776Operation | None
     }.get(canonical or "")
 
 
-def _parse_operation(operation: EcmaScriptCwe776Operation, method: str) -> EcmaScriptCwe776Operation:
+def _parse_operation(
+    operation: EcmaScriptCwe776Operation, method: str
+) -> EcmaScriptCwe776Operation:
     if operation is EcmaScriptCwe776Operation.FAST_XML_PARSER:
         return EcmaScriptCwe776Operation.FAST_XML_PARSER_PARSE
     if operation is EcmaScriptCwe776Operation.XMDOM_DOM_PARSER:
@@ -632,14 +640,16 @@ def _collect_parser_bindings(
         if name is None or value is None or name.type != "identifier":
             continue
         current = _unwrap(value)
-        constructor = current.child_by_field_name("constructor") or current.child_by_field_name("function")
+        constructor = current.child_by_field_name("constructor") or current.child_by_field_name(
+            "function"
+        )
         if current.type != "new_expression" or constructor is None:
             continue
         canonical = _canonical_expression(constructor, source, aliases)
         if canonical not in _PARSER_CONSTRUCTORS:
             continue
         arguments = current.child_by_field_name("arguments")
-        values = arguments.named_children if arguments is not None else ()
+        values = tuple(arguments.named_children) if arguments is not None else ()
         risky, configuration = _configuration_state(values, source, objects)
         if risky is None or configuration is None:
             continue
@@ -686,15 +696,17 @@ def _collect_object_literals(nodes: tuple[Node, ...], source: bytes) -> dict[str
                 continue
             name = declarator.child_by_field_name("name")
             value = declarator.child_by_field_name("value")
-            if name is not None and value is not None and name.type == "identifier":
-                if _unwrap(value).type == "object":
-                    objects[_text(source, name)] = _unwrap(value)
+            if (
+                name is not None
+                and value is not None
+                and name.type == "identifier"
+                and _unwrap(value).type == "object"
+            ):
+                objects[_text(source, name)] = _unwrap(value)
     return objects
 
 
-def _resolve_object(
-    node: Node, source: bytes, objects: dict[str, Node] | None
-) -> Node:
+def _resolve_object(node: Node, source: bytes, objects: dict[str, Node] | None) -> Node:
     current = _unwrap(node)
     if current.type == "identifier" and objects is not None:
         return objects.get(_text(source, current), current)
@@ -716,9 +728,9 @@ def _object_state(node: Node, source: bytes) -> tuple[bool | None, Node | None]:
             if name is not None and literal is not None:
                 if name in _RISKY_TRUE_FLAGS and literal:
                     risky, location = True, value
-                elif name in _SAFE_FALSE_FLAGS and not literal:
-                    safe, location = True, value
-                elif name in _SAFE_TRUE_FLAGS and literal:
+                elif (name in _SAFE_FALSE_FLAGS and not literal) or (
+                    name in _SAFE_TRUE_FLAGS and literal
+                ):
                     safe, location = True, value
             if name is not None and _compact_text(source, value) in _RISKY_CONSTANTS:
                 risky, location = True, value
@@ -768,9 +780,10 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
     if module_node is None:
         return
     module = _string_value(module_node, source)
-    if module is None or _normalise_module(module) not in _XML_MODULES:
+    normalised = _normalise_module(module)
+    if normalised is None or normalised not in _XML_MODULES:
         return
-    module = _normalise_module(module)
+    module = normalised
     for clause in node.named_children:
         if clause.type != "import_clause":
             continue
@@ -788,9 +801,15 @@ def _collect_import_aliases(node: Node, source: bytes, aliases: dict[str, str]) 
                         aliases[_text(source, names[-1])] = f"{module}.{_text(source, names[0])}"
 
 
-def _collect_pattern_aliases(pattern: Node, module: str, source: bytes, aliases: dict[str, str]) -> None:
+def _collect_pattern_aliases(
+    pattern: Node, module: str, source: bytes, aliases: dict[str, str]
+) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key = child.child_by_field_name("key") or child
         value = child.child_by_field_name("value") or key
@@ -815,11 +834,15 @@ def _canonical_expression(node: Node | None, source: bytes, aliases: dict[str, s
         module = _string_value(values[0], source)
         return _normalise_module(module) if module is not None else None
     if current.type == "new_expression":
-        constructor = current.child_by_field_name("constructor") or current.child_by_field_name("function")
+        constructor = current.child_by_field_name("constructor") or current.child_by_field_name(
+            "function"
+        )
         return _canonical_expression(constructor, source, aliases)
     if current.type in {"member_expression", "subscript_expression"}:
         object_node = current.child_by_field_name("object")
-        property_node = current.child_by_field_name("property") or current.child_by_field_name("index")
+        property_node = current.child_by_field_name("property") or current.child_by_field_name(
+            "index"
+        )
         if object_node is None or property_node is None:
             return None
         base = _canonical_expression(object_node, source, aliases)
@@ -999,12 +1022,12 @@ scan_typescript_xml_entity_expansion = scan_typescript_cwe776
 scan_ecmascript_xml_entity_expansion = scan_ecmascript_cwe776
 
 __all__ = [
+    "DEFAULT_ECMASCRIPT_CWE776_SCAN_LIMITS",
     "Cwe776ScanError",
     "Cwe776ScanErrorCode",
     "Cwe776ScanLimits",
     "Cwe776ScanResult",
     "Cwe776Signal",
-    "DEFAULT_ECMASCRIPT_CWE776_SCAN_LIMITS",
     "EcmaScriptCwe776Operation",
     "EcmaScriptCwe776ScanError",
     "EcmaScriptCwe776ScanErrorCode",

@@ -186,9 +186,7 @@ def _same_candidate(left: EvidencePackage, right: EvidencePackage) -> bool:
     )
 
 
-def _is_strict_evidence_superset(
-    previous: EvidencePackage, package: EvidencePackage
-) -> bool:
+def _is_strict_evidence_superset(previous: EvidencePackage, package: EvidencePackage) -> bool:
     """Require additive context without replacing an existing evidence binding."""
 
     previous_by_id = {item.evidence_id: item for item in previous.selected}
@@ -196,8 +194,7 @@ def _is_strict_evidence_superset(
     previous_ids = set(previous_by_id)
     next_ids = set(next_by_id)
     return previous_ids < next_ids and all(
-        next_by_id[evidence_id] == evidence
-        for evidence_id, evidence in previous_by_id.items()
+        next_by_id[evidence_id] == evidence for evidence_id, evidence in previous_by_id.items()
     )
 
 

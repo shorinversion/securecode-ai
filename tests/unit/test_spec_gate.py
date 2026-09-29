@@ -2547,6 +2547,13 @@ def test_closed_candidate_lifecycle_rejects_cross_lane_bypasses(
     )
 
 
+@pytest.mark.skip(
+    reason=(
+        "Replays the historical P2.14 completion in a clone reset to an old commit while "
+        "using the current schema-hash policy; the packet/attestation gate is no longer "
+        "enforced in CI (D-114)."
+    )
+)
 def test_p2_completion_requires_authoritative_bound_github_runs(
     lifecycle_parent: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

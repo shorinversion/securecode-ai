@@ -110,9 +110,7 @@ class IdentityBindingWebhookAdapter:
             headers=headers,
             delivery_key=delivery_key,
         )
-        if receipt.provider == "github":
-            base_sha = receipt.base_sha
-        elif receipt.provider == "gitlab":
+        if receipt.provider == "github" or receipt.provider == "gitlab":
             base_sha = receipt.base_sha
         else:
             raise SCMWebhookError(SCMWebhookErrorCode.INVALID_CONFIGURATION)

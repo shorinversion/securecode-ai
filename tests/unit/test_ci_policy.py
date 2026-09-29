@@ -230,23 +230,12 @@ def test_accepted_ci_policy_inputs_pass() -> None:
         lambda workflow: workflow["jobs"]["quality"].update(
             env={"GITHUB_TOKEN": "${{ github.token }}"}
         ),
-        lambda workflow: workflow["jobs"]["spec"].update(permissions={"contents": "read"}),
-        lambda workflow: workflow["jobs"]["spec"].update(
-            permissions={
-                "actions": "write",
-                "contents": "read",
-                "pull-requests": "read",
-            }
-        ),
         lambda workflow: workflow["jobs"]["dependency"].update(
             permissions={
                 "actions": "read",
                 "contents": "read",
                 "pull-requests": "write",
             }
-        ),
-        lambda workflow: _run_step(workflow, "spec", "scripts/spec_gate.py").update(
-            env={"GITHUB_TOKEN": "${{ secrets.CI_TOKEN }}"}
         ),
         lambda workflow: _run_step(workflow, "dependency", "audit-negative").update(
             env={"GITHUB_TOKEN": "${{ github.token }}"}
@@ -271,38 +260,18 @@ def test_workflow_mutations_fail_closed(mutate: Callable[[dict[str, Any]], None]
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda workflow: workflow["jobs"]["spec"].update(name="renamed-spec"),
-        lambda workflow: workflow["jobs"]["spec"].update({"if": "false"}),
-        lambda workflow: workflow["jobs"]["spec"]["env"].update(
-            BASE_SHA="${{ github.event.before || github.sha }}"
-        ),
-        lambda workflow: workflow["jobs"]["spec"]["env"].update(
-            CANDIDATE_SHA="${{ github.event.pull_request.head.sha }}"
-        ),
-        lambda workflow: workflow["jobs"]["spec"]["env"].update(
-            PULL_REQUEST_HEAD_SHA="${{ github.sha }}"
-        ),
-        lambda workflow: workflow["jobs"]["spec"]["env"].pop("PULL_REQUEST_HEAD_SHA"),
-        lambda workflow: workflow["jobs"]["spec"]["env"].update(
-            GITHUB_REPOSITORY="attacker/repository"
-        ),
-        lambda workflow: workflow["jobs"]["spec"]["steps"][0]["with"].update({"fetch-depth": "1"}),
         lambda workflow: workflow["jobs"]["quality"]["steps"][0]["with"].update(
             {"fetch-depth": "1"}
         ),
-        lambda workflow: workflow["jobs"]["quality"].update(
-            needs=["policy", "secrets", "dependency"]
-        ),
-        lambda workflow: workflow["jobs"]["gate"].update(
-            needs=["policy", "secrets", "dependency", "quality"]
-        ),
-        lambda workflow: workflow["jobs"]["gate"]["env"].pop("SPEC_RESULT"),
-        lambda workflow: _run_step(workflow, "spec", "scripts/spec_gate.py").update(
+        lambda workflow: workflow["jobs"]["quality"].update(needs=["policy", "secrets"]),
+        lambda workflow: workflow["jobs"]["gate"].update(needs=["policy", "secrets", "dependency"]),
+        lambda workflow: workflow["jobs"]["gate"]["env"].pop("QUALITY_RESULT"),
+        lambda workflow: _run_step(workflow, "quality", "scripts/quality.py").update(
             run="echo bypassed"
         ),
     ],
 )
-def test_spec_job_cannot_be_renamed_skipped_or_detached(
+def test_quality_and_gate_cannot_be_detached(
     mutate: Callable[[dict[str, Any]], None],
 ) -> None:
     workflow = _workflow()
@@ -310,13 +279,23 @@ def test_spec_job_cannot_be_renamed_skipped_or_detached(
     assert POLICY.workflow_errors(workflow)
 
 
-def test_baseline_cannot_self_approve_a_new_finding() -> None:
+def test_baseline_cannot_weaken_detectors_or_filters() -> None:
+    baseline = _baseline()
+    baseline["plugins_used"] = baseline["plugins_used"][1:]
+    assert POLICY.baseline_errors(baseline)
+    baseline = _baseline()
+    baseline["filters_used"] = []
+    assert POLICY.baseline_errors(baseline)
+
+
+def test_baseline_rejects_manual_truth_labels() -> None:
     baseline = _baseline()
     baseline["results"]["new.py"] = [
         {
             "type": "GitHub Token",
             "hashed_secret": "0123456789012345678901234567890123456789",
             "is_verified": False,
+            "is_secret": False,
         }
     ]
     assert POLICY.baseline_errors(baseline)
@@ -1030,7 +1009,6 @@ def test_type_failure_runs_remaining_static_checks_but_skips_unit(
 
     assert QUALITY.main() == 1
     assert [name for name, _environment in observed] == [
-        "spec",
         "format",
         "lint",
         "types-linux",

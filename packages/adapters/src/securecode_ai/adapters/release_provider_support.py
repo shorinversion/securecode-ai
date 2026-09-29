@@ -36,9 +36,7 @@ _SBOM_STATUS: Final = frozenset({"resolved", "unresolved", "unknown"})
 _SBOM_REPORT_KEYS: Final = frozenset(
     {"bomFormat", "components", "metadata", "serialNumber", "specVersion", "version"}
 )
-_SBOM_COMPONENT_KEYS: Final = frozenset(
-    {"bom-ref", "name", "purl", "type", "version"}
-)
+_SBOM_COMPONENT_KEYS: Final = frozenset({"bom-ref", "name", "purl", "type", "version"})
 _SBOM_ASSESSMENT_KEYS: Final = frozenset({"components", "report_sha256", "schema_version"})
 _SBOM_ASSESSMENT_COMPONENT_KEYS: Final = frozenset(
     {"bom_ref", "content_sha256", "license", "source", "vulnerability_status"}
@@ -447,9 +445,10 @@ def _canonical_sbom_binding(
                 {
                     "content_sha256": content_sha256,
                     "license": license_value,
-                    "name": component["name"],
+                    # _sbom_text validated every _SBOM_COMPONENT_KEYS value as str above.
+                    "name": cast(str, component["name"]),
                     "source": bound_source,
-                    "version": component["version"],
+                    "version": cast(str, component["version"]),
                     "vulnerability_status": status,
                 }
             )
@@ -459,7 +458,14 @@ def _canonical_sbom_binding(
         return _canonical_json(release_components)
     except LocalReleaseProviderError:
         raise
-    except (KeyError, UnicodeDecodeError, json.JSONDecodeError, RecursionError, TypeError, ValueError):
+    except (
+        KeyError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        TypeError,
+        ValueError,
+    ):
         raise LocalReleaseProviderError() from None
 
 

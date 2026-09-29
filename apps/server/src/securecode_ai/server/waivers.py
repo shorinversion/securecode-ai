@@ -336,8 +336,7 @@ class WaiverLedger:
         _require_sha256(identity_hash)
         _require_sha256(finding_fingerprint)
         if cwe_id is not None and (
-            type(cwe_id) is not str
-            or re.fullmatch(r"CWE-[1-9][0-9]{0,5}", cwe_id) is None
+            type(cwe_id) is not str or re.fullmatch(r"CWE-[1-9][0-9]{0,5}", cwe_id) is None
         ):
             raise WaiverConflict("waiver CWE id is invalid")
         if path is not None:
@@ -651,7 +650,7 @@ class WaiverLedger:
         tenant_id: str,
         waiver_id: str,
     ) -> tuple[object, ...] | sqlite3.Row | None:
-        row = self._db.execute(
+        row: tuple[object, ...] | sqlite3.Row | None = self._db.execute(
             """SELECT waiver_id, tenant_id, repository_id, run_id,
                       execution_identity_hash, finding_fingerprint, cwe_id, path,
                       policy_scope, expires_at, approval_id, rationale_sha256, version
@@ -828,25 +827,37 @@ def _from_row(row: tuple[object, ...] | sqlite3.Row) -> WaiverRecord:
         raise WaiverConflict("stored waiver is invalid")
     try:
         scope = WaiverScope(
-            tenant_id=row[1],
-            repository_id=row[2],
-            run_id=row[3],
-            execution_identity_hash=row[4],
-            finding_fingerprint=row[5],
-            cwe_id=row[6],
-            path=row[7],
-            policy_scope=row[8],
+            tenant_id=_stored_text(row[1]),
+            repository_id=_stored_text(row[2]),
+            run_id=_stored_text(row[3]),
+            execution_identity_hash=_stored_text(row[4]),
+            finding_fingerprint=_stored_optional_text(row[5]),
+            cwe_id=_stored_optional_text(row[6]),
+            path=_stored_optional_text(row[7]),
+            policy_scope=_stored_optional_text(row[8]),
         )
         return WaiverRecord(
-            waiver_id=row[0],
+            waiver_id=_stored_text(row[0]),
             scope=scope,
-            expires_at=datetime.fromisoformat(row[9]),
-            approval_id=row[10],
-            rationale_sha256=row[11],
+            expires_at=datetime.fromisoformat(_stored_text(row[9])),
+            approval_id=_stored_text(row[10]),
+            rationale_sha256=_stored_text(row[11]),
             version=_stored_int(row[12]),
         )
     except (TypeError, ValueError, OverflowError):
         raise WaiverConflict("stored waiver is invalid") from None
+
+
+def _stored_text(value: object) -> str:
+    if type(value) is not str:
+        raise WaiverConflict("stored waiver is invalid")
+    return value
+
+
+def _stored_optional_text(value: object) -> str | None:
+    if value is not None and type(value) is not str:
+        raise WaiverConflict("stored waiver is invalid")
+    return value
 
 
 def _stored_int(value: object) -> int:

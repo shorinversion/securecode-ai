@@ -19,15 +19,15 @@ from securecode_ai.adapters.local_product_runner import (
     resolve_local_product_configuration,
     run_local_product_scan,
 )
-from securecode_ai.adapters.product_provider_runtime import (
-    ProductProviderConfigurationError,
-    ProductProviderRuntime,
-    load_product_provider_runtime,
-)
 from securecode_ai.adapters.local_provider_gateway_server import (
     _ApprovedGatewayLifecycleError,
     _running_approved_gateway,
     gateway_observation_path,
+)
+from securecode_ai.adapters.product_provider_runtime import (
+    ProductProviderConfigurationError,
+    ProductProviderRuntime,
+    load_product_provider_runtime,
 )
 from securecode_ai.core.classification import FindingSeverity
 from securecode_ai.core.reports import ReportFormat
@@ -237,17 +237,18 @@ def load_installed_product_host() -> LocalProductHost:
         raise ProductScanUnavailableError() from None
 
 
-def _remote_provider_requested(
-    host: LocalProductHost, environment: Mapping[str, str]
-) -> bool:
-    if any(
-        environment.get(name)
-        for name in (
-            "SECURECODE_REMOTE_PROFILE_FILE",
-            "SECURECODE_REMOTE_POLICY_FILE",
-            "SECURECODE_REMOTE_SPEND_DB",
+def _remote_provider_requested(host: LocalProductHost, environment: Mapping[str, str]) -> bool:
+    if (
+        any(
+            environment.get(name)
+            for name in (
+                "SECURECODE_REMOTE_PROFILE_FILE",
+                "SECURECODE_REMOTE_POLICY_FILE",
+                "SECURECODE_REMOTE_SPEND_DB",
+            )
         )
-    ) or environment.get("SECURECODE_REMOTE_PROVIDER") == "1":
+        or environment.get("SECURECODE_REMOTE_PROVIDER") == "1"
+    ):
         return True
     selector = environment.get("SECURECODE_PROVIDER_PROFILE")
     return selector is not None and selector != host.profile.selector

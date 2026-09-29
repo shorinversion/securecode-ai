@@ -19,6 +19,7 @@ def _profile() -> ProviderProfile:
                 "profile_id": "public-deepseek",
                 "profile_version": "1.0.0",
                 "provider_kind": "openai_compatible_remote",
+                "protocol_framing_token_upper_bound": 8192,
                 "api_dialect": "openai_compatible",
                 "endpoint": {
                     "base_url": "https://api.deepseek.com/v1",

@@ -183,13 +183,15 @@ def _build_projection(
     ):
         raise GitlabSummaryError(GitlabSummaryErrorCode.IDENTITY_MISMATCH)
     note_key = _idempotency_key(request.scm_run_id, identity.execution_identity_hash)
+    published_outcome = publication.outcome if publication_outcome is None else publication_outcome
+    if published_outcome is None:
+        # An AUTHORIZED receipt carries no policy outcome yet; never claim a pass.
+        published_outcome = AuditRunOutcome.INDETERMINATE
     rendered = _render(
         audit_run,
         note_key,
         missing_lanes,
-        published_outcome=(
-            publication.outcome if publication_outcome is None else publication_outcome
-        ),
+        published_outcome=published_outcome,
     )
     if not _safe_markdown(rendered):
         raise GitlabSummaryError(GitlabSummaryErrorCode.UNSAFE_RENDER_INPUT)

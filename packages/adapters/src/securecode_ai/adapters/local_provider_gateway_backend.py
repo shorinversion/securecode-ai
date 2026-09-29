@@ -72,7 +72,9 @@ class LoopbackOllamaBackend:
         timeout_seconds: float,
         cancellation_event: threading.Event,
     ) -> GatewayReply:
-        if not isinstance(cancellation_event, threading.Event):
+        # Widen to ``object``: the runtime check guards untyped direct callers.
+        supplied_event: object = cancellation_event
+        if not isinstance(supplied_event, threading.Event):
             return _failure(502)
         return self._dispatch(
             body,
@@ -112,9 +114,7 @@ class LoopbackOllamaBackend:
             return generated
         if not self._identity_matches(deadline, cancellation_event):
             status = 408 if cancellation_event is not None and cancellation_event.is_set() else 502
-            return _failure(
-                status, dispatched=True
-            )
+            return _failure(status, dispatched=True)
         try:
             return GatewayReply(
                 200,
@@ -134,7 +134,8 @@ class LoopbackOllamaBackend:
 
     def _valid_timeout(self, timeout_seconds: object) -> bool:
         return (
-            type(timeout_seconds) in (float, int)
+            isinstance(timeout_seconds, float | int)
+            and type(timeout_seconds) in (float, int)
             and math.isfinite(timeout_seconds)
             and 0 < timeout_seconds <= self._policy.timeout_seconds
         )

@@ -104,8 +104,7 @@ class ApprovedPublicResolver:
             addresses = {
                 ipaddress.ip_address(item[4][0]).compressed
                 for item in raw
-                if isinstance(item[4][0], str)
-                and ipaddress.ip_address(item[4][0]).is_global
+                if isinstance(item[4][0], str) and ipaddress.ip_address(item[4][0]).is_global
             }
         except (OSError, ValueError, IndexError, TypeError):
             raise ProductProviderConfigurationError("remote endpoint resolution failed") from None
@@ -234,12 +233,9 @@ def load_product_provider_runtime(
             SelectionProvenance("provider_profile", ConfigSource.APPROVED_REGISTRY),
         ),
     )
-    if (
-        expected_configuration_sha256 is not None
-        and (
-            _SHA256.fullmatch(expected_configuration_sha256) is None
-            or configuration.canonical_content_hash() != expected_configuration_sha256
-        )
+    if expected_configuration_sha256 is not None and (
+        _SHA256.fullmatch(expected_configuration_sha256) is None
+        or configuration.canonical_content_hash() != expected_configuration_sha256
     ):
         raise ProductProviderConfigurationError("remote configuration pin rejected")
     spend_policy = _spend_policy(environment, tenant_id=tenant_id, model_id=profile.model_id)
@@ -259,14 +255,15 @@ def load_product_provider_runtime(
         repair_environment = dict(environment)
         repair_path = environment.get("SECURECODE_REMOTE_REPAIR_SPEND_DB")
         main_path = environment.get("SECURECODE_REMOTE_SPEND_DB")
-        distinct_budget_store = False
+        distinct_repair_path: str | None = None
         if isinstance(repair_path, str) and repair_path and isinstance(main_path, str):
             try:
-                distinct_budget_store = Path(repair_path).absolute() != Path(main_path).absolute()
+                if Path(repair_path).absolute() != Path(main_path).absolute():
+                    distinct_repair_path = repair_path
             except (OSError, ValueError):
-                distinct_budget_store = False
-        if distinct_budget_store:
-            repair_environment["SECURECODE_REMOTE_SPEND_DB"] = repair_path
+                distinct_repair_path = None
+        if distinct_repair_path is not None:
+            repair_environment["SECURECODE_REMOTE_SPEND_DB"] = distinct_repair_path
             for suffix in _BUDGET_ENV:
                 repair_environment["SECURECODE_REMOTE_SPEND_" + suffix] = environment.get(
                     "SECURECODE_REMOTE_REPAIR_SPEND_" + suffix,
@@ -335,23 +332,23 @@ def _read_document(path: str | Path) -> bytes:
             or opened.st_size > _MAX_DOCUMENT_BYTES
         ):
             raise ValueError
-        data = bytearray()
-        while len(data) <= _MAX_DOCUMENT_BYTES:
+        buffer = bytearray()
+        while len(buffer) <= _MAX_DOCUMENT_BYTES:
             chunk = os.read(
                 descriptor,
-                min(65_536, _MAX_DOCUMENT_BYTES + 1 - len(data)),
+                min(65_536, _MAX_DOCUMENT_BYTES + 1 - len(buffer)),
             )
             if not chunk:
                 break
-            data.extend(chunk)
-        if len(data) > _MAX_DOCUMENT_BYTES:
+            buffer.extend(chunk)
+        if len(buffer) > _MAX_DOCUMENT_BYTES:
             raise ValueError
     except (OSError, ValueError):
         raise ProductProviderConfigurationError("remote provider document is unavailable") from None
     finally:
         if descriptor >= 0:
             os.close(descriptor)
-    data = bytes(data)
+    data = bytes(buffer)
     if not data or len(data) > _MAX_DOCUMENT_BYTES or b"\x00" in data:
         raise ProductProviderConfigurationError("remote provider document is invalid")
     return data
@@ -377,7 +374,11 @@ def _closed_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
 
 
 def _spend_policy(
-    environment: Mapping[str, str], *, tenant_id: str, model_id: str, prefix: str = "SECURECODE_REMOTE_SPEND_"
+    environment: Mapping[str, str],
+    *,
+    tenant_id: str,
+    model_id: str,
+    prefix: str = "SECURECODE_REMOTE_SPEND_",
 ) -> RemoteProviderSpendPolicy:
     values: dict[str, int] = {}
     for suffix, field in _BUDGET_ENV.items():
@@ -391,9 +392,7 @@ def _spend_policy(
         raise ProductProviderConfigurationError("remote spend budget is invalid") from None
 
 
-def _policy_allows_patch_generation(
-    policy: EgressPolicyDocument, profile: ProviderProfile
-) -> bool:
+def _policy_allows_patch_generation(policy: EgressPolicyDocument, profile: ProviderProfile) -> bool:
     destination = f"profile://{profile.profile_id}"
     return any(
         rule.effect.value == "allow"

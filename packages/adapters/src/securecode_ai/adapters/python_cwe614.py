@@ -155,9 +155,7 @@ class PythonCwe614Signal:
                 self.operation,
                 self.cookie_name,
             )
-            if valid_identity
-            and ranges_valid
-            and type(self.operation) is PythonCwe614Operation
+            if valid_identity and ranges_valid and type(self.operation) is PythonCwe614Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -378,9 +376,7 @@ def scan_python_cwe614(
     line_starts = _line_starts(source)
     aliases = _collect_imports(tree)
     assignments = _collect_assignments(tree)
-    raw: list[
-        tuple[SourceRange, SourceRange, PythonCwe614Operation, str]
-    ] = []
+    raw: list[tuple[SourceRange, SourceRange, PythonCwe614Operation, str]] = []
     nodes = _bounded_nodes(tree, limits.max_resolution_depth * 10_000)
     for node in nodes:
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
@@ -511,10 +507,7 @@ def _collect_assignments(tree: ast.AST) -> dict[str, tuple[tuple[int, int, ast.e
         if isinstance(node, ast.Assign):
             targets = tuple(node.targets)
             value = node.value
-        elif isinstance(node, ast.AnnAssign):
-            targets = (node.target,)
-            value = node.value
-        elif isinstance(node, ast.NamedExpr):
+        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
             targets = (node.target,)
             value = node.value
         else:
@@ -539,9 +532,7 @@ def _response_operation(
 ) -> PythonCwe614Operation | None:
     if depth > max_depth:
         raise PythonCwe614ScanError(PythonCwe614ScanErrorCode.SIGNAL_LIMIT)
-    canonical = _canonical_reference(
-        receiver, aliases, assignments, max_depth, position, depth
-    )
+    canonical = _canonical_reference(receiver, aliases, assignments, max_depth, position, depth)
     if canonical is not None:
         operation = _operation_for_reference(canonical)
         if operation is not None:
@@ -811,9 +802,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -846,9 +835,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

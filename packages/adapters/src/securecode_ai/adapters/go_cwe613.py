@@ -62,9 +62,7 @@ _SESSION_OPTIONS_TYPES = frozenset({"Options", "SessionOptions", "CookieStore"})
 _TOKEN_TYPES = frozenset({"Token"})
 _JWT_CLAIM_TYPES = frozenset({"MapClaims", "RegisteredClaims", "StandardClaims"})
 _JWT_NEW_METHODS = frozenset({"New", "NewWithClaims"})
-_EXPIRY_KEYS = frozenset(
-    {"exp", "expires", "expiresat", "expiration", "expiry", "maxage"}
-)
+_EXPIRY_KEYS = frozenset({"exp", "expires", "expiresat", "expiration", "expiry", "maxage"})
 _SESSION_NAME_MARKERS = frozenset(
     {
         "auth",
@@ -483,11 +481,7 @@ def _import_aliases(root: Node, source: bytes) -> dict[str, str]:
         if package not in relevant:
             continue
         name_node = node.child_by_field_name("name")
-        alias = (
-            _text(source, name_node)
-            if name_node is not None
-            else package.rsplit("/", 1)[-1]
-        )
+        alias = _text(source, name_node) if name_node is not None else package.rsplit("/", 1)[-1]
         if alias not in {".", "_"}:
             aliases[alias] = package
     return aliases
@@ -601,7 +595,13 @@ def _collect_jwt_call(
         return
     values = arguments.named_children
     if call[1] == "New":
-        raw.add((_range(node.child_by_field_name("function") or node), _range(node), GoCwe613Operation.JWT_WITHOUT_EXPIRATION))
+        raw.add(
+            (
+                _range(node.child_by_field_name("function") or node),
+                _range(node),
+                GoCwe613Operation.JWT_WITHOUT_EXPIRATION,
+            )
+        )
         return
     if len(values) < 2:
         return
@@ -749,7 +749,12 @@ def _is_secure_expiration(node: Node, source: bytes) -> bool:
         return False
     if node.type == "identifier":
         return text not in {"zero", "none", "noexpiry", "never"}
-    if node.type in {"call_expression", "selector_expression", "binary_expression", "unary_expression"}:
+    if node.type in {
+        "call_expression",
+        "selector_expression",
+        "binary_expression",
+        "unary_expression",
+    }:
         return True
     return bool(re.search(r"\b(?:ttl|expiry|expiration|expires|deadline|duration)\b", text))
 
@@ -821,9 +826,7 @@ def _selector_name(node: Node, source: bytes) -> str:
     return "" if field is None else _text(source, field)
 
 
-def _qualified_call(
-    node: Node, source: bytes, imports: dict[str, str]
-) -> tuple[str, str] | None:
+def _qualified_call(node: Node, source: bytes, imports: dict[str, str]) -> tuple[str, str] | None:
     function = node.child_by_field_name("function")
     if function is None or function.type != "selector_expression":
         return None
@@ -967,12 +970,12 @@ Cwe613Signal = GoCwe613Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE613_SCAN_LIMITS",
     "Cwe613ScanError",
     "Cwe613ScanErrorCode",
     "Cwe613ScanLimits",
     "Cwe613ScanResult",
     "Cwe613Signal",
-    "DEFAULT_GO_CWE613_SCAN_LIMITS",
     "GoCwe613Operation",
     "GoCwe613ScanError",
     "GoCwe613ScanErrorCode",

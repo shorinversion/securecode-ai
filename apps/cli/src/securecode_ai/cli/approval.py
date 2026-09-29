@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from .atomic_output import write_new_output
 
@@ -65,7 +65,8 @@ def run_patch_approval_command(
             write_new_output(output, rendered)
         else:
             stdout.write(rendered.decode("ascii"))
-        return result["exit_code"]
+        # _safe_receipt accepts only receipts whose exit_code is exactly an int.
+        return cast(int, result["exit_code"])
     except KeyboardInterrupt:
         stderr.write("approve operation cancelled\n")
         return 6
@@ -117,10 +118,7 @@ def _require_connected_repair_approval(
     ):
         raise LocalPatchStatusError("CONNECTED_APPROVAL_IDENTITY_REQUIRED")
     environment_identity = environment.get("SECURECODE_EXECUTION_IDENTITY_HASH")
-    if (
-        environment_identity is not None
-        and environment_identity != execution_identity_hash
-    ):
+    if environment_identity is not None and environment_identity != execution_identity_hash:
         raise LocalPatchStatusError("CONNECTED_APPROVAL_SCOPE_MISMATCH")
     try:
         artifact = PatchArtifactStore(
@@ -130,10 +128,7 @@ def _require_connected_repair_approval(
         from securecode_ai.adapters.local_patch_status import LocalPatchStatusStore
 
         local_state = LocalPatchStatusStore().load(artifact)
-        if (
-            local_state.patch.patch_status.value != "VALIDATED"
-            or local_state.validation is None
-        ):
+        if local_state.patch.patch_status.value != "VALIDATED" or local_state.validation is None:
             raise LocalPatchStatusError("CONNECTED_APPROVAL_LOCAL_VALIDATION_REQUIRED")
         revision = artifact.finding.repository_revision
         supplied_head = environment.get("SECURECODE_HEAD_SHA")
@@ -153,6 +148,8 @@ def _require_connected_repair_approval(
             raise LocalPatchStatusError("CONNECTED_APPROVAL_SCOPE_MISMATCH")
         projection = read_approval(settings, approval_id).document
         run_id = projection.get("run_id")
+        validation_result_sha256 = projection.get("validation_result_sha256")
+        patch_status_sha256 = projection.get("patch_status_sha256")
         expected_approval_id = (
             repair_approval_id(
                 run_id,
@@ -173,10 +170,10 @@ def _require_connected_repair_approval(
             or projection.get("patch_sha256")
             != artifact.architect_result.patch_candidate.unified_diff_sha256
             or projection.get("manifest_sha256") != artifact.manifest_sha256
-            or type(projection.get("validation_result_sha256")) is not str
-            or _SHA256.fullmatch(projection["validation_result_sha256"]) is None
-            or type(projection.get("patch_status_sha256")) is not str
-            or _SHA256.fullmatch(projection["patch_status_sha256"]) is None
+            or type(validation_result_sha256) is not str
+            or _SHA256.fullmatch(validation_result_sha256) is None
+            or type(patch_status_sha256) is not str
+            or _SHA256.fullmatch(patch_status_sha256) is None
         ):
             raise LocalPatchStatusError("CONNECTED_APPROVAL_REQUIRED")
         decision = projection.get("decision")

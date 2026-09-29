@@ -108,8 +108,7 @@ class RawSignal(WireModel):
             or self.command_operation_evidence.scanner_signal_id != self.raw_signal_id
             or self.command_operation_evidence.sink != self.location
             or self.command_operation_evidence.source.path != self.location.path
-            or self.command_operation_evidence.source.content_sha256
-            != self.location.content_sha256
+            or self.command_operation_evidence.source.content_sha256 != self.location.content_sha256
         ):
             raise ValueError("command operation evidence is not bound to the raw signal")
         return self

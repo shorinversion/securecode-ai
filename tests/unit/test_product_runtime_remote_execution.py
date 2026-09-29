@@ -56,6 +56,7 @@ def _remote_profile() -> ProviderProfile:
         {
             "profile_id": "remote-evaluation",
             "provider_kind": "openai_compatible_remote",
+            "protocol_framing_token_upper_bound": 8192,
             "execution_boundary": "public_external",
             "credential_ref": "env://REMOTE_EVALUATION_KEY",
             "egress_profiles": ["metadata_external"],

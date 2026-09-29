@@ -307,7 +307,9 @@ _DIRECT_OPERATIONS: dict[str, PythonCwe90Operation] = {
     "ldap3.Connection.modify_dn": PythonCwe90Operation.LDAP3_MODIFY_DN,
 }
 _MODULES = frozenset({"ldap", "ldap3"})
-_LDAP_IMPORT_MODULES = frozenset({"ldap", "ldap.filter", "ldap3", "ldap3.utils", "ldap3.utils.conv"})
+_LDAP_IMPORT_MODULES = frozenset(
+    {"ldap", "ldap.filter", "ldap3", "ldap3.utils", "ldap3.utils.conv"}
+)
 _SANITIZERS = frozenset(
     {
         "ldap.filter.escape_filter_chars",
@@ -467,9 +469,13 @@ def _scan_statements(
             aliases[statement.name] = None
             continue
         if isinstance(statement, ast.ClassDef):
-            _scan_decorators(statement.decorator_list, aliases, tree, source, line_starts, limits, output)
+            _scan_decorators(
+                statement.decorator_list, aliases, tree, source, line_starts, limits, output
+            )
             child_aliases = dict(aliases)
-            _scan_statements(statement.body, child_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, tree, source, line_starts, limits, output
+            )
             aliases[statement.name] = None
             continue
 
@@ -490,31 +496,45 @@ def _scan_statements(
             _merge_aliases(aliases, left, right)
         elif isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
             body_aliases = dict(aliases)
-            _scan_statements(statement.body, body_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, body_aliases, tree, source, line_starts, limits, output
+            )
             else_aliases = dict(aliases)
-            _scan_statements(statement.orelse, else_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.orelse, else_aliases, tree, source, line_starts, limits, output
+            )
             _merge_aliases(aliases, body_aliases, else_aliases)
         elif isinstance(statement, (ast.With, ast.AsyncWith)):
             parent_aliases = dict(aliases)
             child_aliases = dict(aliases)
-            _scan_statements(statement.body, child_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, child_aliases, tree, source, line_starts, limits, output
+            )
             _merge_aliases(aliases, parent_aliases, child_aliases)
         elif isinstance(statement, ast.Try):
             branches: list[dict[str, str | None]] = []
             body_aliases = dict(aliases)
-            _scan_statements(statement.body, body_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.body, body_aliases, tree, source, line_starts, limits, output
+            )
             branches.append(body_aliases)
             for handler in statement.handlers:
                 handler_aliases = dict(aliases)
                 if handler.name is not None:
                     handler_aliases[handler.name] = None
-                _scan_statements(handler.body, handler_aliases, tree, source, line_starts, limits, output)
+                _scan_statements(
+                    handler.body, handler_aliases, tree, source, line_starts, limits, output
+                )
                 branches.append(handler_aliases)
             else_aliases = dict(aliases)
-            _scan_statements(statement.orelse, else_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.orelse, else_aliases, tree, source, line_starts, limits, output
+            )
             branches.append(else_aliases)
             final_aliases = dict(aliases)
-            _scan_statements(statement.finalbody, final_aliases, tree, source, line_starts, limits, output)
+            _scan_statements(
+                statement.finalbody, final_aliases, tree, source, line_starts, limits, output
+            )
             branches.append(final_aliases)
             _merge_many_aliases(aliases, branches)
         else:
@@ -591,7 +611,9 @@ def _scan_expression(
         node = stack.pop()
         if node is not root and isinstance(node, ast.stmt):
             continue
-        if node is not root and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if node is not root and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
             continue
         if isinstance(node, ast.Call):
             _record_call(node, aliases, tree, source, line_starts, limits, output)
@@ -691,7 +713,14 @@ def _input_nodes(call: ast.Call, operation: PythonCwe90Operation) -> tuple[ast.e
         PythonCwe90Operation.LDAP_SEARCH_EXT_S,
     }:
         indexes = (1, 3)
-        keyword_names = ("base", "base_dn", "filter", "filterstr", "search_base", "search_filter")
+        keyword_names: tuple[str, ...] = (
+            "base",
+            "base_dn",
+            "filter",
+            "filterstr",
+            "search_base",
+            "search_filter",
+        )
         nodes = [call.args[index] for index in indexes if index < len(call.args)]
     elif operation in {
         PythonCwe90Operation.LDAP_INITIALIZED_SEARCH,
@@ -847,9 +876,7 @@ def _source_subscript(node: ast.Subscript) -> bool:
         if _source_attribute(value):
             return True
         return (
-            isinstance(value.value, ast.Name)
-            and value.value.id == "os"
-            and value.attr == "environ"
+            isinstance(value.value, ast.Name) and value.value.id == "os" and value.attr == "environ"
         )
     return isinstance(value, ast.Name) and value.id in {"argv", "environ"}
 
@@ -873,7 +900,8 @@ def _is_sanitizer_expression(
 ) -> bool:
     return isinstance(node, ast.Call) and (
         _canonical_reference(node.func, aliases, max_depth) in _SANITIZERS
-        or _canonical_reference(node.func, aliases, max_depth) in {
+        or _canonical_reference(node.func, aliases, max_depth)
+        in {
             "ldap.filter.filter_format",
             "ldap3.utils.conv.escape_filter_chars",
         }
@@ -895,9 +923,11 @@ def _is_parameter_source(name: str, call: ast.Call, tree: ast.AST) -> bool:
         *scope.args.args,
         *scope.args.kwonlyargs,
     )
-    return any(parameter.arg == name for parameter in parameters) or (
-        scope.args.vararg is not None and scope.args.vararg.arg == name
-    ) or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    return (
+        any(parameter.arg == name for parameter in parameters)
+        or (scope.args.vararg is not None and scope.args.vararg.arg == name)
+        or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    )
 
 
 def _enclosing_function(
@@ -956,7 +986,12 @@ def _record_imports(statement: ast.Import, aliases: dict[str, str | None]) -> No
 
 def _record_import_from(statement: ast.ImportFrom, aliases: dict[str, str | None]) -> None:
     module = statement.module or ""
-    if statement.level or not (module == "ldap" or module.startswith("ldap.") or module == "ldap3" or module.startswith("ldap3.")):
+    if statement.level or not (
+        module == "ldap"
+        or module.startswith("ldap.")
+        or module == "ldap3"
+        or module.startswith("ldap3.")
+    ):
         for imported in statement.names:
             aliases[imported.asname or imported.name] = None
         return
@@ -1154,9 +1189,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1188,9 +1221,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

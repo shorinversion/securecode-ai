@@ -354,9 +354,7 @@ def _receipt_document(receipt: BackupReceipt, repository_id: str) -> dict[str, o
     return value
 
 
-def _recovery_document(
-    recovery: BackupRecoveryRecord, repository_id: str
-) -> dict[str, object]:
+def _recovery_document(recovery: BackupRecoveryRecord, repository_id: str) -> dict[str, object]:
     value = asdict(recovery)
     value["repository_id"] = repository_id
     return value

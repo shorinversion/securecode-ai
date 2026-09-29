@@ -60,9 +60,7 @@ _SINKS: dict[tuple[str, str], str] = {
     (_OS_PACKAGE, "RemoveAll"): "remove",
     (_OS_PACKAGE, "Rename"): "rename",
 }
-_PATH_BUILDERS = frozenset(
-    {"Abs", "Clean", "FromSlash", "Join", "Rel", "ToSlash", "VolumeName"}
-)
+_PATH_BUILDERS = frozenset({"Abs", "Clean", "FromSlash", "Join", "Rel", "ToSlash", "VolumeName"})
 _GO_SCOPES = frozenset({"function_declaration", "method_declaration", "func_literal"})
 
 
@@ -353,9 +351,7 @@ def scan_go_cwe367(
             checks: dict[str, _Check] = {}
             for node in _scope_preorder(scope):
                 if node.type in {"short_var_declaration", "assignment_statement", "var_spec"}:
-                    changed = _capture_bindings(
-                        node, aliases, flags, source, imports, limits, 0
-                    )
+                    changed = _capture_bindings(node, aliases, flags, source, imports, limits, 0)
                     for alias in changed:
                         checks.pop(alias, None)
                 if node.type != "call_expression":
@@ -365,7 +361,7 @@ def scan_go_cwe367(
                     continue
                 package, name = call
                 arguments = node.child_by_field_name("arguments")
-                values = arguments.named_children if arguments is not None else ()
+                values = tuple(arguments.named_children) if arguments is not None else ()
                 check_kind = _CHECKS.get((package, name))
                 if check_kind is not None:
                     if not values:
@@ -383,9 +379,7 @@ def scan_go_cwe367(
                 sink_arguments = values[:2] if name == "Rename" else values[:1]
                 sink_range = _range(node)
                 for argument in sink_arguments:
-                    for alias in _resolve_aliases(
-                        argument, aliases, source, imports, limits, 0
-                    ):
+                    for alias in _resolve_aliases(argument, aliases, source, imports, limits, 0):
                         check = checks.get(alias)
                         if check is None or check.location.start_byte >= sink_range.start_byte:
                             continue
@@ -497,19 +491,13 @@ def _import_aliases(root: Node, source: bytes) -> dict[str, str]:
         if package not in relevant:
             continue
         name_node = node.child_by_field_name("name")
-        alias = (
-            _text(source, name_node)
-            if name_node is not None
-            else package.rsplit("/", 1)[-1]
-        )
+        alias = _text(source, name_node) if name_node is not None else package.rsplit("/", 1)[-1]
         if alias not in {".", "_"}:
             aliases[alias] = package
     return aliases
 
 
-def _qualified_call(
-    node: Node, source: bytes, imports: dict[str, str]
-) -> tuple[str, str] | None:
+def _qualified_call(node: Node, source: bytes, imports: dict[str, str]) -> tuple[str, str] | None:
     function = node.child_by_field_name("function")
     if function is None or function.type != "selector_expression":
         return None
@@ -537,15 +525,15 @@ def _capture_bindings(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return frozenset()
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return frozenset()
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     changed: set[str] = set()
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
@@ -588,10 +576,8 @@ def _resolve_aliases(
         return value if value is not None else frozenset({"name:" + name})
     if node.type in {"parenthesized_expression", "unary_expression", "pointer_expression"}:
         return _union_aliases(
-            (
-                _resolve_aliases(child, aliases, source, imports, limits, depth + 1, visited)
-                for child in node.named_children
-            )
+            _resolve_aliases(child, aliases, source, imports, limits, depth + 1, visited)
+            for child in node.named_children
         )
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
@@ -661,9 +647,7 @@ def _is_atomic_open_file(
     return "O_TMPFILE" in names or {"O_CREATE", "O_EXCL"}.issubset(names)
 
 
-def _is_path_builder(
-    function: Node | None, source: bytes, imports: dict[str, str]
-) -> bool:
+def _is_path_builder(function: Node | None, source: bytes, imports: dict[str, str]) -> bool:
     if function is None or function.type != "selector_expression":
         return False
     operand = function.child_by_field_name("operand")

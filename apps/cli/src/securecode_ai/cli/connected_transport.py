@@ -143,7 +143,7 @@ class ConnectedRunReceipt:
         }
 
 
-def _identifier(value: str) -> bool:
+def _identifier(value: object) -> bool:
     return (
         type(value) is str
         and value.isascii()
@@ -260,7 +260,7 @@ def _exact_version_precondition(
     return minimum <= version <= maximum
 
 
-def _commit(value: str) -> bool:
+def _commit(value: object) -> bool:
     return (
         type(value) is str
         and len(value) == 40
@@ -398,11 +398,7 @@ class HttpConnectedApi:
     ) -> bytes:
         """Download one exact repair bundle through its dedicated route."""
 
-        if (
-            not _identifier(run_id)
-            or not _identifier(finding_id)
-            or not _sha256(patch_sha256)
-        ):
+        if not _identifier(run_id) or not _identifier(finding_id) or not _sha256(patch_sha256):
             raise ConnectedCliError(ConnectedCliErrorCode.INVALID_CONFIGURATION)
         body, headers = self._call_bytes(
             "GET",

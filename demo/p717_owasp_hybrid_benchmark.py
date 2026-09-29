@@ -63,7 +63,11 @@ def _load_cases(dataset: Path) -> tuple[Case, ...]:
     with expected.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
         header = next(reader, None)
-        if header is None or len(header) < 4 or header[0].strip().lstrip("#").strip() != "test name":
+        if (
+            header is None
+            or len(header) < 4
+            or header[0].strip().lstrip("#").strip() != "test name"
+        ):
             raise BenchmarkError("OWASP expected-results header is invalid")
         for row in reader:
             if len(row) < 4:
@@ -157,9 +161,12 @@ def _model_vulnerable(record: dict[str, object] | None) -> bool | None:
     if record is None:
         return None
     result = record.get("result")
-    if not isinstance(result, dict) or type(result.get("vulnerable")) is not bool:
+    if not isinstance(result, dict):
         return None
-    return result["vulnerable"]
+    vulnerable = result.get("vulnerable")
+    if type(vulnerable) is not bool:
+        return None
+    return vulnerable
 
 
 def _metric(rows: list[dict[str, object]], key: str) -> dict[str, object]:
@@ -246,7 +253,7 @@ def _run(dataset: Path, records_path: Path) -> dict[str, object]:
                 "model": _metric(selected, "model_vulnerable"),
                 "hybrid": _metric(selected, "hybrid_vulnerable"),
             }
-            for cwe in sorted({row["cwe"] for row in rows})
+            for cwe in sorted({case.cwe for case in cases})
             for selected in [[row for row in rows if row["cwe"] == cwe]]
         },
         "rows": rows,
@@ -261,7 +268,9 @@ def main() -> int:
     args = parser.parse_args()
     report = _run(args.dataset, args.model_records)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(report, ensure_ascii=True, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(json.dumps(report["metrics"], ensure_ascii=True, sort_keys=True))
     return 0
 

@@ -18,6 +18,7 @@ from securecode_ai.adapters.product_model import (
     to_model_native_candidate_draft,
 )
 from securecode_ai.contracts import DataClass, FindingVerdict, ModelPurpose, ModelRequest, ModelRole
+from securecode_ai.core.auditor import AUDITOR_VERDICTS
 from securecode_ai.core.evidence_package import EvidenceContextRef, EvidencePackage
 
 from .test_model_contracts import valid_request_payload
@@ -415,7 +416,9 @@ def test_auditor_snapshots_and_deep_validates_its_evidence_context() -> None:
         )
 
 
-@pytest.mark.parametrize("finding_verdict", tuple(FindingVerdict))
+@pytest.mark.parametrize(
+    "finding_verdict", tuple(item for item in FindingVerdict if item in AUDITOR_VERDICTS)
+)
 def test_auditor_wire_preserves_all_accepted_core_verdicts(finding_verdict: FindingVerdict) -> None:
     validator = _auditor_validator()
     request = _auditor_request(validator)
@@ -423,6 +426,17 @@ def test_auditor_wire_preserves_all_accepted_core_verdicts(finding_verdict: Find
     payload["finding_verdict"] = finding_verdict.value
     assert validator.validate(payload, request=request).accepted
     assert validator.parse(payload, request=request).finding_verdict is finding_verdict
+
+
+@pytest.mark.parametrize("finding_verdict", ["CONFLICTING", "NOT_EVALUATED"])
+def test_auditor_wire_schema_excludes_run_level_verdicts(finding_verdict: str) -> None:
+    validator = _auditor_validator()
+    request = _auditor_request(validator)
+    enum = json.loads(AUDITOR_WIRE_SCHEMA_JSON)["properties"]["finding_verdict"]["enum"]
+    assert finding_verdict not in enum
+    payload = _auditor_payload()
+    payload["finding_verdict"] = finding_verdict
+    assert not validator.validate(payload, request=request).accepted
 
 
 @pytest.mark.parametrize(("tenant", "head"), [("tenant-b", "1" * 40), ("tenant-a", "2" * 40)])

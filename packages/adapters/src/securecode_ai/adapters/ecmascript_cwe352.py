@@ -179,7 +179,10 @@ class EcmascriptCwe352ScanResult:
             type(item) is EcmascriptCwe352Signal for item in self.signals
         )
         order = (
-            tuple((item.sink.start_byte, item.sink.end_byte, item.source.start_byte) for item in self.signals)
+            tuple(
+                (item.sink.start_byte, item.sink.end_byte, item.source.start_byte)
+                for item in self.signals
+            )
             if valid
             else ()
         )
@@ -288,13 +291,9 @@ def _scan_ecmascript_cwe352(
         root = Parser(Language(grammar)).parse(symbol_index.source).root_node
         symbol_index.source.decode("utf-8", errors="strict")
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmascriptCwe352ScanError(
-            EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmascriptCwe352ScanError(EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmascriptCwe352ScanError(
-            EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmascriptCwe352ScanError(EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE) from None
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
@@ -314,9 +313,7 @@ def _scan_ecmascript_cwe352(
     except EcmascriptCwe352ScanError:
         raise
     except Exception:
-        raise EcmascriptCwe352ScanError(
-            EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmascriptCwe352ScanError(EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE) from None
     signals = tuple(
         EcmascriptCwe352Signal(
             repository_id=symbol_index.repository_id,
@@ -375,7 +372,10 @@ def _is_route_path(node: Node, source: bytes) -> bool:
         value = _text(source, node).strip()
         return len(value) >= 2 and value[1] in {"/", "*"}
     if node.type == "template_string":
-        return any(child.type == "string_fragment" for child in node.named_children) or not node.named_children
+        return (
+            any(child.type == "string_fragment" for child in node.named_children)
+            or not node.named_children
+        )
     return False
 
 
@@ -539,9 +539,7 @@ def ecmascript_cwe352_signals_to_raw_signals(
             )
         return tuple(output)
     except (ValueError, TypeError, AttributeError):
-        raise EcmascriptCwe352ScanError(
-            EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmascriptCwe352ScanError(EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _scan_sha256(
@@ -566,9 +564,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -610,9 +606,7 @@ def _text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmascriptCwe352ScanError(
-            EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmascriptCwe352ScanError(EcmascriptCwe352ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 __all__ = [

@@ -151,9 +151,7 @@ class PythonCwe613Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe613Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe613Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -469,11 +467,11 @@ def _scan_call(
             if not isinstance(argument, ast.Dict):
                 continue
             for key_node, value in zip(argument.keys, argument.values, strict=False):
-                key = _literal_string(key_node)
-                if key is None or value is None:
+                literal_key = _literal_string(key_node)
+                if literal_key is None or value is None:
                     continue
                 operation = _lifetime_operation(
-                    _normal_key(key),
+                    _normal_key(literal_key),
                     value,
                     aliases,
                     assignments,
@@ -513,11 +511,8 @@ def _lifetime_operation(
         return None
     resolved = _resolve_expr(value, assignments, (10**9, 10**9), max_depth)
     if normalized in _BROWSER_CLOSE_KEYS:
-        return (
-            PythonCwe613Operation.SESSION_EXPIRATION_DISABLED
-            if resolved is False
-            else None
-        )
+        disabled = isinstance(resolved, ast.Constant) and resolved.value is False
+        return PythonCwe613Operation.SESSION_EXPIRATION_DISABLED if disabled else None
     return _expiry_operation(resolved, aliases)
 
 
@@ -531,7 +526,8 @@ def _expiry_operation(
         literal = value.value
         if literal is None or literal is False:
             return PythonCwe613Operation.SESSION_EXPIRATION_DISABLED
-        if type(literal) in {int, float}:
+        # Exact type check: bool (an int subclass) is intentionally excluded.
+        if isinstance(literal, (int, float)) and type(literal) in {int, float}:
             if literal < 0:
                 return PythonCwe613Operation.SESSION_EXPIRATION_DISABLED
             if literal > _MAX_SESSION_SECONDS:
@@ -574,7 +570,7 @@ def _duration_seconds(node: ast.expr, aliases: dict[str, str | None]) -> float |
         )
     if isinstance(node, ast.Attribute) and _dotted_name(node).endswith("timedelta.max"):
         return float("inf")
-    if isinstance(node, ast.Name) and aliases.get(node.id, "").endswith("timedelta.max"):
+    if isinstance(node, ast.Name) and (aliases.get(node.id) or "").endswith("timedelta.max"):
         return float("inf")
     return None
 
@@ -610,7 +606,7 @@ def _collect_assignments(
     values: dict[str, list[tuple[int, int, ast.expr]]] = {}
     for node in _bounded_nodes(tree, max_depth * 10_000):
         if isinstance(node, ast.Assign):
-            pairs = ((target, node.value) for target in node.targets)
+            pairs = tuple((target, node.value) for target in node.targets)
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             pairs = ((node.target, node.value),)
         else:
@@ -720,7 +716,11 @@ def _normal_key(value: str) -> str:
 
 
 def _number(node: ast.expr) -> float | None:
-    if isinstance(node, ast.Constant) and type(node.value) in {int, float}:
+    if (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, (int, float))
+        and type(node.value) in {int, float}
+    ):
         return float(node.value)
     return None
 

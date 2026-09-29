@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 from .artifact_read import LocalCommittedArtifactReader
 from .baseline_store import DurableBaselineStore
 from .persistence import DevelopmentRepository
+from .residency_registry import SqliteResidencyRegistry
 from .scm_annotations import GithubAnnotationReceiptResolver
 from .scm_completion import SCMCompletionPublicationService
 from .scm_gitlab_publication import GitlabTerminalPublicationResolver
 from .scm_policy_waivers import waivers_cover_run_policy
 from .scm_publication_store import SCMPublicationTarget, SqliteSCMPublicationStore
 from .scm_runtime import SCMHandlers
-from .residency_registry import SqliteResidencyRegistry
 from .waivers import WaiverLedger
 from .worker_scm_policy import load_run_scm_policy_decision
 
@@ -101,13 +102,11 @@ def build_scm_publication_service(
         gitlab_head=scm.gitlab_head,
         gitlab_writer=scm.gitlab_writer,
         gitlab_terminal_publication=gitlab_terminal_publication,
-        policy_decisions=lambda tenant_id, run_id, identity_hash: (
-            load_run_scm_policy_decision(
-                connection,
-                tenant_id=tenant_id,
-                run_id=run_id,
-                execution_identity_hash=identity_hash,
-            )
+        policy_decisions=lambda tenant_id, run_id, identity_hash: load_run_scm_policy_decision(
+            connection,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            execution_identity_hash=identity_hash,
         ),
         waiver_exception_resolver=lambda tenant_id, run_id, identity_hash, decision: (
             waivers_cover_run_policy(
@@ -132,7 +131,7 @@ def build_scm_publication_service(
 def _committed_github_sarif_artifact_reader(
     repository: DevelopmentRepository,
     artifact_reader: LocalCommittedArtifactReader,
-):
+) -> Callable[[SCMPublicationTarget], tuple[str, bytes] | None]:
     def resolve(target: SCMPublicationTarget) -> tuple[str, bytes] | None:
         run = repository.get_run(target.tenant_id, target.run_id)
         if (
@@ -163,11 +162,7 @@ def _committed_github_sarif_artifact_reader(
             next_cursor = page["next_cursor"]
             if next_cursor is None:
                 break
-            if (
-                type(next_cursor) is not str
-                or not next_cursor
-                or next_cursor in seen_cursors
-            ):
+            if type(next_cursor) is not str or not next_cursor or next_cursor in seen_cursors:
                 raise ValueError("committed SARIF listing is invalid")
             seen_cursors.add(next_cursor)
             cursor = next_cursor

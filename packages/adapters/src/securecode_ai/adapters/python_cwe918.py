@@ -14,6 +14,7 @@ import ast
 import hashlib
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -34,9 +35,7 @@ _RULE_ID = "securecode-python-cwe918"
 _DETECTOR = "securecode-python-cwe918@1.0"
 _DETAIL = "untrusted_url_to_http_client"
 
-_HTTP_METHODS = frozenset(
-    {"delete", "get", "head", "options", "patch", "post", "put", "request"}
-)
+_HTTP_METHODS = frozenset({"delete", "get", "head", "options", "patch", "post", "put", "request"})
 _REQUEST_MODULES = frozenset({"requests", "requests.api"})
 _HTTPX_MODULES = frozenset({"httpx"})
 _AIOHTTP_MODULES = frozenset({"aiohttp"})
@@ -506,7 +505,9 @@ def _scan_statements(
             flows.pop(statement.name, None)
             continue
         if isinstance(statement, ast.ClassDef):
-            _scan_decorators(statement.decorator_list, aliases, flows, source, line_starts, limits, output)
+            _scan_decorators(
+                statement.decorator_list, aliases, flows, source, line_starts, limits, output
+            )
             child_aliases = dict(aliases)
             child_flows = dict(flows)
             _scan_statements(
@@ -964,8 +965,7 @@ def _source_range(
         base = _canonical_source(node.value, aliases)
         key = _literal_string(node.slice)
         if _is_source_container(base) or (
-            _is_request_root(base)
-            and key in _SCOPE_SOURCE_KEYS | _ENVIRONMENT_SOURCE_KEYS
+            _is_request_root(base) and key in _SCOPE_SOURCE_KEYS | _ENVIRONMENT_SOURCE_KEYS
         ):
             return _node_range(node, source, line_starts)
     if canonical is not None:
@@ -1002,13 +1002,19 @@ def _is_source_access_call(canonical: str, node: ast.AST) -> bool:
     base, _, method = canonical.rpartition(".")
     if _is_request_root(base) and method in _REQUEST_ACCESS_METHODS:
         return True
-    if _is_request_root(base) and method in _REQUEST_CONTAINER_METHODS and isinstance(node, ast.Call):
+    if (
+        _is_request_root(base)
+        and method in _REQUEST_CONTAINER_METHODS
+        and isinstance(node, ast.Call)
+    ):
         key = _literal_string(node.args[0]) if node.args else None
         if key in _SCOPE_SOURCE_KEYS | _ENVIRONMENT_SOURCE_KEYS:
             return True
     container, _, accessor = base.rpartition(".")
-    return _is_request_root(container) and accessor in _REQUEST_SOURCE_ATTRIBUTES and method in (
-        _REQUEST_CONTAINER_METHODS | _FLOW_PRESERVING_METHODS
+    return (
+        _is_request_root(container)
+        and accessor in _REQUEST_SOURCE_ATTRIBUTES
+        and method in (_REQUEST_CONTAINER_METHODS | _FLOW_PRESERVING_METHODS)
     )
 
 
@@ -1078,7 +1084,9 @@ def _record_import_from(statement: ast.ImportFrom, aliases: dict[str, str | None
     }
     for imported in statement.names:
         name = imported.asname or imported.name
-        aliases[name] = f"{module}.{imported.name}" if imported.name in known.get(module, ()) else None
+        aliases[name] = (
+            f"{module}.{imported.name}" if imported.name in known.get(module, ()) else None
+        )
 
 
 def _record_assignment(
@@ -1175,7 +1183,11 @@ def _merge_many_bindings(
         values = {branch_aliases.get(name) for branch_aliases, _ in branches}
         aliases[name] = values.pop() if len(values) == 1 else None
         branch_flows = [branch_flows.get(name, ()) for _, branch_flows in branches]
-        if branch_flows and all(value == branch_flows[0] for value in branch_flows) and branch_flows[0]:
+        if (
+            branch_flows
+            and all(value == branch_flows[0] for value in branch_flows)
+            and branch_flows[0]
+        ):
             flows[name] = branch_flows[0]
 
 
@@ -1198,9 +1210,7 @@ def _nested_statement_lists(statement: ast.stmt) -> tuple[list[ast.stmt], ...]:
     return ()
 
 
-def _dedupe_flows(
-    flows: tuple[_Flow, ...] | list[_Flow], limits: PythonCwe918ScanLimits
-) -> tuple[_Flow, ...]:
+def _dedupe_flows(flows: Iterable[_Flow], limits: PythonCwe918ScanLimits) -> tuple[_Flow, ...]:
     unique: dict[tuple[int, int], _Flow] = {}
     for flow in flows:
         unique[(flow.source.start_byte, flow.source.end_byte)] = flow
@@ -1347,13 +1357,13 @@ DEFAULT_CWE918_SCAN_LIMITS = DEFAULT_PYTHON_CWE918_SCAN_LIMITS
 
 
 __all__ = [
+    "DEFAULT_CWE918_SCAN_LIMITS",
+    "DEFAULT_PYTHON_CWE918_SCAN_LIMITS",
     "Cwe918ScanError",
     "Cwe918ScanErrorCode",
     "Cwe918ScanLimits",
     "Cwe918ScanResult",
     "Cwe918Signal",
-    "DEFAULT_CWE918_SCAN_LIMITS",
-    "DEFAULT_PYTHON_CWE918_SCAN_LIMITS",
     "PythonCwe918Operation",
     "PythonCwe918ScanError",
     "PythonCwe918ScanErrorCode",

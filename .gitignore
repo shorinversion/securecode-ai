@@ -76,3 +76,9 @@ compose.override.yaml
 # Local agent orchestration is not part of the public product
 .agents/
 AGENTS.md
+
+# Local submission archives
+output/
+
+# Claude Code agent worktrees
+.claude/worktrees/

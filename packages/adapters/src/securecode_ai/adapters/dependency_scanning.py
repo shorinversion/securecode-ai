@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Protocol, assert_never
 
 from securecode_ai.core import (
     DependencyEcosystem,
@@ -28,9 +28,7 @@ _PIN = re.compile(
     rb"(?P<hashes>(?:[ \t]+--hash=sha256:[0-9a-fA-F]{64})*)[ \t]*(?:#.*)?"
 )
 _OSV_ID = re.compile(r"[A-Z0-9][A-Z0-9._:+-]{0,127}\Z")
-_PURL = re.compile(
-    r"pkg:(?:pypi|npm|golang)/[A-Za-z0-9%._!~+/-]+@[A-Za-z0-9.!+_-]{1,128}\Z"
-)
+_PURL = re.compile(r"pkg:(?:pypi|npm|golang)/[A-Za-z0-9%._!~+/-]+@[A-Za-z0-9.!+_-]{1,128}\Z")
 _MAX_LIMITS = (1_048_576, 10_000, 10_000, 64)
 
 
@@ -489,10 +487,12 @@ def _canonical_name(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).lower()
 
 
-def _dependency_purl(
-    ecosystem: DependencyEcosystem, name: str, version: str
-) -> str | None:
-    if type(ecosystem) is not DependencyEcosystem or type(name) is not str or type(version) is not str:
+def _dependency_purl(ecosystem: DependencyEcosystem, name: str, version: str) -> str | None:
+    if (
+        type(ecosystem) is not DependencyEcosystem
+        or type(name) is not str
+        or type(version) is not str
+    ):
         return None
     if ecosystem is DependencyEcosystem.PYTHON:
         return f"pkg:pypi/{name}@{version}"
@@ -503,19 +503,20 @@ def _dependency_purl(
         return f"pkg:npm/{name}@{version}"
     if ecosystem is DependencyEcosystem.GO:
         escaped = "/".join(
-            "".join(f"!{character.lower()}" if character.isupper() else character for character in part)
+            "".join(
+                f"!{character.lower()}" if character.isupper() else character for character in part
+            )
             for part in name.split("/")
         )
         return f"pkg:golang/{escaped}@{version}"
-    return None
+    assert_never(ecosystem)
 
 
 def _valid_dependency_name(ecosystem: DependencyEcosystem, name: str) -> bool:
     if ecosystem is DependencyEcosystem.PYTHON:
-        return (
-            _NAME.fullmatch(name.encode("ascii", errors="ignore")) is not None
-            and name == _canonical_name(name)
-        )
+        return _NAME.fullmatch(
+            name.encode("ascii", errors="ignore")
+        ) is not None and name == _canonical_name(name)
     if ecosystem is DependencyEcosystem.JAVASCRIPT:
         raw = name[1:] if name.startswith("@") else name
         parts = raw.split("/")
@@ -529,12 +530,9 @@ def _valid_dependency_name(ecosystem: DependencyEcosystem, name: str) -> bool:
         return bool(
             len(name.encode("utf-8")) <= 1024
             and "/" in name
-            and all(
-                re.fullmatch(r"[A-Za-z0-9._~+-]{1,255}", part)
-                for part in name.split("/")
-            )
+            and all(re.fullmatch(r"[A-Za-z0-9._~+-]{1,255}", part) for part in name.split("/"))
         )
-    return False
+    assert_never(ecosystem)
 
 
 def _canonical_hash(value: object) -> str:
@@ -587,9 +585,7 @@ def _scan_hash(manifest_hash: str, advisories: tuple[DependencyAdvisory, ...]) -
     )
 
 
-def _inventory_hash(
-    manifest_hash: str, coordinates: tuple[DependencyCoordinate, ...]
-) -> str:
+def _inventory_hash(manifest_hash: str, coordinates: tuple[DependencyCoordinate, ...]) -> str:
     return _canonical_hash(
         {
             "coordinates": [_coordinate_projection(item) for item in coordinates],

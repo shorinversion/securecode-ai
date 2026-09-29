@@ -119,8 +119,7 @@ class GithubCommentPublisher:
             )
         if self._head(installation_id, repository_id, change_id) != expected_head:
             stale = tuple(
-                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED)
-                for item in inline
+                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED) for item in inline
             )
             return GithubCommentReceipt(
                 "STALE_SUPPRESSED",
@@ -141,8 +140,7 @@ class GithubCommentPublisher:
         )
         if summary_write is None:
             stale = tuple(
-                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED)
-                for item in inline
+                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED) for item in inline
             )
             return GithubCommentReceipt(
                 "STALE_SUPPRESSED",
@@ -163,8 +161,7 @@ class GithubCommentPublisher:
             )
         if current_head != expected_head:
             stale = tuple(
-                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED)
-                for item in inline
+                (item.finding_id, GithubCommentSuppression.STALE_SUPPRESSED) for item in inline
             )
             if not self._compensate_summary(
                 installation_id, repository, summary_write, delivery_key
@@ -303,8 +300,8 @@ class GithubCommentPublisher:
         matches = [
             item
             for item in comments
-            if type(item.get("body")) is str
-            and item["body"].splitlines()[-1:] == [marker]
+            if type(comment_body := item.get("body")) is str
+            and comment_body.splitlines()[-1:] == [marker]
         ]
         if len(matches) > 1:
             raise GitHubError("SUMMARY_RECONCILIATION_CONFLICT")
@@ -387,9 +384,7 @@ class GithubCommentPublisher:
                     path,
                     installation_id=installation_id,
                     document={"body": write.prior_body},
-                    idempotency_key=_summary_restore_idempotency_key(
-                        delivery_key, write.remote_id
-                    ),
+                    idempotency_key=_summary_restore_idempotency_key(delivery_key, write.remote_id),
                 )
             except (KeyboardInterrupt, SystemExit, GeneratorExit):
                 raise
@@ -453,9 +448,7 @@ class GithubCommentPublisher:
         values = self._list(
             installation_id, repository + "/pulls/" + change_id + "/comments?per_page=100"
         )
-        expected_locations = {
-            (item.finding_id, item.path, item.start_line) for item in annotations
-        }
+        expected_locations = {(item.finding_id, item.path, item.start_line) for item in annotations}
         result: set[str] = set()
         for item in values:
             body = item.get("body")
@@ -546,7 +539,9 @@ def _verified_annotations(
         or type(receipt.suppressions) is not tuple
         or len(receipt.annotations) > MAX_GITHUB_INLINE_COMMENTS
         or len(receipt.suppressions) > 4096
-        or any(type(item) is not GithubAnnotationSuppressionReceipt for item in receipt.suppressions)
+        or any(
+            type(item) is not GithubAnnotationSuppressionReceipt for item in receipt.suppressions
+        )
     ):
         raise GithubCommentError("ANNOTATION_AUTHORIZATION_INVALID")
     mapped_suppressions: list[tuple[str, GithubCommentSuppression]] = []
@@ -572,31 +567,30 @@ def _verified_annotations(
     if publication.current_head_sha != expected_head:
         raise GithubCommentError("ANNOTATION_AUTHORIZATION_INVALID")
     values = receipt.annotations
-    if (
-        any(type(item) is not GithubAnnotationProjection for item in values)
-        or len({item.finding_id for item in values}) != len(values)
-    ):
+    if any(type(item) is not GithubAnnotationProjection for item in values) or len(
+        {item.finding_id for item in values}
+    ) != len(values):
         raise GithubCommentError("ANNOTATION_AUTHORIZATION_INVALID")
-    for item in values:
+    for annotation in values:
         if (
-            _ID.fullmatch(item.finding_id) is None
-            or item.repository_id != repository_id
-            or item.head_sha != expected_head
-            or item.execution_identity_hash != publication.execution_identity_hash
-            or type(item.tenant_id) is not str
-            or not item.tenant_id
-            or not _safe_path(item.path)
-            or type(item.start_line) is not int
-            or item.start_line < 1
-            or type(item.end_line) is not int
-            or item.end_line != item.start_line
-            or type(item.title) is not str
-            or not item.title
-            or len(item.title) > 256
-            or type(item.message) is not str
-            or not item.message
-            or len(item.message) > 4096
-            or item.merge_authority is not False
+            _ID.fullmatch(annotation.finding_id) is None
+            or annotation.repository_id != repository_id
+            or annotation.head_sha != expected_head
+            or annotation.execution_identity_hash != publication.execution_identity_hash
+            or type(annotation.tenant_id) is not str
+            or not annotation.tenant_id
+            or not _safe_path(annotation.path)
+            or type(annotation.start_line) is not int
+            or annotation.start_line < 1
+            or type(annotation.end_line) is not int
+            or annotation.end_line != annotation.start_line
+            or type(annotation.title) is not str
+            or not annotation.title
+            or len(annotation.title) > 256
+            or type(annotation.message) is not str
+            or not annotation.message
+            or len(annotation.message) > 4096
+            or annotation.merge_authority is not False
         ):
             raise GithubCommentError("ANNOTATION_AUTHORIZATION_INVALID")
     return values, tuple(mapped_suppressions)

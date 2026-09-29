@@ -25,9 +25,7 @@ _ENV_FIELDS = {
 _DECIMAL_INTEGER = re.compile(r"(?:0|[1-9][0-9]{0,17})\Z")
 _MAX_BUDGETS = 256
 _BUDGET_LOCK = RLock()
-_BUDGETS: dict[
-    tuple[str, str], tuple[RemoteProviderSpendPolicy, InMemoryRemoteProviderBudget]
-] = {}
+_BUDGETS: dict[tuple[str, str], tuple[RemoteProviderSpendPolicy, InMemoryRemoteProviderBudget]] = {}
 
 
 def build_remote_provider_budget_from_environment(
@@ -40,17 +38,14 @@ def build_remote_provider_budget_from_environment(
     are numeric caps and rates only; this parser never reads credentials.
     """
     try:
-        raw_values = {
-            field: environment.get(_ENV_PREFIX + field)
-            for field in _ENV_FIELDS
-        }
-        if any(value is None or type(value) is not str for value in raw_values.values()):
-            return None
+        raw_values = {field: environment.get(_ENV_PREFIX + field) for field in _ENV_FIELDS}
         parsed: dict[str, int] = {}
-        for key, value in raw_values.items():
+        for field, value in raw_values.items():
+            if value is None or type(value) is not str:
+                return None
             if len(value) > 18 or _DECIMAL_INTEGER.fullmatch(value) is None:
                 return None
-            parsed[_ENV_FIELDS[key]] = int(value)
+            parsed[_ENV_FIELDS[field]] = int(value)
         policy = RemoteProviderSpendPolicy(
             tenant_id=tenant_id,
             model_id=model_id,

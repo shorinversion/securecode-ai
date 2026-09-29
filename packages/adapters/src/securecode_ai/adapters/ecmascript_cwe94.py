@@ -255,9 +255,7 @@ def scan_javascript_cwe94(
 ) -> EcmaScriptCwe94ScanResult:
     """Find bounded JavaScript dynamic-code execution facts."""
 
-    return _scan_ecmascript_cwe94(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe94(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe94(
@@ -267,9 +265,7 @@ def scan_typescript_cwe94(
 ) -> EcmaScriptCwe94ScanResult:
     """Find bounded TypeScript dynamic-code execution facts."""
 
-    return _scan_ecmascript_cwe94(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe94(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe94(
@@ -427,10 +423,15 @@ def _call_facts(
     if operation is None:
         return set()
     values = list(arguments.named_children)
-    if operation in {
-        EcmaScriptCwe94Operation.SET_TIMEOUT,
-        EcmaScriptCwe94Operation.SET_INTERVAL,
-    } and values and _is_callable_expression(values[0]):
+    if (
+        operation
+        in {
+            EcmaScriptCwe94Operation.SET_TIMEOUT,
+            EcmaScriptCwe94Operation.SET_INTERVAL,
+        }
+        and values
+        and _is_callable_expression(values[0])
+    ):
         return set()
     source_node = _input_node(values, operation)
     sink_range = _range(node)
@@ -487,9 +488,7 @@ def _operation_for_callee(callee: str, aliases: dict[str, str]) -> EcmaScriptCwe
     }.get(canonical)
 
 
-def _input_node(
-    values: list[Node], operation: EcmaScriptCwe94Operation
-) -> Node | None:
+def _input_node(values: list[Node], operation: EcmaScriptCwe94Operation) -> Node | None:
     if not values:
         return None
     if operation is EcmaScriptCwe94Operation.FUNCTION:
@@ -568,7 +567,11 @@ def _collect_destructured_aliases(
     pattern: Node, module: str, source: bytes, aliases: dict[str, str]
 ) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key = child.child_by_field_name("key")
         value = child.child_by_field_name("value")
@@ -585,9 +588,7 @@ def _collect_destructured_aliases(
         aliases[_node_text(source, value)] = f"{module}.{_node_text(source, key)}"
 
 
-def _canonical_expression(
-    node: Node, source: bytes, aliases: dict[str, str]
-) -> str | None:
+def _canonical_expression(node: Node, source: bytes, aliases: dict[str, str]) -> str | None:
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
         arguments = node.child_by_field_name("arguments")
@@ -686,9 +687,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -722,9 +721,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

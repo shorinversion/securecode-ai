@@ -941,3 +941,32 @@ chain-member diagnostic. Push validation translates the chain diagnostic.
 mypy stages over the same deterministic source inventory before executing unit
 tests. Either platform failure blocks unit execution and the candidate. This
 prevents a host-native check from hiding invalid guarded platform APIs.
+
+## D-113: Land the de6eabe repair through one owner-approved bypass merge
+
+28 September 2026, CR-095 (owner decision, retroactive). Commit `de6eabe`
+reached `main` while `master` was still the protected default branch, so it
+never ran the quality gate. It broke 254 unit tests, left 229 files
+unformatted, added about 130 lint findings and about 570 mypy errors, and
+changed three public schemas (`audit-event`, `audit-run`, `finding-case`:
+additive optional `command_operation_evidence`) without a policy amendment.
+Because every PR is validated against the whole repository and limited to 64
+files, no incremental repair PR can pass. The owner approved one repair PR that
+restores a passing `scripts/quality.py`, updates the three
+`public_schema_sha256` entries, and is merged once with the ruleset bypassed.
+The ruleset is re-enabled immediately and later changes use ordinary gated PRs.
+No review record is fabricated for CR-095; this entry is its only record.
+The advisory SCM mode keeps publishing a passing check while findings remain
+in the audit record and report (SC-CLI-004), as confirmed by the owner.
+
+## D-114: Replace the packet-driven gate with an agile PR workflow
+
+29 September 2026, owner decision. The specification-driven gate (task packets,
+PR kinds, 64-file budgets, frozen schema-hash registry with three-review policy
+amendments, exact-count secret baseline) cost more effort than it prevented
+defects and made the de6eabe repair impossible to land incrementally. CI now
+requires `policy`, `secrets`, `dependency` and `quality` only; the `spec` job and
+the quality `spec` stage are removed. The secret baseline pins detectors and
+filters, while new reviewed digests are approved in the PR that adds them.
+`scripts/spec_gate.py` remains available as an optional tool. The workflow is
+described in `docs/DEVELOPMENT_WORKFLOW.md`.

@@ -577,7 +577,7 @@ uv run --locked --offline --no-sync --group quality pre-commit run --all-files
   [HTML report](report/submission-benchmark/report.html),
   [machine-readable metrics](report/submission-benchmark/aggregate.json),
   [stratified table](report/submission-benchmark/stratified-metrics.csv) и
-  [PDF report](output/pdf/securecode-ai-submission-benchmark.pdf)
+  [PDF report](site/benchmark.pdf)
 - [Итоговый HTML-отчёт с текущим local-model прогоном](report/final-submission.html)
 - [Обезличенная квитанция Qwen](report/submission-benchmark/evidence/current-real-local-p917.json)
 - [Сценарий 3-минутного скринкаста](docs/SUBMISSION_VIDEO_SCRIPT.md)
@@ -1191,7 +1191,7 @@ uv run --locked --offline --no-sync --group quality pre-commit run --all-files
   [HTML report](report/submission-benchmark/report.html),
   [machine-readable metrics](report/submission-benchmark/aggregate.json),
   [stratified table](report/submission-benchmark/stratified-metrics.csv), and
-  [PDF report](output/pdf/securecode-ai-submission-benchmark.pdf)
+  [PDF report](site/benchmark.pdf)
 - [Final HTML project report with the current local-model run](report/final-submission.html)
 - [Redacted Qwen receipt](report/submission-benchmark/evidence/current-real-local-p917.json)
 - [Three-minute screencast script](docs/SUBMISSION_VIDEO_SCRIPT.md)

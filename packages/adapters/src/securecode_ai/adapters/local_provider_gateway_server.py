@@ -422,7 +422,7 @@ def gateway_observation_path(environment: Mapping[str, str]) -> Path:
         if (
             type(configured) is not str
             or not configured
-            or not os.path.isabs(configured)
+            or not os.path.isabs(configured)  # noqa: PTH117  exact os.path semantics on str input
             or Path(configured).name != _OBSERVATION_FILENAME
         ):
             raise ValueError("invalid gateway observation path")
@@ -430,14 +430,19 @@ def gateway_observation_path(environment: Mapping[str, str]) -> Path:
     root = environment.get("SECURECODE_AI_ARTIFACT_ROOT")
     if root is None:
         if os.name == "nt":
-            root = os.path.join(environment.get("LOCALAPPDATA", ""), "SecureCodeAI", "suggestions")
+            root = os.path.join(  # noqa: PTH118  root must stay a str for validation below
+                environment.get("LOCALAPPDATA", ""), "SecureCodeAI", "suggestions"
+            )
         else:
-            root = os.path.join(
-                environment.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")),
+            root = os.path.join(  # noqa: PTH118  root must stay a str for validation below
+                environment.get(
+                    "XDG_DATA_HOME",
+                    os.path.expanduser("~/.local/share"),  # noqa: PTH111  str default
+                ),
                 "securecode-ai",
                 "suggestions",
             )
-    if type(root) is not str or not root or not os.path.isabs(root):
+    if type(root) is not str or not root or not os.path.isabs(root):  # noqa: PTH117  str input
         raise ValueError("invalid gateway observation root")
     return Path(root) / _OBSERVATION_FILENAME
 
@@ -450,13 +455,16 @@ def _write_gateway_observation(path: Path, document: Mapping[str, object]) -> No
         or not isinstance(document, Mapping)
     ):
         raise ValueError("invalid gateway observation artifact")
-    encoded = json.dumps(
-        dict(document),
-        ensure_ascii=True,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("ascii") + b"\n"
+    encoded = (
+        json.dumps(
+            dict(document),
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+        + b"\n"
+    )
     if not 1 <= len(encoded) <= _MAX_OBSERVATION_BYTES:
         raise ValueError("gateway observation artifact is too large")
     parent = path.parent
@@ -486,7 +494,7 @@ def _write_gateway_observation(path: Path, document: Mapping[str, object]) -> No
         if descriptor >= 0:
             os.close(descriptor)
     try:
-        os.replace(temporary, path)
+        temporary.replace(path)
         with suppress(OSError):
             directory = os.open(parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             try:

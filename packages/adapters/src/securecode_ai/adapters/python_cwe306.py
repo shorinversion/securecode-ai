@@ -249,7 +249,6 @@ _AUTH_STATE_WORDS = frozenset(
         "authuser",
         "currentuser",
         "is_authenticated",
-        "is_authenticated",
         "logged_in",
         "loggedin",
         "principal",
@@ -538,7 +537,9 @@ def scan_python_cwe306(
             is_named_handler = _critical_function_name(function.name)
             if route is None and not (critical_calls and is_named_handler):
                 continue
-            if module_auth or _class_has_auth(classes, function, aliases, limits.max_resolution_depth):
+            if module_auth or _class_has_auth(
+                classes, function, aliases, limits.max_resolution_depth
+            ):
                 continue
             if _function_has_auth_decorator(function, aliases, limits.max_resolution_depth):
                 continue
@@ -550,6 +551,7 @@ def scan_python_cwe306(
                 limits.max_resolution_depth,
             ):
                 continue
+            source_node: ast.AST
             if evidence_call is not None:
                 source_node = evidence_call.node
                 operation = evidence_call.operation
@@ -655,7 +657,9 @@ def _valid_identity(repository_id: str, revision: str, path: str, digest: str, s
     return valid
 
 
-def _functions(tree: ast.Module, max_depth: int) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+def _functions(
+    tree: ast.Module, max_depth: int
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
     result: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for node in _bounded_nodes(tree, max_depth):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -689,16 +693,16 @@ def _function_nodes(
     max_depth: int,
 ) -> tuple[ast.AST, ...]:
     result: list[ast.AST] = []
-    stack: list[tuple[ast.AST, int]] = [
-        (statement, 1) for statement in reversed(function.body)
-    ]
+    stack: list[tuple[ast.AST, int]] = [(statement, 1) for statement in reversed(function.body)]
     limit = max(1, max_depth * 10_000)
     while stack:
         node, depth = stack.pop()
         if depth > limit:
             raise PythonCwe306ScanError(PythonCwe306ScanErrorCode.SIGNAL_LIMIT)
         result.append(node)
-        if node is not function and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if node is not function and isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ):
             continue
         stack.extend((child, depth + 1) for child in reversed(tuple(ast.iter_child_nodes(node))))
         if len(result) > limit:
@@ -847,7 +851,20 @@ def _critical_function_name(name: str) -> bool:
     tokens = {token for token in re.split(r"[^a-z0-9]+", name.lower()) if token}
     return bool(tokens & _CRITICAL_FUNCTION_WORDS) and any(
         token in tokens
-        for token in {"handler", "endpoint", "route", "admin", "delete", "destroy", "update", "manage", "transfer", "approve", "revoke", "grant"}
+        for token in {
+            "handler",
+            "endpoint",
+            "route",
+            "admin",
+            "delete",
+            "destroy",
+            "update",
+            "manage",
+            "transfer",
+            "approve",
+            "revoke",
+            "grant",
+        }
     )
 
 
@@ -862,7 +879,9 @@ def _module_has_auth_middleware(
             tail = _normalise(name.rsplit(".", 1)[-1])
             if tail == "addmiddleware":
                 for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
-                    candidate = _normalise(_reference(argument, aliases, max_depth) or _dotted_name(argument))
+                    candidate = _normalise(
+                        _reference(argument, aliases, max_depth) or _dotted_name(argument)
+                    )
                     if candidate and any(word in candidate for word in _AUTH_MIDDLEWARE_WORDS):
                         return True
             elif tail in _AUTH_MIDDLEWARE_WORDS:
@@ -884,7 +903,9 @@ def _class_has_auth(
     for class_node in classes:
         start = _position(class_node)
         end = (getattr(class_node, "end_lineno", 0), getattr(class_node, "end_col_offset", 0))
-        if start <= position <= end and _decorators_have_auth(class_node.decorator_list, aliases, max_depth):
+        if start <= position <= end and _decorators_have_auth(
+            class_node.decorator_list, aliases, max_depth
+        ):
             return True
     return False
 
@@ -903,10 +924,7 @@ def _decorators_have_auth(
     max_depth: int,
 ) -> bool:
     for decorator in decorators:
-        if isinstance(decorator, ast.Call):
-            name_node = decorator.func
-        else:
-            name_node = decorator
+        name_node = decorator.func if isinstance(decorator, ast.Call) else decorator
         name = _reference(name_node, aliases, max_depth) or _dotted_name(name_node)
         if _auth_name(name):
             return True
@@ -939,9 +957,9 @@ def _has_inline_auth_guard(
             name = _reference(node.func, aliases, max_depth) or _dotted_name(node.func)
             if _strong_auth_call(name):
                 return True
-        elif isinstance(node, ast.If) and _auth_condition(node.test, aliases, max_depth):
-            return True
-        elif isinstance(node, ast.Assert) and _auth_condition(node.test, aliases, max_depth):
+        elif (isinstance(node, ast.If) and _auth_condition(node.test, aliases, max_depth)) or (
+            isinstance(node, ast.Assert) and _auth_condition(node.test, aliases, max_depth)
+        ):
             return True
     return False
 
@@ -952,7 +970,13 @@ def _strong_auth_call(name: str) -> bool:
         return True
     return any(
         token in compact
-        for token in ("requireauth", "requirepermission", "requireauthorization", "checkpermission", "checkauthorization")
+        for token in (
+            "requireauth",
+            "requirepermission",
+            "requireauthorization",
+            "checkpermission",
+            "checkauthorization",
+        )
     )
 
 
@@ -973,16 +997,19 @@ def _auth_condition(
             if compact in {_normalise(item) for item in _AUTH_GUARDS}:
                 return True
             if compact in {"get", "getitem"} and any(
-                _auth_state_text(argument) for argument in (*node.args, *(keyword.value for keyword in node.keywords))
+                _auth_state_text(argument)
+                for argument in (*node.args, *(keyword.value for keyword in node.keywords))
             ):
                 return True
     return False
 
 
 def _auth_state_text(node: ast.AST) -> bool:
-    return isinstance(node, ast.Constant) and type(node.value) is str and _normalise(node.value) in {
-        _normalise(item) for item in _AUTH_STATE_WORDS
-    }
+    return (
+        isinstance(node, ast.Constant)
+        and type(node.value) is str
+        and _normalise(node.value) in {_normalise(item) for item in _AUTH_STATE_WORDS}
+    )
 
 
 def _auth_name(name: str) -> bool:
@@ -991,7 +1018,16 @@ def _auth_name(name: str) -> bool:
         return True
     return any(
         token in compact
-        for token in ("loginrequired", "requiresauth", "requireauth", "permissionrequired", "rolerequired", "jwtrequired", "tokenrequired", "authenticated")
+        for token in (
+            "loginrequired",
+            "requiresauth",
+            "requireauth",
+            "permissionrequired",
+            "rolerequired",
+            "jwtrequired",
+            "tokenrequired",
+            "authenticated",
+        )
     )
 
 
@@ -1013,7 +1049,9 @@ def _bounded_expr_nodes(node: ast.AST, max_depth: int) -> tuple[ast.AST, ...]:
     return tuple(result)
 
 
-def _reference(node: ast.AST | None, aliases: dict[str, str | None], max_depth: int, depth: int = 0) -> str | None:
+def _reference(
+    node: ast.AST | None, aliases: dict[str, str | None], max_depth: int, depth: int = 0
+) -> str | None:
     if node is None:
         return None
     if depth > max_depth:
@@ -1165,7 +1203,11 @@ def _suppressed_path(path: str) -> bool:
     normalised = path.replace("\\", "/").lower()
     parts = tuple(part for part in normalised.split("/") if part)
     stem = parts[-1] if parts else ""
-    return bool(set(parts) & {"test", "tests", "fixture", "fixtures", "example", "examples", "docs"}) or stem.startswith("test_") or stem.endswith("_test.py")
+    return (
+        bool(set(parts) & {"test", "tests", "fixture", "fixtures", "example", "examples", "docs"})
+        or stem.startswith("test_")
+        or stem.endswith("_test.py")
+    )
 
 
 Cwe306ScanErrorCode = PythonCwe306ScanErrorCode

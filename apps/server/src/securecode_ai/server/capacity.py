@@ -82,8 +82,7 @@ class CapacityCell:
                 self.observed_requests is not None
                 and self.unfinished_requests is not None
                 and self.planned_requests is not None
-                and self.observed_requests + self.unfinished_requests
-                > self.planned_requests
+                and self.observed_requests + self.unfinished_requests > self.planned_requests
             )
             or (
                 self.queue_p50 is not None
@@ -123,10 +122,7 @@ class CapacityCell:
         if self.scenario in {"cancellation", "worker_lifecycle"}:
             if self.cancellations == 0 or self.cancelled_requests in (None, 0):
                 return "FAILED"
-            if (
-                not self.completed
-                or self.unfinished_requests not in (None, 0)
-            ):
+            if not self.completed or self.unfinished_requests not in (None, 0):
                 return "INDETERMINATE"
             if not observed_cleanly_for_result(self):
                 return "FAILED"

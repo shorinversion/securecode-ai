@@ -438,16 +438,19 @@ def scan_go_cwe400(
                 arguments = node.child_by_field_name("arguments")
                 if arguments is None:
                     continue
-                values = arguments.named_children
-                input_index = 1 if operation in {
-                    GoCwe400Operation.IO_COPY,
-                    GoCwe400Operation.IO_COPY_BUFFER,
-                } else 0
+                values = tuple(arguments.named_children)
+                input_index = (
+                    1
+                    if operation
+                    in {
+                        GoCwe400Operation.IO_COPY,
+                        GoCwe400Operation.IO_COPY_BUFFER,
+                    }
+                    else 0
+                )
                 if len(values) <= input_index:
                     continue
-                flows = _resolve(
-                    values[input_index], environment, source, imports, limits, 0
-                )
+                flows = _resolve(values[input_index], environment, source, imports, limits, 0)
                 for flow in flows:
                     if flow.bounded:
                         continue
@@ -618,15 +621,15 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values: tuple[Node, ...] = (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(names) > limits.max_signals or len(values) > limits.max_signals:
         raise GoCwe400ScanError(GoCwe400ScanErrorCode.SIGNAL_LIMIT)
     for index, name in enumerate(names):
@@ -684,18 +687,16 @@ def _resolve(
         "address_expression",
     }:
         return _dedupe_flows(
-            (
-                flow
-                for child in node.named_children
-                for flow in _resolve(
-                    child,
-                    environment,
-                    source,
-                    imports,
-                    limits,
-                    depth + 1,
-                    visited,
-                )
+            flow
+            for child in node.named_children
+            for flow in _resolve(
+                child,
+                environment,
+                source,
+                imports,
+                limits,
+                depth + 1,
+                visited,
             )
         )
     if node.type == "composite_literal":
@@ -705,19 +706,19 @@ def _resolve(
             _with_bounded(flow, bounded)
             for child in node.named_children
             if child is not type_node
-            for flow in _resolve(
-                child, environment, source, imports, limits, depth + 1, visited
-            )
+            for flow in _resolve(child, environment, source, imports, limits, depth + 1, visited)
         )
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
         arguments = node.child_by_field_name("arguments")
         if arguments is None:
             return ()
-        values = arguments.named_children
+        values = tuple(arguments.named_children)
         qualified = _qualified_function(function, source, imports, {}) if function else None
         if qualified in _BOUNDED_OPERATIONS:
-            source_values = values[1:2] if qualified == (_HTTP_PACKAGE, "MaxBytesReader") else values[:1]
+            source_values = (
+                values[1:2] if qualified == (_HTTP_PACKAGE, "MaxBytesReader") else values[:1]
+            )
             return _dedupe_flows(
                 _with_bounded(flow, True)
                 for value in source_values
@@ -775,25 +776,19 @@ def _resolve(
         return _dedupe_flows(
             flow
             for value in values
-            for flow in _resolve(
-                value, environment, source, imports, limits, depth + 1, visited
-            )
+            for flow in _resolve(value, environment, source, imports, limits, depth + 1, visited)
         )
     if node.type in {"selector_expression", "index_expression", "slice_expression"}:
         return _dedupe_flows(
             flow
             for child in node.named_children
-            for flow in _resolve(
-                child, environment, source, imports, limits, depth + 1, visited
-            )
+            for flow in _resolve(child, environment, source, imports, limits, depth + 1, visited)
         )
     if node.type in {"binary_expression", "expression_list", "keyed_element"}:
         return _dedupe_flows(
             flow
             for child in node.named_children
-            for flow in _resolve(
-                child, environment, source, imports, limits, depth + 1, visited
-            )
+            for flow in _resolve(child, environment, source, imports, limits, depth + 1, visited)
         )
     return ()
 

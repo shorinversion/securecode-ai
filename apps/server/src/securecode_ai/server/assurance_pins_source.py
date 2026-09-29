@@ -91,9 +91,7 @@ class FileAssurancePinsProvider:
         if document["schema_version"] != 1:
             raise AssurancePinsConfigurationError()
         inherited_tenant = document.get("tenant_id")
-        if keys == {"schema_version", "tenant_id", "entries"} and not _identifier(
-            inherited_tenant
-        ):
+        if keys == {"schema_version", "tenant_id", "entries"} and not _identifier(inherited_tenant):
             raise AssurancePinsConfigurationError()
         if (
             inherited_tenant is not None
@@ -121,10 +119,7 @@ class FileAssurancePinsProvider:
                 raise AssurancePinsConfigurationError()
             repository_id = raw_entry["repository_id"]
             identity_hash = raw_entry["execution_identity_hash"]
-            if (
-                not _identifier(repository_id)
-                or not _sha256(identity_hash)
-            ):
+            if not _identifier(repository_id) or not _sha256(identity_hash):
                 raise AssurancePinsConfigurationError()
             key = (tenant_id, repository_id, identity_hash)
             if key in entries:
@@ -143,9 +138,7 @@ def build_assurance_pins_provider(
 ) -> AssurancePinsProvider:
     """Compose the host-owned provider, or an explicit fail-closed provider."""
 
-    if not isinstance(values, Mapping) or (
-        tenant_id is not None and not _identifier(tenant_id)
-    ):
+    if not isinstance(values, Mapping) or (tenant_id is not None and not _identifier(tenant_id)):
         raise AssurancePinsConfigurationError()
     raw_path = values.get("SECURECODE_ASSURANCE_PINS_FILE")
     if raw_path is None:

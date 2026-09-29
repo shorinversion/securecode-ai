@@ -59,7 +59,9 @@ _SENSITIVE_COMPONENTS = frozenset(
     }
 )
 _PASSWORD_COMPONENTS = frozenset({"password", "passphrase", "passwd"})
-_KEY_COMPONENTS = frozenset({"accesskey", "apikey", "keyfile", "privatekey", "secretkey", "signingkey"})
+_KEY_COMPONENTS = frozenset(
+    {"accesskey", "apikey", "keyfile", "privatekey", "secretkey", "signingkey"}
+)
 _AUTH_COMPONENTS = frozenset({"authheader", "authorization", "bearer"})
 _TOKEN_COMPONENTS = frozenset(
     {"accesstoken", "authtoken", "idtoken", "jwt", "refreshtoken", "sessiontoken", "token"}
@@ -371,8 +373,8 @@ class EcmaScriptCwe532ScanResult:
                     item.source.start_byte,
                     item.source.end_byte,
                     item.operation.value,
-                item.sensitive_kind.value,
-                item.sensitive_name,
+                    item.sensitive_kind.value,
+                    item.sensitive_name,
                 )
                 for item in self.signals
             )
@@ -495,9 +497,7 @@ def _scan_ecmascript_cwe532(
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe532ScanError(
-                EcmaScriptCwe532ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe532ScanError(EcmaScriptCwe532ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source, limits)
         logger_names = _collect_logger_names(nodes, source, aliases, limits)
         raw: set[
@@ -546,9 +546,7 @@ def _scan_ecmascript_cwe532(
                         )
                     )
                     if len(raw) > limits.max_signals:
-                        raise EcmaScriptCwe532ScanError(
-                            EcmaScriptCwe532ScanErrorCode.SIGNAL_LIMIT
-                        )
+                        raise EcmaScriptCwe532ScanError(EcmaScriptCwe532ScanErrorCode.SIGNAL_LIMIT)
         ordered = sorted(
             raw,
             key=lambda item: (
@@ -564,9 +562,7 @@ def _scan_ecmascript_cwe532(
     except EcmaScriptCwe532ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe532ScanError(
-            EcmaScriptCwe532ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe532ScanError(EcmaScriptCwe532ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe532Signal(
@@ -639,15 +635,33 @@ def _resolve_sensitive_occurrences(
         return tuple((node, kind) for kind in sorted(kinds, key=lambda item: item.value))
     if node.type == "object":
         return _resolve_object_occurrences(
-            node, scope=scope, source=source, aliases=aliases, limits=limits, depth=depth + 1, visited=visited
+            node,
+            scope=scope,
+            source=source,
+            aliases=aliases,
+            limits=limits,
+            depth=depth + 1,
+            visited=visited,
         )
     if node.type == "pair":
         return _resolve_pair_occurrences(
-            node, scope=scope, source=source, aliases=aliases, limits=limits, depth=depth + 1, visited=visited
+            node,
+            scope=scope,
+            source=source,
+            aliases=aliases,
+            limits=limits,
+            depth=depth + 1,
+            visited=visited,
         )
     if node.type in _EXPRESSION_NODES or node.type == "call_expression":
         return _resolve_children(
-            node, scope=scope, source=source, aliases=aliases, limits=limits, depth=depth + 1, visited=visited
+            node,
+            scope=scope,
+            source=source,
+            aliases=aliases,
+            limits=limits,
+            depth=depth + 1,
+            visited=visited,
         )
     return ()
 
@@ -676,7 +690,10 @@ def _resolve_object_occurrences(
                     visited=visited,
                 )
             )
-        elif child.type in {"shorthand_property_identifier", "shorthand_property_identifier_pattern"}:
+        elif child.type in {
+            "shorthand_property_identifier",
+            "shorthand_property_identifier_pattern",
+        }:
             kind = _sensitive_expression_kind(child, source, aliases)
             if kind is not None:
                 values.append((child, kind))
@@ -800,7 +817,9 @@ def _sensitive_value_kinds(
     if node.type == "pair":
         value = node.child_by_field_name("value")
         key = node.child_by_field_name("key")
-        key_kind = _sensitive_name_kind(_static_property_name(key, source) if key is not None else None)
+        key_kind = _sensitive_name_kind(
+            _static_property_name(key, source) if key is not None else None
+        )
         if value is None:
             return frozenset({key_kind}) if key_kind is not None else frozenset()
         nested = _sensitive_value_kinds(
@@ -882,10 +901,14 @@ def _is_known_safe_value(
 def _unique_occurrences(
     values: list[tuple[Node, EcmaScriptCwe532SensitiveKind]],
 ) -> tuple[tuple[Node, EcmaScriptCwe532SensitiveKind], ...]:
-    unique: dict[tuple[int, int, EcmaScriptCwe532SensitiveKind], tuple[Node, EcmaScriptCwe532SensitiveKind]] = {}
+    unique: dict[
+        tuple[int, int, EcmaScriptCwe532SensitiveKind], tuple[Node, EcmaScriptCwe532SensitiveKind]
+    ] = {}
     for node, kind in values:
         unique[(node.start_byte, node.end_byte, kind)] = (node, kind)
-    return tuple(unique[key] for key in sorted(unique, key=lambda item: (item[0], item[1], item[2].value)))
+    return tuple(
+        unique[key] for key in sorted(unique, key=lambda item: (item[0], item[1], item[2].value))
+    )
 
 
 def _sensitive_expression_kind(
@@ -987,10 +1010,13 @@ def _sensitive_label(
     }:
         value = _normalize_name(_node_text(source, node))
     elif node.type in {"member_expression", "subscript_expression"}:
-        value = _normalize_name(_static_property_name(
-            node.child_by_field_name("property") or node.child_by_field_name("index"),
-            source,
-        ) or "")
+        value = _normalize_name(
+            _static_property_name(
+                node.child_by_field_name("property") or node.child_by_field_name("index"),
+                source,
+            )
+            or ""
+        )
     else:
         value = ""
     return value[:256] or sensitive_kind.value
@@ -1073,7 +1099,8 @@ def _collect_logger_names(
             or compact.startswith("createLogger(")
             or ".child(" in compact
             or any(compact.startswith(f"{name}.") for name in names)
-            or _normalize_name(_node_text(source, left)) in {"audit", "audit_logger", "logger", "logging"}
+            or _normalize_name(_node_text(source, left))
+            in {"audit", "audit_logger", "logger", "logging"}
         ):
             names.add(_node_text(source, left))
             if len(names) > limits.max_aliases:
@@ -1223,9 +1250,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _node_text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _node_text(source, left) == name
+        ):
+            bound = right
     return bound
 
 

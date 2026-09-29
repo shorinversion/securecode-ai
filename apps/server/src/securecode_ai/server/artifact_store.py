@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -36,12 +37,13 @@ class LocalArtifactStore:
     def put(
         self, metadata: ArtifactMetadata, chunks: Iterable[bytes], idempotency_key: str
     ) -> ArtifactMetadata:
+        untrusted_chunks: object = chunks
         if (
             type(metadata) is not ArtifactMetadata
-            or not isinstance(chunks, Iterable)
-            or type(chunks) is str
-            or type(chunks) is bytes
-            or type(chunks) is bytearray
+            or not isinstance(untrusted_chunks, Iterable)
+            or type(untrusted_chunks) is str
+            or type(untrusted_chunks) is bytes
+            or type(untrusted_chunks) is bytearray
             or type(idempotency_key) is not str
             or not 1 <= len(idempotency_key) <= 128
             or any(ord(character) < 0x21 or ord(character) > 0x7E for character in idempotency_key)
@@ -140,10 +142,7 @@ class LocalArtifactStore:
         if type(document) is not dict:
             raise ArtifactConflict()
         metadata = _metadata(document)
-        if (
-            metadata.tenant_id != tenant_id
-            or metadata.content_sha256 != content_sha256
-        ):
+        if metadata.tenant_id != tenant_id or metadata.content_sha256 != content_sha256:
             raise ArtifactConflict()
         _require_unexpired(metadata)
         content = _read_verified_content(
@@ -165,10 +164,8 @@ class LocalArtifactStore:
         if stat.S_ISLNK(details.st_mode) or not stat.S_ISDIR(details.st_mode):
             raise ArtifactConflict()
         values = []
-        seen_entries = 0
         now = datetime.now(tz=UTC)
-        for path in directory.rglob("*.json"):
-            seen_entries += 1
+        for seen_entries, path in enumerate(directory.rglob("*.json"), start=1):
             if seen_entries > _MAX_ARTIFACT_ENTRIES:
                 raise ArtifactConflict()
             if path.is_symlink():
@@ -233,7 +230,7 @@ class LocalArtifactStore:
         try:
             path.relative_to(self._root)
         except ValueError:
-            raise ArtifactConflict()
+            raise ArtifactConflict() from None
         return path
 
     def _tenant_dir(self, tenant_id: str) -> Path:
@@ -288,9 +285,7 @@ class TenantNamespacedArtifactStore:
     def list(self, *, tenant_id: str, run_id: str) -> tuple[ArtifactMetadata, ...]:
         return tuple(
             replace(metadata, tenant_id=tenant_id)
-            for metadata in self._store.list(
-                tenant_id=_tenant_namespace(tenant_id), run_id=run_id
-            )
+            for metadata in self._store.list(tenant_id=_tenant_namespace(tenant_id), run_id=run_id)
         )
 
 
@@ -325,7 +320,11 @@ def _read_verified_content(
         raise ArtifactConflict() from None
     try:
         before = os.fstat(descriptor)
-        if _link_like(before) or not stat.S_ISREG(before.st_mode) or before.st_size != expected_size:
+        if (
+            _link_like(before)
+            or not stat.S_ISREG(before.st_mode)
+            or before.st_size != expected_size
+        ):
             raise ArtifactConflict()
         digest = hashlib.sha256()
         chunks: list[bytes] = []
@@ -399,10 +398,8 @@ def _ensure_plain_directory(path: Path) -> None:
     current = Path(path.anchor)
     for part in path.parts[1:]:
         current /= part
-        try:
+        with contextlib.suppress(FileExistsError):
             current.mkdir()
-        except FileExistsError:
-            pass
         details = current.lstat()
         if _link_like(details) or not stat.S_ISDIR(details.st_mode):
             raise OSError("artifact directory is unsafe")
@@ -513,9 +510,7 @@ def _metadata_text(value: object) -> str:
     return value
 
 
-def _require_unexpired(
-    metadata: ArtifactMetadata, *, now: datetime | None = None
-) -> None:
+def _require_unexpired(metadata: ArtifactMetadata, *, now: datetime | None = None) -> None:
     if type(metadata) is not ArtifactMetadata:
         raise ArtifactConflict()
     if metadata.expires_at is not None and metadata.expires_at <= (

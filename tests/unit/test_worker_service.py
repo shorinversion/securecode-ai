@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 from collections.abc import Callable
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -36,6 +38,7 @@ from securecode_ai.worker.protocol import (
     WorkerEvent,
     WorkerFinding,
     WorkerJob,
+    WorkerResourceBudget,
 )
 from securecode_ai.worker.runtime_config import RuntimeSettings
 from securecode_ai.worker.usage import WorkerResourceUsage, WorkerUsageMeter
@@ -75,7 +78,11 @@ def test_worker_liveness_starts_while_waiting_for_scm_run(
         artifact_hosts=frozenset({"127.0.0.1"}),
     )
     monkeypatch.setattr(worker_service.RuntimeSettings, "from_environment", lambda _: settings)
-    monkeypatch.setattr(worker_service, "ControlPlaneClient", lambda **_: object())
+    monkeypatch.setattr(
+        worker_service,
+        "ControlPlaneClient",
+        lambda **_: SimpleNamespace(osv_scanner=lambda _job: None),
+    )
     monkeypatch.setattr(worker_service, "ProductExecutor", lambda **_: object())
 
     async def resolve(
@@ -134,8 +141,10 @@ def test_claim_retry_reuses_idempotency_attempt_but_next_poll_is_fresh(
     async def wait(self: worker_service.WorkerService, seconds: float) -> None:
         del self, seconds
 
-    async def process(self: worker_service.WorkerService, job: WorkerJob) -> bool:
-        del self, job
+    async def process(
+        self: worker_service.WorkerService, job: WorkerJob, *, lease_started_at: float
+    ) -> bool:
+        del self, job, lease_started_at
         return True
 
     client = FakeClient()
@@ -192,7 +201,7 @@ def test_empty_queue_starts_a_new_idempotent_claim(
 
 
 @pytest.mark.parametrize("stop_phase", ("artifact", "completion-event"))
-def test_stop_during_publication_completes_as_cancelled_without_duplicate_terminal_event(
+def test_local_stop_during_publication_never_fabricates_a_cancelled_terminal_event(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     stop_phase: str,
@@ -207,6 +216,18 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
         lease_seconds=30,
         command=WorkerCommand.CONTINUE,
         execution_identity=identity,
+        resource_budget=WorkerResourceBudget(
+            profile_sha256="b" * 64,
+            reservation_id="reservation-1",
+            reservation_version=1,
+            reserved=WorkerResourceUsage(
+                tokens=1_000,
+                cost_microunits=1_000,
+                cpu_ms=60_000,
+                peak_memory_bytes=1 << 30,
+                wall_ms=60_000,
+            ),
+        ),
     )
     content = b"artifact"
     artifact = WorkerArtifact(
@@ -230,6 +251,9 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
         def cancel(self) -> None:
             self.cancelled = True
 
+        def require_publication(self) -> None:
+            return None
+
     scan = ScanProbe()
     execution = WorkerExecutionResult(
         outcome="PASS",
@@ -244,6 +268,7 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
             job: WorkerJob,
             *,
             control: ExecutionControl,
+            **_observers: object,
         ) -> WorkerExecutionResult:
             del job, control
             return execution
@@ -273,8 +298,10 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
             self,
             job: WorkerJob,
             artifact: WorkerArtifact,
+            *,
+            deadline: Callable[[], float] | None = None,
         ) -> SessionUpdate:
-            del artifact
+            del artifact, deadline
             if stop_phase == "artifact":
                 stopping.set()
             return SessionUpdate(version=job.version + 1, command=WorkerCommand.CONTINUE)
@@ -286,8 +313,9 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
             outcome: str,
             resource_usage: WorkerResourceUsage | None = None,
             findings: tuple[WorkerFinding, ...] = (),
+            deadline: Callable[[], float] | None = None,
         ) -> SessionUpdate:
-            del resource_usage, findings
+            del resource_usage, findings, deadline
             self.completions.append(outcome)
             return SessionUpdate(version=job.version + 1, command=WorkerCommand.CONTINUE)
 
@@ -295,14 +323,21 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
         service: worker_service.WorkerService,
         active: object,
         operation: Callable[[], object],
+        *,
+        apply: Callable[[object], None] | None = None,
+        **_options: object,
     ) -> object:
         del service, active
-        return operation()
+        result = operation()
+        if apply is not None:
+            apply(result)
+        return result
 
     usage = WorkerResourceUsage(
         tokens=1, cost_microunits=2, cpu_ms=1, peak_memory_bytes=1, wall_ms=1
     )
     monkeypatch.setattr(WorkerUsageMeter, "finish", lambda *_args: usage)
+    monkeypatch.setattr(WorkerUsageMeter, "snapshot", lambda *_args: usage)
     monkeypatch.setattr(worker_service.WorkerService, "_retry_call", retry)
 
     client = FakeClient()
@@ -313,11 +348,24 @@ def test_stop_during_publication_completes_as_cancelled_without_duplicate_termin
         stopping=stopping,
     )
 
-    assert asyncio.run(service._process(job)) is True
-    assert client.completions == ["CANCELLED"]
-    assert scan.cancelled
-    assert client.events.count("RUN_COMPLETED") == (1 if stop_phase == "completion-event" else 0)
-    assert client.events.count("RUN_CANCELLED") == (0 if stop_phase == "completion-event" else 1)
+    confirmed = asyncio.run(service._process(job, lease_started_at=time.monotonic()))
+
+    # A local shutdown is not a control-plane CANCEL: the server only accepts
+    # RUN_CANCELLED after it issued the command, so the worker must not settle
+    # the run as CANCELLED on its own.
+    assert client.events.count("RUN_CANCELLED") == 0
+    if stop_phase == "artifact":
+        # Unconfirmed stop before the terminal event: stop the product and
+        # release the lease for redelivery instead of committing a result.
+        assert confirmed is False
+        assert client.completions == []
+        assert scan.cancelled
+        assert client.events.count("RUN_COMPLETED") == 0
+    else:
+        # RUN_COMPLETED is already durable; reconcile it exactly once.
+        assert confirmed is True
+        assert client.completions == ["PASS"]
+        assert client.events.count("RUN_COMPLETED") == 1
 
 
 def _settings(target: Path) -> RuntimeSettings:

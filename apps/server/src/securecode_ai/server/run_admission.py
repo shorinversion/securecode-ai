@@ -19,6 +19,7 @@ from .ports import (
     ServiceResponse,
     ServiceUnavailableError,
 )
+from .profiles import ProfileConflict
 from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
 from .run_admission_models import (
     AdmissionClock,
@@ -31,15 +32,14 @@ from .run_admission_models import (
     ResourceReservationPort,
     RunAdmissionStore,
     RunIdentityResolver,
-    RunPolicyPinValidator,
     RunOperation,
+    RunPolicyPinValidator,
     WorkerQueuePort,
     canonical,
     request_sha256,
     safe_message,
 )
 from .scm_webhooks import SCMWebhookError, SCMWebhookErrorCode
-from .profiles import ProfileConflict
 
 
 class RunAdmissionService:
@@ -48,13 +48,13 @@ class RunAdmissionService:
     __slots__ = (
         "_authorization",
         "_clock",
-        "_queue",
-        "_resource_policy",
-        "_resources",
         "_identity_resolver",
         "_policy_pin_validator",
+        "_queue",
         "_residency_guard",
         "_residency_region",
+        "_resource_policy",
+        "_resources",
         "_store",
     )
 
@@ -477,6 +477,8 @@ class RunAdmissionService:
         ):
             raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
         try:
+            if not isinstance(operation_value, str):
+                raise TypeError("run operation must be text")
             RunOperation(operation_value)
         except (TypeError, ValueError):
             raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
@@ -549,7 +551,8 @@ class RunAdmissionRoutingService:
         preflight = getattr(self._fallback, "preflight_artifact_upload", None)
         if not callable(preflight):
             raise ServiceUnavailableError()
-        return preflight(request)
+        artifact_id: str = preflight(request)
+        return artifact_id
 
 
 def _require_exact_record(
@@ -569,15 +572,16 @@ def _require_exact_record(
 def _safe_metadata(document: Mapping[str, object] | None) -> dict[str, object]:
     if document is None:
         return {}
-    metadata = {
+    metadata: dict[str, object] = {
         key: value
         for key in ("request_id", "policy_id", "workflow_id")
         if type(value := document.get(key)) is str and _identifier(value)
     }
     try:
-        metadata["operation"] = RunOperation(
-            document.get("operation", RunOperation.SCAN.value)
-        ).value
+        operation = document.get("operation", RunOperation.SCAN.value)
+        if not isinstance(operation, str):
+            raise TypeError("run operation must be text")
+        metadata["operation"] = RunOperation(operation).value
     except (TypeError, ValueError):
         raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400) from None
     return metadata

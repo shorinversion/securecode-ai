@@ -127,9 +127,15 @@ def test_exact_head_metadata_artifact_is_idempotent_and_never_merge_authority() 
 
     first = publisher.project(request)
     duplicate = publisher.project(request)
+    key = first.uploads[0].upload_idempotency_key
+    publisher.record_upload_result(key, succeeded=True, attempt_id="upload-attempt-1")
+    uploaded_replay = publisher.project(request)
 
     assert first.uploads[0].disposition is SCMArtifactDisposition.CREATED
-    assert duplicate.uploads[0].disposition is SCMArtifactDisposition.IDEMPOTENT
+    # A replay before any upload succeeded still reports the pending upload.
+    assert duplicate.uploads[0].disposition is SCMArtifactDisposition.CREATED
+    assert duplicate.uploads[0].upload_idempotency_key == key
+    assert uploaded_replay.uploads[0].disposition is SCMArtifactDisposition.IDEMPOTENT
     assert first.uploads[0].audit_outcome_changed is False
     assert first.uploads[0].merge_authority is False
     assert first.merge_authority is False
@@ -196,7 +202,8 @@ def test_upload_attempts_survive_database_and_publisher_recreation(tmp_path: Pat
     )
 
     assert failed.attempt_count == 1
-    assert replayed.uploads[0].disposition is SCMArtifactDisposition.IDEMPOTENT
+    assert replayed.uploads[0].disposition is SCMArtifactDisposition.RETRY_READY
+    assert replayed.uploads[0].retry_allowed is True
     assert replayed.uploads[0].attempt_count == 1
     assert duplicate_failure.attempt_count == 1
     assert failed_again.attempt_count == 2

@@ -11,7 +11,7 @@ _ECI_MARKER = re.compile(
 
 
 def _empty_optional_list(value: object) -> bool:
-    return value is None or type(value) is list and not value
+    return value is None or (type(value) is list and not value)
 
 
 def daemon_has_desktop_vm_isolation(
@@ -51,8 +51,7 @@ def container_has_required_hardening(inspected: dict[str, object]) -> bool:
         input_mount is None
         or input_mount.get("Type") != "bind"
         or input_mount.get("RW") is not False
-        or set(mounts_by_destination)
-        != {"/securecode/input", "/tmp", "/scratch", "/workspace"}
+        or set(mounts_by_destination) != {"/securecode/input", "/tmp", "/scratch", "/workspace"}
         or any(
             mounts_by_destination[path].get("Type") != "tmpfs"
             or mounts_by_destination[path].get("RW") is not True
@@ -78,7 +77,7 @@ def container_has_required_hardening(inspected: dict[str, object]) -> bool:
         and host["NanoCpus"] > 0
         and type(cap_drop) is list
         and any(type(item) is str and item.casefold() == "all" for item in cap_drop)
-        and (cap_add is None or type(cap_add) is list and not cap_add)
+        and (cap_add is None or (type(cap_add) is list and not cap_add))
         and type(security) is list
         and any(
             type(item) is str and item.casefold() == "no-new-privileges:true" for item in security

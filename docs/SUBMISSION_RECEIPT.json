@@ -1,0 +1,14 @@
+{
+  "submitted_at_observed_local": "2026-09-27T23:58:17.684675+05:00",
+  "form_url": "https://mts-teta.team/members/courses/course707315829603/zadaca-2-192788784868",
+  "observed_status": "На проверке",
+  "confirmation": "Browser UI changed from editable form to submitted solution and Edit button",
+  "submitted_commit": "de6eabeabf5dcdba042f51c32c327ed86631511b",
+  "source_archive_url": "http://82.202.143.138/source.zip",
+  "source_archive_sha256": "72b7b11da0f8e3c29619c79646f576a1a2a60d12d81c5f14ff66fcd7aa4698b1",
+  "git_push_status": "verified",
+  "grading_status": "not_graded",
+  "github_default_branch": "main",
+  "github_main_sha": "de6eabeabf5dcdba042f51c32c327ed86631511b",
+  "repository_visibility": "PUBLIC"
+}

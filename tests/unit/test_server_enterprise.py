@@ -25,6 +25,7 @@ def test_admission_resolves_immutable_profile_without_publication() -> None:
         content={},
     )
     profiles.create(profile, idempotency_key="profile")
+    profiles.activate(tenant_id="t", profile_id="p", version=1, expected_active=None)
     profiles.set_tenant_default(tenant_id="t", profile_id="p", version=1)
     service = EnterpriseService(
         profiles=profiles,

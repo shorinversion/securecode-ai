@@ -381,19 +381,13 @@ def _scan_ecmascript_cwe476(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe476ScanError(
-            EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe476ScanError(
-            EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE) from None
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe476ScanError(
-                EcmaScriptCwe476ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.ANALYSIS_UNAVAILABLE)
         facts: set[tuple[SourceRange, SourceRange, EcmaScriptCwe476Operation]] = set()
         local_nodes_by_scope = _group_scope_nodes(root, nodes)
         for scope, local_nodes in local_nodes_by_scope.items():
@@ -424,7 +418,11 @@ def _scan_ecmascript_cwe476(
                     and parent.child_by_field_name("function") == node
                     else EcmaScriptCwe476Operation.PROPERTY_READ
                 )
-                sink = _range(parent) if operation is EcmaScriptCwe476Operation.METHOD_CALL else _range(node)
+                sink = (
+                    _range(parent)
+                    if parent is not None and operation is EcmaScriptCwe476Operation.METHOD_CALL
+                    else _range(node)
+                )
                 facts.add((event.source, sink, operation))
                 if len(facts) > limits.max_signals:
                     raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.SIGNAL_LIMIT)
@@ -443,9 +441,7 @@ def _scan_ecmascript_cwe476(
     except EcmaScriptCwe476ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe476ScanError(
-            EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE) from None
     signals = tuple(
         EcmaScriptCwe476Signal(
             repository_id=symbol_index.repository_id,
@@ -515,11 +511,7 @@ def _bindings(
             name_node = _simple_identifier(pattern) if pattern is not None else None
             if name_node is None:
                 name_node = next(
-                    (
-                        child
-                        for child in node.named_children
-                        if child.type == "identifier"
-                    ),
+                    (child for child in node.named_children if child.type == "identifier"),
                     None,
                 )
             if name_node is None:
@@ -595,7 +587,10 @@ def _events(
             continue
         nullable, evidence = _value_nullability(value, name, mutable, source, binding)
         mutable[name].append(_Event(node.start_byte, evidence, nullable))
-    return {name: tuple(sorted(items, key=lambda event: event.position)) for name, items in mutable.items()}
+    return {
+        name: tuple(sorted(items, key=lambda event: event.position))
+        for name, items in mutable.items()
+    }
 
 
 def _value_nullability(
@@ -665,7 +660,10 @@ def _is_write_target(node: Node) -> bool:
         return False
     if parent.type == "assignment_expression" and parent.child_by_field_name("left") == node:
         return True
-    if parent.type == "augmented_assignment_expression" and parent.child_by_field_name("left") == node:
+    if (
+        parent.type == "augmented_assignment_expression"
+        and parent.child_by_field_name("left") == node
+    ):
         return True
     if parent.type == "update_expression":
         return node in parent.named_children
@@ -685,9 +683,14 @@ def _locally_guarded(node: Node, name: str, scope: Node, source: bytes) -> bool:
             relation = _condition_relation(condition, name, source)
             if consequence is not None and _contains(consequence, node) and relation == "nonnull":
                 return True
-            if alternative is not None and _contains(alternative, node) and relation == "null":
-                if consequence is not None and _terminates(consequence):
-                    return True
+            if (
+                alternative is not None
+                and _contains(alternative, node)
+                and relation == "null"
+                and consequence is not None
+                and _terminates(consequence)
+            ):
+                return True
         if parent.type == "ternary_expression":
             condition = parent.child_by_field_name("condition")
             consequence = parent.child_by_field_name("consequence")
@@ -753,7 +756,12 @@ def _condition_relation(node: Node | None, name: str, source: bytes) -> str | No
 def _terminates(node: Node) -> bool:
     children = node.named_children if node.type in {"statement_block", "program"} else (node,)
     for child in children:
-        if child.type in {"return_statement", "throw_statement", "continue_statement", "break_statement"}:
+        if child.type in {
+            "return_statement",
+            "throw_statement",
+            "continue_statement",
+            "break_statement",
+        }:
             return True
         if child.type == "if_statement":
             consequence = child.child_by_field_name("consequence")
@@ -872,7 +880,12 @@ def _type_evidence(node: Node) -> Node | None:
         examined += 1
         if current.type == "type_annotation":
             return current
-        if current is not node and current.type not in {"name", "pattern", "required_parameter", "optional_parameter"}:
+        if current is not node and current.type not in {
+            "name",
+            "pattern",
+            "required_parameter",
+            "optional_parameter",
+        }:
             continue
         if current.start_byte - node.start_byte > 512:
             continue
@@ -893,7 +906,9 @@ def _compact(source: bytes, node: Node) -> str:
     if node.end_byte - node.start_byte > 256:
         return ""
     try:
-        return "".join(source[node.start_byte : node.end_byte].decode("utf-8", errors="strict").split())
+        return "".join(
+            source[node.start_byte : node.end_byte].decode("utf-8", errors="strict").split()
+        )
     except UnicodeDecodeError:
         raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE) from None
 
@@ -1086,9 +1101,7 @@ def ecmascript_cwe476_signals_to_raw_signals(
     except EcmaScriptCwe476ScanError:
         raise
     except (ValueError, TypeError, AttributeError):
-        raise EcmaScriptCwe476ScanError(
-            EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe476ScanError(EcmaScriptCwe476ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 __all__ = [

@@ -28,12 +28,12 @@ from .model import (
     ProviderStreamState,
     TransportFailure,
 )
+from .native_repository_tools import NATIVE_REPOSITORY_TOOLS_JSON, parse_native_tool_calls
 from .openai_compatible_local_codec import (
     _MAX_RESPONSE_BYTES,
     _closed_json_object,
     _reject_json_constant,
 )
-from .native_repository_tools import NATIVE_REPOSITORY_TOOLS_JSON, parse_native_tool_calls
 from .remote_provider_budget import (
     RemoteProviderBudgetError,
     RemoteProviderBudgetPort,
@@ -146,9 +146,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         raw: socket.socket | None = None
         deadline = time.monotonic() + timeout_ms / 1000
         try:
-            raw = socket.create_connection(
-                (ip_address, port), timeout=_remaining_timeout(deadline)
-            )
+            raw = socket.create_connection((ip_address, port), timeout=_remaining_timeout(deadline))
             raw.settimeout(_remaining_timeout(deadline))
             context = ssl.create_default_context()
             secured = context.wrap_socket(raw, server_hostname=server_name)
@@ -337,9 +335,7 @@ class OpenAICompatibleRemoteHttpsConnector:
             response = http.client.HTTPResponse(channel._socket)
             _set_socket_deadline(channel._socket, deadline)
             response.begin()
-            header_bytes = sum(
-                len(name) + len(value) + 4 for name, value in response.getheaders()
-            )
+            header_bytes = sum(len(name) + len(value) + 4 for name, value in response.getheaders())
             if header_bytes > _MAX_RESPONSE_HEADER_BYTES:
                 raise ValueError
             status = response.status
@@ -659,8 +655,7 @@ def _canonicalize_remote_envelope_with_usage(
             "total_tokens" in usage
             and (
                 type(usage["total_tokens"]) is not int
-                or usage["total_tokens"]
-                != usage["prompt_tokens"] + usage["completion_tokens"]
+                or usage["total_tokens"] != usage["prompt_tokens"] + usage["completion_tokens"]
             )
         )
     ):
@@ -760,9 +755,7 @@ def _read_response_body(
     total = 0
     while total <= _MAX_RESPONSE_BYTES:
         _set_socket_deadline(sock, deadline)
-        chunk = response.read1(
-            min(_MAX_RESPONSE_READ_CHUNK_BYTES, _MAX_RESPONSE_BYTES + 1 - total)
-        )
+        chunk = response.read1(min(_MAX_RESPONSE_READ_CHUNK_BYTES, _MAX_RESPONSE_BYTES + 1 - total))
         if time.monotonic() >= deadline:
             raise TimeoutError
         if not chunk:
@@ -806,9 +799,7 @@ def _try_charge_maximum(
     """
     for _ in range(2):
         try:
-            return _validated_receipt(
-                budget.charge_maximum(lease), lease, maximum_charged=True
-            )
+            return _validated_receipt(budget.charge_maximum(lease), lease, maximum_charged=True)
         except Exception:
             continue
     return None

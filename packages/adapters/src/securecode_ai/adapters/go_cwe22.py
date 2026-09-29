@@ -59,9 +59,7 @@ _FILESYSTEM_FUNCTIONS = frozenset(
     }
 )
 _HTTP_FUNCTIONS = frozenset({"ServeFile", "ServeFileFS"})
-_PATH_BUILDER_FUNCTIONS = frozenset(
-    {"Abs", "Clean", "FromSlash", "Join", "Rel", "ToSlash"}
-)
+_PATH_BUILDER_FUNCTIONS = frozenset({"Abs", "Clean", "FromSlash", "Join", "Rel", "ToSlash"})
 _SOURCE_CALLS = frozenset(
     {
         "FormValue",
@@ -397,7 +395,7 @@ def _sink_path_arguments(
         return ()
     package = imports.get(_text(source, operand))
     name = _text(source, field)
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     if package == "net/http":
         path_index = 3 if name == "ServeFileFS" else 2
         return (values[path_index],) if len(values) > path_index else ()
@@ -418,21 +416,19 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
-    for name, value in zip(names, values):
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
+    for name, value in zip(names, values, strict=False):
         if name.type != "identifier":
             continue
-        environment[_text(source, name)] = _resolve(
-            value, environment, source, imports, limits, 0
-        )
+        environment[_text(source, name)] = _resolve(value, environment, source, imports, limits, 0)
 
 
 def _resolve(
@@ -512,9 +508,7 @@ def _resolve(
     return ()
 
 
-def _external_source(
-    node: Node, source: bytes, imports: dict[str, str]
-) -> Node | None:
+def _external_source(node: Node, source: bytes, imports: dict[str, str]) -> Node | None:
     compact = _compact_text(source, node)
     if node.type == "index_expression" and compact.endswith("]"):
         prefix = compact.rsplit("[", 1)[0]
@@ -538,8 +532,10 @@ def _external_source(
     if operand is None:
         return None
     receiver = _compact_text(source, operand)
-    if receiver.endswith(".URL.Query()") or receiver.endswith(".Form") or receiver.endswith(
-        ".PostForm"
+    if (
+        receiver.endswith(".URL.Query()")
+        or receiver.endswith(".Form")
+        or receiver.endswith(".PostForm")
     ):
         return node
     if _text(source, field) in {"FormValue", "PostFormValue", "PathValue"}:
@@ -565,9 +561,7 @@ def _is_path_builder(function: Node | None, source: bytes, imports: dict[str, st
     )
 
 
-def _utility_function(
-    function: Node | None, source: bytes, imports: dict[str, str]
-) -> str | None:
+def _utility_function(function: Node | None, source: bytes, imports: dict[str, str]) -> str | None:
     if function is None or function.type != "selector_expression":
         return None
     operand = function.child_by_field_name("operand")
@@ -609,9 +603,7 @@ def _preorder(root: Node) -> tuple[Node, ...]:
     return tuple(output)
 
 
-def _dedupe_flows(
-    flows: Iterable[_Flow], limits: GoCwe22ScanLimits
-) -> tuple[_Flow, ...]:
+def _dedupe_flows(flows: Iterable[_Flow], limits: GoCwe22ScanLimits) -> tuple[_Flow, ...]:
     unique: dict[tuple[int, int], _Flow] = {}
     for flow in flows:
         unique[(flow.source.start_byte, flow.source.end_byte)] = flow

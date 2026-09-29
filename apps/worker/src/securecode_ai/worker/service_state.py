@@ -40,9 +40,7 @@ class ActiveSession:
         if version == current_version and command_rank[command] < command_rank[current_command]:
             return
         effective_command = (
-            command
-            if command_rank[command] >= command_rank[current_command]
-            else current_command
+            command if command_rank[command] >= command_rank[current_command] else current_command
         )
         self.job = replace(self.job, version=version, command=effective_command)
         if renewed:

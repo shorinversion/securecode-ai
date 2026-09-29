@@ -95,7 +95,7 @@ def parse_go_dependency_manifest(
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID) from None
     if source.startswith(b"\xef\xbb\xbf"):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
-    if any(byte < 32 and byte not in {9, 10, 13} or byte == 127 for byte in source):
+    if any((byte < 32 and byte not in {9, 10, 13}) or byte == 127 for byte in source):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
 
     dependencies: list[DependencyCoordinate] = []

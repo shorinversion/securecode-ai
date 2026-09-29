@@ -13,6 +13,10 @@ from securecode_ai.contracts import (
     RepositoryRevision,
     RunExecutionIdentity,
 )
+from securecode_ai.core.resource_governor import (
+    ResourceReservationRequest,
+    TenantResourceLimits,
+)
 from securecode_ai.core.scm_run_state import (
     AdmissionDisposition,
     SCMRunAdmissionReceipt,
@@ -20,7 +24,10 @@ from securecode_ai.core.scm_run_state import (
 )
 from securecode_ai.server.persistence import DevelopmentRepository
 from securecode_ai.server.ports import ServiceRequest, VerifiedIdentity
+from securecode_ai.server.resource_repository import ResourceRepository
+from securecode_ai.server.resource_service import ResourceService
 from securecode_ai.server.run_admission import _safe_server_context
+from securecode_ai.server.run_admission_store import SqliteRunAdmissionStore
 from securecode_ai.server.scm_admission import _run_request
 from securecode_ai.server.scm_webhooks import (
     SCMWebhookError,
@@ -70,6 +77,20 @@ def _identity() -> RunExecutionIdentity:
     )
 
 
+_RESOURCE_BUDGET = {
+    "profile_sha256": "c" * 64,
+    "reservation_id": "reservation-1",
+    "reservation_version": 1,
+    "reserved": {
+        "tokens": 1,
+        "cost_microunits": 1,
+        "cpu_ms": 1,
+        "peak_memory_bytes": 1,
+        "wall_ms": 1,
+    },
+}
+
+
 def _job(trust: WorkerContributionTrust) -> WorkerJob:
     identity = _identity()
     return WorkerJob(
@@ -95,6 +116,9 @@ def test_fork_trust_survives_worker_job_protocol() -> None:
             "execution_identity": identity.model_dump(mode="json"),
             "execution_identity_hash": identity.execution_identity_hash,
             "contribution_trust": "UNTRUSTED_FORK",
+            "schema_version": "0.2.0",
+            "next_event_sequence": 1,
+            "resource_budget": _RESOURCE_BUDGET,
         }
     )
 
@@ -112,7 +136,11 @@ def test_worker_protocol_rejects_unknown_trust_value() -> None:
                 "lease_seconds": 30,
                 "command": "CONTINUE",
                 "execution_identity": identity.model_dump(mode="json"),
+                "execution_identity_hash": identity.execution_identity_hash,
                 "contribution_trust": "TRUST_ME",
+                "schema_version": "0.2.0",
+                "next_event_sequence": 1,
+                "resource_budget": _RESOURCE_BUDGET,
             }
         )
 
@@ -130,6 +158,32 @@ def test_direct_worker_job_rejects_forged_trusted_label_before_environment_filte
             execution_identity=_identity(),
             contribution_trust="TRUSTED_SAME_REPOSITORY",  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"session_id": "../session"},
+        {"version": 0},
+        {"lease_seconds": 1},
+        {"next_event_sequence": 0},
+        {"resource_budget": "unbounded"},
+    ],
+)
+def test_direct_worker_job_validates_every_field(override: dict[str, object]) -> None:
+    """The full job validation must run, not only the trust-label check."""
+
+    values: dict[str, object] = {
+        "session_id": "session-1",
+        "run_id": "run-1",
+        "version": 1,
+        "lease_seconds": 30,
+        "command": WorkerCommand.CONTINUE,
+        "execution_identity": _identity(),
+        **override,
+    }
+    with pytest.raises(ProtocolError):
+        WorkerJob(**values)  # type: ignore[arg-type]
 
 
 def test_untrusted_contribution_filters_auth_environment() -> None:
@@ -216,24 +270,57 @@ def test_queue_reads_trust_from_durable_run_metadata() -> None:
 def test_untrusted_fork_context_survives_durable_queue_claim() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
-    repository = DevelopmentRepository(connection)
-    queue = SqliteWorkerQueue(
-        connection,
-        now=lambda: datetime(2026, 9, 23, tzinfo=UTC),
+    DevelopmentRepository(connection)
+    now = datetime(2026, 9, 23, tzinfo=UTC)
+    now_ms = int(now.timestamp() * 1000)
+    queue = SqliteWorkerQueue(connection, now=lambda: now)
+    resources = ResourceService(ResourceRepository(connection))
+    resources.configure(
+        TenantResourceLimits(
+            tenant_id="tenant-1",
+            profile_id="profile-1",
+            profile_sha256="f" * 64,
+            max_concurrent_runs=4,
+            max_admissions_per_window=100,
+            admission_window_ms=60_000,
+            max_tokens_per_window=1_000_000,
+            max_cost_microunits_per_window=1_000_000,
+            max_cpu_ms_per_run=60_000,
+            max_memory_bytes_per_run=512 * 1024 * 1024,
+            max_wall_ms_per_run=600_000,
+        )
     )
+    admissions = SqliteRunAdmissionStore(connection)
     identity = _identity()
-    repository.create_run(
+    # Follow the production admission order: persist intent (with the durable
+    # trust label), reserve resources, enqueue, then mark the run admitted.
+    record = admissions.begin(
         tenant_id="tenant-1",
-        run_id="run-1",
-        repository_id="501",
-        execution_identity_hash=identity.execution_identity_hash,
-        base_sha="b" * 40,
-        head_sha="a" * 40,
-        metadata={"contribution_trust": "UNTRUSTED_FORK"},
         idempotency_key="delivery-1",
         request_sha256="8" * 64,
+        run_id="run-1",
+        execution_identity=identity,
+        resource_request=ResourceReservationRequest(
+            request_id="delivery-1",
+            tenant_id="tenant-1",
+            repository_id="501",
+            run_id="run-1",
+            execution_identity_hash=identity.execution_identity_hash,
+            profile_sha256="f" * 64,
+            requested_tokens=1_000,
+            requested_cost_microunits=500,
+            requested_cpu_ms=2_000,
+            requested_memory_bytes=64 * 1024 * 1024,
+            requested_wall_ms=60_000,
+            now_ms=now_ms,
+            lease_expires_at_ms=now_ms + 86_400_000,
+        ),
+        metadata={"contribution_trust": "UNTRUSTED_FORK"},
+        now_ms=now_ms,
     )
+    record = admissions.reserved(record, resources.reserve(record.resource_request), now_ms=now_ms)
     queue.enqueue(tenant_id="tenant-1", run_id="run-1", execution_identity=identity)
+    admissions.admitted(record, now_ms=now_ms)
 
     lease = queue.claim(
         tenant_id="tenant-1",
@@ -307,6 +394,7 @@ def test_missing_github_repository_binding_is_unknown_trust() -> None:
             "action": "opened",
             "repository": {"id": 501},
             "pull_request": {
+                "number": 17,
                 "head": {"sha": "a" * 40},
                 "base": {"sha": "b" * 40},
             },

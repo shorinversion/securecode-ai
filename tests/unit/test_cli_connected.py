@@ -64,6 +64,8 @@ class _Api:
     def _receipt(self, run_id: str = "run-1") -> dict[str, object]:
         return {
             "run_id": run_id,
+            "tenant_id": TENANT,
+            "repository_id": REPOSITORY,
             "disposition": "ADMITTED",
             "lifecycle": "ADMITTED",
             "head_sha": HEAD,
@@ -82,6 +84,9 @@ class _Api:
         if self._polls <= 0:
             document["outcome"] = self._outcome
             document["state_version"] = 3
+            if self._outcome is not None:
+                document["disposition"] = "COMPLETED"
+                document["lifecycle"] = "COMPLETED"
         return document
 
     def cancel(
@@ -92,7 +97,9 @@ class _Api:
 
     def read(self, path: str, *, token: str, query: object = None) -> dict[str, object]:
         self.calls.append(("read", path, query))
-        return {"items": []}
+        if path.startswith("/api/v1/approvals/"):
+            return self._approval({"approval_id": path.rsplit("/", 1)[-1]})
+        return {"items": [], "next_cursor": None}
 
     def mutate(
         self,
@@ -104,7 +111,41 @@ class _Api:
         if_match: str | None = None,
     ) -> dict[str, object]:
         self.calls.append(("mutate", path, sorted(document), if_match))
+        if path == "/api/v1/backups":
+            return {
+                "tenant_id": TENANT,
+                "backup_id": document["backup_id"],
+                "repository_id": document["repository_id"],
+                "state": "PLANNED",
+                "manifest_sha256": None,
+                "component_count": 1,
+                "version": 1,
+                "backup_verified": False,
+                "restore_verified": False,
+                "rpo_seconds": None,
+                "rto_seconds": None,
+                "completed_at": None,
+            }
+        if path.startswith("/api/v1/approvals"):
+            return self._approval(document)
         return dict(document)
+
+    def _approval(self, document: dict[str, object]) -> dict[str, object]:
+        return {
+            "approval_id": document.get("approval_id", "ap-1"),
+            "tenant_id": TENANT,
+            "repository_id": document.get("repository_id", REPOSITORY),
+            "run_id": document.get("run_id", "run-1"),
+            "finding_id": document.get("finding_id", "f-1"),
+            "execution_identity_hash": document.get("execution_identity_hash", IDENTITY),
+            "patch_sha256": None,
+            "validation_result_sha256": None,
+            "manifest_sha256": None,
+            "patch_status_sha256": None,
+            "state": "PENDING",
+            "version": 1,
+            "expires_at": document.get("expires_at", "2026-09-23T00:00:00+00:00"),
+        }
 
 
 def _settings(**overrides: str) -> ConnectedRunSettings:
@@ -175,7 +216,14 @@ def test_run_request_rejects_invalid_identity(overrides: dict[str, str]) -> None
     }
     values.update(overrides)
     with pytest.raises(ConnectedCliError) as error:
-        ConnectedRunRequest(**values)
+        ConnectedRunRequest(
+            tenant_id=values["tenant_id"],
+            repository_id=values["repository_id"],
+            head_sha=values["head_sha"],
+            idempotency_key=values["idempotency_key"],
+            base_sha=values.get("base_sha"),
+            change_id=values.get("change_id"),
+        )
     assert error.value.code is ConnectedCliErrorCode.INVALID_CONFIGURATION
 
 
@@ -193,7 +241,7 @@ def test_connect_arguments_are_parsed() -> None:
     ("tokens", "expected"),
     [
         (("run-1",), ("run-1", None)),
-        (("run-1", "--if-match", "v3"), ("run-1", "v3")),
+        (("run-1", "--if-match", "3"), ("run-1", "3")),
     ],
 )
 def test_run_arguments_are_parsed(
@@ -342,8 +390,8 @@ def test_reads_use_the_declared_api_paths() -> None:
 
 def test_cancel_passes_the_precondition_to_the_transport() -> None:
     api = _Api()
-    cancel_run(_settings(), "run-1", if_match="v2", api=api)
-    assert api.calls[0][:3] == ("cancel", "run-1", "v2")
+    cancel_run(_settings(), "run-1", if_match="2", api=api)
+    assert api.calls[0][:3] == ("cancel", "run-1", "2")
 
 
 def test_http_client_refuses_a_missing_precondition() -> None:

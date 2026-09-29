@@ -31,10 +31,7 @@ def read_bounded_regular(path: Path, limit: int) -> bytes:
     docker_secret_mount = _is_docker_secret_mount(path)
     try:
         directory_flags = (
-            os.O_RDONLY
-            | getattr(os, "O_CLOEXEC", 0)
-            | getattr(os, "O_DIRECTORY", 0)
-            | _O_NOFOLLOW
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | _O_NOFOLLOW
         )
         directory_descriptor = os.open(path.anchor, directory_flags)
         opened_directories.append(directory_descriptor)

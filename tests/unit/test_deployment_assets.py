@@ -36,9 +36,13 @@ def test_docker_context_is_an_explicit_source_allowlist() -> None:
     assert lines[0] == "**"
     assert "!apps/server/src/**" in lines
     assert "!apps/worker/src/**" in lines
-    assert "!packages/adapters/**" in lines
-    assert "!packages/contracts/**" in lines
-    assert "!packages/core/**" in lines
+    assert "!packages/adapters/src/**" in lines
+    assert "!packages/contracts/src/**" in lines
+    assert "!packages/core/src/**" in lines
+    assert not any(
+        value.startswith("!packages/") and value.endswith("/**") and "/src/" not in value
+        for value in lines
+    )
     assert not any(value.startswith("!.env") or value.startswith("!.venv") for value in lines)
     assert not any(
         value.startswith("!artifacts")

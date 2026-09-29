@@ -421,8 +421,7 @@ class GitlabPublicationWriter:
                     if existing is None:
                         raise GitlabWriteError(GitlabWriteErrorCode.RECEIPT_UNAVAILABLE)
                     if (
-                        existing.status
-                        in {GitlabWriteStatus.STALE, GitlabWriteStatus.SUCCEEDED}
+                        existing.status in {GitlabWriteStatus.STALE, GitlabWriteStatus.SUCCEEDED}
                         and receipt.status is GitlabWriteStatus.STALE
                         and existing.kind is receipt.kind
                         and existing.payload_sha256 == receipt.payload_sha256
@@ -511,8 +510,16 @@ def _receipt_from_row(values: tuple[object, ...]) -> GitlabWriteReceipt:
                 or _COMMIT_SHA.fullmatch(observed_head_sha) is None
             )
         )
-        or (external_id is not None and _EXTERNAL_ID.fullmatch(external_id) is None)
-        or (reason_code is not None and _ID.fullmatch(reason_code) is None)
+        or (
+            external_id is not None
+            and (type(external_id) is not str or _EXTERNAL_ID.fullmatch(external_id) is None)
+        )
+        or (
+            reason_code is not None
+            and (type(reason_code) is not str or _ID.fullmatch(reason_code) is None)
+        )
+        or type(kind) is not str
+        or type(status) is not str
     ):
         raise ValueError
     try:

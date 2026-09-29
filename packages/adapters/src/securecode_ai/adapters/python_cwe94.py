@@ -224,9 +224,7 @@ _DIRECT_OPERATIONS: dict[str, PythonCwe94Operation] = {
     "runpy.run_module": PythonCwe94Operation.RUNMODULE,
 }
 _BUILTIN_MODULES = frozenset({"builtins", "__builtins__"})
-_BUILTIN_OPERATIONS = frozenset(
-    {"eval", "exec", "compile", "execfile"}
-)
+_BUILTIN_OPERATIONS = frozenset({"eval", "exec", "compile", "execfile"})
 _CODE_MODULES = frozenset({"code", "runpy"})
 
 
@@ -691,9 +689,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

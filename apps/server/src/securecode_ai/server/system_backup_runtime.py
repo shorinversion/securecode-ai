@@ -8,6 +8,7 @@ point, not an authenticated tenant request.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -19,7 +20,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final, Protocol, SupportsIndex, SupportsInt
 
 from .backup_executor_runtime import _OIDC_SYSTEM_TABLE_SHAPES
 
@@ -131,10 +132,7 @@ class SystemOidcBackupRuntime:
                 raise SystemBackupError("SYSTEM_BACKUP_DIGEST_INVALID")
             document = _load_canonical_document(payload)
             schema_digest, table_counts = _validate_payload(document, self._db)
-            if (
-                schema_digest != record.schema_sha256
-                or table_counts != record.table_counts
-            ):
+            if schema_digest != record.schema_sha256 or table_counts != record.table_counts:
                 raise SystemBackupError("SYSTEM_BACKUP_MANIFEST_INVALID")
             _restore_monotonic_payload(self._db, document, now=int(time.time()))
             if self._db.execute("PRAGMA integrity_check").fetchone() != ("ok",):
@@ -163,9 +161,7 @@ class SystemOidcBackupRuntime:
                 # between those two atomic links leaves an otherwise
                 # unrecoverable orphan. Reuse it only after authenticated
                 # decryption and validation against the system schema.
-                plaintext = _decrypt(
-                    self._encryption, existing_payload, record.encryption_key_ref
-                )
+                plaintext = _decrypt(self._encryption, existing_payload, record.encryption_key_ref)
                 document = _load_canonical_document(plaintext)
                 if _digest(plaintext) != _digest(_canonical_json(document)):
                     raise SystemBackupError("SYSTEM_BACKUP_DIGEST_INVALID")
@@ -223,23 +219,16 @@ class SystemOidcBackupRuntime:
             raise
         return record
 
-    def _require_matching_capture(
-        self, record: SystemOidcBackupRecord, encrypted: bytes
-    ) -> None:
+    def _require_matching_capture(self, record: SystemOidcBackupRecord, encrypted: bytes) -> None:
         plaintext = _decrypt(self._encryption, encrypted, record.encryption_key_ref)
         if _digest(plaintext) != record.plaintext_sha256:
             raise SystemBackupError("SYSTEM_BACKUP_CONFLICT")
         document = _load_canonical_document(plaintext)
         schema_digest, table_counts = _validate_payload(document, self._db)
-        if (
-            schema_digest != record.schema_sha256
-            or table_counts != record.table_counts
-        ):
+        if schema_digest != record.schema_sha256 or table_counts != record.table_counts:
             raise SystemBackupError("SYSTEM_BACKUP_CONFLICT")
 
-    def _load_bundle(
-        self, backup_id: str
-    ) -> tuple[SystemOidcBackupRecord, bytes]:
+    def _load_bundle(self, backup_id: str) -> tuple[SystemOidcBackupRecord, bytes]:
         record_path = self._path(backup_id, ".json")
         payload_path = self._path(backup_id, ".payload")
         encoded_record = _existing_file(record_path, _MAX_PAYLOAD_BYTES)
@@ -304,8 +293,7 @@ class SystemOidcBackupRetention:
                 name[: -len(suffix)]
                 for name in names
                 for suffix in (".json", ".payload")
-                if name.endswith(suffix)
-                and _BACKUP_ID.fullmatch(name[: -len(suffix)]) is not None
+                if name.endswith(suffix) and _BACKUP_ID.fullmatch(name[: -len(suffix)]) is not None
             }
         )
         purged = 0
@@ -377,9 +365,10 @@ def _validate_payload(
 ) -> tuple[str, tuple[tuple[str, int], ...]]:
     if set(document) != {"schema_version", "system_identity", "tables"}:
         raise SystemBackupError("SYSTEM_BACKUP_PAYLOAD_INVALID")
-    if document.get("schema_version") != _SCHEMA_VERSION or document.get(
-        "system_identity"
-    ) != _SYSTEM_IDENTITY:
+    if (
+        document.get("schema_version") != _SCHEMA_VERSION
+        or document.get("system_identity") != _SYSTEM_IDENTITY
+    ):
         raise SystemBackupError("SYSTEM_BACKUP_PAYLOAD_INVALID")
     values = document.get("tables")
     if type(values) is not list or len(values) != len(_OIDC_SYSTEM_TABLE_SHAPES):
@@ -454,14 +443,10 @@ def _restore_monotonic_payload(
     saved = _payload_table_rows(values)
     live_nonce = _read_nonce_rows(connection, now=now)
     live_rate = _read_rate_rows(connection, "oidc_login_rate_limit", now=now)
-    live_source_rate = _read_rate_rows(
-        connection, "oidc_login_source_rate_limit", now=now
-    )
+    live_source_rate = _read_rate_rows(connection, "oidc_login_source_rate_limit", now=now)
     saved_nonce = _nonce_rows(saved["oidc_nonce_replays"], now=now)
     saved_rate = _aggregate_rate_rows(saved["oidc_login_rate_limit"], now=now)
-    saved_source_rate = _source_rate_rows(
-        saved["oidc_login_source_rate_limit"], now=now
-    )
+    saved_source_rate = _source_rate_rows(saved["oidc_login_source_rate_limit"], now=now)
     merged_nonce = _merge_nonce_rows(live_nonce, saved_nonce)
     merged_rate = _merge_aggregate_rate_rows(live_rate, saved_rate)
     merged_source_rate = _merge_source_rate_rows(live_source_rate, saved_source_rate)
@@ -473,13 +458,11 @@ def _restore_monotonic_payload(
     connection.execute("DELETE FROM oidc_login_rate_limit")
     connection.execute("DELETE FROM oidc_login_source_rate_limit")
     connection.executemany(
-        "INSERT INTO oidc_nonce_replays (subject_hash, nonce_hash, expires_at) "
-        "VALUES (?, ?, ?)",
+        "INSERT INTO oidc_nonce_replays (subject_hash, nonce_hash, expires_at) VALUES (?, ?, ?)",
         merged_nonce,
     )
     connection.executemany(
-        "INSERT INTO oidc_login_rate_limit (bucket, window_started_at, attempts) "
-        "VALUES (?, ?, ?)",
+        "INSERT INTO oidc_login_rate_limit (bucket, window_started_at, attempts) VALUES (?, ?, ?)",
         merged_rate,
     )
     connection.executemany(
@@ -516,9 +499,7 @@ def _payload_table_rows(
     return result
 
 
-def _read_nonce_rows(
-    connection: sqlite3.Connection, *, now: int
-) -> dict[tuple[str, str], int]:
+def _read_nonce_rows(connection: sqlite3.Connection, *, now: int) -> dict[tuple[str, str], int]:
     if type(now) is not int or now < 0:
         raise SystemBackupError("SYSTEM_RESTORE_CLOCK_INVALID")
     try:
@@ -546,9 +527,7 @@ def _read_nonce_rows(
     return result
 
 
-def _nonce_rows(
-    rows: list[list[object]], *, now: int
-) -> dict[tuple[str, str], int]:
+def _nonce_rows(rows: list[list[object]], *, now: int) -> dict[tuple[str, str], int]:
     result: dict[tuple[str, str], int] = {}
     for row in rows:
         if (
@@ -584,10 +563,7 @@ def _read_rate_rows(
     if type(now) is not int or now < 0:
         raise SystemBackupError("SYSTEM_RESTORE_CLOCK_INVALID")
     if table == "oidc_login_rate_limit":
-        statement = (
-            "SELECT bucket, window_started_at, attempts "
-            "FROM oidc_login_rate_limit"
-        )
+        statement = "SELECT bucket, window_started_at, attempts FROM oidc_login_rate_limit"
     elif table == "oidc_login_source_rate_limit":
         statement = (
             "SELECT bucket, source_hash, window_started_at, window_seconds, attempts "
@@ -688,12 +664,11 @@ def _merge_aggregate_rate_rows(
             continue
         merged[key] = (
             key[0],
-            max(int(current[1]), int(value[1])),
-            max(int(current[2]), int(value[2])),
+            max(_row_int(current[1]), _row_int(value[1])),
+            max(_row_int(current[2]), _row_int(value[2])),
         )
     return tuple(
-        (key[0], int(value[1]), int(value[2]))
-        for key, value in sorted(merged.items())
+        (key[0], _row_int(value[1]), _row_int(value[2])) for key, value in sorted(merged.items())
     )
 
 
@@ -710,14 +685,22 @@ def _merge_source_rate_rows(
         merged[key] = (
             key[0],
             key[1],
-            max(int(current[2]), int(value[2])),
-            max(int(current[3]), int(value[3])),
-            max(int(current[4]), int(value[4])),
+            max(_row_int(current[2]), _row_int(value[2])),
+            max(_row_int(current[3]), _row_int(value[3])),
+            max(_row_int(current[4]), _row_int(value[4])),
         )
     return tuple(
-        (key[0], key[1], int(value[2]), int(value[3]), int(value[4]))
+        (key[0], key[1], _row_int(value[2]), _row_int(value[3]), _row_int(value[4]))
         for key, value in sorted(merged.items())
     )
+
+
+def _row_int(value: object) -> int:
+    """Convert a persisted row cell exactly as ``int()`` would, failing on other types."""
+
+    if not isinstance(value, str | bytes | bytearray | SupportsInt | SupportsIndex):
+        raise TypeError("row value is not integral")
+    return int(value)
 
 
 def _validate_monotonic_result(
@@ -737,8 +720,7 @@ def _validate_monotonic_result(
     aggregate = tuple(
         tuple(row)
         for row in connection.execute(
-            "SELECT bucket, window_started_at, attempts "
-            "FROM oidc_login_rate_limit ORDER BY bucket"
+            "SELECT bucket, window_started_at, attempts FROM oidc_login_rate_limit ORDER BY bucket"
         ).fetchall()
     )
     source = tuple(
@@ -893,9 +875,7 @@ def _record_from_document(document: Mapping[str, object]) -> SystemOidcBackupRec
     )
 
 
-def _encrypt(
-    encryption: SystemBackupEncryption, payload: bytes, key_ref: str
-) -> bytes:
+def _encrypt(encryption: SystemBackupEncryption, payload: bytes, key_ref: str) -> bytes:
     try:
         encrypted = encryption.encrypt(payload, key_ref)
     except Exception as error:
@@ -910,9 +890,7 @@ def _encrypt(
     return encrypted
 
 
-def _decrypt(
-    encryption: SystemBackupEncryption, payload: bytes, key_ref: str
-) -> bytes:
+def _decrypt(encryption: SystemBackupEncryption, payload: bytes, key_ref: str) -> bytes:
     try:
         decrypted = encryption.decrypt(payload, key_ref)
     except Exception as error:
@@ -1014,9 +992,7 @@ def _existing_file(path: Path, maximum: int) -> bytes | None:
     return value
 
 
-def _file_snapshot(
-    path: Path, maximum: int
-) -> tuple[bytes, tuple[int, int], int] | None:
+def _file_snapshot(path: Path, maximum: int) -> tuple[bytes, tuple[int, int], int] | None:
     try:
         before = path.lstat()
     except FileNotFoundError:
@@ -1101,7 +1077,7 @@ def _atomic_create(path: Path, payload: bytes) -> tuple[int, int] | None:
         except FileExistsError:
             existing = _existing_file(path, max(len(payload), _MAX_ENCRYPTED_BYTES))
             if existing != payload:
-                raise SystemBackupError("SYSTEM_BACKUP_CONFLICT")
+                raise SystemBackupError("SYSTEM_BACKUP_CONFLICT") from None
             created = False
         _sync_directory(path.parent)
         if not created:
@@ -1118,10 +1094,8 @@ def _atomic_create(path: Path, payload: bytes) -> tuple[int, int] | None:
             raise
         raise SystemBackupError("SYSTEM_BACKUP_STORAGE_FAILED") from error
     finally:
-        try:
+        with contextlib.suppress(OSError):
             Path(temporary).unlink(missing_ok=True)
-        except OSError:
-            pass
 
 
 def _remove_atomic_file(path: Path, identity: tuple[int, int]) -> None:
@@ -1144,10 +1118,8 @@ def _remove_atomic_file(path: Path, identity: tuple[int, int]) -> None:
         or (details.st_dev, details.st_ino) != identity
     ):
         return
-    try:
+    with contextlib.suppress(OSError):
         path.unlink()
-    except OSError:
-        pass
 
 
 def _ensure_directory_chain(path: Path) -> None:
@@ -1191,7 +1163,7 @@ def _quote_identifier(value: str) -> str:
 
 __all__ = [
     "SystemBackupError",
-    "SystemOidcBackupRetention",
     "SystemOidcBackupRecord",
+    "SystemOidcBackupRetention",
     "SystemOidcBackupRuntime",
 ]

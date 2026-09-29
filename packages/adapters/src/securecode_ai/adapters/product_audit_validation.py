@@ -51,7 +51,6 @@ from .product_scan import (
     ProductCandidatePreparationFailure,
 )
 
-
 _PRODUCT_OPERATIONS = frozenset({"scan", "repair"})
 _REPAIR_STAGE_IDS = frozenset(
     {"root_cause_localization", "security_test_generation", "architect", "validation_ladder"}
@@ -60,9 +59,7 @@ _REPAIR_STAGE_IDS = frozenset(
 
 def _require_scan_operation(host: ProductAuditHostInputs) -> None:
     if type(host.operation) is not str or host.operation not in _PRODUCT_OPERATIONS:
-        raise _AuditObstacle(
-            "PRODUCT_OPERATION_UNSUPPORTED", "product operation is unsupported"
-        )
+        raise _AuditObstacle("PRODUCT_OPERATION_UNSUPPORTED", "product operation is unsupported")
 
 
 def _repair_requested_candidate_ids(
@@ -91,25 +88,27 @@ def _repair_requested_candidate_ids(
                 "repair receipts cannot be attached to a scan operation",
             )
         return ()
-    if not requested or tuple(sorted(requested)) != requested or len(set(requested)) != len(requested):
+    if (
+        not requested
+        or tuple(sorted(requested)) != requested
+        or len(set(requested)) != len(requested)
+    ):
         raise _AuditObstacle(
             "PRODUCT_REPAIR_INPUT_INVALID", "repair operation requires sorted unique candidate IDs"
         )
-    candidates = {(item.candidate_id, item.candidate_version): item for item in flow.graph.candidates}
+    candidate_ids = {item.candidate_id for item in flow.graph.candidates}
     blocking_ids = {
-        outcome.candidate_id
-        for outcome in review.outcomes
-        if outcome.has_known_blocking_finding
+        outcome.candidate_id for outcome in review.outcomes if outcome.has_known_blocking_finding
     }
-    if any(item not in candidates for item in requested) or not set(requested).issubset(blocking_ids):
+    if any(item not in candidate_ids for item in requested) or not set(requested).issubset(
+        blocking_ids
+    ):
         raise _AuditObstacle(
             "PRODUCT_REPAIR_INPUT_INVALID",
             "repair requests must target current confirmed blocking candidates",
         )
     expected = {
-        (stage_id, candidate_id)
-        for candidate_id in requested
-        for stage_id in _REPAIR_STAGE_IDS
+        (stage_id, candidate_id) for candidate_id in requested for stage_id in _REPAIR_STAGE_IDS
     }
     actual = {(unit.stage_id, unit.subject_id) for unit in units}
     if actual != expected or len(actual) != len(units):
@@ -324,8 +323,7 @@ def _validate_review_outcome(
         or type(outcome.coverage_units) is not tuple
         or any(type(unit) is not CoverageUnit for unit in outcome.coverage_units)
         or (
-            outcome.skeptic_review is not None
-            and type(outcome.skeptic_review) is not SkepticReview
+            outcome.skeptic_review is not None and type(outcome.skeptic_review) is not SkepticReview
         )
         or (
             outcome.finding_gate is not None
@@ -335,18 +333,17 @@ def _validate_review_outcome(
         raise ValueError
     evidence_ids = set(candidate.evidence_ids)
     skeptic_review = outcome.skeptic_review
-    if skeptic_review is not None:
-        if (
-            skeptic_review.candidate_id != candidate.candidate_id
-            or skeptic_review.candidate_version != candidate.candidate_version
-            or skeptic_review.head_sha != candidate.head_sha
-            or not set(skeptic_review.cited_evidence_ids).issubset(evidence_ids)
-            or any(
-                not set(objection.evidence_ids).issubset(evidence_ids)
-                for objection in skeptic_review.objections
-            )
-        ):
-            raise ValueError
+    if skeptic_review is not None and (
+        skeptic_review.candidate_id != candidate.candidate_id
+        or skeptic_review.candidate_version != candidate.candidate_version
+        or skeptic_review.head_sha != candidate.head_sha
+        or not set(skeptic_review.cited_evidence_ids).issubset(evidence_ids)
+        or any(
+            not set(objection.evidence_ids).issubset(evidence_ids)
+            for objection in skeptic_review.objections
+        )
+    ):
+        raise ValueError
     decision = outcome.finding_gate
     if decision is None:
         if outcome.failure_code is None:

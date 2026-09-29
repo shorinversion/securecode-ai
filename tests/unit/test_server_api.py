@@ -355,13 +355,17 @@ def test_identical_mutation_replays_without_a_second_service_effect() -> None:
     app = create_app(
         identities=_IdentityVerifier(identity), authorization=_AllowAuthorization(), service=service
     )
-    headers = {"authorization": "Bearer token", "idempotency-key": "key-0001"}
-    first = asyncio.run(
-        _request(app, "POST", "/api/v1/runs", headers=headers, document={"repository_id": "repo-1"})
-    )
-    second = asyncio.run(
-        _request(app, "POST", "/api/v1/runs", headers=headers, document={"repository_id": "repo-1"})
-    )
+    headers = {
+        "authorization": "Bearer token",
+        "idempotency-key": "key-0001",
+        "if-match": "1",
+    }
+    # Run admission owns its replay in the domain store; other mutations are
+    # replayed by the HTTP boundary.
+    path = "/api/v1/runs/run-1:cancel"
+    document = {"repository_id": "repo-1"}
+    first = asyncio.run(_request(app, "POST", path, headers=headers, document=document))
+    second = asyncio.run(_request(app, "POST", path, headers=headers, document=document))
 
     assert first[0] == 201
     assert second[0] == 200
@@ -381,7 +385,7 @@ def test_workload_route_requires_a_workload_identity_and_precondition() -> None:
             "POST",
             "/api/v1/worker-sessions/session-1:heartbeat",
             headers={"authorization": "Bearer token", "idempotency-key": "key-0002"},
-            document={"repository_id": "repo-1"},
+            document={"repository_id": "repo-1", "worker_id": "worker-1"},
         )
     )
 

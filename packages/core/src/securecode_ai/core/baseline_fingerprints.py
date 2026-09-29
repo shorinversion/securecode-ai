@@ -105,9 +105,7 @@ class BaselineChangedScope:
         object.__setattr__(
             self,
             "_locations_index",
-            MappingProxyType(
-                _locations_by_fingerprint(finding_locations, data_flow_locations)
-            ),
+            MappingProxyType(_locations_by_fingerprint(finding_locations, data_flow_locations)),
         )
 
     def proves_changed(self, fingerprint: str) -> bool:

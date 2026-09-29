@@ -17,9 +17,8 @@ from typing import Final, NoReturn, TextIO
 
 from .artifact_store import LocalArtifactStore
 from .artifact_upload import purge_orphaned_artifact_objects
-from .backup_lifecycle import BackupLifecycleAdapter, BackupRetentionCandidate
 from .backup_executor_runtime import SubprocessBackupEncryptionProvider
-from .bootstrap import _waivers_cover_run_policy
+from .backup_lifecycle import BackupLifecycleAdapter, BackupRetentionCandidate
 from .data_lifecycle import LifecycleLedger
 from .data_lifecycle_models import RetentionProfile
 from .filesystem_paths import lexical_absolute_path
@@ -29,32 +28,33 @@ from .migrations import SchemaVersionError, require_schema_version
 from .oidc_sessions import NonceReplayLedger, SqliteOidcLoginState
 from .persistence import DevelopmentRepository
 from .request_quota import MAX_WINDOW_SECONDS
+from .residency_registry import load_residency_registry
 from .resource_repository import ResourceRepository
 from .resource_service import ResourceService
 from .retention_planner import ArtifactRetentionPlanner, PlannedArtifactDeletion
-from .residency_registry import load_residency_registry
 from .runtime import load_settings
+from .scm_completion_models import SCMCompletionDisposition
+from .scm_policy_waivers import waivers_cover_run_policy as _waivers_cover_run_policy
+from .scm_publication_runtime import build_scm_publication_service
+from .scm_publication_store import SqliteSCMPublicationStore
+from .scm_runtime import build_scm_handlers
 from .secret_provider_runtime import build_secret_provider
 from .secret_service import SecretDenied, SecretService
-from .system_backup_runtime import (
-    SystemBackupError,
-    SystemOidcBackupRetention,
-    SystemOidcBackupRecord,
-    SystemOidcBackupRuntime,
-)
-from .subprocess_protocol import configured_process
-from .scm_completion_models import SCMCompletionDisposition
-from .scm_publication_store import SqliteSCMPublicationStore
-from .scm_publication_runtime import build_scm_publication_service
-from .scm_runtime import build_scm_handlers
 from .sqlite_database import open_private_sqlite
 from .storage_executor import LocalArtifactStorageExecutor
+from .subprocess_protocol import configured_process
+from .system_backup_runtime import (
+    SystemBackupError,
+    SystemOidcBackupRecord,
+    SystemOidcBackupRetention,
+    SystemOidcBackupRuntime,
+)
 from .waivers import WaiverLedger
-from .worker_scm_policy import load_run_scm_policy_decision
 from .worker_artifact_authorization import (
     has_expired_artifact_authorizations,
     purge_expired_artifact_authorizations,
 )
+from .worker_scm_policy import load_run_scm_policy_decision
 
 _SCHEMA_VERSION: Final = 1
 _REPARSE_POINT: Final = 0x400
@@ -132,10 +132,8 @@ def run(arguments: Sequence[str] | None = None) -> int:
                 tenant_id=profile.tenant_id,
                 max_items=options.execute_limit,
             )
-            legacy_audit_reconciliation_pending = (
-                ledger.has_unreconciled_legacy_audit_deletions(
-                    tenant_id=profile.tenant_id,
-                )
+            legacy_audit_reconciliation_pending = ledger.has_unreconciled_legacy_audit_deletions(
+                tenant_id=profile.tenant_id,
             )
             planner = ArtifactRetentionPlanner(
                 connection,
@@ -199,9 +197,8 @@ def run(arguments: Sequence[str] | None = None) -> int:
                 now=oidc_now,
                 max_items=options.execute_limit,
             )
-            oidc_cleanup_pending = (
-                oidc_states.has_expired(now=oidc_now)
-                or oidc_nonces.has_expired(now=oidc_now)
+            oidc_cleanup_pending = oidc_states.has_expired(now=oidc_now) or oidc_nonces.has_expired(
+                now=oidc_now
             )
             oidc_source_rate_purge_count = _purge_expired_oidc_source_rate(
                 connection,
@@ -290,9 +287,7 @@ def run(arguments: Sequence[str] | None = None) -> int:
                         publications=scm_publications,
                         waiver_ledger=waiver_ledger,
                         artifact_root=artifact_root,
-                        residency_guard=(
-                            residency if residency_region is not None else None
-                        ),
+                        residency_guard=(residency if residency_region is not None else None),
                         residency_region=residency_region,
                     )
                     for run_id, identity_hash in expired_waiver_runs:
@@ -485,9 +480,7 @@ def _system_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _system_receipt(
-    operation: str, record: SystemOidcBackupRecord
-) -> dict[str, object]:
+def _system_receipt(operation: str, record: SystemOidcBackupRecord) -> dict[str, object]:
     if operation not in {"backup", "restore"}:
         raise ValueError("system backup receipt is invalid")
     return {
@@ -725,12 +718,7 @@ def _purge_expired_oidc_source_rate(
     now: int,
     max_items: int,
 ) -> int:
-    if (
-        type(now) is not int
-        or now < 0
-        or type(max_items) is not int
-        or not 1 <= max_items <= 256
-    ):
+    if type(now) is not int or now < 0 or type(max_items) is not int or not 1 <= max_items <= 256:
         raise ValueError("maintenance OIDC source-rate cleanup arguments are invalid")
     cursor = connection.cursor()
     active = False

@@ -17,7 +17,6 @@ from securecode_ai.contracts import (
     AuditRunOutcome,
     DataClass,
     EvidenceInputRef,
-    ExecutionBoundary,
     ModelCallBudget,
     ModelPreflightRequest,
     ModelPurpose,
@@ -51,7 +50,7 @@ from securecode_ai.core.tool_policy import RepositoryToolBudget, RepositoryToolS
 from .config import EffectiveConfiguration
 from .dependency_scanning import ApprovedOsvScanner
 from .dependency_scanning_osv import BoundedOsvScanner
-from .endpoint import EndpointAuthorizationIssuer
+from .endpoint import EndpointAuthorizationIssuer, Resolver
 from .git_snapshot import OfflineGitObjectReader as OfflineGitObjectReader
 from .local_product_host import (
     LocalProductHost,
@@ -62,7 +61,6 @@ from .local_product_host import (
 )
 from .local_product_runner_cancellation import LocalProductCancellationGuard
 from .local_product_runner_config import (
-    _RULES,
     LocalProductCancelledError,
     LocalProductConfigurationError,
     LocalProductScanResult,
@@ -92,7 +90,9 @@ from .product_audit import (
     execute_product_audit,
 )
 from .product_model import AUDITOR_WIRE_PIN, MODEL_NATIVE_DISCOVERY_WIRE_PIN
+from .product_provider_runtime import ProductProviderRuntime
 from .product_review import ProductReviewResult, run_product_candidate_review
+from .product_rule_catalogue import PRODUCT_RULE_CWE as _RULES
 from .product_runtime import (
     PRODUCT_AUDITOR_PROMPT_PIN,
     PRODUCT_DISCOVERY_PROMPT_PIN,
@@ -102,7 +102,6 @@ from .product_runtime import (
     ProductAuditorInvoker,
     ProductDiscoveryBackend,
 )
-from .product_provider_runtime import ProductProviderRuntime
 from .product_scan import ProductCandidateFlow
 from .product_skeptic import PRODUCT_SKEPTIC_PROMPT_PIN, SKEPTIC_WIRE_PIN, ProductSkepticReviewPort
 from .remote_provider_budget import RemoteProviderCostReceipt
@@ -151,7 +150,7 @@ def _run_local_product_scan(
     if selected_runtime is None:
         profile, policy = host.profile, host.policy
         registry = host.registry
-        resolver = _LiteralLoopbackResolver()
+        resolver: Resolver = _LiteralLoopbackResolver()
         local_provider = True
     else:
         profile, policy = selected_runtime.profile, selected_runtime.policy

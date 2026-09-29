@@ -210,9 +210,9 @@ def _response_document(raw: bytes) -> dict[str, object] | list[object] | None:
         )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError, RecursionError):
         raise GitHubError("INVALID_RESPONSE") from None
-    if type(parsed) not in {dict, list}:
-        raise GitHubError("INVALID_RESPONSE")
-    return parsed
+    if type(parsed) is dict or type(parsed) is list:
+        return parsed
+    raise GitHubError("INVALID_RESPONSE")
 
 
 def repository_path(owner: str, repo: str) -> str:

@@ -255,14 +255,18 @@ class GoCwe90ScanResult:
             if valid_signals
             else ()
         )
-        same_identity = all(
-            item.repository_id == self.repository_id
-            and item.revision == self.revision
-            and item.path == self.path
-            and item.content_sha256 == self.content_sha256
-            and item.source_size_bytes == self.source_size_bytes
-            for item in self.signals
-        ) if valid_signals else False
+        same_identity = (
+            all(
+                item.repository_id == self.repository_id
+                and item.revision == self.revision
+                and item.path == self.path
+                and item.content_sha256 == self.content_sha256
+                and item.source_size_bytes == self.source_size_bytes
+                for item in self.signals
+            )
+            if valid_signals
+            else False
+        )
         if (
             not valid_identity
             or not valid_signals
@@ -479,7 +483,7 @@ def _is_connection(receiver: str, connections: set[str]) -> bool:
 
 
 def _sink_arguments(arguments: Node, operation: GoCwe90Operation) -> tuple[Node, ...]:
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     if not values:
         return ()
     if operation is GoCwe90Operation.NEW_SEARCH_REQUEST:
@@ -502,22 +506,24 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     for name, value in zip(names, values, strict=False):
         if name.type != "identifier":
             continue
         name_text = _text(source, name)
-        environment[name_text] = _resolve(value, environment, source, imports, limits, 0, frozenset())
+        environment[name_text] = _resolve(
+            value, environment, source, imports, limits, 0, frozenset()
+        )
         if _is_connection_factory(value, source, imports) or (
             value.type == "identifier" and _text(source, value) in connections
         ):
@@ -551,7 +557,11 @@ def _connection_parameters(scope: Node, source: bytes, imports: dict[str, str]) 
         if type_node is None:
             continue
         type_text = _compact_text(source, type_node)
-        if not any(f"{alias}.Conn" in type_text for alias, package in imports.items() if package in _LDAP_MODULES):
+        if not any(
+            f"{alias}.Conn" in type_text
+            for alias, package in imports.items()
+            if package in _LDAP_MODULES
+        ):
             continue
         names_node = node.child_by_field_name("name")
         if names_node is not None:
@@ -599,8 +609,20 @@ def _resolve(
         if arguments is None:
             return ()
         qualified = _qualified_call(function, source, imports)
-        if qualified in {"fmt.Sprintf", "strings.Join", "strings.Replace", "strings.ReplaceAll", "strings.TrimSpace", "strings.TrimPrefix", "strings.TrimSuffix"}:
-            values = arguments.named_children[1:] if qualified == "fmt.Sprintf" else arguments.named_children
+        if qualified in {
+            "fmt.Sprintf",
+            "strings.Join",
+            "strings.Replace",
+            "strings.ReplaceAll",
+            "strings.TrimSpace",
+            "strings.TrimPrefix",
+            "strings.TrimSuffix",
+        }:
+            values = tuple(
+                arguments.named_children[1:]
+                if qualified == "fmt.Sprintf"
+                else arguments.named_children
+            )
             return _dedupe_flows(
                 (
                     flow
@@ -612,14 +634,19 @@ def _resolve(
                 limits,
             )
         if qualified == "ldap.NewSearchRequest":
-            values = arguments.named_children
+            values = tuple(arguments.named_children)
             return (
                 _resolve(values[6], environment, source, imports, limits, depth + 1, visited)
                 if len(values) > 6
                 else ()
             )
         return ()
-    if node.type in {"binary_expression", "index_expression", "slice_expression", "composite_literal"}:
+    if node.type in {
+        "binary_expression",
+        "index_expression",
+        "slice_expression",
+        "composite_literal",
+    }:
         return _dedupe_flows(
             (
                 flow
@@ -674,7 +701,10 @@ def _is_sanitizer(node: Node, source: bytes, imports: dict[str, str]) -> bool:
     field = function.child_by_field_name("field")
     if operand is None or field is None:
         return False
-    return imports.get(_text(source, operand)) in _LDAP_MODULES and _text(source, field) in _LDAP_SANITIZERS
+    return (
+        imports.get(_text(source, operand)) in _LDAP_MODULES
+        and _text(source, field) in _LDAP_SANITIZERS
+    )
 
 
 def _qualified_call(function: Node | None, source: bytes, imports: dict[str, str]) -> str:

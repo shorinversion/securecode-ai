@@ -23,8 +23,8 @@ from .cst import CstAdapterError, build_javascript_symbol_index, build_typescrip
 from .cst_ecmascript import _javascript_language, _typescript_language
 from .ecmascript_cwe22 import (
     _canonical_expression,
-    _compact_text,
     _collect_aliases,
+    _compact_text,
     _enclosing_scope,
     _latest_binding,
     _string_value,
@@ -479,7 +479,9 @@ def _scan_ecmascript_cwe732(
         raise EcmaScriptCwe732ScanError(EcmaScriptCwe732ScanErrorCode.ANALYSIS_UNAVAILABLE)
     try:
         aliases = _collect_aliases(nodes, source)
-        raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe732Operation, int | None, str]] = set()
+        raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe732Operation, int | None, str]] = (
+            set()
+        )
         for node in nodes:
             if node.type != "call_expression":
                 continue
@@ -663,7 +665,10 @@ def _option_value(
                 value = named[-1] if len(named) >= 2 else key
             if key is not None and _property_name(key, source) == name:
                 return value
-        elif child.type in {"shorthand_property_identifier", "shorthand_property_identifier_pattern"}:
+        elif child.type in {
+            "shorthand_property_identifier",
+            "shorthand_property_identifier_pattern",
+        }:
             if _property_name(child, source) == name:
                 return child
     return None
@@ -711,14 +716,14 @@ def _integer_value(
         bound = _latest_binding(scope, name, node.start_byte, source)
         if bound is None:
             return None
-        return _integer_value(
-            bound, scope, source, aliases, limits, depth + 1, visited | {name}
-        )
+        return _integer_value(bound, scope, source, aliases, limits, depth + 1, visited | {name})
     if node.type in {"number", "number_literal"}:
         return _parse_number(_text(source, node))
     if node.type == "parenthesized_expression":
         children = node.named_children
-        return _integer_value(children[0] if children else None, scope, source, aliases, limits, depth + 1, visited)
+        return _integer_value(
+            children[0] if children else None, scope, source, aliases, limits, depth + 1, visited
+        )
     if node.type == "unary_expression":
         children = node.named_children
         if not children:
@@ -925,7 +930,8 @@ def _is_temp_resource(
     return any(
         _is_temp_resource(child, scope, source, limits, depth + 1, visited)
         for child in node.named_children
-        if child.type in {"call_expression", "arguments", "member_expression", "string", "template_string"}
+        if child.type
+        in {"call_expression", "arguments", "member_expression", "string", "template_string"}
     )
 
 

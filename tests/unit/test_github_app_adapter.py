@@ -140,11 +140,19 @@ def test_invalid_raw_signature_does_not_parse_or_resolve_head() -> None:
 def test_signed_delivery_replay_with_different_bytes_fails_closed() -> None:
     adapter, _ = _adapter()
     adapter.receive(_delivery())
+    # Same delivery ID and identity, but different signed bytes: the durable run
+    # state binds the delivery digest and must reject the replay.
+    replay_body = _body().replace(b'"synchronize"', b'"opened"')
 
     with pytest.raises(GithubAppError) as error:
-        adapter.receive(_delivery(body=_body(head_sha=HEAD_B)))
+        adapter.receive(_delivery(body=replay_body))
 
     assert error.value.code is GithubAppErrorCode.STATE_REJECTED
+
+    with pytest.raises(GithubAppError) as mismatch:
+        adapter.receive(_delivery(body=_body(head_sha=HEAD_B)))
+
+    assert mismatch.value.code is GithubAppErrorCode.IDENTITY_MISMATCH
 
 
 def test_signed_payload_identity_mismatch_never_reaches_head_resolver() -> None:

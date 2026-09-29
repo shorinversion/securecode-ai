@@ -29,9 +29,7 @@ _IDENTIFIER = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*\Z")
 _RULE_ID = "securecode-ecmascript-cwe601"
 _DETECTOR = "securecode-ecmascript-cwe601@1.0"
 
-_REQUEST_ROOTS = frozenset(
-    {"ctx", "context", "event", "httpRequest", "req", "request"}
-)
+_REQUEST_ROOTS = frozenset({"ctx", "context", "event", "httpRequest", "req", "request"})
 _REQUEST_FIELDS = frozenset(
     {
         "body",
@@ -387,20 +385,14 @@ def _scan_ecmascript_cwe601(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe601ScanError(
-            EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe601ScanError(
-            EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe601ScanError(
-                EcmaScriptCwe601ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe601Operation]] = set()
         for node in nodes:
@@ -410,9 +402,7 @@ def _scan_ecmascript_cwe601(
                     continue
                 arguments = node.child_by_field_name("arguments")
                 if arguments is None:
-                    raise EcmaScriptCwe601ScanError(
-                        EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE
-                    )
+                    raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE)
                 scope = _enclosing_scope(node, root)
                 for argument in _sink_arguments(arguments, operation):
                     for source_node in _resolve_source(
@@ -448,9 +438,7 @@ def _scan_ecmascript_cwe601(
     except EcmaScriptCwe601ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe601ScanError(
-            EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE) from None
 
     if len(ordered) > limits.max_signals:
         raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.SIGNAL_LIMIT)
@@ -562,9 +550,7 @@ def _known_import_redirect(canonical: str) -> bool:
     return len(parts) == 2 and parts[1] == "redirect" and parts[0] in _KNOWN_REDIRECT_MODULES
 
 
-def _sink_arguments(
-    arguments: Node, operation: EcmaScriptCwe601Operation
-) -> tuple[Node, ...]:
+def _sink_arguments(arguments: Node, operation: EcmaScriptCwe601Operation) -> tuple[Node, ...]:
     values = arguments.named_children
     if not values:
         return ()
@@ -755,7 +741,7 @@ def _call_request_source(callee: str) -> bool:
             len(pieces) >= 2
             and (pieces[-2] in _REQUEST_FIELDS or pieces[-1] in {"param", "header"})
         )
-    return callee.endswith(".searchParams.get") or callee.endswith(".get") and "query" in pieces
+    return callee.endswith(".searchParams.get") or (callee.endswith(".get") and "query" in pieces)
 
 
 def _enclosing_scope(node: Node, root: Node) -> Node:
@@ -788,9 +774,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -927,9 +917,7 @@ def _canonical_member_path(
     return tuple(canonical.split("."))
 
 
-def _member_path(
-    node: Node, source: bytes, aliases: dict[str, str]
-) -> tuple[str, ...] | None:
+def _member_path(node: Node, source: bytes, aliases: dict[str, str]) -> tuple[str, ...] | None:
     if node.type in {
         "identifier",
         "property_identifier",
@@ -998,18 +986,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe601ScanError(
-            EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe601ScanError(
-            EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe601ScanError(EcmaScriptCwe601ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -1060,9 +1044,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1096,9 +1078,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

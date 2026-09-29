@@ -233,9 +233,7 @@ def run_product_candidate_flow(
         or type(investigation_budget) is not InvestigationBudget
     ):
         raise ValueError("product scan bindings are invalid")
-    expected_repository_id = (
-        model_plan.request.execution_identity.repository_revision.repository_id
-    )
+    expected_repository_id = model_plan.request.execution_identity.repository_revision.repository_id
     if (
         catalogue.snapshot.head_sha != model_plan.request.head_sha
         or any(

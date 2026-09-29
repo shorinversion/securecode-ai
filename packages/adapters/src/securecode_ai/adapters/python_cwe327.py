@@ -178,9 +178,7 @@ class PythonCwe327Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is PythonCwe327Operation
+            if valid_identity and valid_ranges and type(self.operation) is PythonCwe327Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -251,7 +249,12 @@ class PythonCwe327ScanResult:
         )
         order = (
             tuple(
-                (item.sink.start_byte, item.sink.end_byte, item.source.start_byte, item.operation.value)
+                (
+                    item.sink.start_byte,
+                    item.sink.end_byte,
+                    item.source.start_byte,
+                    item.operation.value,
+                )
                 for item in self.signals
             )
             if valid_signals
@@ -692,7 +695,12 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe327ScanError(PythonCwe327ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe327ScanError(PythonCwe327ScanErrorCode.INTEGRITY_FAILURE)
     return SourceRange(
         start,
@@ -783,13 +791,13 @@ __all__ = [
     "Cwe327ScanError",
     "Cwe327ScanErrorCode",
     "Cwe327ScanLimits",
-    "Cwe327Signal",
     "Cwe327ScanResult",
+    "Cwe327Signal",
     "PythonCwe327Operation",
     "PythonCwe327ScanError",
     "PythonCwe327ScanErrorCode",
     "PythonCwe327ScanLimits",
-    "PythonCwe327Signal",
     "PythonCwe327ScanResult",
+    "PythonCwe327Signal",
     "scan_python_cwe327",
 ]

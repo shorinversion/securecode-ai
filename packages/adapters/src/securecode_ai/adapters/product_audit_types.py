@@ -22,27 +22,27 @@ from securecode_ai.contracts import (
     CandidateOrigin,
     ComponentPin,
     CoverageUnit,
+    ModelCallStatus,
     ModelRequest,
     RunExecutionIdentity,
 )
 from securecode_ai.contracts.runtime import WorkflowControlState, WorkflowSnapshot
-from securecode_ai.contracts import ModelCallStatus
 from securecode_ai.core.architect import ArchitectPatchResult
 from securecode_ai.core.regression import SecurityRegressionDescriptor
 from securecode_ai.core.repair_loop import RepairLoopReceipt
-from securecode_ai.core.root_cause import RootCauseRecord
-from securecode_ai.core.validation import ValidationLadderResult
 from securecode_ai.core.reports import (
     DeterministicReport,
 )
+from securecode_ai.core.root_cause import RootCauseRecord
+from securecode_ai.core.validation import ValidationLadderResult
 
 from .native_sources import NativeSourceCatalogue
 from .product_execution import (
     ProductDeterministicExecution,
 )
+from .product_rule_catalogue import PRODUCT_RULE_CWE
 from .product_runtime import ProductAuditorInvocationObservation
 from .product_scanner import ProductDeterministicScanResult
-from .product_rule_catalogue import PRODUCT_RULE_CWE
 
 if TYPE_CHECKING:
     from .product_review import ProductReviewResult
@@ -274,7 +274,8 @@ class ProductRepairReceipt:
             or type(self.validation) is not ValidationLadderResult
             or type(self.repair_loop) is not RepairLoopReceipt
             or any(
-                type(value) is not str or len(value) != 64
+                type(value) is not str
+                or len(value) != 64
                 or any(character not in "0123456789abcdef" for character in value)
                 for value in (self.architect_model_result_sha256,)
             )
@@ -291,16 +292,20 @@ class ProductRepairReceipt:
             != self.root_cause.tenant_id
             or self.architect.patch_candidate.repository_revision.repository_id
             != self.root_cause.repository_id
-            or self.architect.patch_candidate.repository_revision.head_sha != self.root_cause.head_sha
+            or self.architect.patch_candidate.repository_revision.head_sha
+            != self.root_cause.head_sha
             or self.architect.rationale.finding_id != self.finding_id
             or self.architect.rationale.root_cause_id != self.root_cause.record_id
             or self.architect.rationale.regression_descriptor_id != self.regression.descriptor_id
             or self.validation.validation.patch_id != self.architect.patch_candidate.patch_id
             or self.validation.validation.tenant_id != self.root_cause.tenant_id
-            or self.validation.validation.head_sha != self.regression.evaluated_head_sha
+            # Validation evaluates the patched head, never the vulnerable one
+            # (same invariant as core.diff_review / core.patch_status_helpers).
+            or self.validation.validation.head_sha == self.regression.vulnerable_head_sha
             or not self.repair_loop.attempts
             or self.repair_loop.attempts[-1].patch_id != self.architect.patch_candidate.patch_id
-            or self.repair_loop.attempts[-1].validation_id != self.validation.validation.validation_id
+            or self.repair_loop.attempts[-1].validation_id
+            != self.validation.validation.validation_id
             or self.repair_loop.attempts[-1].validation_result_sha256
             != self.validation.validation.result_sha256
         ):
@@ -352,11 +357,7 @@ class _AuditObstacle(ValueError):
 
 _PRODUCT_CWE_RULES = {
     cwe_id: tuple(
-        sorted(
-            rule_id
-            for rule_id, mapped_cwe in PRODUCT_RULE_CWE.items()
-            if mapped_cwe == cwe_id
-        )
+        sorted(rule_id for rule_id, mapped_cwe in PRODUCT_RULE_CWE.items() if mapped_cwe == cwe_id)
     )
     for cwe_id in sorted(set(PRODUCT_RULE_CWE.values()) - {"CWE-89"})
 }

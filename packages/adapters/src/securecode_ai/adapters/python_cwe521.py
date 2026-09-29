@@ -614,8 +614,8 @@ def _call_facts(
                 complexity_false.append(keyword.value)
             elif boolean is True:
                 complexity_true.append(keyword.value)
-    for value, operation in length_values:
-        facts.append(_fact_from_nodes(value, node, operation, source, line_starts))
+    for length_node, operation in length_values:
+        facts.append(_fact_from_nodes(length_node, node, operation, source, line_starts))
     if _complexity_is_disabled(complexity_false, complexity_true, node, assignments, max_depth):
         source_node = complexity_false[0] if complexity_false else node
         facts.append(
@@ -663,8 +663,8 @@ def _dict_facts(
                 complexity_false.append(value_node)
             elif boolean is True:
                 complexity_true.append(value_node)
-    for value, operation in length_values:
-        facts.append(_fact_from_nodes(value, node, operation, source, line_starts))
+    for length_node, operation in length_values:
+        facts.append(_fact_from_nodes(length_node, node, operation, source, line_starts))
     if _complexity_is_disabled(complexity_false, complexity_true, node, assignments, max_depth):
         source_node = complexity_false[0] if complexity_false else node
         facts.append(
@@ -707,9 +707,12 @@ def _complexity_is_disabled(
     false_keys: set[str] = set()
     if isinstance(node, ast.Call):
         for keyword in node.keywords:
-            if keyword.arg is not None and _normalise_name(keyword.arg) in _COMPLEXITY_COMPONENTS:
-                if _resolve_bool(keyword.value, assignments, max_depth) is False:
-                    false_keys.add(_normalise_name(keyword.arg))
+            if (
+                keyword.arg is not None
+                and _normalise_name(keyword.arg) in _COMPLEXITY_COMPONENTS
+                and _resolve_bool(keyword.value, assignments, max_depth) is False
+            ):
+                false_keys.add(_normalise_name(keyword.arg))
     else:
         # Dict keys are inspected by _dict_facts; a false value count alone is
         # insufficient because unrelated keys may be present.

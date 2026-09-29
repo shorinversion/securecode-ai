@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -9,11 +10,13 @@ from pathlib import Path
 
 from securecode_ai.contracts import (
     ComponentPin,
+    ModelCallStatus,
     ModelUsage,
     PatchStatus,
     ValidationOutcome,
     ValidationResult,
 )
+from securecode_ai.core.architect import ArchitectPatchResult
 from securecode_ai.core.repair_loop import (
     AttemptUsage,
     RepairState,
@@ -41,13 +44,13 @@ from .local_repair_validation import (
 from .patch_artifact import (
     PatchArtifactError,
     PatchArtifactStore,
+    StoredPatchArtifact,
     default_patch_artifact_root,
 )
 from .product_audit import compose_product_repair_audit
 from .product_audit_types import ProductAuditComposition, ProductRepairReceipt
 from .product_provider_runtime import ProductProviderRuntime
 from .remote_provider_budget import RemoteProviderCostReceipt
-
 
 _CANCELLATION_REASONS = frozenset(
     {
@@ -188,18 +191,23 @@ def run_local_repair_journey(
     selectors = proposal_receipt.get("artifact_selectors", [])
     finding_ids = proposal_receipt.get("finding_ids", [])
     usage_rows = proposal_receipt.get("_proposal_usage", [])
+    proposal_blocked = proposal_receipt.get("blocked_findings", [])
     if (
         not isinstance(selectors, list)
         or not isinstance(finding_ids, list)
         or not isinstance(usage_rows, list)
+        or not isinstance(proposal_blocked, list)
         or len(selectors) != len(finding_ids)
         or len(selectors) != len(usage_rows)
     ):
         return repair_failure_receipt(LocalRepairContractError("REPAIR_BINDING_INVALID"))
-    initial_blocked = list(proposal_receipt.get("blocked_findings", []))
+    initial_blocked = list(proposal_blocked)
     if not selectors and not initial_blocked:
+        proposal_exit_code = proposal_receipt.get("exit_code", 2)
         return {
-            "exit_code": int(proposal_receipt.get("exit_code", 2)),
+            "exit_code": (
+                int(proposal_exit_code) if isinstance(proposal_exit_code, int | str) else 2
+            ),
             "run_id": scan_result.composition.run.run_id,
             "proposal_count": 0,
             "completed_repairs": [],
@@ -209,7 +217,9 @@ def run_local_repair_journey(
             "checkout_modified": False,
             "product_pass": False,
         }
-    store = PatchArtifactStore(root=default_patch_artifact_root(environment), checkout=Path(target).absolute())
+    store = PatchArtifactStore(
+        root=default_patch_artifact_root(environment), checkout=Path(target).absolute()
+    )
     findings = {item.finding_id: item for item in confirmed_blocking_findings(scan_result)}
     usages = {
         item["selector"]: item["usage"]
@@ -236,7 +246,7 @@ def run_local_repair_journey(
             blocked.append({"finding_id": str(finding_id), "reason": "REPAIR_BINDING_INVALID"})
             all_validated = False
             continue
-        artifacts: dict[str, object] = {}
+        artifacts: dict[str, StoredPatchArtifact] = {}
         validations: dict[str, ValidationLadderResult] = {}
         try:
             graph = parse_retained_graph(scan_result.graph_artifact, finding)
@@ -256,9 +266,13 @@ def run_local_repair_journey(
             if initial.architect_result.patch_candidate.patch_id not in architect_receipts:
                 raise LocalRepairContractError("REPAIR_ARCHITECT_RECEIPT_MISSING")
 
-            def validate_patch(patch, attempt):
+            # B023: both closures are consumed synchronously by run_repair_loop below,
+            # within this iteration; they never outlive the loop variables they read.
+            def validate_patch(
+                patch: ArchitectPatchResult, attempt: int
+            ) -> tuple[ValidationLadderResult, AttemptUsage]:
                 _check_cancelled(cancelled)
-                artifact = artifacts.get(patch.patch_candidate.patch_id)
+                artifact = artifacts.get(patch.patch_candidate.patch_id)  # noqa: B023
                 if artifact is None or artifact.architect_result != patch:
                     raise LocalRepairContractError("PATCH_BINDING_MISMATCH")
                 captured: list[ValidationLadderResult] = []
@@ -273,16 +287,18 @@ def run_local_repair_journey(
                 )
                 if len(captured) != 1:
                     raise LocalRepairContractError("VALIDATION_RESULT_MISSING")
-                validations[captured[0].validation.validation_id] = captured[0]
+                validations[captured[0].validation.validation_id] = captured[0]  # noqa: B023
                 return captured[0], AttemptUsage()
 
-            def propose_patch(feedback: RetryFeedback, attempt: int):
+            def propose_patch(
+                feedback: RetryFeedback, attempt: int
+            ) -> tuple[ArchitectPatchResult, AttemptUsage]:
                 proposal = generate_local_patch(
                     target=target,
                     host=host,
                     scan_result=scan_result,
-                    binding=binding,
-                    evidence=graph.evidence,
+                    binding=binding,  # noqa: B023
+                    evidence=graph.evidence,  # noqa: B023
                     attempt=attempt,
                     retry_feedback=feedback,
                     cancelled=cancelled,
@@ -293,13 +309,13 @@ def run_local_repair_journey(
                 stored = store.put(
                     patch_bytes=proposal.patch_bytes,
                     architect_result=proposal.result,
-                    finding=binding.finding,
-                    root_cause=binding.root_cause,
-                    invariant=binding.invariant,
-                    regression=binding.regression,
+                    finding=binding.finding,  # noqa: B023
+                    root_cause=binding.root_cause,  # noqa: B023
+                    invariant=binding.invariant,  # noqa: B023
+                    regression=binding.regression,  # noqa: B023
                     author=proposal.author,
                 )
-                artifacts[proposal.result.patch_candidate.patch_id] = stored
+                artifacts[proposal.result.patch_candidate.patch_id] = stored  # noqa: B023
                 architect_receipts[proposal.result.patch_candidate.patch_id] = {
                     "patch_id": proposal.result.patch_candidate.patch_id,
                     "architect_model_result_sha256": proposal.model_result_sha256,
@@ -321,6 +337,18 @@ def run_local_repair_journey(
             final_architect = architect_receipts.get(final_attempt.patch_id)
             if final_architect is None or final_validation is None:
                 raise LocalRepairContractError("REPAIR_RECEIPTS_INCOMPLETE")
+            architect_sha256 = final_architect["architect_model_result_sha256"]
+            architect_status = final_architect["architect_model_call_status"]
+            architect_schema_valid = final_architect["architect_schema_valid_result"]
+            architect_receipt_id = final_architect["architect_receipt_id"]
+            if (
+                type(architect_sha256) is not str
+                or type(architect_status) is not ModelCallStatus
+                or type(architect_schema_valid) is not bool
+                or type(architect_receipt_id) is not str
+            ):
+                # Same outcome as ProductRepairReceipt's own type validation.
+                raise ValueError("architect receipt is invalid")
             repair_receipts.append(
                 ProductRepairReceipt(
                     finding_id=finding_id,
@@ -333,16 +361,10 @@ def run_local_repair_journey(
                     root_cause=binding.root_cause,
                     regression=binding.regression,
                     architect=final_artifact.architect_result,
-                    architect_model_result_sha256=final_architect[
-                        "architect_model_result_sha256"
-                    ],
-                    architect_model_call_status=final_architect[
-                        "architect_model_call_status"
-                    ],
-                    architect_schema_valid_result=final_architect[
-                        "architect_schema_valid_result"
-                    ],
-                    architect_receipt_id=final_architect["architect_receipt_id"],
+                    architect_model_result_sha256=architect_sha256,
+                    architect_model_call_status=architect_status,
+                    architect_schema_valid_result=architect_schema_valid,
+                    architect_receipt_id=architect_receipt_id,
                     validation=final_validation,
                     repair_loop=loop,
                 )
@@ -383,10 +405,8 @@ def run_local_repair_journey(
                     final_diffs.append(final_artifact.patch_bytes.decode("utf-8", errors="strict"))
             for artifact in artifacts.values():
                 if artifact.selector != final_artifact.selector:
-                    try:
+                    with contextlib.suppress(Exception):
                         store.delete(artifact.selector)
-                    except Exception:
-                        pass
             completed.append(
                 {
                     "finding_id": finding_id,
@@ -404,7 +424,9 @@ def run_local_repair_journey(
                             "patch_id": item.patch_id,
                             "validation_id": item.validation_id,
                             "validation_result_sha256": item.validation_result_sha256,
-                            "feedback_sha256": item.feedback.feedback_sha256 if item.feedback else None,
+                            "feedback_sha256": item.feedback.feedback_sha256
+                            if item.feedback
+                            else None,
                         }
                         for item in loop.attempts
                     ],

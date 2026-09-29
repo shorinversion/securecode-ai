@@ -19,25 +19,25 @@ from .connected import (
     decide_approval,
     download_artifact,
     download_repair_patch,
-    fetch_events,
     fetch_audit,
+    fetch_events,
     fetch_finding,
     fetch_policies,
     fetch_results,
     fetch_run,
+    import_repair_patch_bundle,
     parse_approval_arguments,
-    parse_download_arguments,
-    parse_repair_download_arguments,
-    parse_event_arguments,
     parse_audit_arguments,
+    parse_download_arguments,
+    parse_event_arguments,
     parse_health_arguments,
+    parse_repair_download_arguments,
     parse_results_arguments_with_page,
     parse_run_arguments,
     parse_single_argument,
     read_approval,
     repair_approval_id,
     settings_from_environment,
-    import_repair_patch_bundle,
 )
 from .connected import (
     render_receipt as render_connected_receipt,
@@ -322,9 +322,7 @@ def run_connected_results(
     """Print one bounded, source-free run collection document."""
 
     try:
-        run_id, kind, content_sha256, cursor, limit = parse_results_arguments_with_page(
-            tokens[1:]
-        )
+        run_id, kind, content_sha256, cursor, limit = parse_results_arguments_with_page(tokens[1:])
         settings = settings_from_environment(environment)
         collection = fetch_results(
             settings,

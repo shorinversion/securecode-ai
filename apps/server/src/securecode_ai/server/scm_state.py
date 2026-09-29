@@ -462,7 +462,7 @@ class SqliteSCMRunState:
         installation_id: str,
         repository_id: str,
         current_head_sha: str,
-        superseding_run_id: str,
+        superseding_run_id: str | None,
     ) -> tuple[str, ...]:
         rows = cursor.execute(
             """SELECT * FROM scm_run_states

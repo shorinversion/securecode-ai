@@ -165,9 +165,7 @@ class EcmaScriptCwe502Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe502Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe502Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -297,9 +295,7 @@ def scan_javascript_cwe502(
 ) -> EcmaScriptCwe502ScanResult:
     """Find bounded JavaScript unsafe-deserialization facts."""
 
-    return _scan_ecmascript_cwe502(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe502(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe502(
@@ -309,9 +305,7 @@ def scan_typescript_cwe502(
 ) -> EcmaScriptCwe502ScanResult:
     """Find bounded TypeScript unsafe-deserialization facts."""
 
-    return _scan_ecmascript_cwe502(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe502(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe502(
@@ -369,20 +363,14 @@ def _scan_ecmascript_cwe502(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe502ScanError(
-            EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe502ScanError(EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe502ScanError(
-            EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe502ScanError(EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe502ScanError(
-                EcmaScriptCwe502ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe502ScanError(EcmaScriptCwe502ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe502Operation]] = set()
         for node in nodes:
@@ -406,9 +394,7 @@ def _scan_ecmascript_cwe502(
     except EcmaScriptCwe502ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe502ScanError(
-            EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe502ScanError(EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE) from None
 
     signals = tuple(
         EcmaScriptCwe502Signal(
@@ -509,9 +495,7 @@ def _operation_for_callee(callee: str | None) -> EcmaScriptCwe502Operation | Non
     }.get(callee)
 
 
-def _uses_safe_yaml_options(
-    values: list[Node], source: bytes, aliases: dict[str, str]
-) -> bool:
+def _uses_safe_yaml_options(values: list[Node], source: bytes, aliases: dict[str, str]) -> bool:
     if len(values) < 2:
         return False
     options = _unwrap(values[1])
@@ -593,7 +577,11 @@ def _collect_destructured_aliases(
     pattern: Node, module: str, source: bytes, aliases: dict[str, str]
 ) -> None:
     for child in pattern.named_children:
-        if child.type not in {"pair", "object_pattern_property", "shorthand_property_identifier_pattern"}:
+        if child.type not in {
+            "pair",
+            "object_pattern_property",
+            "shorthand_property_identifier_pattern",
+        }:
             continue
         key, value = _pair_parts(child)
         if key is None:
@@ -700,18 +688,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe502ScanError(
-            EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe502ScanError(EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe502ScanError(
-            EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe502ScanError(EcmaScriptCwe502ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -760,9 +744,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -796,9 +778,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

@@ -240,9 +240,7 @@ class EcmaScriptCwe521Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is EcmaScriptCwe521Operation
+            if identity_valid and ranges_valid and type(self.operation) is EcmaScriptCwe521Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -412,7 +410,11 @@ def _scan_ecmascript_cwe521(
         raise EcmaScriptCwe521ScanError(EcmaScriptCwe521ScanErrorCode.SOURCE_LIMIT)
     if symbol_index.parse_health is not ParseHealth.HEALTHY:
         raise EcmaScriptCwe521ScanError(EcmaScriptCwe521ScanErrorCode.ANALYSIS_UNAVAILABLE)
-    builder = build_javascript_symbol_index if expected_language == "javascript" else build_typescript_symbol_index
+    builder = (
+        build_javascript_symbol_index
+        if expected_language == "javascript"
+        else build_typescript_symbol_index
+    )
     try:
         rebuilt = builder(
             repository_id=symbol_index.repository_id,
@@ -608,23 +610,19 @@ def _call_facts(
     if method_lower == "islength":
         min_value, min_node = _option_number(node, source, _MIN_KEYS)
         max_value, max_node = _option_number(node, source, _MAX_KEYS)
-        if (
-            min_value is not None
-            and min_value < _MIN_ACCEPTED_LENGTH
-            and min_node is not None
-        ):
+        if min_value is not None and min_value < _MIN_ACCEPTED_LENGTH and min_node is not None:
             facts.append(
                 (_range(min_node), _range(node), EcmaScriptCwe521Operation.WEAK_MINIMUM_LENGTH)
             )
-        if (
-            max_value is not None
-            and max_value < _MIN_ACCEPTED_LENGTH
-            and max_node is not None
-        ):
+        if max_value is not None and max_value < _MIN_ACCEPTED_LENGTH and max_node is not None:
             facts.append(
                 (_range(max_node), _range(node), EcmaScriptCwe521Operation.WEAK_MAXIMUM_LENGTH)
             )
-        if min_value is None and max_value is not None and _has_explicit_password_validator(node, source):
+        if (
+            min_value is None
+            and max_value is not None
+            and _has_explicit_password_validator(node, source)
+        ):
             facts.append(
                 (_range(node), _range(node), EcmaScriptCwe521Operation.MISSING_LENGTH_POLICY)
             )
@@ -636,9 +634,7 @@ def _call_facts(
             return ()
         if _has_length_policy(root_text):
             return ()
-        return (
-            (_range(node), _range(node), EcmaScriptCwe521Operation.MISSING_LENGTH_POLICY),
-        )
+        return ((_range(node), _range(node), EcmaScriptCwe521Operation.MISSING_LENGTH_POLICY),)
     return ()
 
 
@@ -664,7 +660,7 @@ def _object_facts(
     min_options = [item for item in options if item[0] in _MIN_KEYS]
     max_options = [item for item in options if item[0] in _MAX_KEYS]
     facts: list[tuple[SourceRange, SourceRange, EcmaScriptCwe521Operation]] = []
-    for _, key, value_node in min_options:
+    for _, _key, value_node in min_options:
         number = _static_number(value_node, source) if value_node is not None else None
         if (
             number is not None
@@ -679,7 +675,7 @@ def _object_facts(
                     EcmaScriptCwe521Operation.WEAK_MINIMUM_LENGTH,
                 )
             )
-    for _, key, value_node in max_options:
+    for _, _key, value_node in max_options:
         number = _static_number(value_node, source) if value_node is not None else None
         if (
             number is not None
@@ -695,10 +691,12 @@ def _object_facts(
                 )
             )
     has_policy_field = any(key in _POLICY_FIELDS for key, _, _ in options)
-    if not min_options and (max_options or has_policy_field) and _has_explicit_policy_name(node, source):
-        facts.append(
-            (_range(node), _range(node), EcmaScriptCwe521Operation.MISSING_LENGTH_POLICY)
-        )
+    if (
+        not min_options
+        and (max_options or has_policy_field)
+        and _has_explicit_policy_name(node, source)
+    ):
+        facts.append((_range(node), _range(node), EcmaScriptCwe521Operation.MISSING_LENGTH_POLICY))
     return tuple(facts)
 
 
@@ -707,7 +705,12 @@ def _looks_password_context(node: Node, source: bytes) -> bool:
     for _ in range(8):
         if current is None:
             break
-        if current.type in {"variable_declarator", "pair", "property_signature", "object_pattern_property"}:
+        if current.type in {
+            "variable_declarator",
+            "pair",
+            "property_signature",
+            "object_pattern_property",
+        }:
             name = current.child_by_field_name("name") or current.child_by_field_name("key")
             if name is not None and _PASSWORD_NAME.search(_compact_text(source, name)):
                 return True
@@ -734,7 +737,9 @@ def _has_password_validator_name(node: Node, source: bytes) -> bool:
     compact = text.replace(" ", "").lower()
     return bool(
         _PASSWORD_NAME.search(compact)
-        or any(token in compact for token in ("z.string", "yup.string", "joi.string", "passwordschema"))
+        or any(
+            token in compact for token in ("z.string", "yup.string", "joi.string", "passwordschema")
+        )
     )
 
 
@@ -749,6 +754,28 @@ def _has_explicit_policy_name(node: Node, source: bytes) -> bool:
                 return True
         current = current.parent
     return False
+
+
+def _has_strong_method_policy(root_text: str, methods: frozenset[str]) -> bool:
+    """Return whether the same validator chain also sets an accepted bound."""
+
+    compact = root_text.replace(" ", "").lower()
+    for method in methods:
+        for match in re.finditer(r"\." + re.escape(method) + r"\(([0-9]{1,9})[,)]", compact):
+            if int(match.group(1)) >= _MIN_ACCEPTED_LENGTH:
+                return True
+    return False
+
+
+def _object_has_strong_policy(options: list[tuple[str, Node, Node | None]], source: bytes) -> bool:
+    """Return whether another option of the same kind sets an accepted bound."""
+
+    return any(
+        number is not None and number >= _MIN_ACCEPTED_LENGTH
+        for number in (
+            _static_number(value, source) for _, _, value in options if value is not None
+        )
+    )
 
 
 def _has_length_policy(text: str) -> bool:
@@ -797,7 +824,9 @@ def _call_method(node: Node, source: bytes) -> str | None:
     if function is None:
         return None
     if function.type in {"member_expression", "subscript_expression"}:
-        property_node = function.child_by_field_name("property") or function.child_by_field_name("index")
+        property_node = function.child_by_field_name("property") or function.child_by_field_name(
+            "index"
+        )
         if property_node is not None:
             return _property_name(property_node, source)
     compact = _compact_text(source, function)
@@ -833,7 +862,9 @@ def _first_numeric_node(node: Node, source: bytes, keys: frozenset[str]) -> Node
     return value_node
 
 
-def _option_number(node: Node, source: bytes, keys: frozenset[str]) -> tuple[int | None, Node | None]:
+def _option_number(
+    node: Node, source: bytes, keys: frozenset[str]
+) -> tuple[int | None, Node | None]:
     arguments = node.child_by_field_name("arguments")
     if arguments is None:
         return None, None
@@ -890,7 +921,11 @@ def _property_name(node: Node, source: bytes) -> str | None:
 
 def _compact_text(source: bytes, node: Node) -> str:
     try:
-        return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict").replace("\n", "")
+        return (
+            source[node.start_byte : node.end_byte]
+            .decode("utf-8", errors="strict")
+            .replace("\n", "")
+        )
     except UnicodeDecodeError:
         raise EcmaScriptCwe521ScanError(EcmaScriptCwe521ScanErrorCode.INTEGRITY_FAILURE) from None
 

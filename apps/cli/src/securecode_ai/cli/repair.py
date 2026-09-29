@@ -201,23 +201,23 @@ def _installed_workers(
     }
 
     def fix(target: str) -> Mapping[str, Any]:
+        from securecode_ai.adapters.local_provider_gateway_server import (
+            _running_approved_gateway,
+            gateway_observation_path,
+        )
         from securecode_ai.adapters.local_repair import (
             repair_failure_receipt,
             run_local_repair_journey,
+        )
+        from securecode_ai.adapters.product_provider_runtime import (
+            load_product_provider_runtime,
         )
 
         from .scan import (
             ProductScanArguments,
             _execute_installed_product_scan,
-            load_installed_product_host,
             _remote_provider_requested,
-        )
-        from securecode_ai.adapters.product_provider_runtime import (
-            load_product_provider_runtime,
-        )
-        from securecode_ai.adapters.local_provider_gateway_server import (
-            _running_approved_gateway,
-            gateway_observation_path,
+            load_installed_product_host,
         )
 
         try:
@@ -405,9 +405,7 @@ def render_receipt(receipt: RepairReceipt, report_format: RepairFormat) -> bytes
         audit = _repair_audit_fields(receipt.metadata)
         if audit:
             rendered += "\n## Repaired audit\n\n"
-            rendered += "".join(
-                f"- {key}: {_md(value)}\n" for key, value in audit.items()
-            )
+            rendered += "".join(f"- {key}: {_md(value)}\n" for key, value in audit.items())
         return rendered.encode()
     rendered_html = (
         '<!doctype html><meta charset="utf-8"><title>SecureCode AI operation</title><h1>SecureCode AI operation</h1><dl><dt>command</dt><dd>'

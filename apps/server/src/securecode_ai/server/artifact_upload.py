@@ -17,11 +17,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final, Protocol, cast
 
-from .filesystem_paths import lexical_absolute_path
 from .artifact_tenant_namespace import (
     ArtifactTenantNamespaceError,
     artifact_tenant_path_component,
 )
+from .filesystem_paths import lexical_absolute_path
 from .residency_registry import ResidencyConflict, ResidencyDecision, ResidencyGuard
 from .worker_artifact_authorization import (
     ArtifactAuthorizationDenied,
@@ -184,9 +184,7 @@ class ArtifactUploadReceipt:
         stored_at = _utc(self.stored_at, rejected=False)
         if not authorized_at < expires_at or not authorized_at <= stored_at < expires_at:
             raise ValueError("artifact upload receipt interval is invalid")
-        expected_key = "/".join(
-            (self.tenant_id, self.content_sha256[:2], self.content_sha256)
-        )
+        expected_key = "/".join((self.tenant_id, self.content_sha256[:2], self.content_sha256))
         if self.object_key != expected_key:
             raise ValueError("artifact upload receipt object key is invalid")
 
@@ -393,19 +391,15 @@ def purge_orphaned_artifact_objects(
                 break
             if shard.name.startswith("."):
                 continue
-            if (
-                len(shard.name) != 2
-                or any(character not in _HEX_CHARS for character in shard.name)
-            ):
+            if len(shard.name) != 2 or any(character not in _HEX_CHARS for character in shard.name):
                 raise ArtifactUploadConflict()
             _assert_plain_directory(shard)
             for target in shard.iterdir():
                 if removed >= max_items:
                     break
                 if target.name.startswith("."):
-                    if (
-                        target.name.startswith(_ORPHAN_STAGE_PREFIXES)
-                        and _orphan_stage_past_grace(target, now=cleanup_now)
+                    if target.name.startswith(_ORPHAN_STAGE_PREFIXES) and _orphan_stage_past_grace(
+                        target, now=cleanup_now
                     ):
                         _remove_orphan_stage(target)
                         removed += 1
@@ -477,9 +471,7 @@ def _orphan_past_grace(
 ) -> bool:
     receipt_raw = _read_regular(target / "receipt.json", _RECEIPT_LIMIT)
     try:
-        document = json.loads(
-            receipt_raw.decode("ascii"), object_pairs_hook=_unique_object_pairs
-        )
+        document = json.loads(receipt_raw.decode("ascii"), object_pairs_hook=_unique_object_pairs)
     except (UnicodeError, json.JSONDecodeError, TypeError, ValueError, RecursionError):
         raise ArtifactUploadConflict() from None
     if type(document) is not dict:
@@ -515,7 +507,7 @@ def _orphan_without_references(
 def _remove_orphan_object(target: Path) -> None:
     _assert_plain_directory(target)
     entries = {entry.name: entry for entry in target.iterdir()}
-    if not entries.issubset({"payload", "receipt.json", "authorizations"}):
+    if not entries.keys() <= {"payload", "receipt.json", "authorizations"}:
         raise ArtifactUploadConflict()
     authorizations = entries.get("authorizations")
     authorization_receipts: list[tuple[Path, Path]] = []
@@ -772,7 +764,7 @@ def _parse_receipt(document: Mapping[str, object]) -> ArtifactUploadReceipt:
         raise ArtifactUploadConflict()
     try:
         return ArtifactUploadReceipt(
-            schema_version=cast(int, document["schema_version"]),
+            schema_version=document["schema_version"],
             authorization_id=cast(str, document["authorization_id"]),
             tenant_id=cast(str, document["tenant_id"]),
             worker_id=cast(str, document["worker_id"]),
@@ -781,7 +773,7 @@ def _parse_receipt(document: Mapping[str, object]) -> ArtifactUploadReceipt:
             execution_identity_hash=cast(str, document["execution_identity_hash"]),
             content_id=cast(str, document["content_id"]),
             content_sha256=cast(str, document["content_sha256"]),
-            size_bytes=cast(int, document["size_bytes"]),
+            size_bytes=document["size_bytes"],
             data_class=cast(str, document["data_class"]),
             purpose=cast(str, document["purpose"]),
             signer_key_id=cast(str, document["signer_key_id"]),

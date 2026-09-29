@@ -579,7 +579,9 @@ def _scan_statements(
 
         _scan_statement_calls(statement, aliases, flows, source, line_starts, limits, output)
         if isinstance(statement, ast.Return) and statement.value is not None:
-            _record_html_return(statement.value, aliases, flows, source, line_starts, limits, output)
+            _record_html_return(
+                statement.value, aliases, flows, source, line_starts, limits, output
+            )
         _record_assignment(statement, aliases, flows, source, line_starts, limits)
         _record_scope_bindings(statement, aliases, flows)
 
@@ -787,9 +789,7 @@ def _record_call(
         return
     sink_range = _node_range(call, source, line_starts)
     for argument in _sink_arguments(call, sink):
-        source_flows = _resolve_flows(
-            argument, aliases, flows, source, line_starts, limits, 0
-        )
+        source_flows = _resolve_flows(argument, aliases, flows, source, line_starts, limits, 0)
         for flow in source_flows:
             if not sink_range.contains(flow.source):
                 raise PythonCwe79ScanError(PythonCwe79ScanErrorCode.INTEGRITY_FAILURE)
@@ -832,14 +832,18 @@ def _sink_for_callable(
     if canonical.endswith(".render") and (
         canonical.startswith("jinja2.") or canonical.startswith("markupsafe.")
     ):
-        return _Sink(PythonCwe79Operation.TEMPLATE_RENDER, all_arguments=True, detail=_DETAIL_TEMPLATE)
+        return _Sink(
+            PythonCwe79Operation.TEMPLATE_RENDER, all_arguments=True, detail=_DETAIL_TEMPLATE
+        )
     return None
 
 
 def _sink_arguments(call: ast.Call, sink: _Sink) -> tuple[ast.expr, ...]:
     if sink.all_arguments:
         return (*call.args, *(item.value for item in call.keywords))
-    positional = tuple(call.args[index] for index in sink.argument_indices if index < len(call.args))
+    positional = tuple(
+        call.args[index] for index in sink.argument_indices if index < len(call.args)
+    )
     named = tuple(item.value for item in call.keywords if item.arg in sink.argument_names)
     return (*positional, *named)
 
@@ -913,9 +917,7 @@ def _resolve_flows(
     return ()
 
 
-def _dedupe_flows(
-    flows: Iterable[_Flow], limits: PythonCwe79ScanLimits
-) -> tuple[_Flow, ...]:
+def _dedupe_flows(flows: Iterable[_Flow], limits: PythonCwe79ScanLimits) -> tuple[_Flow, ...]:
     unique: dict[tuple[int, int], _Flow] = {}
     for flow in flows:
         unique[(flow.source.start_byte, flow.source.end_byte)] = flow
@@ -949,8 +951,10 @@ def _source_range(
 def _is_source_root(canonical: str | None) -> bool:
     if canonical is None:
         return False
-    return canonical in _REQUEST_ROOTS or canonical.endswith(".request") or canonical.endswith(
-        ".Request"
+    return (
+        canonical in _REQUEST_ROOTS
+        or canonical.endswith(".request")
+        or canonical.endswith(".Request")
     )
 
 
@@ -965,9 +969,7 @@ def _is_source_access_call(canonical: str) -> bool:
     base, _, method = canonical.rpartition(".")
     if _is_source_root(base) and method in _REQUEST_ACCESS_METHODS:
         return True
-    if _is_source_container(base) and method in _CONTAINER_ACCESS_METHODS:
-        return True
-    return False
+    return bool(_is_source_container(base) and method in _CONTAINER_ACCESS_METHODS)
 
 
 def _canonical_reference(
@@ -1009,7 +1011,9 @@ def _record_imports(statement: ast.Import, aliases: dict[str, str | None]) -> No
 def _record_import_from(statement: ast.ImportFrom, aliases: dict[str, str | None]) -> None:
     module = statement.module or ""
     known: dict[str, frozenset[str]] = {
-        "flask": frozenset({"request", "render_template", "render_template_string", "make_response", "Response"}),
+        "flask": frozenset(
+            {"request", "render_template", "render_template_string", "make_response", "Response"}
+        ),
         "django.shortcuts": frozenset({"render"}),
         "django.http": frozenset({"HttpResponse"}),
         "django.template.loader": frozenset({"render_to_string"}),
@@ -1290,9 +1294,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

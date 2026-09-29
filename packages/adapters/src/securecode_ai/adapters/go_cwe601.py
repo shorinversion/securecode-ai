@@ -379,7 +379,9 @@ def scan_go_cwe601(
                             allowed,
                         ):
                             if not flow.sanitized:
-                                raw.add((flow.source, _range(sink), GoCwe601Operation.LOCATION_HEADER))
+                                raw.add(
+                                    (flow.source, _range(sink), GoCwe601Operation.LOCATION_HEADER)
+                                )
                 if node.type != "call_expression":
                     continue
                 sink_info = _sink_for_call(node, source, imports, header_aliases)
@@ -522,7 +524,7 @@ def _sink_for_call(
     arguments = node.child_by_field_name("arguments")
     if function is None or arguments is None or function.type != "selector_expression":
         return None
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     if not values:
         return None
     operand = function.child_by_field_name("operand")
@@ -556,12 +558,12 @@ def _location_header_assignment(
     right = node.child_by_field_name("right")
     if left is None or right is None:
         return None
-    left_values = left.named_children if left.type == "expression_list" else (left,)
-    right_values = right.named_children if right.type == "expression_list" else (right,)
+    left_values = tuple(left.named_children) if left.type == "expression_list" else (left,)
+    right_values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     for target, value in zip(left_values, right_values, strict=False):
         if target.type != "index_expression":
             continue
-        values = target.named_children
+        values = tuple(target.named_children)
         if len(values) < 2:
             continue
         header_name = _literal_text(source, values[-1])
@@ -599,15 +601,15 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     for name, value in zip(names, values, strict=False):
@@ -676,7 +678,7 @@ def _resolve(
         arguments = node.child_by_field_name("arguments")
         if arguments is None:
             return ()
-        values = arguments.named_children
+        values = tuple(arguments.named_children)
         qualified = _qualified_call(function, source, imports)
         if _is_allowlist_sanitizer(function, source):
             flows = (
@@ -696,7 +698,11 @@ def _resolve(
             )
             return _dedupe_flows((_Flow(flow.source, True) for flow in flows), limits)
         if qualified in {f"url.{item}" for item in _URL_PARSERS}:
-            values = values[:1] if qualified == "url.Parse" or qualified == "url.ParseRequestURI" else values
+            values = (
+                values[:1]
+                if qualified == "url.Parse" or qualified == "url.ParseRequestURI"
+                else values
+            )
         elif qualified == "fmt.Sprintf":
             values = values[1:]
         elif qualified not in {f"url.{item}" for item in _URL_PARSERS} and qualified not in {
@@ -705,7 +711,11 @@ def _resolve(
             if function is not None and function.type == "selector_expression":
                 field = function.child_by_field_name("field")
                 operand = function.child_by_field_name("operand")
-                if field is not None and _text(source, field) in _URL_METHODS and operand is not None:
+                if (
+                    field is not None
+                    and _text(source, field) in _URL_METHODS
+                    and operand is not None
+                ):
                     return _resolve(
                         operand,
                         environment,
@@ -834,9 +844,9 @@ def _allowlist_guards(scope: Node, source: bytes) -> tuple[_Guard, ...]:
         if not names or not looks_like_allowlist:
             continue
         guards.append(_Guard(body.start_byte, body.end_byte, names))
-        if "!" in compact and _contains_return(body):
-            guards.append(_Guard(node.end_byte, scope.end_byte, names))
-        elif "!=" in compact and _contains_return(body):
+        if ("!" in compact and _contains_return(body)) or (
+            "!=" in compact and _contains_return(body)
+        ):
             guards.append(_Guard(node.end_byte, scope.end_byte, names))
     return tuple(guards)
 
@@ -1011,12 +1021,12 @@ Cwe601Signal = GoCwe601Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE601_SCAN_LIMITS",
     "Cwe601ScanError",
     "Cwe601ScanErrorCode",
     "Cwe601ScanLimits",
     "Cwe601ScanResult",
     "Cwe601Signal",
-    "DEFAULT_GO_CWE601_SCAN_LIMITS",
     "GoCwe601Operation",
     "GoCwe601ScanError",
     "GoCwe601ScanErrorCode",

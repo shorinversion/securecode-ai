@@ -438,9 +438,7 @@ def scan_go_cwe306(
             continue
         if not _is_critical_scope(scope, source, critical_targets):
             continue
-        if _has_auth_evidence(scope, source, imports) or _auth_wrapped_route(
-            scope, source
-        ):
+        if _has_auth_evidence(scope, source, imports) or _auth_wrapped_route(scope, source):
             continue
         for call in _scope_preorder(scope):
             operation = _critical_operation(call, source, imports)
@@ -581,9 +579,7 @@ def _is_http_handler(scope: Node, source: bytes, imports: dict[str, str]) -> boo
     )
 
 
-def _is_critical_scope(
-    scope: Node, source: bytes, critical_targets: frozenset[str]
-) -> bool:
+def _is_critical_scope(scope: Node, source: bytes, critical_targets: frozenset[str]) -> bool:
     name_node = scope.child_by_field_name("name")
     if name_node is not None:
         name = _compact_text(source, name_node)
@@ -602,9 +598,7 @@ def _critical_route_targets(root: Node, source: bytes) -> frozenset[str]:
         if function is None or arguments is None:
             continue
         method = _call_name(function, source).rsplit(".", 1)[-1].lower()
-        if method not in _ROUTE_METHODS or not _arguments_have_critical_route(
-            arguments, source
-        ):
+        if method not in _ROUTE_METHODS or not _arguments_have_critical_route(arguments, source):
             continue
         for candidate in _preorder(arguments):
             if candidate.type in {"identifier", "field_identifier"}:
@@ -632,8 +626,7 @@ def _critical_route_ancestor(scope: Node, source: bytes) -> bool:
             if (
                 function is not None
                 and arguments is not None
-                and _call_name(function, source).rsplit(".", 1)[-1].lower()
-                in _ROUTE_METHODS
+                and _call_name(function, source).rsplit(".", 1)[-1].lower() in _ROUTE_METHODS
                 and _arguments_have_critical_route(arguments, source)
             ):
                 return True
@@ -652,8 +645,7 @@ def _auth_wrapped_route(scope: Node, source: bytes) -> bool:
             if function is not None and arguments is not None:
                 method = _call_name(function, source).rsplit(".", 1)[-1].lower()
                 if method in _ROUTE_METHODS and any(
-                    _is_auth_wrapper_node(candidate, source)
-                    for candidate in _preorder(arguments)
+                    _is_auth_wrapper_node(candidate, source) for candidate in _preorder(arguments)
                 ):
                     return True
         ancestor = ancestor.parent
@@ -672,9 +664,7 @@ def _has_auth_evidence(scope: Node, source: bytes, imports: dict[str, str]) -> b
     return False
 
 
-def _is_auth_call(
-    function: Node, call: Node, source: bytes, imports: dict[str, str]
-) -> bool:
+def _is_auth_call(function: Node, call: Node, source: bytes, imports: dict[str, str]) -> bool:
     name = _call_name(function, source)
     member = name.rsplit(".", 1)[-1].lower()
     compact_member = re.sub(r"[^a-z0-9_]", "", member)
@@ -690,9 +680,10 @@ def _is_auth_call(
         "authenticate",
     }:
         return True
-    return _is_auth_wrapper_node(function, source) and "middleware" in _compact_text(
-        source, call
-    ).lower()
+    return (
+        _is_auth_wrapper_node(function, source)
+        and "middleware" in _compact_text(source, call).lower()
+    )
 
 
 def _is_explicit_auth_condition(node: Node, source: bytes) -> bool:
@@ -713,7 +704,12 @@ def _is_explicit_auth_condition(node: Node, source: bytes) -> bool:
 
 
 def _is_auth_wrapper_node(node: Node, source: bytes) -> bool:
-    if node.type not in {"identifier", "field_identifier", "selector_expression", "call_expression"}:
+    if node.type not in {
+        "identifier",
+        "field_identifier",
+        "selector_expression",
+        "call_expression",
+    }:
         return False
     text = re.sub(r"[^a-z0-9]", "", _compact_text(source, node).lower())
     return text in _AUTH_NAME_MARKERS or any(
@@ -738,9 +734,12 @@ def _critical_operation(
         return GoCwe306Operation(file_operation)
     if package in _EXEC_PACKAGES and member in _EXEC_CALLS:
         return GoCwe306Operation.COMMAND_EXECUTION
-    if member in _SQL_MUTATION_CALLS and _has_mutating_sql_argument(call, source):
-        if not package or package in _SQL_PACKAGES or package_alias:
-            return GoCwe306Operation.DATABASE_MUTATION
+    if (
+        member in _SQL_MUTATION_CALLS
+        and _has_mutating_sql_argument(call, source)
+        and (not package or package in _SQL_PACKAGES or package_alias)
+    ):
+        return GoCwe306Operation.DATABASE_MUTATION
     return None
 
 
@@ -891,21 +890,21 @@ Cwe306Signal = GoCwe306Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE306_SCAN_LIMITS",
     "Cwe306ScanError",
     "Cwe306ScanErrorCode",
     "Cwe306ScanLimits",
     "Cwe306ScanResult",
     "Cwe306Signal",
-    "DEFAULT_GO_CWE306_SCAN_LIMITS",
     "GoCwe306Operation",
     "GoCwe306ScanError",
     "GoCwe306ScanErrorCode",
     "GoCwe306ScanLimits",
     "GoCwe306ScanResult",
     "GoCwe306Signal",
-    "scan_go_cwe306",
-    "scan_go_critical_function_authentication",
     "scan_go_critical_function",
+    "scan_go_critical_function_authentication",
+    "scan_go_cwe306",
     "scan_go_missing_authentication",
     "scan_go_unauthenticated_critical_function",
 ]

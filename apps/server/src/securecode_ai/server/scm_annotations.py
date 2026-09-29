@@ -27,7 +27,6 @@ from .artifact_read import LocalCommittedArtifactReader
 from .baseline_store import DurableBaselineStore
 from .scm_publication_store import SCMPublicationTarget
 from .worker_completion_evidence import load_verified_terminal_audit_run
-from .worker_findings import WorkerFindingRecord
 from .worker_findings_store import load_worker_findings_for_run
 
 
@@ -61,8 +60,8 @@ class GithubAnnotationReceiptResolver:
     """Project inline comments only from exact, verified, new-code findings."""
 
     __slots__ = (
-        "_artifact_root",
         "_artifact_reader",
+        "_artifact_root",
         "_authorizer",
         "_baseline_store",
         "_changed_lines",
@@ -238,13 +237,11 @@ class GithubAnnotationReceiptResolver:
                 if spans
             ),
         )
-        comparison: BaselineFingerprintComparison = (
-            self._baseline_store.compare_for_new_code_audit(
-                audit_run,
-                commit_lineage=lineage,
-                verified_finding_fingerprints=confirmed_fingerprints,
-                changed_scope=changed_scope,
-            )
+        comparison: BaselineFingerprintComparison = self._baseline_store.compare_for_new_code_audit(
+            audit_run,
+            commit_lineage=lineage,
+            verified_finding_fingerprints=confirmed_fingerprints,
+            changed_scope=changed_scope,
         )
         changed_set = set(changed_pathlines)
         changed_by_pathline: dict[tuple[str, int], GithubChangedLine] = {}

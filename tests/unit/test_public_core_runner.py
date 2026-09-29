@@ -161,6 +161,7 @@ def _remote_inputs() -> PublicCoreHostInputs:
         {
             "profile_id": "public-remote-model",
             "provider_kind": "openai_compatible_remote",
+            "protocol_framing_token_upper_bound": 8192,
             "execution_boundary": "public_external",
             "credential_ref": "env://PUBLIC_REMOTE_KEY",
             "egress_profiles": ["metadata_external"],

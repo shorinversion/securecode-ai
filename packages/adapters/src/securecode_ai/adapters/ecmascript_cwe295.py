@@ -155,9 +155,7 @@ class EcmaScriptCwe295Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is EcmaScriptCwe295Operation
+            if valid_identity and valid_ranges and type(self.operation) is EcmaScriptCwe295Operation
             else None
         )
         signal_id = self.signal_id or expected
@@ -288,9 +286,7 @@ def scan_javascript_cwe295(
 ) -> EcmaScriptCwe295ScanResult:
     """Find bounded JavaScript TLS-validation bypass facts."""
 
-    return _scan_ecmascript_cwe295(
-        symbol_index, expected_language="javascript", limits=limits
-    )
+    return _scan_ecmascript_cwe295(symbol_index, expected_language="javascript", limits=limits)
 
 
 def scan_typescript_cwe295(
@@ -300,9 +296,7 @@ def scan_typescript_cwe295(
 ) -> EcmaScriptCwe295ScanResult:
     """Find bounded TypeScript TLS-validation bypass facts."""
 
-    return _scan_ecmascript_cwe295(
-        symbol_index, expected_language="typescript", limits=limits
-    )
+    return _scan_ecmascript_cwe295(symbol_index, expected_language="typescript", limits=limits)
 
 
 def scan_ecmascript_cwe295(
@@ -360,20 +354,14 @@ def _scan_ecmascript_cwe295(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe295ScanError(
-            EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe295ScanError(
-            EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE) from None
 
     try:
         nodes = _bounded_nodes(root, limits)
         if any(node.type == "ERROR" or node.is_missing for node in nodes):
-            raise EcmaScriptCwe295ScanError(
-                EcmaScriptCwe295ScanErrorCode.ANALYSIS_UNAVAILABLE
-            )
+            raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.ANALYSIS_UNAVAILABLE)
         aliases = _collect_aliases(nodes, source)
         raw: set[tuple[SourceRange, SourceRange, EcmaScriptCwe295Operation]] = set()
         for node in nodes:
@@ -400,9 +388,7 @@ def _scan_ecmascript_cwe295(
     except EcmaScriptCwe295ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe295ScanError(
-            EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE) from None
 
     if len(ordered) > limits.max_signals:
         raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.SIGNAL_LIMIT)
@@ -461,9 +447,17 @@ def _pair_fact(
             return None
         if _is_direct_server_option(node, source, aliases):
             return None
-        return _range(value), _enclosing_sink(node), EcmaScriptCwe295Operation.REJECT_UNAUTHORIZED_FALSE
+        return (
+            _range(value),
+            _enclosing_sink(node),
+            EcmaScriptCwe295Operation.REJECT_UNAUTHORIZED_FALSE,
+        )
     if key_name == _TLS_ENV_NAME and _is_zero_literal(value, source):
-        return _range(value), _enclosing_sink(node), EcmaScriptCwe295Operation.NODE_TLS_REJECT_UNAUTHORIZED_ZERO
+        return (
+            _range(value),
+            _enclosing_sink(node),
+            EcmaScriptCwe295Operation.NODE_TLS_REJECT_UNAUTHORIZED_ZERO,
+        )
     return None
 
 
@@ -544,9 +538,7 @@ def _is_tls_environment(node: Node, source: bytes, aliases: dict[str, str]) -> b
         "Deno.env.NODE_TLS_REJECT_UNAUTHORIZED",
     }:
         return True
-    return canonical is not None and canonical.endswith(
-        f".env.{_TLS_ENV_NAME}"
-    )
+    return canonical is not None and canonical.endswith(f".env.{_TLS_ENV_NAME}")
 
 
 def _bounded_nodes(root: Node, limits: EcmaScriptCwe295ScanLimits) -> tuple[Node, ...]:
@@ -735,18 +727,14 @@ def _string_value(node: Node, source: bytes) -> str | None:
     try:
         return value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe295ScanError(
-            EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe295ScanError(
-            EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe295ScanError(EcmaScriptCwe295ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -797,9 +785,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -833,9 +819,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

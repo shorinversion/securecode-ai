@@ -1223,14 +1223,18 @@ def _html_report(manifest: dict[str, Any]) -> str:
 def _unified_patch(path: str, old: bytes, new: bytes) -> str:
     import difflib
 
-    return "".join(
-        difflib.unified_diff(
-            old.decode("utf-8").splitlines(keepends=True),
-            new.decode("utf-8").splitlines(keepends=True),
-            fromfile=f"a/{path}",
-            tofile=f"b/{path}",
-        )
-    )
+    lines: list[str] = []
+    for line in difflib.unified_diff(
+        old.decode("utf-8").splitlines(keepends=True),
+        new.decode("utf-8").splitlines(keepends=True),
+        fromfile=f"a/{path}",
+        tofile=f"b/{path}",
+    ):
+        if line.endswith("\n"):
+            lines.append(line)
+        else:
+            lines.append(line + "\n\\ No newline at end of file\n")
+    return "".join(lines)
 
 
 def _parse_unified_patch(value: str) -> tuple[str, bytes, bytes] | None:
@@ -1252,13 +1256,25 @@ def _parse_unified_patch(value: str) -> tuple[str, bytes, bytes] | None:
         return None
     old_lines: list[str] = []
     new_lines: list[str] = []
+    previous = ""
     for line in lines[3:]:
+        if line.startswith("\\ No newline at end of file"):
+            # The marker strips the line terminator of the line right before it.
+            if previous in {" ", "-"}:
+                old_lines[-1] = old_lines[-1].rstrip("\r\n")
+            if previous in {" ", "+"}:
+                new_lines[-1] = new_lines[-1].rstrip("\r\n")
+            if not previous:
+                return None
+            previous = ""
+            continue
         if not line or line[0] not in {" ", "+", "-"}:
             return None
         if line[0] in {" ", "-"}:
             old_lines.append(line[1:])
         if line[0] in {" ", "+"}:
             new_lines.append(line[1:])
+        previous = line[0]
     old, new = "".join(old_lines).encode("utf-8"), "".join(new_lines).encode("utf-8")
     if not old or old == new:
         return None
@@ -1289,8 +1305,11 @@ def _recover_single_line_model_patch(
     safe = [line for line in additions if _is_parameterized_execute_line(line)]
     if not safe:
         safe = [
-            line.rstrip("\r\n")
-            for line in value.splitlines(keepends=True)
+            line
+            for line in (
+                _strip_echoed_line_number(item.rstrip("\r\n"), row)
+                for item in value.splitlines(keepends=True)
+            )
             if _is_parameterized_execute_line(line)
         ]
     if len(safe) != 1:
@@ -1302,10 +1321,19 @@ def _recover_single_line_model_patch(
     if row > len(source_lines):
         return None
     old = source_lines[row - 1]
-    newline = b"\r\n" if old.endswith(b"\r\n") else b"\n"
+    newline = b"\r\n" if old.endswith(b"\r\n") else b"\n" if old.endswith(b"\n") else b""
     indentation = old[: len(old) - len(old.lstrip())]
     new = indentation + safe[0].lstrip().encode("utf-8") + newline
     return path, old, new
+
+
+def _strip_echoed_line_number(line: str, row: int) -> str:
+    """Drop the ``NNNN|`` snapshot prefix a model may echo, only for the anchored row."""
+
+    number, separator, rest = line.partition("|")
+    if separator and number.isdigit() and int(number) == row:
+        return rest
+    return line
 
 
 def _parse_model_replacement(
@@ -1343,7 +1371,7 @@ def _parse_model_replacement(
     if row < 1 or row > len(source_lines):
         return None
     old = source_lines[row - 1]
-    newline = b"\r\n" if old.endswith(b"\r\n") else b"\n"
+    newline = b"\r\n" if old.endswith(b"\r\n") else b"\n" if old.endswith(b"\n") else b""
     indentation = old[: len(old) - len(old.lstrip())]
     new = indentation + replacement.lstrip().encode("utf-8") + newline
     return path, old, new

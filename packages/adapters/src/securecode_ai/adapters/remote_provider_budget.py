@@ -219,10 +219,12 @@ class RemoteProviderSpendPolicy:
             or type(self.max_cost_microunits_per_window) is not int
             or not 1 <= self.max_cost_microunits_per_window <= _MAX_POLICY_COST_MICROUNITS
             or type(self.input_cost_microunits_per_million_tokens) is not int
-            or not 0 <= self.input_cost_microunits_per_million_tokens
+            or not 0
+            <= self.input_cost_microunits_per_million_tokens
             <= _MAX_RATE_MICROUNITS_PER_MILLION
             or type(self.output_cost_microunits_per_million_tokens) is not int
-            or not 0 <= self.output_cost_microunits_per_million_tokens
+            or not 0
+            <= self.output_cost_microunits_per_million_tokens
             <= _MAX_RATE_MICROUNITS_PER_MILLION
             or self.input_cost_microunits_per_million_tokens
             + self.output_cost_microunits_per_million_tokens
@@ -263,9 +265,7 @@ def remote_provider_pricing_pin(
         or not 0 <= input_cost_microunits_per_million_tokens <= _MAX_RATE_MICROUNITS_PER_MILLION
         or type(output_cost_microunits_per_million_tokens) is not int
         or not 0 <= output_cost_microunits_per_million_tokens <= _MAX_RATE_MICROUNITS_PER_MILLION
-        or input_cost_microunits_per_million_tokens
-        + output_cost_microunits_per_million_tokens
-        == 0
+        or input_cost_microunits_per_million_tokens + output_cost_microunits_per_million_tokens == 0
     ):
         raise RemoteProviderBudgetError("INVALID_STATE")
     canonical = b"\x00".join(
@@ -283,7 +283,7 @@ def remote_provider_pricing_pin(
 @dataclass(slots=True)
 class _Event:
     lease_id: str
-    request_key: tuple[str, str, str, str, int]
+    request_key: tuple[str, str, str, int]
     timestamp_ms: int
     tokens: int
     cost_microunits: int
@@ -347,9 +347,7 @@ class InMemoryRemoteProviderBudget:
             if self._event_count >= _MAX_TOTAL_EVENTS:
                 raise RemoteProviderBudgetError("LIMIT_EXCEEDED")
             active = sum(
-                event.slot_active
-                for event in self._leases.values()
-                if event.request_key[1:3] == key
+                event.slot_active for event in self._leases.values() if event.request_key[:2] == key
             )
             if active >= policy.max_concurrent_calls:
                 raise RemoteProviderBudgetError("LIMIT_EXCEEDED")
@@ -429,9 +427,7 @@ class InMemoryRemoteProviderBudget:
             ):
                 raise RemoteProviderBudgetError(
                     "LIMIT_EXCEEDED",
-                    cost_receipt=_cost_receipt(
-                        lease, actual_cost, maximum_charged=False
-                    ),
+                    cost_receipt=_cost_receipt(lease, actual_cost, maximum_charged=False),
                 )
             return _cost_receipt(lease, actual_cost, maximum_charged=False)
 
@@ -513,9 +509,7 @@ class InMemoryRemoteProviderBudget:
         event.replay_blocked = replay_blocked
         self._leases.pop(event.lease_id, None)
 
-    def _prune(
-        self, key: tuple[str, str], now_ms: int, policy: RemoteProviderSpendPolicy
-    ) -> None:
+    def _prune(self, key: tuple[str, str], now_ms: int, policy: RemoteProviderSpendPolicy) -> None:
         for event in self._events[key]:
             if event.slot_active and event.slot_expires_at_ms <= now_ms:
                 self._settle_maximum(event, replay_blocked=True)
@@ -578,9 +572,9 @@ __all__ = [
     "RemoteProviderBudgetPort",
     "RemoteProviderCallContext",
     "RemoteProviderCostReceipt",
-    "remote_provider_pricing_pin",
     "RemoteProviderSpendLease",
     "RemoteProviderSpendPolicy",
     "RemoteProviderSpendRequest",
     "RemoteProviderSpendUsage",
+    "remote_provider_pricing_pin",
 ]

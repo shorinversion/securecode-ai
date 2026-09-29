@@ -235,9 +235,7 @@ class GoCwe307Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is GoCwe307Operation
+            if valid_identity and valid_ranges and type(self.operation) is GoCwe307Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -518,9 +516,7 @@ def _is_login_scope(
         return True
     if _literal_route_login(scope, source, imports):
         return True
-    if name_node is not None and _compact_text(source, name_node) in limited_routes:
-        return True
-    return False
+    return bool(name_node is not None and _compact_text(source, name_node) in limited_routes)
 
 
 def _authentication_call(scope: Node, source: bytes, imports: dict[str, str]) -> Node | None:
@@ -616,9 +612,8 @@ def _literal_route_login(scope: Node, source: bytes, imports: dict[str, str]) ->
             arguments = ancestor.child_by_field_name("arguments")
             if function is not None and arguments is not None:
                 name = _call_name(function, source)
-                if (
-                    name.rsplit(".", 1)[-1].lower() in _ROUTE_METHODS
-                    and _route_has_login_literal(arguments, source)
+                if name.rsplit(".", 1)[-1].lower() in _ROUTE_METHODS and _route_has_login_literal(
+                    arguments, source
                 ):
                     return True
         ancestor = ancestor.parent
@@ -671,9 +666,10 @@ def _route_has_limiter_marker(node: Node, source: bytes, imports: dict[str, str]
                 _call_name(function, source), imports, source, function
             ):
                 return True
-        if child.type in {"identifier", "field_identifier"}:
-            if _contains_limiter_word(_text(source, child)):
-                return True
+        if child.type in {"identifier", "field_identifier"} and _contains_limiter_word(
+            _text(source, child)
+        ):
+            return True
     return False
 
 
@@ -707,9 +703,8 @@ def _password_context(node: Node, source: bytes) -> bool:
 
 
 def _is_password_verifier_name(member: str) -> bool:
-    return (
-        any(marker in member for marker in ("password", "credential"))
-        and any(marker in member for marker in ("check", "compare", "validate", "verify", "auth"))
+    return any(marker in member for marker in ("password", "credential")) and any(
+        marker in member for marker in ("check", "compare", "validate", "verify", "auth")
     )
 
 
@@ -726,17 +721,14 @@ def _is_login_name(value: str) -> bool:
         "func",
     )
     return compact in _LOGIN_WORDS or any(
-        compact.startswith(f"{word}{suffix}")
-        for word in _LOGIN_WORDS
-        for suffix in suffixes
+        compact.startswith(f"{word}{suffix}") for word in _LOGIN_WORDS for suffix in suffixes
     )
 
 
 def _contains_limiter_word(value: str) -> bool:
     compact = re.sub(r"[^a-z0-9]", "", value.lower())
     return compact in _LIMITER_WORDS or any(
-        marker in compact
-        for marker in ("ratelimit", "limiter", "quota", "throttle", "tokenbucket")
+        marker in compact for marker in ("ratelimit", "limiter", "quota", "throttle", "tokenbucket")
     )
 
 
@@ -866,12 +858,12 @@ Cwe307Signal = GoCwe307Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE307_SCAN_LIMITS",
     "Cwe307ScanError",
     "Cwe307ScanErrorCode",
     "Cwe307ScanLimits",
     "Cwe307ScanResult",
     "Cwe307Signal",
-    "DEFAULT_GO_CWE307_SCAN_LIMITS",
     "GoCwe307Operation",
     "GoCwe307ScanError",
     "GoCwe307ScanErrorCode",

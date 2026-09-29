@@ -36,8 +36,7 @@ _FORBIDDEN_PAYLOAD_KEYS: Final = frozenset(
     }
 )
 _NORMALIZED_FORBIDDEN_PAYLOAD_KEYS: Final = frozenset(
-    key.casefold().replace("_", "").replace("-", "")
-    for key in _FORBIDDEN_PAYLOAD_KEYS
+    key.casefold().replace("_", "").replace("-", "") for key in _FORBIDDEN_PAYLOAD_KEYS
 )
 
 ASSURANCE_SCHEMA_STATEMENTS: Final = (

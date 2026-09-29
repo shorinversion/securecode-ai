@@ -32,9 +32,7 @@ _PURPOSES: Final = frozenset(
 _IDENTIFIER: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}\Z")
 _IDEMPOTENCY_KEY: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
 _SHA256: Final = re.compile(r"[0-9a-f]{64}\Z")
-_ARTIFACT_AUTHORIZATION_PURGE_SAVEPOINT: Final = (
-    "securecode_artifact_authorization_purge"
-)
+_ARTIFACT_AUTHORIZATION_PURGE_SAVEPOINT: Final = "securecode_artifact_authorization_purge"
 _MAX_PURGE_ITEMS: Final = 256
 
 
@@ -482,9 +480,8 @@ class SqliteArtifactAuthorizationStore:
         purpose: str,
         request_sha256: str | None,
     ) -> ArtifactUploadAuthorization:
-        if (
-            not _valid_identifier(repository_id)
-            or (request_sha256 is not None and not _valid_digest(request_sha256))
+        if not _valid_identifier(repository_id) or (
+            request_sha256 is not None and not _valid_digest(request_sha256)
         ):
             raise ArtifactAuthorizationDenied()
         row = self._connection.execute(
@@ -521,12 +518,8 @@ class SqliteArtifactAuthorizationStore:
         ):
             raise ArtifactAuthorizationDenied()
         stored_request_sha256 = row["request_sha256"]
-        if (
-            not _valid_digest(stored_request_sha256)
-            or (
-                request_sha256 is not None
-                and stored_request_sha256 != request_sha256
-            )
+        if not _valid_digest(stored_request_sha256) or (
+            request_sha256 is not None and stored_request_sha256 != request_sha256
         ):
             raise ArtifactAuthorizationDenied()
         self._verify(authorization)
@@ -892,9 +885,7 @@ def _active_session_matches(
 
 
 def _session_authorization_key(session_id: str, content_sha256: str, purpose: str) -> str:
-    material = "\x00".join(
-        ("authorize", session_id, content_sha256, purpose)
-    ).encode("utf-8")
+    material = "\x00".join(("authorize", session_id, content_sha256, purpose)).encode("utf-8")
     return "worker-" + hashlib.sha256(material).hexdigest()
 
 
@@ -904,9 +895,9 @@ __all__ = [
     "ArtifactUploadAuthorization",
     "ArtifactUploadUrlFactory",
     "HmacSha256ArtifactReceiptSigner",
-    "has_expired_artifact_authorizations",
-    "purge_expired_artifact_authorizations",
     "SignedArtifactAuthorizationHandler",
     "SqliteArtifactAuthorizationStore",
     "StaticArtifactUploadUrlFactory",
+    "has_expired_artifact_authorizations",
+    "purge_expired_artifact_authorizations",
 ]

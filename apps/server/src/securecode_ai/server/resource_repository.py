@@ -630,15 +630,9 @@ class ResourceRepository:
         row: sqlite3.Row,
         now_ms: int,
     ) -> bool:
-        if (
-            row["admission_state"] == "RESERVED"
-            and row["audit_state"] == "ADMISSION_PENDING"
-        ):
+        if row["admission_state"] == "RESERVED" and row["audit_state"] == "ADMISSION_PENDING":
             return ResourceRepository._reconcile_expired_pending(cursor, row, now_ms)
-        if (
-            row["admission_state"] != "ADMITTED"
-            or row["audit_state"] not in _ACTIVE_AUDIT_STATES
-        ):
+        if row["admission_state"] != "ADMITTED" or row["audit_state"] not in _ACTIVE_AUDIT_STATES:
             return True
         queue_terminal = row["queue_terminal"]
         if queue_terminal is not None and queue_terminal not in (0, 1):
@@ -649,15 +643,11 @@ class ResourceRepository:
         else:
             queue_version = row["queue_version"]
             if queue_version is not None and (
-                type(queue_version) is not int
-                or not 0 <= queue_version < _MAX_QUEUE_VERSION
+                type(queue_version) is not int or not 0 <= queue_version < _MAX_QUEUE_VERSION
             ):
                 return False
         audit_version = row["audit_version"]
-        if (
-            type(audit_version) is not int
-            or not 0 <= audit_version < _MAX_QUEUE_VERSION
-        ):
+        if type(audit_version) is not int or not 0 <= audit_version < _MAX_QUEUE_VERSION:
             return False
         try:
             timestamp = datetime.fromtimestamp(now_ms / 1000, UTC).isoformat()
@@ -709,15 +699,11 @@ class ResourceRepository:
         else:
             queue_version = row["queue_version"]
             if queue_version is not None and (
-                type(queue_version) is not int
-                or not 0 <= queue_version < _MAX_QUEUE_VERSION
+                type(queue_version) is not int or not 0 <= queue_version < _MAX_QUEUE_VERSION
             ):
                 return False
         audit_version = row["audit_version"]
-        if (
-            type(audit_version) is not int
-            or not 0 <= audit_version < _MAX_QUEUE_VERSION
-        ):
+        if type(audit_version) is not int or not 0 <= audit_version < _MAX_QUEUE_VERSION:
             return False
         try:
             timestamp = datetime.fromtimestamp(now_ms / 1000, UTC).isoformat()
@@ -779,9 +765,7 @@ class ResourceRepository:
         return row is not None
 
     def has_expired_any(self, *, now_ms: int, tenant_id: str | None = None) -> bool:
-        if not bounded_nonnegative(now_ms) or (
-            tenant_id is not None and not identifier(tenant_id)
-        ):
+        if not bounded_nonnegative(now_ms) or (tenant_id is not None and not identifier(tenant_id)):
             _reject(ResourceGovernorErrorCode.INVALID_REQUEST)
         query = """SELECT 1 FROM resource_reservations
                    WHERE state=? AND lease_expires_at_ms<=?"""

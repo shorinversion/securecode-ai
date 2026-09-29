@@ -17,10 +17,12 @@ verdict.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TypeGuard
 
 from securecode_ai.core import ParseHealth, RepositoryFile, SourcePoint, SourceRange, SymbolIndex
 from tree_sitter import Language, Node, Parser
@@ -279,7 +281,7 @@ class EcmaScriptCwe1333ScanResult:
                 and item.path == self.path
                 and item.content_sha256 == self.content_sha256
                 and item.source_size_bytes == self.source_size_bytes
-            for item in self.signals
+                for item in self.signals
             )
             if valid_signals
             else False
@@ -321,7 +323,7 @@ class _PatternAtom:
     key: str
     start: int
     end: int
-    branches: tuple[tuple["_PatternAtom", ...], ...] = ()
+    branches: tuple[tuple[_PatternAtom, ...], ...] = ()
     minimum: int = 1
     maximum: int | None = 1
 
@@ -401,13 +403,9 @@ def _scan_ecmascript_cwe1333(
         source.decode("utf-8", errors="strict")
         root = Parser(Language(grammar)).parse(source).root_node
     except (CstAdapterError, TypeError, UnicodeDecodeError, ValueError):
-        raise EcmaScriptCwe1333ScanError(
-            EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1333ScanError(EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE) from None
     except Exception:
-        raise EcmaScriptCwe1333ScanError(
-            EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1333ScanError(EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE) from None
 
     nodes = _bounded_nodes(root, limits)
     if any(node.type == "ERROR" or node.is_missing for node in nodes):
@@ -449,9 +447,7 @@ def _scan_ecmascript_cwe1333(
     except EcmaScriptCwe1333ScanError:
         raise
     except Exception:
-        raise EcmaScriptCwe1333ScanError(
-            EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1333ScanError(EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE) from None
 
     if len(ordered) > limits.max_signals:
         raise EcmaScriptCwe1333ScanError(EcmaScriptCwe1333ScanErrorCode.SIGNAL_LIMIT)
@@ -524,7 +520,14 @@ def _node_facts(
         )
         if descriptor is None:
             return ()
-        return ((_source_for_use(values[0], node, descriptor, source), node, descriptor.operation, descriptor.risk),)
+        return (
+            (
+                _source_for_use(values[0], node, descriptor, source),
+                node,
+                descriptor.operation,
+                descriptor.risk,
+            ),
+        )
 
     function = node.child_by_field_name("function")
     arguments = node.child_by_field_name("arguments")
@@ -692,9 +695,7 @@ def _descriptor_from_node(
     }:
         children = node.named_children
         return (
-            _descriptor_from_node(
-                children[-1], source, aliases, string_aliases, limits, visited
-            )
+            _descriptor_from_node(children[-1], source, aliases, string_aliases, limits, visited)
             if children
             else None
         )
@@ -747,13 +748,24 @@ def _collect_aliases(
             continue
         if node.type not in {"variable_declarator", "assignment_expression"}:
             continue
-        left = node.child_by_field_name("name") if node.type == "variable_declarator" else node.child_by_field_name("left")
-        right = node.child_by_field_name("value") if node.type == "variable_declarator" else node.child_by_field_name("right")
+        left = (
+            node.child_by_field_name("name")
+            if node.type == "variable_declarator"
+            else node.child_by_field_name("left")
+        )
+        right = (
+            node.child_by_field_name("value")
+            if node.type == "variable_declarator"
+            else node.child_by_field_name("right")
+        )
         if left is None or right is None or left.type != "identifier":
             continue
         name = _node_text(source, left)
         static_string = _pattern_for_node(right, source, string_aliases, limits, frozenset())
-        if static_string is not None and _static_string_node(right, source, string_aliases) is not None:
+        if (
+            static_string is not None
+            and _static_string_node(right, source, string_aliases) is not None
+        ):
             string_aliases[name] = static_string
         descriptor = _descriptor_from_node(
             right, source, aliases, string_aliases, limits, frozenset()
@@ -830,7 +842,7 @@ def _canonical_name(value: str, aliases: dict[str, str | _RegexDescriptor]) -> s
     return ".".join((base, *parts[1:])) if len(parts) > 1 else base
 
 
-def _is_string_match(canonical: str | None) -> bool:
+def _is_string_match(canonical: str | None) -> TypeGuard[str]:
     return canonical is not None and (
         canonical.endswith(".match")
         or canonical.endswith(".match.call")
@@ -848,9 +860,7 @@ def _match_regex_argument(canonical: str, values: list[Node]) -> Node | None:
 
 def _is_regexp_method(canonical: str | None, name: str) -> bool:
     return canonical is not None and (
-        canonical.endswith(f".{name}")
-        or canonical.endswith(f".{name}.call")
-        or canonical == name
+        canonical.endswith(f".{name}") or canonical.endswith(f".{name}.call") or canonical == name
     )
 
 
@@ -902,7 +912,12 @@ def _pattern_for_node(
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         operator = node.child_by_field_name("operator")
-        if left is None or right is None or operator is None or _compact_text(source, operator) != "+":
+        if (
+            left is None
+            or right is None
+            or operator is None
+            or _compact_text(source, operator) != "+"
+        ):
             return None
         left_value = _pattern_for_node(left, source, string_aliases, limits, visited)
         right_value = _pattern_for_node(right, source, string_aliases, limits, visited)
@@ -922,9 +937,7 @@ def _pattern_for_node(
     return None
 
 
-def _static_string_node(
-    node: Node, source: bytes, aliases: dict[str, str]
-) -> str | None:
+def _static_string_node(node: Node, source: bytes, aliases: dict[str, str]) -> str | None:
     if node.type == "identifier":
         return aliases.get(_node_text(source, node))
     if node.type not in {"string", "string_fragment", "template_string"}:
@@ -948,9 +961,7 @@ def _decode_js_string(value: bytes) -> str | None:
     try:
         text = value.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe1333ScanError(
-            EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1333ScanError(EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE) from None
     output: list[str] = []
     index = 0
     while index < len(text):
@@ -988,9 +999,11 @@ def _decode_js_string(value: bytes) -> str | None:
                 index += 3
                 continue
         if escaped == "u":
-            if index + 1 < len(text) and text[index + 1] == "{" :
+            if index + 1 < len(text) and text[index + 1] == "{":
                 closing = text.find("}", index + 2)
-                if closing > index + 2 and re.fullmatch(r"[0-9A-Fa-f]{1,6}", text[index + 2 : closing]):
+                if closing > index + 2 and re.fullmatch(
+                    r"[0-9A-Fa-f]{1,6}", text[index + 2 : closing]
+                ):
                     output.append(chr(int(text[index + 2 : closing], 16)))
                     index = closing + 1
                     continue
@@ -1132,7 +1145,10 @@ class _PatternParser:
                     self.position += 1
                 elif self.position < len(self.pattern) and self.pattern[self.position] == "<":
                     self.position += 1
-                    if self.position < len(self.pattern) and self.pattern[self.position] in {"=", "!"}:
+                    if self.position < len(self.pattern) and self.pattern[self.position] in {
+                        "=",
+                        "!",
+                    }:
                         self.position += 1
                     else:
                         end_name = self.pattern.find(">", self.position)
@@ -1155,7 +1171,8 @@ class _PatternParser:
         if self.position >= len(self.pattern):
             return atom
         character = self.pattern[self.position]
-        minimum = maximum = 1
+        minimum = 1
+        maximum: int | None = 1
         consumed = 0
         if character == "*":
             minimum, maximum, consumed = 0, None, 1
@@ -1205,7 +1222,9 @@ def _has_nested(branch: tuple[_PatternAtom, ...]) -> bool:
 
 
 def _atom_has_nested(atom: _PatternAtom) -> bool:
-    if _unbounded(atom) and any(_has_unbounded_descendant(child) for branch in atom.branches for child in branch):
+    if _unbounded(atom) and any(
+        _has_unbounded_descendant(child) for branch in atom.branches for child in branch
+    ):
         return True
     return any(_has_nested(branch) for branch in atom.branches)
 
@@ -1217,13 +1236,12 @@ def _has_unbounded_descendant(atom: _PatternAtom) -> bool:
 
 
 def _has_ambiguous(branch: tuple[_PatternAtom, ...]) -> bool:
-    for left, right in zip(branch, branch[1:]):
+    for left, right in itertools.pairwise(branch):
         if _unbounded(left) and _unbounded(right) and _atom_overlap(left, right):
             return True
     for atom in branch:
-        if _unbounded(atom) and len(atom.branches) > 1:
-            if _branches_overlap(atom.branches):
-                return True
+        if _unbounded(atom) and len(atom.branches) > 1 and _branches_overlap(atom.branches):
+            return True
         if any(_has_ambiguous(child_branch) for child_branch in atom.branches):
             return True
     return False
@@ -1259,9 +1277,7 @@ def _atom_overlap(left: _PatternAtom, right: _PatternAtom) -> bool:
         return True
     if "class" in {left.key, right.key}:
         return True
-    if {left.key, right.key} == {"digit", "word"}:
-        return True
-    return False
+    return {left.key, right.key} == {"digit", "word"}
 
 
 def _bounded_nodes(root: Node, limits: EcmaScriptCwe1333ScanLimits) -> tuple[Node, ...]:
@@ -1299,9 +1315,7 @@ def _node_text(source: bytes, node: Node) -> str:
     try:
         return source[node.start_byte : node.end_byte].decode("utf-8", errors="strict")
     except UnicodeDecodeError:
-        raise EcmaScriptCwe1333ScanError(
-            EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE
-        ) from None
+        raise EcmaScriptCwe1333ScanError(EcmaScriptCwe1333ScanErrorCode.INTEGRITY_FAILURE) from None
 
 
 def _compact_text(source: bytes, node: Node) -> str:
@@ -1354,9 +1368,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1391,9 +1403,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

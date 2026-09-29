@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 
 from securecode_ai.adapters.local_product_host import LocalProductHost, load_local_product_host
 from securecode_ai.adapters.local_provider_gateway import (
+    GatewayBackend,
     GatewayExchangeObservation,
     GatewayNormalizationObservation,
     GatewayPolicy,
@@ -60,7 +61,7 @@ class _TenantBoundGatewayBackend:
 
     __slots__ = ("_backend", "_tenant_id")
 
-    def __init__(self, backend: object, *, tenant_id: str) -> None:
+    def __init__(self, backend: GatewayBackend, *, tenant_id: str) -> None:
         if (
             not callable(getattr(backend, "dispatch", None))
             or not isinstance(tenant_id, str)
@@ -90,11 +91,12 @@ class _TenantBoundGatewayBackend:
             return _tenant_rejection()
         dispatch = getattr(self._backend, "dispatch_with_cancellation", None)
         if callable(dispatch):
-            return dispatch(
+            reply: GatewayReply = dispatch(
                 body,
                 timeout_seconds=timeout_seconds,
                 cancellation_event=cancellation_event,
             )
+            return reply
         return self._backend.dispatch(body, timeout_seconds=timeout_seconds)
 
     def _tenant_matches(self, body: bytes) -> bool:
@@ -228,9 +230,7 @@ def _verify_runtime_binary(expected_sha256: str) -> None:
             )
             os.close(parent)
             parent = child
-        descriptor = os.open(
-            parts[-1], os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW, dir_fd=parent
-        )
+        descriptor = os.open(parts[-1], os.O_RDONLY | _O_CLOEXEC | _O_NOFOLLOW, dir_fd=parent)
         details = os.fstat(descriptor)
         if (
             not stat.S_ISREG(details.st_mode)

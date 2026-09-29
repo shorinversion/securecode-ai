@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -482,12 +483,14 @@ def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, 
             if not _is_pointer_type(type_node):
                 continue
             name_node = node.child_by_field_name("name")
-            names = name_node.named_children if name_node is not None else ()
+            names: Sequence[Node] = name_node.named_children if name_node is not None else ()
             if name_node is not None and name_node.type == "identifier":
                 names = (name_node,)
             for item in names:
                 if item.type == "identifier" and _text(source, item) not in {"_", ""}:
-                    output.setdefault(_text(source, item), _Binding(_range(node), True))
+                    output.setdefault(
+                        _text(source, item), _Binding(_text(source, item), _range(node), True)
+                    )
         elif node.type == "var_spec":
             type_node = node.child_by_field_name("type")
             if not _is_pointer_type(type_node):
@@ -504,7 +507,11 @@ def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, 
                 value = values[position] if position < len(values) else None
                 output.setdefault(
                     _text(source, item),
-                    _Binding(_range(node), not _proves_non_nil(value, source)),
+                    _Binding(
+                        _text(source, item),
+                        _range(node),
+                        not _proves_non_nil(value, source),
+                    ),
                 )
         elif node.type == "method_declaration":
             receiver = node.child_by_field_name("receiver")
@@ -518,7 +525,7 @@ def _bindings(scope: Node, source: bytes, nodes: tuple[Node, ...]) -> dict[str, 
                 if name_node is not None and name_node.type == "identifier":
                     name = _text(source, name_node)
                     if name not in {"", "_"}:
-                        output.setdefault(name, _Binding(_range(parameter), True))
+                        output.setdefault(name, _Binding(name, _range(parameter), True))
     return output
 
 
@@ -553,7 +560,10 @@ def _state_events(
             events[name].append(
                 _StateEvent(node.start_byte, _range(node), not _proves_non_nil(value, source))
             )
-    return {name: tuple(sorted(values, key=lambda event: event.position)) for name, values in events.items()}
+    return {
+        name: tuple(sorted(values, key=lambda event: event.position))
+        for name, values in events.items()
+    }
 
 
 def _latest_event(events: tuple[_StateEvent, ...], position: int) -> _StateEvent | None:
@@ -618,12 +628,22 @@ def _is_non_nil_guarded(node: Node, name: str, source: bytes) -> bool:
             condition = parent.child_by_field_name("condition")
             consequence = parent.child_by_field_name("consequence")
             alternative = parent.child_by_field_name("alternative")
-            if consequence is not None and _contains(consequence, node):
-                if _nil_check(condition, name, source) == "non_nil":
-                    return True
-            if alternative is not None and _contains(alternative, node):
-                if _nil_check(condition, name, source) == "nil" and _terminates(consequence):
-                    return True
+            if (
+                consequence is not None
+                and _contains(consequence, node)
+                and _nil_check(condition, name, source) == "non_nil"
+            ):
+                return True
+            if (
+                alternative is not None
+                and _contains(alternative, node)
+                and (
+                    consequence is not None
+                    and _nil_check(condition, name, source) == "nil"
+                    and _terminates(consequence)
+                )
+            ):
+                return True
         current = parent
 
     current = node
@@ -634,16 +654,26 @@ def _is_non_nil_guarded(node: Node, name: str, source: bytes) -> bool:
         if block.type == "block":
             statements = tuple(block.named_children)
             index = next(
-                (position for position, statement in enumerate(statements) if _contains(statement, node)),
+                (
+                    position
+                    for position, statement in enumerate(statements)
+                    if _contains(statement, node)
+                ),
                 None,
             )
             if index is not None:
                 for statement in statements[:index]:
                     condition = statement.child_by_field_name("condition")
                     consequence = statement.child_by_field_name("consequence")
-                    if statement.type == "if_statement" and _nil_check(condition, name, source) == "nil":
-                        if consequence is not None and _terminates(consequence):
-                            return True
+                    if (
+                        (
+                            statement.type == "if_statement"
+                            and _nil_check(condition, name, source) == "nil"
+                        )
+                        and consequence is not None
+                        and _terminates(consequence)
+                    ):
+                        return True
         current = block
     return False
 
@@ -668,12 +698,21 @@ def _terminates(node: Node) -> bool:
             call = item.named_children[0] if item.named_children else None
             if call is not None and call.type == "call_expression":
                 function = call.child_by_field_name("function")
-                if function is not None and _terminal_name_from_node(function) in {"panic", "Fatal", "Fatalf"}:
+                if function is not None and _terminal_name_from_node(function) in {
+                    "panic",
+                    "Fatal",
+                    "Fatalf",
+                }:
                     return True
         if item.type == "if_statement":
             consequence = item.child_by_field_name("consequence")
             alternative = item.child_by_field_name("alternative")
-            if consequence is not None and alternative is not None and _terminates(consequence) and _terminates(alternative):
+            if (
+                consequence is not None
+                and alternative is not None
+                and _terminates(consequence)
+                and _terminates(alternative)
+            ):
                 return True
     return False
 
@@ -685,7 +724,11 @@ def _terminal_name_from_node(node: Node) -> str:
         if field is None:
             return ""
         current = field
-    return "" if current.type != "identifier" else current.text.decode("utf-8", errors="ignore")
+    return (
+        ""
+        if current.type != "identifier"
+        else (current.text or b"").decode("utf-8", errors="ignore")
+    )
 
 
 def _proves_non_nil(node: Node | None, source: bytes) -> bool:

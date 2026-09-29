@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from threading import RLock
-from typing import Callable, Final
+from typing import Final
 
 _VERSION: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
 _CONFIGURATION: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
@@ -156,11 +158,9 @@ class PerformanceBudgetEnforcer:
             if not hard_stop(self._budget, observation):
                 return
             self._stopped = True
-        try:
+        # Cancellation failure cannot make an over-budget run acceptable.
+        with suppress(Exception):
             self._stop()
-        except Exception:
-            # Cancellation failure cannot make an over-budget run acceptable.
-            pass
         raise PerformanceBudgetError("performance budget exceeded")
 
 

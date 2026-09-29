@@ -25,15 +25,10 @@ from .connected_transport import (
 )
 from .connected_validation import _sha256, _text
 
-
-_ASSURANCE_PIN_NAMES = frozenset(
-    {"source", "policy", "dependency", "environment", "operational"}
-)
+_ASSURANCE_PIN_NAMES = frozenset({"source", "policy", "dependency", "environment", "operational"})
 _ASSURANCE_STALE_ORDER = ("source", "policy", "dependency", "environment", "operational")
 _FEEDBACK_DECISIONS = frozenset({"accept", "reject"})
-_FEEDBACK_REASONS = frozenset(
-    {"accepted_risk", "false_positive", "incident", "patch_rejected"}
-)
+_FEEDBACK_REASONS = frozenset({"accepted_risk", "false_positive", "incident", "patch_rejected"})
 _ASSURANCE_REPORT_KEYS = frozenset(
     {
         "tenant_id",
@@ -212,9 +207,7 @@ def read_feedback_metrics(
         tenant_id=settings.tenant_id,
         repository_id=selected_repository,
     )
-    return ConnectedCollection(
-        run_id="feedback", kind=ResultKind.FINDINGS, document=safe_document
-    )
+    return ConnectedCollection(run_id="feedback", kind=ResultKind.FINDINGS, document=safe_document)
 
 
 def _validated_feedback_receipt(
@@ -319,8 +312,7 @@ def _validated_feedback_metrics(
         not isinstance(reason_counts, Mapping)
         or set(reason_counts) != _FEEDBACK_REASONS
         or any(
-            type(value) is not int or not 0 <= value <= count
-            for value in reason_counts.values()
+            type(value) is not int or not 0 <= value <= count for value in reason_counts.values()
         )
         or sum(cast(int, value) for value in reason_counts.values()) != count
     ):
@@ -442,9 +434,7 @@ def read_assurance(
         repository_id=repository_id,
         execution_identity_hash=execution_identity_hash,
     )
-    return ConnectedCollection(
-        run_id="assurance", kind=ResultKind.FINDINGS, document=safe_document
-    )
+    return ConnectedCollection(run_id="assurance", kind=ResultKind.FINDINGS, document=safe_document)
 
 
 def _assurance_version(value: str) -> int:
@@ -519,20 +509,23 @@ def _validated_assurance_inputs(
     denominator = document.get("denominator")
     successful = document.get("successful")
     failed = document.get("failed_or_incomplete")
-    if any(
-        type(value) is not int or not 0 <= value <= 10_000
-        for value in (denominator, successful, failed)
-    ) or denominator != len(safe_records) or successful + failed != denominator:
+    if (
+        any(
+            type(value) is not int or not 0 <= value <= 10_000
+            for value in (denominator, successful, failed)
+        )
+        or denominator != len(safe_records)
+        or type(successful) is not int
+        or type(failed) is not int
+        or successful + failed != denominator
+    ):
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
     ledger_head = document.get("ledger_head_sha256")
     expected_head = safe_records[-1]["record_hash"] if safe_records else "0" * 64
     if ledger_head != expected_head or not _sha256(ledger_head):
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
     complete = document.get("complete")
-    if (
-        type(complete) is not bool
-        or complete != (bool(safe_records) and failed == 0)
-    ):
+    if type(complete) is not bool or complete != (bool(safe_records) and failed == 0):
         raise ConnectedCliError(ConnectedCliErrorCode.PROTOCOL_INVALID)
     return {
         "tenant_id": tenant_id,
@@ -617,9 +610,7 @@ def _valid_assurance_report(
             for reason in stale_reasons
         )
         or len(set(stale_reasons)) != len(stale_reasons)
-        or stale_reasons != [
-            reason for reason in _ASSURANCE_STALE_ORDER if reason in stale_reasons
-        ]
+        or stale_reasons != [reason for reason in _ASSURANCE_STALE_ORDER if reason in stale_reasons]
         or document.get("complete") != (bool(ledger_hashes) and not stale_reasons)
     ):
         return False

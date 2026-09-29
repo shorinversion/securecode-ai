@@ -40,7 +40,7 @@ def _scan() -> LocalProductScanResult:
     return cast(
         LocalProductScanResult,
         SimpleNamespace(
-            composition=SimpleNamespace(run=_Run()),
+            composition=SimpleNamespace(run=_Run(), report=SimpleNamespace(findings=())),
             rendered=REPORT,
             sarif_rendered=SARIF,
             graph_artifact=GRAPH,

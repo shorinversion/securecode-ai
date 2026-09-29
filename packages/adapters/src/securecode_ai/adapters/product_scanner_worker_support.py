@@ -17,7 +17,6 @@ from securecode_ai.contracts import (
 from securecode_ai.core import SourceRange
 from securecode_ai.core.scanning import ScannerRequest
 
-
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -54,17 +53,13 @@ def _fact_to_raw_signal(
     source_location = SourceLocation(
         schema_version="0.2.0",
         path=request.file.path,
-        start=SourcePosition(
-            schema_version="0.2.0", line=start.row + 1, column=start.column + 1
-        ),
-        end=SourcePosition(
-            schema_version="0.2.0", line=end.row + 1, column=end.column + 1
-        ),
+        start=SourcePosition(schema_version="0.2.0", line=start.row + 1, column=start.column + 1),
+        end=SourcePosition(schema_version="0.2.0", line=end.row + 1, column=end.column + 1),
         content_sha256=request.file.content_sha256,
     )
     digest = hashlib.sha256(
         f"{request.tenant_id}:{request.repository_id}:{request.head_sha}:"
-        f"{request.file.path}:{cwe}:{detector}:{scan_sha256}:{ordinal}".encode("utf-8")
+        f"{request.file.path}:{cwe}:{detector}:{scan_sha256}:{ordinal}".encode()
     ).hexdigest()
     stable_rule = rule_id or f"{detector.split('@', maxsplit=1)[0]}:{cwe.lower()}"
     command_evidence = None

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeGuard
 
 from securecode_ai.contracts import DataClass
 from securecode_ai.core.evidence_graph import (
@@ -165,7 +165,7 @@ class FindingEvidenceReader:
             scanned += len(items)
             if scanned > _MAX_ARTIFACT_INVENTORY:
                 raise RepositoryError("finding artifact inventory is too large")
-            artifact = next(
+            artifact: dict[str, object] | None = next(
                 (
                     item
                     for item in items
@@ -286,7 +286,7 @@ def _finding_projection(record: WorkerFindingRecord, graph: EvidenceGraph) -> di
     }
 
 
-def _valid_artifact_cursor(value: object) -> bool:
+def _valid_artifact_cursor(value: object) -> TypeGuard[str]:
     return (
         type(value) is str
         and 1 <= len(value) <= 512

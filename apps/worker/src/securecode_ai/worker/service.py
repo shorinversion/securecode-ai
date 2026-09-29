@@ -10,8 +10,10 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
-from threading import Event as ThreadingEvent, Thread
+from threading import Event as ThreadingEvent
+from threading import Thread
 from typing import TextIO, TypeVar
 from uuid import uuid4
 
@@ -37,11 +39,12 @@ from .execution import (
     ProductCancelled,
     ProductExecutionError,
     ProductExecutor,
-    ResourceLimitExceeded,
     ProductSuperseded,
+    ResourceLimitExceeded,
     WorkerExecutionResult,
 )
-from .liveness import heartbeat_path, touch as touch_liveness
+from .liveness import heartbeat_path
+from .liveness import touch as touch_liveness
 from .protocol import WorkerCommand, WorkerEvent, WorkerJob
 from .runtime_config import RuntimeSettings
 from .service_state import ActiveSession as _ActiveSession
@@ -298,11 +301,13 @@ class WorkerService:
                 raise ProductExecutionError("worker remote cost telemetry failed") from None
 
         if resource_enforcer is None:
+
             async def reject_unmetered_execution() -> WorkerExecutionResult:
                 raise ProductExecutionError("worker resource enforcement unavailable")
 
             execution_task = asyncio.create_task(reject_unmetered_execution())
         else:
+
             def execute_product() -> WorkerExecutionResult:
                 nonlocal execution_started
                 execution_started = True
@@ -313,9 +318,7 @@ class WorkerService:
                     cost_observer=observe_remote_cost,
                 )
 
-            execution_task = asyncio.create_task(
-                asyncio.to_thread(execute_product)
-            )
+            execution_task = asyncio.create_task(asyncio.to_thread(execute_product))
         try:
             execution = await asyncio.shield(execution_task)
         except asyncio.CancelledError:
@@ -548,10 +551,14 @@ class WorkerService:
                         resource_usage,
                         execution_started=execution_started,
                     )
-                artifact_deadline = lambda: active.last_heartbeat + active.job.lease_seconds - 0.5
+
+                def artifact_deadline() -> float:
+                    return active.last_heartbeat + active.job.lease_seconds - 0.5
+
                 update = await self._retry_call(
                     active,
-                    lambda: self._client.publish_artifact(
+                    partial(
+                        self._client.publish_artifact,
                         active.job,
                         artifact,
                         deadline=artifact_deadline,
@@ -744,8 +751,7 @@ class WorkerService:
             if self._requested_command(active, command_seen) is not None:
                 return await self._finish_command(
                     active,
-                    self._requested_command(active, command_seen)
-                    or WorkerCommand.CANCEL,
+                    self._requested_command(active, command_seen) or WorkerCommand.CANCEL,
                     resource_usage=resource_usage,
                     execution_started=execution_started,
                 )
@@ -950,7 +956,8 @@ class WorkerService:
             try:
                 update = await self._retry_call(
                     active,
-                    lambda: self._client.heartbeat(
+                    partial(
+                        self._client.heartbeat,
                         active.job,
                         attempt=heartbeat_attempt,
                     ),
@@ -1005,9 +1012,10 @@ class WorkerService:
         if active.job.command is WorkerCommand.CONTINUE:
             active.heartbeat_attempt += 1
             try:
-                update = await self._retry_call(
+                await self._retry_call(
                     active,
-                    lambda: self._client.heartbeat(
+                    partial(
+                        self._client.heartbeat,
                         active.job,
                         attempt=active.heartbeat_attempt,
                     ),

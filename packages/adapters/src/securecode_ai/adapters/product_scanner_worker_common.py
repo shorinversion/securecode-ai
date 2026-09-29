@@ -85,15 +85,14 @@ class FirstPartyStaticWorker:
                 )
             )
         elif index.language == "go":
-            signals.extend(
-                scan_go_rules(index=index, request=request, producer=producer)
-            )
+            signals.extend(scan_go_rules(index=index, request=request, producer=producer))
         elif index.language in {"javascript", "typescript"}:
-            signals.extend(
-                scan_ecmascript_rules(
-                    index=index, request=request, producer=producer
-                )
-            )
+            signals.extend(scan_ecmascript_rules(index=index, request=request, producer=producer))
+        authorization: (
+            python_cwe639.PythonCwe639ScanResult
+            | go_cwe639.GoCwe639ScanResult
+            | ecmascript_cwe639.EcmaScriptCwe639ScanResult
+        )
         if index.language == "python":
             if python_analysis is None:
                 raise ValueError("Python AST analysis is unavailable")
@@ -102,20 +101,31 @@ class FirstPartyStaticWorker:
             authorization = go_cwe639.scan_go_cwe639(index)
         else:
             authorization = ecmascript_cwe639.scan_ecmascript_cwe639(index)
-        for ordinal, signal in enumerate(authorization.signals):
+        authorization_signals: tuple[
+            python_cwe639.PythonCwe639Signal
+            | go_cwe639.GoCwe639Signal
+            | ecmascript_cwe639.EcmaScriptCwe639Signal,
+            ...,
+        ] = authorization.signals
+        for ordinal, authorization_signal in enumerate(authorization_signals):
             signals.append(
                 _fact_to_raw_signal(
                     request=request,
                     producer=producer,
-                    cwe=signal.cwe,
-                    detector=signal.detector,
-                    location=signal.sink,
+                    cwe=authorization_signal.cwe,
+                    detector=authorization_signal.detector,
+                    location=authorization_signal.sink,
                     scan_sha256=authorization.scan_sha256,
                     ordinal=ordinal,
-                    rule_id=signal.rule_id,
+                    rule_id=authorization_signal.rule_id,
                 )
             )
-        critical_authentication = None
+        critical_authentication: (
+            python_cwe306.PythonCwe306ScanResult
+            | go_cwe306.GoCwe306ScanResult
+            | ecmascript_cwe306.EcmaScriptCwe306ScanResult
+            | None
+        ) = None
         if index.language == "python":
             if python_analysis is None:
                 raise ValueError("Python AST analysis is unavailable")
@@ -125,17 +135,25 @@ class FirstPartyStaticWorker:
         else:
             critical_authentication = ecmascript_cwe306.scan_ecmascript_cwe306(index)
         if critical_authentication is not None:
-            for ordinal, signal in enumerate(critical_authentication.signals):
+            critical_authentication_signals: tuple[
+                python_cwe306.PythonCwe306Signal
+                | go_cwe306.GoCwe306Signal
+                | ecmascript_cwe306.EcmaScriptCwe306Signal,
+                ...,
+            ] = critical_authentication.signals
+            for ordinal, critical_authentication_signal in enumerate(
+                critical_authentication_signals
+            ):
                 signals.append(
                     _fact_to_raw_signal(
                         request=request,
                         producer=producer,
-                        cwe=signal.cwe,
-                        detector=signal.detector,
-                        location=signal.sink,
+                        cwe=critical_authentication_signal.cwe,
+                        detector=critical_authentication_signal.detector,
+                        location=critical_authentication_signal.sink,
                         scan_sha256=critical_authentication.scan_sha256,
                         ordinal=ordinal,
-                        rule_id=signal.rule_id,
+                        rule_id=critical_authentication_signal.rule_id,
                     )
                 )
         sql: cwe89.Cwe89ScanResult | cwe89_multilanguage.MultilanguageCwe89ScanResult

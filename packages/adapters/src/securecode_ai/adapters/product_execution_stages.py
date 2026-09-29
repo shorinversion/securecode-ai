@@ -16,8 +16,8 @@ from securecode_ai.core.discovery import (
     LanguageId,
     discover_repository,
 )
-from securecode_ai.core.repository import RepositoryInventory, repository_tree_sha256
 from securecode_ai.core.program_graph import ProgramGraph
+from securecode_ai.core.repository import RepositoryInventory, repository_tree_sha256
 from securecode_ai.core.scanning import ScannerIsolationMode, ScannerRunStatus
 
 from .dependency_scanning import (
@@ -300,6 +300,8 @@ class ProductDeterministicExecution:
                 return False
             expected = {}
             if python:
+                if program_graph is None:
+                    return False
                 expected["python_parse_symbols"] = tuple(
                     index.index_sha256
                     for index in self.catalogue.indexes

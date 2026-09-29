@@ -428,6 +428,7 @@ def _update_loop(
                 "active_nodes": [node.value for node in previous.active_nodes],
                 "node": metadata.node.value,
                 "output_hashes": list(metadata.output_hashes),
+                "receipt_sha256": metadata.receipt_sha256,
             }
         )
         if boundary

@@ -87,11 +87,8 @@ class AssuranceReport:
                 for reason in self.stale_reasons
             )
             or len(set(self.stale_reasons)) != len(self.stale_reasons)
-            or self.stale_reasons != tuple(
-                reason
-                for reason in _STALE_REASON_ORDER
-                if reason in self.stale_reasons
-            )
+            or self.stale_reasons
+            != tuple(reason for reason in _STALE_REASON_ORDER if reason in self.stale_reasons)
             or type(self.complete) is not bool
             or not _sha256(self.content_sha256)
             or self.authority != "NONE"

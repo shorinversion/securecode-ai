@@ -8,9 +8,10 @@ import hashlib
 import json
 import sqlite3
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
-from typing import Final, Protocol
+from datetime import UTC, datetime, timedelta
+from typing import Final, Protocol, cast
 
 from .artifacts import ArtifactConflict, ArtifactMetadata
 from .backup_repository import (
@@ -33,9 +34,8 @@ _MAX_ENCRYPTION_BLOCK_BYTES: Final = 47_000
 _MAX_ENCRYPTION_OUTPUT_BYTES: Final = _MAX_ENCRYPTION_BLOCK_BYTES
 _MAX_ENCRYPTION_OUTPUT_B64: Final = ((_MAX_ENCRYPTION_BLOCK_BYTES + 2) // 3) * 4
 _MAX_ENCRYPTION_CHUNKS: Final = (
-    (_MAX_SNAPSHOT_BYTES + _MAX_ENCRYPTION_CHUNK_BYTES - 1)
-    // _MAX_ENCRYPTION_CHUNK_BYTES
-)
+    _MAX_SNAPSHOT_BYTES + _MAX_ENCRYPTION_CHUNK_BYTES - 1
+) // _MAX_ENCRYPTION_CHUNK_BYTES
 _SNAPSHOT_RETENTION_DAYS: Final = 90
 _SNAPSHOT_PURPOSE: Final = "backup-snapshot"
 _CONTROL_TABLES: Final = frozenset(
@@ -73,9 +73,7 @@ _OIDC_SYSTEM_TABLE_SHAPES: Final = (
         ("bucket", "source_hash", "window_started_at", "window_seconds", "attempts"),
     ),
 )
-_OIDC_SYSTEM_TABLES: Final = frozenset(
-    table for table, _ in _OIDC_SYSTEM_TABLE_SHAPES
-)
+_OIDC_SYSTEM_TABLES: Final = frozenset(table for table, _ in _OIDC_SYSTEM_TABLE_SHAPES)
 _ENCRYPTED_CHUNKS_MAGIC: Final = b"SECURECODE-BACKUP-ENC-1\0"
 
 
@@ -95,6 +93,26 @@ class BackupEncryptionProvider(Protocol):
     def encrypt(self, payload: bytes, key_ref: str) -> bytes: ...
 
     def decrypt(self, payload: bytes, key_ref: str) -> bytes: ...
+
+
+class _BackupArtifactStore(Protocol):
+    """Artifact store surface required for backup record snapshots."""
+
+    def put(
+        self, metadata: ArtifactMetadata, chunks: Iterable[bytes], idempotency_key: str
+    ) -> ArtifactMetadata: ...
+
+    def get(
+        self, *, tenant_id: str, content_sha256: str
+    ) -> tuple[ArtifactMetadata, Iterable[bytes]]: ...
+
+    def list(self, *, tenant_id: str, run_id: str) -> Iterable[ArtifactMetadata]: ...
+
+
+class _BackupScopeResolver(Protocol):
+    """Resolve the repository scope that owns a backup."""
+
+    def repository(self, *, tenant_id: str, backup_id: str) -> object: ...
 
 
 class SubprocessBackupEncryptionProvider:
@@ -147,15 +165,15 @@ class SubprocessBackupEncryptionProvider:
         )
         if set(response) != {"payload_b64", "schema_version", "status"}:
             raise SubprocessProtocolError("BACKUP_ENCRYPTION_RESPONSE_INVALID")
+        encoded_response = response.get("payload_b64")
         if (
             type(response.get("schema_version")) is not int
             or response.get("schema_version") != 1
             or response.get("status") != "ok"
-            or type(response.get("payload_b64")) is not str
-            or not response["payload_b64"]
+            or type(encoded_response) is not str
+            or not encoded_response
         ):
             raise SubprocessProtocolError("BACKUP_ENCRYPTION_RESPONSE_INVALID")
-        encoded_response = response["payload_b64"]
         if len(encoded_response) > _MAX_ENCRYPTION_OUTPUT_B64:
             raise SubprocessProtocolError("BACKUP_ENCRYPTION_RESPONSE_TOO_LARGE")
         try:
@@ -204,10 +222,7 @@ def _unpack_encrypted_chunks(payload: bytes) -> tuple[bytes, ...]:
             raise SubprocessProtocolError("BACKUP_DECRYPTION_INVALID")
         size = int.from_bytes(payload[offset : offset + 4], "big")
         offset += 4
-        if (
-            not 1 <= size <= _MAX_ENCRYPTION_BLOCK_BYTES
-            or offset + size > len(payload)
-        ):
+        if not 1 <= size <= _MAX_ENCRYPTION_BLOCK_BYTES or offset + size > len(payload):
             raise SubprocessProtocolError("BACKUP_DECRYPTION_INVALID")
         chunks.append(payload[offset : offset + size])
         offset += size
@@ -239,9 +254,7 @@ class SubprocessBackupExecutor:
             raise SubprocessProtocolError("BACKUP_REQUEST_INVALID") from None
         if operation == "backup" and record.state != "PLANNED":
             raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
-        if operation == "restore" and (
-            record.state != "BACKED_UP" or not record.backup_verified
-        ):
+        if operation == "restore" and (record.state != "BACKED_UP" or not record.backup_verified):
             raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
         if record.manifest_sha256 is None:
             raise SubprocessProtocolError("BACKUP_MANIFEST_MISSING")
@@ -320,8 +333,9 @@ class ArtifactStoreBackupExecutor:
             raise TypeError("backup artifact store is invalid")
         if not callable(getattr(scopes, "repository", None)):
             raise TypeError("backup scope repository is invalid")
-        self._store = store
-        self._scopes = scopes
+        # The callable checks above establish the structural port contract.
+        self._store = cast(_BackupArtifactStore, store)
+        self._scopes = cast(_BackupScopeResolver, scopes)
 
     def backup(self, record: BackupRecord) -> BackupExecutionResult:
         return self._executor.backup(record)
@@ -330,20 +344,16 @@ class ArtifactStoreBackupExecutor:
         self.load_backed_up_record(record)
         return self._executor.restore(record)
 
-    def recover_transition(
-        self, expected: BackupRecord, *, operation: str
-    ) -> BackupRecord | None:
+    def recover_transition(self, expected: BackupRecord, *, operation: str) -> BackupRecord | None:
         validate_backup_record(expected)
         if operation not in {"backup", "restore"}:
             raise SubprocessProtocolError("BACKUP_TRANSITION_INVALID")
         repository_id = self._repository_id(expected)
         target_state = "BACKED_UP" if operation == "backup" else "RESTORED"
         target_version = expected.version + 1
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         recovered: BackupRecord | None = None
-        for metadata in self._store.list(
-            tenant_id=expected.tenant_id, run_id=expected.backup_id
-        ):
+        for metadata in self._store.list(tenant_id=expected.tenant_id, run_id=expected.backup_id):
             if metadata.purpose == _SNAPSHOT_PURPOSE:
                 continue
             if (
@@ -376,11 +386,9 @@ class ArtifactStoreBackupExecutor:
                 or stored.state not in {"BACKED_UP", "RESTORED"}
                 or stored.completed_at is None
                 or _record_identity(stored) != metadata.execution_identity_hash
-                or metadata.created_at
-                != datetime.fromtimestamp(stored.completed_at, tz=timezone.utc)
+                or metadata.created_at != datetime.fromtimestamp(stored.completed_at, tz=UTC)
                 or metadata.expires_at
-                != datetime.fromtimestamp(stored.completed_at, tz=timezone.utc)
-                + timedelta(days=90)
+                != datetime.fromtimestamp(stored.completed_at, tz=UTC) + timedelta(days=90)
                 or serialize_backup_record(stored) != text
             ):
                 raise SubprocessProtocolError("BACKUP_RECORD_INVALID")
@@ -408,7 +416,7 @@ class ArtifactStoreBackupExecutor:
         repository_id = self._repository_id(record)
         payload = serialize_backup_record(record).encode("utf-8")
         digest = hashlib.sha256(payload).hexdigest()
-        created_at = datetime.fromtimestamp(record.completed_at, tz=timezone.utc)
+        created_at = datetime.fromtimestamp(record.completed_at, tz=UTC)
         metadata = ArtifactMetadata(
             tenant_id=record.tenant_id,
             repository_id=repository_id,
@@ -426,9 +434,7 @@ class ArtifactStoreBackupExecutor:
                 metadata,
                 (payload,),
                 hashlib.sha256(
-                    f"backup-record:{record.tenant_id}:{record.backup_id}:{record.version}".encode(
-                        "utf-8"
-                    )
+                    f"backup-record:{record.tenant_id}:{record.backup_id}:{record.version}".encode()
                 ).hexdigest(),
             )
         except (ArtifactConflict, OSError, ValueError) as error:
@@ -439,9 +445,7 @@ class ArtifactStoreBackupExecutor:
         if expected.state != "BACKED_UP":
             raise SubprocessProtocolError("BACKUP_RECORD_INVALID")
         try:
-            candidates = self._store.list(
-                tenant_id=expected.tenant_id, run_id=expected.backup_id
-            )
+            candidates = self._store.list(tenant_id=expected.tenant_id, run_id=expected.backup_id)
             if not candidates:
                 raise SubprocessProtocolError("BACKUP_RECORD_MISSING")
             repository_id = self._repository_id(expected)
@@ -459,7 +463,7 @@ class ArtifactStoreBackupExecutor:
                     or metadata.execution_identity_hash != _record_identity(expected)
                 ):
                     raise SubprocessProtocolError("BACKUP_RECORD_SCOPE_INVALID")
-                now = datetime.now(tz=timezone.utc)
+                now = datetime.now(tz=UTC)
                 if (
                     metadata.size_bytes > 1_048_576
                     or metadata.created_at > now
@@ -483,11 +487,9 @@ class ArtifactStoreBackupExecutor:
                     or stored.backup_id != expected.backup_id
                     or _record_identity(stored) != metadata.execution_identity_hash
                     or stored.completed_at is None
-                    or metadata.created_at
-                    != datetime.fromtimestamp(stored.completed_at, tz=timezone.utc)
+                    or metadata.created_at != datetime.fromtimestamp(stored.completed_at, tz=UTC)
                     or metadata.expires_at
-                    != datetime.fromtimestamp(stored.completed_at, tz=timezone.utc)
-                    + timedelta(days=90)
+                    != datetime.fromtimestamp(stored.completed_at, tz=UTC) + timedelta(days=90)
                     or serialize_backup_record(stored) != payload.decode("utf-8")
                 ):
                     raise SubprocessProtocolError("BACKUP_RECORD_INVALID")
@@ -532,18 +534,15 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
             raise TypeError("backup artifact store is invalid")
         if not callable(getattr(scopes, "repository", None)):
             raise TypeError("backup scope repository is invalid")
-        if not all(
-            callable(getattr(encryption, name, None)) for name in ("encrypt", "decrypt")
-        ):
+        if not all(callable(getattr(encryption, name, None)) for name in ("encrypt", "decrypt")):
             raise TypeError("backup encryption provider is unavailable")
         self._db = connection
-        self._store = store
-        self._scopes = scopes
-        self._encryption = encryption
+        # The callable checks above establish the structural port contract.
+        self._store = cast(_BackupArtifactStore, store)
+        self._scopes = cast(_BackupScopeResolver, scopes)
+        self._encryption = cast(BackupEncryptionProvider, encryption)
 
-    def recover_transition(
-        self, expected: BackupRecord, *, operation: str
-    ) -> BackupRecord | None:
+    def recover_transition(self, expected: BackupRecord, *, operation: str) -> BackupRecord | None:
         """Recover only a transition whose durable evidence is sufficient.
 
         A backup snapshot proves that the backup artifact exists.  It does not
@@ -636,9 +635,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
             raise SubprocessProtocolError("BACKUP_MANIFEST_MISSING")
         if operation == "backup" and record.state != "PLANNED":
             raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
-        if operation == "restore" and (
-            record.state != "BACKED_UP" or not record.backup_verified
-        ):
+        if operation == "restore" and (record.state != "BACKED_UP" or not record.backup_verified):
             raise SubprocessProtocolError("BACKUP_REQUEST_INVALID")
 
     def _snapshot(self, record: BackupRecord) -> bytes:
@@ -674,7 +671,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
         repository_id = self._repository_id(record)
         encrypted = self._encrypt(payload, record.encryption_key_ref)
         digest = hashlib.sha256(encrypted).hexdigest()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         metadata = ArtifactMetadata(
             tenant_id=record.tenant_id,
             repository_id=repository_id,
@@ -702,9 +699,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
                 metadata,
                 (encrypted,),
                 hashlib.sha256(
-                    f"backup-snapshot:{record.tenant_id}:{record.backup_id}:{digest}".encode(
-                        "utf-8"
-                    )
+                    f"backup-snapshot:{record.tenant_id}:{record.backup_id}:{digest}".encode()
                 ).hexdigest(),
             )
         except (ArtifactConflict, OSError, ValueError) as error:
@@ -756,12 +751,10 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
 
     def _snapshot_metadata(self, record: BackupRecord) -> ArtifactMetadata | None:
         repository_id = self._repository_id(record)
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         found: ArtifactMetadata | None = None
         try:
-            candidates = self._store.list(
-                tenant_id=record.tenant_id, run_id=record.backup_id
-            )
+            candidates = self._store.list(tenant_id=record.tenant_id, run_id=record.backup_id)
             for metadata in candidates:
                 if metadata.purpose != _SNAPSHOT_PURPOSE:
                     continue
@@ -772,8 +765,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
                     or metadata.content_class != "DC2_CONFIDENTIAL_SECURITY"
                     or metadata.execution_identity_hash != _record_identity(record)
                     or metadata.size_bytes > _MAX_SNAPSHOT_BYTES * 2
-                    or metadata.created_at
-                    < datetime.fromtimestamp(record.created_at, tz=timezone.utc)
+                    or metadata.created_at < datetime.fromtimestamp(record.created_at, tz=UTC)
                     or metadata.created_at > now
                     or metadata.expires_at is None
                     or metadata.expires_at
@@ -788,9 +780,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
             raise SubprocessProtocolError("BACKUP_SNAPSHOT_INVALID") from error
         return found
 
-    def _restore(
-        self, payload: bytes, record: BackupRecord, started: int
-    ) -> int:
+    def _restore(self, payload: bytes, record: BackupRecord, started: int) -> int:
         source = sqlite3.connect(":memory:")
         try:
             source.executescript(payload.decode("utf-8"))
@@ -896,9 +886,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
         finally:
             self._db.execute("PRAGMA foreign_keys=ON")
 
-    def _begin_restore_phase(
-        self, record: BackupRecord
-    ) -> tuple[_RestorePhase, bool]:
+    def _begin_restore_phase(self, record: BackupRecord) -> tuple[_RestorePhase, bool]:
         """Durably mark a restore before any application table is changed."""
 
         self._validate_restore_phase_record(record)
@@ -932,9 +920,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
             raise
         except (sqlite3.Error, TypeError, ValueError) as error:
             self._db.rollback()
-            raise SubprocessProtocolError(
-                "BACKUP_RESTORE_PHASE_STORAGE_FAILED"
-            ) from error
+            raise SubprocessProtocolError("BACKUP_RESTORE_PHASE_STORAGE_FAILED") from error
 
     def _mark_restore_applied(
         self, record: BackupRecord, rto_seconds: int, applied_at: int
@@ -978,9 +964,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
                 (record.tenant_id, record.backup_id, record.version),
             ).fetchone()
         except sqlite3.Error as error:
-            raise SubprocessProtocolError(
-                "BACKUP_RESTORE_PHASE_STORAGE_FAILED"
-            ) from error
+            raise SubprocessProtocolError("BACKUP_RESTORE_PHASE_STORAGE_FAILED") from error
         if row is None:
             return None
         request_sha256, phase, manifest, components_json, rpo, rto, applied_at = row
@@ -1015,16 +999,11 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
 
     @staticmethod
     def _validate_restore_phase_record(record: BackupRecord) -> None:
-        if (
-            record.manifest_sha256 is None
-            or record.manifest_sha256 != manifest_sha256(record)
-        ):
+        if record.manifest_sha256 is None or record.manifest_sha256 != manifest_sha256(record):
             raise SubprocessProtocolError("BACKUP_MANIFEST_INVALID")
 
     @staticmethod
-    def _result_from_phase(
-        record: BackupRecord, phase: _RestorePhase
-    ) -> BackupExecutionResult:
+    def _result_from_phase(record: BackupRecord, phase: _RestorePhase) -> BackupExecutionResult:
         if phase.phase != "APPLIED" or phase.rto_seconds is None:
             raise SubprocessProtocolError("BACKUP_RESTORE_PHASE_INVALID")
         assert record.manifest_sha256 is not None
@@ -1036,9 +1015,7 @@ class SqliteBackupExecutor(ArtifactStoreBackupExecutor):
         )
 
     @staticmethod
-    def _verified_components(
-        record: BackupRecord, payload: bytes
-    ) -> tuple[str, ...]:
+    def _verified_components(record: BackupRecord, payload: bytes) -> tuple[str, ...]:
         if record.manifest_sha256 is None or manifest_sha256(record) != record.manifest_sha256:
             raise SubprocessProtocolError("BACKUP_MANIFEST_INVALID")
         digest = hashlib.sha256(payload).hexdigest()
@@ -1109,9 +1086,7 @@ def _require_database_scope(
         raise SubprocessProtocolError("BACKUP_SCOPE_INVALID")
     if type(repository_id) is not str or not repository_id:
         raise SubprocessProtocolError("BACKUP_SCOPE_INVALID")
-    if type(excluded_tables) is not frozenset or not excluded_tables.issubset(
-        _OIDC_SYSTEM_TABLES
-    ):
+    if type(excluded_tables) is not frozenset or not excluded_tables.issubset(_OIDC_SYSTEM_TABLES):
         raise SubprocessProtocolError("BACKUP_SCOPE_INVALID")
     if type(require_excluded_empty) is not bool:
         raise SubprocessProtocolError("BACKUP_SCOPE_INVALID")
@@ -1200,9 +1175,7 @@ def _distinct_scope_values(
     return {minimum}
 
 
-def _table_shape(
-    connection: sqlite3.Connection, table: str
-) -> tuple[tuple[object, ...], ...]:
+def _table_shape(connection: sqlite3.Connection, table: str) -> tuple[tuple[object, ...], ...]:
     rows = connection.execute(f"PRAGMA table_info({_quote_identifier(table)})").fetchall()
     shape = tuple(tuple(row[index] for index in range(1, 6)) for row in rows)
     if not shape or any(
@@ -1243,9 +1216,7 @@ def _component_hashes_json(record: BackupRecord) -> str:
 
 def _restore_request_hash(record: BackupRecord) -> str:
     return hashlib.sha256(
-        f"restore\0{record.tenant_id}\0{record.backup_id}\0{record.version}".encode(
-            "utf-8"
-        )
+        f"restore\0{record.tenant_id}\0{record.backup_id}\0{record.version}".encode()
     ).hexdigest()
 
 
@@ -1263,9 +1234,7 @@ def build_backup_executor(
             except TypeError:
                 pass
         if process is None and encryption is None:
-            encryption_process = configured_process(
-                values, prefix="SECURECODE_BACKUP_ENCRYPTION"
-            )
+            encryption_process = configured_process(values, prefix="SECURECODE_BACKUP_ENCRYPTION")
             if encryption_process is not None:
                 encryption = SubprocessBackupEncryptionProvider(encryption_process)
         if (
@@ -1283,11 +1252,11 @@ def build_backup_executor(
 
 
 __all__ = [
+    "ArtifactStoreBackupExecutor",
     "BackupEncryptionProvider",
+    "SqliteBackupExecutor",
     "SubprocessBackupEncryptionProvider",
     "SubprocessBackupExecutor",
-    "ArtifactStoreBackupExecutor",
-    "SqliteBackupExecutor",
     "UnavailableBackupExecutor",
     "build_backup_executor",
 ]

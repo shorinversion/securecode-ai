@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from securecode_ai.adapters.github_api import GitHubApi
-from securecode_ai.adapters.github_comments import GithubCommentPublisher
 from securecode_ai.adapters.github_app import github_app_permissions
+from securecode_ai.adapters.github_comments import GithubCommentPublisher
 from securecode_ai.adapters.github_sarif import GithubSarifPublisher
 from securecode_ai.adapters.github_writer import GitHubWriter
 from securecode_ai.adapters.gitlab_api import GitlabRestAPI
@@ -26,8 +26,8 @@ from securecode_ai.adapters.scm_head import (
 )
 from securecode_ai.contracts import ComponentPin
 
-from .scm_state import SqliteSCMRunState
 from .scm_publication_store import SqliteSCMPublicationStore
+from .scm_state import SqliteSCMRunState
 from .scm_webhooks import (
     ConnectedRunIdentityResolver,
     ConnectedRunIdentityResolverRouter,
@@ -270,6 +270,9 @@ def build_scm_handlers(
             connection=connection,
         )
         secrets.extend((token_bytes, secret))
+    connected_identity_resolver: (
+        ConnectedRunIdentityResolver | ConnectedRunIdentityResolverRouter | None
+    )
     if github_enabled and gitlab_enabled:
         connected_identity_resolver = ConnectedRunIdentityResolverRouter(
             github=ConnectedRunIdentityResolver(

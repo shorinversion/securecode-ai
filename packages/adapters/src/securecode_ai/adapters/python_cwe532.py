@@ -190,9 +190,7 @@ class PythonCwe532Signal:
                 self.operation,
                 self.sensitive_name,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe532Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe532Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -322,9 +320,13 @@ class _SensitiveFlow:
     name: str
 
 
-_LOG_METHODS = frozenset({"log", "debug", "info", "warning", "warn", "error", "exception", "critical"})
+_LOG_METHODS = frozenset(
+    {"log", "debug", "info", "warning", "warn", "error", "exception", "critical"}
+)
 _KNOWN_MODULES = frozenset({"logging", "loguru", "structlog", "os", "secrets", "hashlib"})
-_LOGGER_ROOTS = frozenset({"logger", "log", "logging", "audit_logger", "app_logger", "request_logger"})
+_LOGGER_ROOTS = frozenset(
+    {"logger", "log", "logging", "audit_logger", "app_logger", "request_logger"}
+)
 _SENSITIVE_WORDS = frozenset(
     {
         "accesskey",
@@ -523,7 +525,9 @@ def scan_python_cwe532(
 
 def _collect_context(
     tree: ast.AST, limits: PythonCwe532ScanLimits
-) -> tuple[dict[str, str | None], frozenset[str], dict[str, tuple[tuple[tuple[int, int], ast.expr], ...]]]:
+) -> tuple[
+    dict[str, str | None], frozenset[str], dict[str, tuple[tuple[tuple[int, int], ast.expr], ...]]
+]:
     aliases: dict[str, str | None] = {}
     logger_names: set[str] = set()
     assignments: dict[str, list[tuple[tuple[int, int], ast.expr]]] = {}
@@ -542,11 +546,22 @@ def _collect_context(
                 if imported.name == "*":
                     continue
                 name = imported.asname or imported.name
-                canonical = f"{module}.{imported.name}"
-                aliases[name] = canonical if module in _KNOWN_MODULES or module.startswith(tuple(_KNOWN_MODULES)) else None
-                if canonical in {"logging.getLogger", "loguru.logger", "structlog.get_logger", "structlog.stdlib.get_logger"}:
+                imported_name = f"{module}.{imported.name}"
+                aliases[name] = (
+                    imported_name
+                    if module in _KNOWN_MODULES or module.startswith(tuple(_KNOWN_MODULES))
+                    else None
+                )
+                if imported_name in {
+                    "logging.getLogger",
+                    "loguru.logger",
+                    "structlog.get_logger",
+                    "structlog.stdlib.get_logger",
+                }:
                     logger_names.add(name)
         elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+            targets: tuple[ast.expr, ...]
+            value: ast.expr | None
             if isinstance(node, ast.Assign):
                 targets = tuple(node.targets)
                 value = node.value
@@ -558,19 +573,29 @@ def _collect_context(
                 for target in targets:
                     for name in _target_names(target):
                         assignments.setdefault(name, []).append((position, value))
-                        canonical = _canonical_reference(value, aliases, limits.max_resolution_depth)
+                        canonical = _canonical_reference(
+                            value, aliases, limits.max_resolution_depth
+                        )
                         if _is_logger_constructor(canonical):
                             logger_names.add(name)
                         if _is_logger_name(name):
                             logger_names.add(name)
-    return aliases, frozenset(logger_names), {
-        name: tuple(sorted(values, key=lambda item: item[0]))
-        for name, values in assignments.items()
-    }
+    return (
+        aliases,
+        frozenset(logger_names),
+        {
+            name: tuple(sorted(values, key=lambda item: item[0]))
+            for name, values in assignments.items()
+        },
+    )
 
 
 def _calls(tree: ast.AST, limits: PythonCwe532ScanLimits) -> tuple[ast.Call, ...]:
-    return tuple(node for node in _bounded_nodes(tree, limits.max_resolution_depth * 10_000) if isinstance(node, ast.Call))
+    return tuple(
+        node
+        for node in _bounded_nodes(tree, limits.max_resolution_depth * 10_000)
+        if isinstance(node, ast.Call)
+    )
 
 
 def _bounded_nodes(tree: ast.AST, limit: int) -> tuple[ast.AST, ...]:
@@ -627,7 +652,11 @@ def _logged_values(call: ast.Call) -> tuple[ast.expr, ...]:
         if index == 0 and _literal_string(argument) is not None:
             continue
         values.append(argument)
-    values.extend(keyword.value for keyword in call.keywords if keyword.arg not in {"exc_info", "stack_info", "stacklevel"})
+    values.extend(
+        keyword.value
+        for keyword in call.keywords
+        if keyword.arg not in {"exc_info", "stack_info", "stacklevel"}
+    )
     return tuple(values)
 
 
@@ -650,50 +679,88 @@ def _resolve_sensitive(
         assignment = _latest_assignment(assignments, node.id, position)
         if assignment is not None:
             value = assignment[1]
-            flows = _resolve_sensitive(value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen | {node.id})
+            flows = _resolve_sensitive(
+                value,
+                aliases,
+                assignments,
+                source,
+                line_starts,
+                limits,
+                position,
+                depth + 1,
+                seen | {node.id},
+            )
             if flows:
                 return flows
             if _is_safe_constant(value):
                 return ()
         if _is_sensitive_name(node.id):
-            return (_SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(node.id)),)
+            return (
+                _SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(node.id)),
+            )
         return ()
     if isinstance(node, ast.Attribute):
         if _is_sensitive_name(node.attr):
-            return (_SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(node.attr)),)
-        return _resolve_sensitive(node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
+            return (
+                _SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(node.attr)),
+            )
+        return _resolve_sensitive(
+            node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+        )
     if isinstance(node, ast.Subscript):
         if _is_sensitive_subscript(node):
-            return (_SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(_subscript_label(node))),)
-        return _resolve_sensitive(node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
+            return (
+                _SensitiveFlow(
+                    _node_range(node, source, line_starts), _sensitive_label(_subscript_label(node))
+                ),
+            )
+        return _resolve_sensitive(
+            node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+        )
     if isinstance(node, ast.Call):
-        canonical = _canonical_reference(node.func, aliases, limits.max_resolution_depth) or _dotted_name(node.func)
+        canonical = _canonical_reference(
+            node.func, aliases, limits.max_resolution_depth
+        ) or _dotted_name(node.func)
         if _is_sanitizer(canonical):
             return ()
         if _is_sensitive_call(node, canonical):
-            return (_SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(canonical)),)
+            return (
+                _SensitiveFlow(_node_range(node, source, line_starts), _sensitive_label(canonical)),
+            )
         return _dedupe_flows(
             flow
             for value in (*node.args, *(keyword.value for keyword in node.keywords))
-            for flow in _resolve_sensitive(value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
+            for flow in _resolve_sensitive(
+                value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+            )
         )
     if isinstance(node, ast.NamedExpr):
-        return _resolve_sensitive(node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
+        return _resolve_sensitive(
+            node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+        )
     if isinstance(node, ast.Await):
-        return _resolve_sensitive(node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
-    if isinstance(node, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.JoinedStr, ast.FormattedValue)):
+        return _resolve_sensitive(
+            node.value, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+        )
+    if isinstance(
+        node, (ast.BinOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.JoinedStr, ast.FormattedValue)
+    ):
         return _dedupe_flows(
             flow
             for child in ast.iter_child_nodes(node)
             if isinstance(child, ast.expr)
-            for flow in _resolve_sensitive(child, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
+            for flow in _resolve_sensitive(
+                child, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+            )
         )
     if isinstance(node, (ast.List, ast.Tuple, ast.Set, ast.Dict)):
         return _dedupe_flows(
             flow
             for child in ast.iter_child_nodes(node)
             if isinstance(child, ast.expr)
-            for flow in _resolve_sensitive(child, aliases, assignments, source, line_starts, limits, position, depth + 1, seen)
+            for flow in _resolve_sensitive(
+                child, aliases, assignments, source, line_starts, limits, position, depth + 1, seen
+            )
         )
     return ()
 
@@ -734,7 +801,10 @@ def _is_sensitive_call(call: ast.Call, canonical: str | None) -> bool:
     if canonical and _is_sensitive_name(canonical.rsplit(".", 1)[-1]):
         return True
     if canonical in {"os.getenv", "os.environ.get", "os.environ.__getitem__"}:
-        return any(_literal_string(arg) is not None and _is_sensitive_name(_literal_string(arg) or "") for arg in call.args)
+        return any(
+            _literal_string(arg) is not None and _is_sensitive_name(_literal_string(arg) or "")
+            for arg in call.args
+        )
     return False
 
 
@@ -756,7 +826,13 @@ def _is_safe_constant(node: ast.expr) -> bool:
 
 
 def _is_logger_constructor(value: str | None) -> bool:
-    return value in {"logging.getLogger", "logging.Logger", "structlog.get_logger", "structlog.stdlib.get_logger", "loguru.logger"}
+    return value in {
+        "logging.getLogger",
+        "logging.Logger",
+        "structlog.get_logger",
+        "structlog.stdlib.get_logger",
+        "loguru.logger",
+    }
 
 
 def _is_logger_name(value: str | None) -> bool:
@@ -774,7 +850,9 @@ def _is_sensitive_name(value: str) -> bool:
     if normalized in _SENSITIVE_WORDS:
         return True
     tokens = set(normalized.split("_"))
-    return bool(tokens & _SENSITIVE_TOKENS) and not bool(tokens & {"public", "masked", "redacted", "hash", "digest"})
+    return bool(tokens & _SENSITIVE_TOKENS) and not bool(
+        tokens & {"public", "masked", "redacted", "hash", "digest"}
+    )
 
 
 def _sensitive_label(value: str) -> str:
@@ -782,7 +860,9 @@ def _sensitive_label(value: str) -> str:
     return normalized[:256] or "sensitive_value"
 
 
-def _canonical_reference(node: ast.AST, aliases: dict[str, str | None], max_depth: int, depth: int = 0) -> str | None:
+def _canonical_reference(
+    node: ast.AST, aliases: dict[str, str | None], max_depth: int, depth: int = 0
+) -> str | None:
     if depth > max_depth:
         raise PythonCwe532ScanError(PythonCwe532ScanErrorCode.SIGNAL_LIMIT)
     if isinstance(node, ast.Name):
@@ -845,9 +925,16 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe532ScanError(PythonCwe532ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe532ScanError(PythonCwe532ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _range_value(location: SourceRange) -> dict[str, int]:
@@ -886,7 +973,9 @@ def _signal_id(
         "source": _range_value(source),
         "source_size_bytes": source_size_bytes,
     }
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 def _scan_sha256(
@@ -918,7 +1007,9 @@ def _scan_sha256(
         ],
         "source_size_bytes": source_size_bytes,
     }
-    return hashlib.sha256(json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+    ).hexdigest()
 
 
 _DIRECT_OPERATIONS: dict[str, PythonCwe532Operation] = {
@@ -961,7 +1052,9 @@ _DIRECT_OPERATIONS: dict[str, PythonCwe532Operation] = {
     "structlog.BoundLogger.exception": PythonCwe532Operation.STRUCTLOG_EXCEPTION,
     "structlog.BoundLogger.critical": PythonCwe532Operation.STRUCTLOG_CRITICAL,
 }
-_LOGGER_OPERATIONS = {operation.value.rsplit(".", 1)[-1]: operation for operation in PythonCwe532Operation}
+_LOGGER_OPERATIONS = {
+    operation.value.rsplit(".", 1)[-1]: operation for operation in PythonCwe532Operation
+}
 
 
 Cwe532ScanErrorCode = PythonCwe532ScanErrorCode

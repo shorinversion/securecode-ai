@@ -476,9 +476,7 @@ def scan_go_cwe532(
             logger_names = _logger_bindings(scope, source, imports, limits)
             for node in _scope_preorder(scope):
                 if node.type in {"short_var_declaration", "assignment_statement", "var_spec"}:
-                    _capture_assignment(
-                        node, environment, source, imports, limits
-                    )
+                    _capture_assignment(node, environment, source, imports, limits)
                 if node.type != "call_expression":
                     continue
                 operation = _operation_for_sink(node, source, imports, logger_names)
@@ -493,9 +491,7 @@ def scan_go_cwe532(
                     ):
                         sink_range = _range(node)
                         if flow.source.end_byte > sink_range.end_byte:
-                            raise GoCwe532ScanError(
-                                GoCwe532ScanErrorCode.INTEGRITY_FAILURE
-                            )
+                            raise GoCwe532ScanError(GoCwe532ScanErrorCode.INTEGRITY_FAILURE)
                         raw.add((flow.source, sink_range, operation))
                         if len(raw) > limits.max_signals:
                             raise GoCwe532ScanError(GoCwe532ScanErrorCode.SIGNAL_LIMIT)
@@ -730,7 +726,12 @@ def _resolve_sensitive(
         text = _compact_text(source, node)
         if any(marker in text.casefold() for marker in _SENSITIVE_LITERAL_MARKERS):
             return (_Flow(_range(node)),)
-    if node.type in {"parenthesized_expression", "unary_expression", "pointer_expression", "address_expression"}:
+    if node.type in {
+        "parenthesized_expression",
+        "unary_expression",
+        "pointer_expression",
+        "address_expression",
+    }:
         return _dedupe_flows(
             flow
             for child in node.named_children
@@ -738,7 +739,14 @@ def _resolve_sensitive(
                 child, environment, source, imports, limits, depth + 1, visited
             )
         )
-    if node.type in {"binary_expression", "expression_list", "keyed_element", "composite_literal", "index_expression", "slice_expression"}:
+    if node.type in {
+        "binary_expression",
+        "expression_list",
+        "keyed_element",
+        "composite_literal",
+        "index_expression",
+        "slice_expression",
+    }:
         return _dedupe_flows(
             flow
             for child in node.named_children
@@ -816,7 +824,17 @@ def _is_sensitive_source_call(node: Node, source: bytes, imports: dict[str, str]
         return False
     name = _call_name(function, source).casefold()
     compact = re.sub(r"[^a-z0-9]", "", name)
-    if any(word in compact for word in ("getsecret", "gettoken", "readsecret", "loadsecret", "getpassword", "getcredential")):
+    if any(
+        word in compact
+        for word in (
+            "getsecret",
+            "gettoken",
+            "readsecret",
+            "loadsecret",
+            "getpassword",
+            "getcredential",
+        )
+    ):
         return True
     if function.type != "selector_expression":
         return False

@@ -428,9 +428,7 @@ def _merged_command_operation_evidence(
             if previous is not None and previous != evidence:
                 raise NormalizationError(NormalizationErrorCode.INTEGRITY_FAILURE)
             evidence_by_signal[evidence.scanner_signal_id] = evidence
-    return tuple(
-        evidence_by_signal[key] for key in sorted(evidence_by_signal)
-    )
+    return tuple(evidence_by_signal[key] for key in sorted(evidence_by_signal))
 
 
 def _origin_for_lanes(lanes: set[DiscoveryLane]) -> CandidateOrigin:

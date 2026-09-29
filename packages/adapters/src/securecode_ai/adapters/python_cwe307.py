@@ -142,9 +142,7 @@ class PythonCwe307Signal:
                 self.sink,
                 self.operation,
             )
-            if valid_identity
-            and valid_ranges
-            and type(self.operation) is PythonCwe307Operation
+            if valid_identity and valid_ranges and type(self.operation) is PythonCwe307Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -218,7 +216,10 @@ class PythonCwe307ScanResult:
             type(item) is PythonCwe307Signal for item in self.signals
         )
         order = (
-            tuple((item.sink.start_byte, item.sink.end_byte, item.source.start_byte) for item in self.signals)
+            tuple(
+                (item.sink.start_byte, item.sink.end_byte, item.source.start_byte)
+                for item in self.signals
+            )
             if valid_signals
             else ()
         )
@@ -262,10 +263,10 @@ class _AuthEvidence:
 
 
 _FRAMEWORKS = frozenset({"django", "flask", "fastapi", "starlette"})
-_ROUTE_METHODS = frozenset(
-    {"route", "get", "post", "put", "patch", "api_route", "websocket_route"}
+_ROUTE_METHODS = frozenset({"route", "get", "post", "put", "patch", "api_route", "websocket_route"})
+_AUTH_PATH = re.compile(
+    r"(?:^|[/_.-])(?:auth|login|log[-_]?in|sign[-_]?in|signin|token)(?:$|[/_.?-])", re.I
 )
-_AUTH_PATH = re.compile(r"(?:^|[/_.-])(?:auth|login|log[-_]?in|sign[-_]?in|signin|token)(?:$|[/_.?-])", re.I)
 _AUTH_FUNCTION = re.compile(
     r"(?:^|_)(?:auth|authenticate|authentication|login|log[_]?in|sign[_]?in|signin|token)(?:$|_)",
     re.I,
@@ -364,7 +365,6 @@ _MIDDLEWARE_NAMES = frozenset(
     {
         "axesmiddleware",
         "limiter_middleware",
-        "ratelimitmiddleware",
         "ratelimitmiddleware",
         "slowapimiddleware",
         "throttlemiddleware",
@@ -499,7 +499,9 @@ def scan_python_cwe307(
     )
 
 
-def _functions(tree: ast.Module, max_depth: int) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
+def _functions(
+    tree: ast.Module, max_depth: int
+) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
     result: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     stack: list[tuple[ast.AST, int]] = [(tree, 0)]
     while stack:
@@ -556,7 +558,9 @@ def _framework_present(
             return True
     for node in _iter_nodes(tree, max_depth):
         if isinstance(node, (ast.Call, ast.Attribute, ast.Name)):
-            name = _canonical_reference(node.func if isinstance(node, ast.Call) else node, aliases, max_depth)
+            name = _canonical_reference(
+                node.func if isinstance(node, ast.Call) else node, aliases, max_depth
+            )
             if name is not None and name.split(".", 1)[0].lower() in _FRAMEWORKS:
                 return True
     return False
@@ -568,18 +572,21 @@ def _module_has_limiter(
     max_depth: int,
 ) -> bool:
     for value in aliases.values():
-        if value is not None and value.split(".", 1)[0].lower() in _RATE_MODULES:
-            if value.split(".", 1)[0].lower() in {"django_ratelimit", "django_axes"}:
-                return True
+        if (
+            value is not None
+            and value.split(".", 1)[0].lower() in _RATE_MODULES
+            and value.split(".", 1)[0].lower() in {"django_ratelimit", "django_axes"}
+        ):
+            return True
     for node in _iter_nodes(tree, max_depth):
         if isinstance(node, ast.Call):
             name = _canonical_reference(node.func, aliases, max_depth) or ""
             compact = _compact(name)
             if _is_middleware_call(node, aliases, max_depth) or _is_rate_name(compact):
                 return True
-        elif isinstance(node, ast.Name) and _is_middleware_name(node.id):
-            return True
-        elif isinstance(node, ast.Attribute) and _is_middleware_name(node.attr):
+        elif (isinstance(node, ast.Name) and _is_middleware_name(node.id)) or (
+            isinstance(node, ast.Attribute) and _is_middleware_name(node.attr)
+        ):
             return True
     return False
 
@@ -589,10 +596,7 @@ def _has_auth_route(
     aliases: dict[str, str | None],
     max_depth: int,
 ) -> bool:
-    for decorator in function.decorator_list:
-        if _route_path(decorator, aliases, max_depth):
-            return True
-    return False
+    return any(_route_path(decorator, aliases, max_depth) for decorator in function.decorator_list)
 
 
 def _route_path(
@@ -609,7 +613,9 @@ def _route_path(
     candidates: list[ast.expr] = []
     if call is not None:
         candidates.extend(call.args[:1])
-        candidates.extend(keyword.value for keyword in call.keywords if keyword.arg in {"path", "rule", "url"})
+        candidates.extend(
+            keyword.value for keyword in call.keywords if keyword.arg in {"path", "rule", "url"}
+        )
     for candidate in candidates:
         value = _literal_string(candidate)
         if value is not None and _AUTH_PATH.search(value):
@@ -624,7 +630,7 @@ def _authentication_evidence(
     source: bytes,
     line_starts: tuple[int, ...],
 ) -> _AuthEvidence | None:
-    candidates: list[tuple[int, _AuthEvidence]] = []
+    candidates: list[tuple[tuple[int, int], _AuthEvidence]] = []
     for node in _function_nodes(function, limits.max_resolution_depth):
         if isinstance(node, ast.Call):
             name = _canonical_reference(node.func, aliases, limits.max_resolution_depth)
@@ -671,11 +677,7 @@ def _comparison_evidence(
     for node in _function_nodes(function, max_depth):
         if not isinstance(node, ast.Compare):
             continue
-        names = [
-            item.id.lower()
-            for item in ast.walk(node)
-            if isinstance(item, ast.Name)
-        ]
+        names = [item.id.lower() for item in ast.walk(node) if isinstance(item, ast.Name)]
         if len(set(names) & _CONCRETE_CREDENTIAL_WORDS) >= 1 and len(node.comparators) == 1:
             return _AuthEvidence(
                 source=_node_range(node, source, line_starts),
@@ -710,15 +712,22 @@ def _has_rate_limit(
     if module_limiter:
         return True
     for decorator in function.decorator_list:
-        name = _canonical_reference(
-            decorator.func if isinstance(decorator, ast.Call) else decorator,
-            aliases,
-            max_depth,
-        ) or ""
+        name = (
+            _canonical_reference(
+                decorator.func if isinstance(decorator, ast.Call) else decorator,
+                aliases,
+                max_depth,
+            )
+            or ""
+        )
         if _is_rate_decorator(name):
             return True
         for node in ast.walk(decorator):
-            if isinstance(node, ast.Constant) and type(node.value) is str and _is_rate_name(node.value):
+            if (
+                isinstance(node, ast.Constant)
+                and type(node.value) is str
+                and _is_rate_name(node.value)
+            ):
                 return True
     for node in _function_nodes(function, max_depth):
         if isinstance(node, ast.Call):
@@ -743,7 +752,10 @@ def _function_nodes(
         node, depth = stack.pop()
         if depth > max_depth:
             raise PythonCwe307ScanError(PythonCwe307ScanErrorCode.SIGNAL_LIMIT)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node is not function:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node is not function
+        ):
             continue
         result.append(node)
         children = tuple(ast.iter_child_nodes(node))
@@ -812,8 +824,11 @@ def _is_rate_name(value: str) -> bool:
 
 
 def _is_middleware_name(value: str) -> bool:
-    return _compact(value) in _MIDDLEWARE_NAMES or _compact(value).endswith("middleware") and any(
-        word in _compact(value) for word in ("rate", "limit", "throttle", "slowapi", "axes")
+    return _compact(value) in _MIDDLEWARE_NAMES or (
+        _compact(value).endswith("middleware")
+        and any(
+            word in _compact(value) for word in ("rate", "limit", "throttle", "slowapi", "axes")
+        )
     )
 
 
@@ -878,7 +893,12 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe307ScanError(PythonCwe307ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe307ScanError(PythonCwe307ScanErrorCode.INTEGRITY_FAILURE)
     return SourceRange(
         start,

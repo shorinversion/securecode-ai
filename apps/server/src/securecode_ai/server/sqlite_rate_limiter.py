@@ -39,12 +39,12 @@ class SqliteTenantTokenBucketRateLimiter:
     """Atomically charge one token across processes sharing the same database."""
 
     __slots__ = (
-        "_connection",
         "_capacity_micro",
-        "_refill_per_second",
-        "_max_tenants",
+        "_connection",
         "_idle_timeout_ms",
         "_lock",
+        "_max_tenants",
+        "_refill_per_second",
     )
 
     def __init__(
@@ -127,14 +127,13 @@ class SqliteTenantTokenBucketRateLimiter:
                 (now_ms - self._idle_timeout_ms, _MAX_IDLE_PURGE),
             )
             row = cursor.execute(
-                "SELECT tokens_micro, updated_ms FROM tenant_rate_limit_buckets "
-                "WHERE tenant_id=?",
+                "SELECT tokens_micro, updated_ms FROM tenant_rate_limit_buckets WHERE tenant_id=?",
                 (tenant_id,),
             ).fetchone()
             if row is None:
-                count = cursor.execute(
-                    "SELECT COUNT(*) FROM tenant_rate_limit_buckets"
-                ).fetchone()[0]
+                count = cursor.execute("SELECT COUNT(*) FROM tenant_rate_limit_buckets").fetchone()[
+                    0
+                ]
                 if type(count) is not int or count >= self._max_tenants:
                     cursor.execute(f"RELEASE SAVEPOINT {_SAVEPOINT}")
                     active = False

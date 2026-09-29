@@ -11,7 +11,6 @@ from collections.abc import Callable
 
 from .endpoint import Resolver
 from .model import CredentialSupplier
-from .remote_provider_budget import RemoteProviderBudgetPort, RemoteProviderCostReceipt
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_runtime import AuthorizedLocalModelExecutor
 from .public_core_fixtures import build_public_core_fixture as build_public_core_fixture
@@ -42,6 +41,7 @@ from .public_core_runner_runner import run_public_core_case
 from .public_discovery_observation import (
     PublicDiscoveryObservationRecorder as PublicDiscoveryObservationRecorder,
 )
+from .remote_provider_budget import RemoteProviderBudgetPort, RemoteProviderCostReceipt
 
 
 def _executor(

@@ -209,9 +209,7 @@ class PythonCwe338Signal:
                 self.sink,
                 self.operation,
             )
-            if identity_valid
-            and ranges_valid
-            and type(self.operation) is PythonCwe338Operation
+            if identity_valid and ranges_valid and type(self.operation) is PythonCwe338Operation
             else None
         )
         signal_id = self.signal_id or expected_id
@@ -474,7 +472,9 @@ def _collect_aliases(tree: ast.AST, max_depth: int) -> dict[str, str | None]:
         if isinstance(node, ast.Import):
             for item in node.names:
                 root = item.name.split(".", 1)[0]
-                aliases[item.asname or root] = item.name if root in _SAFE_MODULES | _RANDOM_MODULES else None
+                aliases[item.asname or root] = (
+                    item.name if root in _SAFE_MODULES | _RANDOM_MODULES else None
+                )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
             root = module.split(".", 1)[0]
@@ -493,7 +493,7 @@ def _collect_assignments(
     values: dict[str, list[tuple[tuple[int, int], ast.expr]]] = {}
     for node in _bounded_nodes(tree, max(1, max_depth * 10_000)):
         if isinstance(node, ast.Assign):
-            pairs = ((target, node.value) for target in node.targets)
+            pairs = tuple((target, node.value) for target in node.targets)
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             pairs = ((node.target, node.value),)
         else:
@@ -543,6 +543,7 @@ def _resolve_weak_values(
                 seen | {node.id},
             )
         return ()
+    children: tuple[ast.AST, ...]
     if isinstance(node, ast.Call):
         children = (*node.args, *(keyword.value for keyword in node.keywords))
     elif isinstance(node, ast.NamedExpr):
@@ -647,7 +648,9 @@ def _is_weak_instance(
         if previous:
             value = previous[-1][1]
             if isinstance(value, ast.Call):
-                return _is_weak_instance(value, aliases, assignments, position, max_depth, depth + 1, seen | {node.id})
+                return _is_weak_instance(
+                    value, aliases, assignments, position, max_depth, depth + 1, seen | {node.id}
+                )
     return False
 
 
@@ -675,17 +678,25 @@ def _sensitive_target(
 
 
 def _sensitive_call(node: ast.Call, aliases: dict[str, str | None], max_depth: int) -> bool:
-    name = _canonical_reference(node.func, aliases, max_depth) or _dotted_name(node.func, aliases, max_depth)
+    name = _canonical_reference(node.func, aliases, max_depth) or _dotted_name(
+        node.func, aliases, max_depth
+    )
     compact = _words(name)
     tail = name.rsplit(".", 1)[-1].lower()
-    if tail in _SAFE_CALL_TAILS or name.startswith(("secrets.", "os.urandom", "cryptography.", "Crypto.Random.", "nacl.")):
+    if tail in _SAFE_CALL_TAILS or name.startswith(
+        ("secrets.", "os.urandom", "cryptography.", "Crypto.Random.", "nacl.")
+    ):
         return False
-    return bool(compact & _SENSITIVE_CALL_WORDS) or tail in {
-        "set_cookie",
-        "set_header",
-        "setdefault",
-        "update",
-    } and any(_sensitive_text(_literal_string(argument) or "") for argument in node.args)
+    return bool(compact & _SENSITIVE_CALL_WORDS) or (
+        tail
+        in {
+            "set_cookie",
+            "set_header",
+            "setdefault",
+            "update",
+        }
+        and any(_sensitive_text(_literal_string(argument) or "") for argument in node.args)
+    )
 
 
 def _resolve_call_arguments(
@@ -787,7 +798,9 @@ def _unique_evidence(values: list[_WeakEvidence]) -> tuple[_WeakEvidence, ...]:
     )
 
 
-def _canonical_reference(node: ast.AST, aliases: dict[str, str | None], max_depth: int, depth: int = 0) -> str | None:
+def _canonical_reference(
+    node: ast.AST, aliases: dict[str, str | None], max_depth: int, depth: int = 0
+) -> str | None:
     if depth > max_depth:
         raise PythonCwe338ScanError(PythonCwe338ScanErrorCode.SIGNAL_LIMIT)
     if isinstance(node, ast.Name):
@@ -863,9 +876,16 @@ def _node_range(node: ast.AST, source: bytes, line_starts: tuple[int, ...]) -> S
         raise PythonCwe338ScanError(PythonCwe338ScanErrorCode.INTEGRITY_FAILURE)
     start = line_starts[start_line] + start_column
     end = line_starts[end_line] + end_column
-    if start < line_starts[start_line] or end > line_starts[end_line + 1] or end < start or end > len(source):
+    if (
+        start < line_starts[start_line]
+        or end > line_starts[end_line + 1]
+        or end < start
+        or end > len(source)
+    ):
         raise PythonCwe338ScanError(PythonCwe338ScanErrorCode.INTEGRITY_FAILURE)
-    return SourceRange(start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column))
+    return SourceRange(
+        start, end, SourcePoint(start_line, start_column), SourcePoint(end_line, end_column)
+    )
 
 
 def _span_range(

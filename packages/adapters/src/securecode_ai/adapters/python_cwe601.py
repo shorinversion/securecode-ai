@@ -686,16 +686,11 @@ def _record_response_constructor(
         )
 
 
-def _redirect_argument(
-    call: ast.Call, operation: PythonCwe601Operation
-) -> ast.expr | None:
+def _redirect_argument(call: ast.Call, operation: PythonCwe601Operation) -> ast.expr | None:
     if call.args:
         return call.args[0]
-    accepted = (
-        ("url", "location", "to")
-        if operation is PythonCwe601Operation.STARLETTE_REDIRECT
-        else ("url", "location", "to")
-    )
+    # Every supported redirect operation shares the same keyword names.
+    accepted = ("url", "location", "to")
     for keyword in call.keywords:
         if keyword.arg in accepted:
             return keyword.value
@@ -846,9 +841,11 @@ def _is_parameter_source(name: str, call: ast.AST | None, tree: ast.AST) -> bool
         *scope.args.args,
         *scope.args.kwonlyargs,
     )
-    return any(parameter.arg == name for parameter in parameters) or (
-        scope.args.vararg is not None and scope.args.vararg.arg == name
-    ) or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    return (
+        any(parameter.arg == name for parameter in parameters)
+        or (scope.args.vararg is not None and scope.args.vararg.arg == name)
+        or (scope.args.kwarg is not None and scope.args.kwarg.arg == name)
+    )
 
 
 def _is_safe_expression(
@@ -873,9 +870,7 @@ def _is_safe_callable_text(node: ast.AST, source: bytes) -> bool:
     return _compact(source, node).rsplit(".", 1)[-1] in _SANITIZER_NAMES
 
 
-def _is_location_target(
-    target: ast.expr, aliases: dict[str, str | None], source: bytes
-) -> bool:
+def _is_location_target(target: ast.expr, aliases: dict[str, str | None], source: bytes) -> bool:
     if isinstance(target, ast.Subscript):
         key = _literal_string(target.slice)
         if key not in _LOCATION_NAMES:
@@ -886,20 +881,20 @@ def _is_location_target(
     return False
 
 
-def _is_response_headers(
-    canonical: str, aliases: dict[str, str | None]
-) -> bool:
+def _is_response_headers(canonical: str, aliases: dict[str, str | None]) -> bool:
     pieces = canonical.split(".")
-    return len(pieces) >= 2 and pieces[-1] in _RESPONSE_HEADER_NAMES and (
-        pieces[0] in _RESPONSE_ROOTS
-        or pieces[0] in {"headers", "response_headers"}
-        or aliases.get(pieces[0], "").endswith("Response")
+    return (
+        len(pieces) >= 2
+        and pieces[-1] in _RESPONSE_HEADER_NAMES
+        and (
+            pieces[0] in _RESPONSE_ROOTS
+            or pieces[0] in {"headers", "response_headers"}
+            or (aliases.get(pieces[0]) or "").endswith("Response")
+        )
     )
 
 
-def _is_response_object(
-    node: ast.expr, aliases: dict[str, str | None], source: bytes
-) -> bool:
+def _is_response_object(node: ast.expr, aliases: dict[str, str | None], source: bytes) -> bool:
     canonical = _canonical_reference(node, aliases, 8)
     if canonical is not None:
         root = canonical.split(".", 1)[0]
@@ -963,17 +958,17 @@ def _record_imports(statement: ast.Import, aliases: dict[str, str | None]) -> No
         )
 
 
-def _record_import_from(
-    statement: ast.ImportFrom, aliases: dict[str, str | None]
-) -> None:
+def _record_import_from(statement: ast.ImportFrom, aliases: dict[str, str | None]) -> None:
     module = statement.module or ""
     for imported in statement.names:
         if imported.name == "*" or statement.level:
             continue
         name = imported.asname or imported.name
         canonical = f"{module}.{imported.name}"
-        if canonical in _DIRECT_OPERATIONS or module in _FRAMEWORK_MODULES or module.startswith(
-            tuple(f"{item}." for item in _FRAMEWORK_MODULES)
+        if (
+            canonical in _DIRECT_OPERATIONS
+            or module in _FRAMEWORK_MODULES
+            or module.startswith(tuple(f"{item}." for item in _FRAMEWORK_MODULES))
         ):
             aliases[name] = canonical
         else:
@@ -1165,9 +1160,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1199,9 +1192,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

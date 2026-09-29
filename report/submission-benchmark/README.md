@@ -42,7 +42,7 @@ Cells from 3-repeat model lanes are shown together, so their confusion counts ar
 | Full hybrid, derived paired union | 600 x 3 | 1,800 | 288 | 289 | 611 | 612 | 49.9% | 32.0% | 39.0% | 57.8% | 0 |
 | Semgrep 1.177.0, pinned baseline | 600 requested, 1 scored | 600 | 103 | 103 | 197 | 197 | 50.0% | 34.3% | 40.7% | 100% | 0 |
 
-The precision, recall and F1 cluster-bootstrap intervals for every lane are in [`aggregate.json`](aggregate.json). Full metrics by language, split and all 79 CWE groups are in [`stratified-metrics.csv`](stratified-metrics.csv). The machine-readable hash record is [`aggregate-output-manifest.json`](aggregate-output-manifest.json). Read the standalone [HTML report](report.html) or printable [PDF report](../../output/pdf/securecode-ai-submission-benchmark.pdf).
+The precision, recall and F1 cluster-bootstrap intervals for every lane are in [`aggregate.json`](aggregate.json). Full metrics by language, split and all 79 CWE groups are in [`stratified-metrics.csv`](stratified-metrics.csv). The machine-readable hash record is [`aggregate-output-manifest.json`](aggregate-output-manifest.json). Read the standalone [HTML report](report.html) or printable [PDF report](../../site/benchmark.pdf).
 
 ## Held-out results by language
 

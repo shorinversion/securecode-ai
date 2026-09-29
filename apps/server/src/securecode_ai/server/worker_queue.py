@@ -16,6 +16,7 @@ from .ports import ServiceRequest, ServiceResponse, ServiceUnavailableError
 from .run_admission_models import RunOperation
 from .worker_findings import WorkerFindingRecord
 from .worker_findings_store import complete_worker_run
+from .worker_queue_models import _MAX_VERSION as _QUEUE_MAX_VERSION
 from .worker_queue_models import (
     TERMINAL_STATES as _TERMINAL_STATES,
 )
@@ -64,7 +65,6 @@ from .worker_queue_models import (
 from .worker_queue_models import (
     utc as _utc,
 )
-from .worker_queue_models import _MAX_VERSION as _QUEUE_MAX_VERSION
 from .worker_resource_models import WorkerResourceSettlement
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -84,7 +84,13 @@ _ARTIFACT_PURPOSES = frozenset(
     }
 )
 _DATA_CLASSES = frozenset(
-    {"DC0_PUBLIC", "DC1_INTERNAL_METADATA", "DC2_CONFIDENTIAL_SECURITY", "DC3_CONFIDENTIAL_SOURCE", "DC4_RESTRICTED"}
+    {
+        "DC0_PUBLIC",
+        "DC1_INTERNAL_METADATA",
+        "DC2_CONFIDENTIAL_SECURITY",
+        "DC3_CONFIDENTIAL_SOURCE",
+        "DC4_RESTRICTED",
+    }
 )
 
 
@@ -143,8 +149,7 @@ class SqliteWorkerQueue:
                 (tenant_id, run_id),
             ).fetchone()
             admission_pending = (
-                run["admission_state"] == "RESERVED"
-                and run["state"] == "ADMISSION_PENDING"
+                run["admission_state"] == "RESERVED" and run["state"] == "ADMISSION_PENDING"
             )
             admitted_active = (
                 run["admission_state"] == "ADMITTED"
@@ -506,9 +511,7 @@ class SqliteWorkerQueue:
             requested_command = _command(row["state"])
             if requested_command != "CONTINUE":
                 terminal_kind = (
-                    "RUN_SUPERSEDED"
-                    if requested_command == "SUPERSEDE"
-                    else "RUN_CANCELLED"
+                    "RUN_SUPERSEDED" if requested_command == "SUPERSEDE" else "RUN_CANCELLED"
                 )
                 if artifact is not None or (renew_lease and events):
                     raise WorkerQueueConflict()
@@ -587,34 +590,33 @@ class SqliteWorkerQueue:
                     ),
                 )
                 next_sequence += 1
-            if artifact is not None:
-                # The handler has verified this upload; keep the first committed
-                # receipt for an exact run, purpose, and digest replay.
-                if not _reuse_committed_artifact(
-                    cursor,
-                    tenant_id=tenant_id,
-                    run_id=run_id,
-                    execution_identity_hash=execution_identity_hash,
-                    repository_id=_identity_document(
-                        row["execution_identity_json"]
-                    ).repository_revision.repository_id,
-                    artifact=artifact,
-                ):
-                    cursor.execute(
-                        """INSERT INTO run_artifacts
+            # The handler has verified this upload; keep the first committed
+            # receipt for an exact run, purpose, and digest replay.
+            if artifact is not None and not _reuse_committed_artifact(
+                cursor,
+                tenant_id=tenant_id,
+                run_id=run_id,
+                execution_identity_hash=execution_identity_hash,
+                repository_id=_identity_document(
+                    row["execution_identity_json"]
+                ).repository_revision.repository_id,
+                artifact=artifact,
+            ):
+                cursor.execute(
+                    """INSERT INTO run_artifacts
                            (tenant_id, run_id, content_sha256, authorization_id,
                             purpose, metadata_json, committed_at)
                            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            tenant_id,
-                            run_id,
-                            artifact["content_sha256"],
-                            artifact["authorization_id"],
-                            artifact["purpose"],
-                            _canonical(dict(artifact)),
-                            now.isoformat(),
-                        ),
-                    )
+                    (
+                        tenant_id,
+                        run_id,
+                        artifact["content_sha256"],
+                        artifact["authorization_id"],
+                        artifact["purpose"],
+                        _canonical(dict(artifact)),
+                        now.isoformat(),
+                    ),
+                )
             updated = _current(cursor, tenant_id, session_id)
             self._connection.commit()
             return _row_lease(cursor, updated, self._lease_seconds)
@@ -681,9 +683,9 @@ class SqliteWorkerQueue:
             if row is None or row["version"] != expected_run_version:
                 raise WorkerQueueConflict()
             if row["state"] in _TERMINAL_STATES:
-                if (
-                    command == "SUPERSEDE" and row["state"] == "SUPERSEDED"
-                ) or (command == "CANCEL" and row["state"] == "CANCELLED"):
+                if (command == "SUPERSEDE" and row["state"] == "SUPERSEDED") or (
+                    command == "CANCEL" and row["state"] == "CANCELLED"
+                ):
                     self._connection.commit()
                     return
                 raise WorkerQueueConflict()
@@ -839,14 +841,11 @@ def _active_replay_lease(
         and row["lease_owner"] == lease.worker_id
         and row["session_id"] == lease.session_id
         and row["version"] == lease.version
-        and row["execution_identity_hash"]
-        == lease.execution_identity.execution_identity_hash
+        and row["execution_identity_hash"] == lease.execution_identity.execution_identity_hash
     )
 
 
-def _row_lease(
-    cursor: sqlite3.Cursor, row: sqlite3.Row, lease_seconds: int
-) -> WorkerQueueLease:
+def _row_lease(cursor: sqlite3.Cursor, row: sqlite3.Row, lease_seconds: int) -> WorkerQueueLease:
     identity_value = _identity_document(row["execution_identity_json"])
     resource_budget = _resource_budget_for_run(
         cursor,
@@ -973,9 +972,7 @@ def _datetime_ms(value: datetime) -> int:
     return milliseconds
 
 
-def _next_event_sequence(
-    cursor: sqlite3.Cursor, *, tenant_id: str, run_id: str
-) -> int:
+def _next_event_sequence(cursor: sqlite3.Cursor, *, tenant_id: str, run_id: str) -> int:
     value = cursor.execute(
         """SELECT COALESCE(MAX(sequence), 0) + 1 FROM run_events
            WHERE tenant_id=? AND run_id=?""",
@@ -1085,8 +1082,12 @@ def _validate_artifact(value: Mapping[str, object]) -> None:
     for name in ("authorization_id", "content_id", "purpose", "data_class"):
         if type(value[name]) is not str:
             raise WorkerQueueConflict()
-    _identifier(value["authorization_id"])
-    _identifier(value["content_id"])
+    authorization_id = value["authorization_id"]
+    content_id = value["content_id"]
+    if type(authorization_id) is not str or type(content_id) is not str:
+        raise WorkerQueueConflict()
+    _identifier(authorization_id)
+    _identifier(content_id)
     digest = value["content_sha256"]
     if type(digest) is not str or _SHA256.fullmatch(digest) is None:
         raise WorkerQueueConflict()

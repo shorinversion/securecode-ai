@@ -163,6 +163,8 @@ class AuditLog:
         self._db = connection or sqlite3.connect(":memory:", check_same_thread=False)
         self._now = now
         self._lock = threading.RLock()
+        # Last verified event per run: (sequence, event_hash, repository_id, identity_hash).
+        self._verified_tail: dict[tuple[str, str], tuple[int, str, str, str]] = {}
         self._db.execute("PRAGMA foreign_keys = ON")
         for statement in AUDIT_LOG_SCHEMA_STATEMENTS:
             self._db.execute(statement)
@@ -288,7 +290,18 @@ class AuditLog:
                     "attributes": normalized_attributes,
                     "created_at": created_at,
                 }
-                event = AuditResourceEvent(**material, event_hash=_digest(material))
+                event = AuditResourceEvent(
+                    tenant_id=tenant_id,
+                    resource_type=resource_type,
+                    resource_key_sha256=key_hash,
+                    actor_id=actor_id,
+                    action=action,
+                    sequence=sequence + 1,
+                    previous_hash=previous_hash,
+                    attributes=normalized_attributes,
+                    created_at=created_at,
+                    event_hash=_digest(material),
+                )
                 self._db.execute(
                     """INSERT INTO audit_resource_chain_events VALUES
                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -308,7 +321,14 @@ class AuditLog:
                 self._db.execute(
                     """INSERT INTO audit_resource_chain_idempotency VALUES
                        (?, ?, ?, ?, ?, ?)""",
-                    (tenant_id, resource_type, key_hash, idempotency_hash, request_hash, event.sequence),
+                    (
+                        tenant_id,
+                        resource_type,
+                        key_hash,
+                        idempotency_hash,
+                        request_hash,
+                        event.sequence,
+                    ),
                 )
                 self._db.commit()
                 return event
@@ -387,9 +407,7 @@ class AuditLog:
     ) -> None:
         previous = "0" * 64
         expected_sequence = 1
-        for row in self._resource_rows(
-            tenant_id, resource_type, resource_key_sha256, 1, None
-        ):
+        for row in self._resource_rows(tenant_id, resource_type, resource_key_sha256, 1, None):
             event = _resource_from_row(row)
             material = {
                 "tenant_id": event.tenant_id,
@@ -469,7 +487,7 @@ class AuditLog:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 self._ensure_available(tenant_id=tenant_id, run_id=run_id)
-                self.require_valid(tenant_id=tenant_id, run_id=run_id)
+                self._require_valid_since_tail(tenant_id=tenant_id, run_id=run_id)
                 replay = self._db.execute(
                     """SELECT request_sha256, run_id, sequence
                        FROM audit_chain_idempotency
@@ -572,6 +590,12 @@ class AuditLog:
                     (tenant_id, key, request_hash, run_id, event.sequence),
                 )
                 self._db.commit()
+                self._verified_tail[(tenant_id, run_id)] = (
+                    event.sequence,
+                    event.event_hash,
+                    repository_id,
+                    identity_hash,
+                )
                 return event
             except Exception:
                 self._db.rollback()
@@ -647,48 +671,88 @@ class AuditLog:
         _require_identifier(run_id)
         with self._lock:
             self._ensure_available(tenant_id=tenant_id, run_id=run_id)
-            cursor = self._db.execute(
-                """SELECT tenant_id, repository_id, run_id, actor_id, action,
-                          execution_identity_hash, sequence, previous_hash,
-                          attributes_json, created_at, event_hash
-                   FROM audit_chain_events
-                   WHERE tenant_id = ? AND run_id = ?
-                   ORDER BY sequence""",
-                (tenant_id, run_id),
-            )
-            previous_hash = "0" * 64
-            expected_sequence = 1
-            chain_repository_id: str | None = None
-            chain_identity_hash: str | None = None
-            for row in cursor:
-                event = _from_row(tuple(row))
-                if event.sequence != expected_sequence or event.previous_hash != previous_hash:
-                    return False
-                if chain_repository_id is None:
-                    chain_repository_id = event.repository_id
-                    chain_identity_hash = event.execution_identity_hash
-                elif (
-                    event.repository_id != chain_repository_id
-                    or event.execution_identity_hash != chain_identity_hash
-                ):
-                    return False
-                material = {
-                    "tenant_id": event.tenant_id,
-                    "repository_id": event.repository_id,
-                    "run_id": event.run_id,
-                    "actor_id": event.actor_id,
-                    "action": event.action,
-                    "execution_identity_hash": event.execution_identity_hash,
-                    "sequence": event.sequence,
-                    "previous_hash": event.previous_hash,
-                    "attributes": event.attributes,
-                    "created_at": event.created_at,
-                }
-                if _digest(material) != event.event_hash:
-                    return False
-                previous_hash = event.event_hash
-                expected_sequence += 1
+            tail = self._verified_tail_from(tenant_id=tenant_id, run_id=run_id, anchor=None)
+            if tail is None:
+                self._verified_tail.pop((tenant_id, run_id), None)
+                return False
+            if tail[0]:
+                self._verified_tail[(tenant_id, run_id)] = tail
             return True
+
+    def _require_valid_since_tail(self, *, tenant_id: str, run_id: str) -> None:
+        """Verify only events after the last verified anchor, re-checking the anchor.
+
+        The first append of a run in this process verifies the complete chain.
+        Later appends confirm that the stored anchor event is unchanged and
+        verify every newer event, so appends stay linear. Exports still call
+        ``require_valid`` and recompute the whole chain.
+        """
+        anchor = self._verified_tail.get((tenant_id, run_id))
+        tail = self._verified_tail_from(tenant_id=tenant_id, run_id=run_id, anchor=anchor)
+        if tail is None:
+            self._verified_tail.pop((tenant_id, run_id), None)
+            raise AuditConflict("audit hash chain verification failed")
+        if tail[0]:
+            self._verified_tail[(tenant_id, run_id)] = tail
+
+    def _verified_tail_from(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        anchor: tuple[int, str, str, str] | None,
+    ) -> tuple[int, str, str, str] | None:
+        """Return the verified chain tail, or ``None`` when the chain is invalid."""
+        start_sequence = 1 if anchor is None else anchor[0]
+        cursor = self._db.execute(
+            """SELECT tenant_id, repository_id, run_id, actor_id, action,
+                      execution_identity_hash, sequence, previous_hash,
+                      attributes_json, created_at, event_hash
+               FROM audit_chain_events
+               WHERE tenant_id = ? AND run_id = ? AND sequence >= ?
+               ORDER BY sequence""",
+            (tenant_id, run_id, start_sequence),
+        )
+        previous_hash = "0" * 64
+        expected_sequence = 1
+        chain_repository_id: str | None = None
+        chain_identity_hash: str | None = None
+        if anchor is not None:
+            first = cursor.fetchone()
+            if first is None:
+                return None
+            stored = _from_row(tuple(first))
+            if (
+                stored.sequence != anchor[0]
+                or stored.event_hash != anchor[1]
+                or _event_digest(stored) != stored.event_hash
+                or stored.repository_id != anchor[2]
+                or stored.execution_identity_hash != anchor[3]
+            ):
+                return None
+            previous_hash = anchor[1]
+            expected_sequence = anchor[0] + 1
+            chain_repository_id = anchor[2]
+            chain_identity_hash = anchor[3]
+        for row in cursor:
+            event = _from_row(tuple(row))
+            if event.sequence != expected_sequence or event.previous_hash != previous_hash:
+                return None
+            if chain_repository_id is None:
+                chain_repository_id = event.repository_id
+                chain_identity_hash = event.execution_identity_hash
+            elif (
+                event.repository_id != chain_repository_id
+                or event.execution_identity_hash != chain_identity_hash
+            ):
+                return None
+            if _event_digest(event) != event.event_hash:
+                return None
+            previous_hash = event.event_hash
+            expected_sequence += 1
+        if chain_repository_id is None or chain_identity_hash is None:
+            return (0, previous_hash, "", "")
+        return (expected_sequence - 1, previous_hash, chain_repository_id, chain_identity_hash)
 
     def head_sequence(self, *, tenant_id: str, run_id: str) -> int:
         _require_identifier(tenant_id)
@@ -925,11 +989,7 @@ def erase_audit_run(
                     WHERE tenant_id=? AND run_id=?""",
         (tenant_id, run_id),
     ).fetchall():
-        if (
-            type(row[0]) is not str
-            or type(row[1]) is not str
-            or row[1] != run_id
-        ):
+        if type(row[0]) is not str or type(row[1]) is not str or row[1] != run_id:
             raise AuditConflict("audit retention idempotency state is invalid")
         _require_sha256(row[0])
         sequence = _stored_nonnegative_int(row[2])
@@ -1041,9 +1101,7 @@ def _validate_retention_tombstone(
     run_id: str,
     identity_hash: str,
 ) -> str:
-    if len(row) != 9 or not all(
-        type(row[index]) is str for index in (0, 1, 2, 3, 4, 5, 7, 8)
-    ):
+    if len(row) != 9 or not all(type(row[index]) is str for index in (0, 1, 2, 3, 4, 5, 7, 8)):
         raise AuditConflict("audit retention marker is invalid")
     marker_tenant = cast(str, row[0])
     marker_run = cast(str, row[1])
@@ -1234,10 +1292,6 @@ def _require_sha256(value: object) -> str:
     return value
 
 
-def _require_sha256_value(value: object) -> bool:
-    return type(value) is str and len(value) == 64 and all(item in "0123456789abcdef" for item in value)
-
-
 def _require_key(value: object) -> str:
     if (
         type(value) is not str
@@ -1267,11 +1321,28 @@ def _checked_now(source: Callable[[], datetime]) -> datetime:
     return value
 
 
+def _event_digest(event: AuditEvent) -> str:
+    return _digest(
+        {
+            "tenant_id": event.tenant_id,
+            "repository_id": event.repository_id,
+            "run_id": event.run_id,
+            "actor_id": event.actor_id,
+            "action": event.action,
+            "execution_identity_hash": event.execution_identity_hash,
+            "sequence": event.sequence,
+            "previous_hash": event.previous_hash,
+            "attributes": event.attributes,
+            "created_at": event.created_at,
+        }
+    )
+
+
 __all__ = [
     "AUDIT_LOG_SCHEMA_STATEMENTS",
     "AuditConflict",
     "AuditEvent",
-    "AuditResourceEvent",
     "AuditLog",
+    "AuditResourceEvent",
     "erase_audit_run",
 ]

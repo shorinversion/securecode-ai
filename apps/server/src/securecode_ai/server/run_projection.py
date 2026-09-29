@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Final
 
-
 _RUN_STATE_RECEIPTS: Final = {
     "ADMISSION_PENDING": ("PENDING", "ADMITTED", None),
     "ADMISSION_BLOCKED": ("BLOCKED", "COMPLETED", None),

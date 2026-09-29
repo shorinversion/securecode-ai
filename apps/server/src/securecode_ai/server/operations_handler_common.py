@@ -28,7 +28,7 @@ def document(
 
 
 def string(
-    value: Mapping[str, object],
+    value: object,
     name: str,
     *,
     maximum: int = 256,
@@ -64,14 +64,14 @@ def path_identifier(value: Mapping[str, object], name: str) -> str | None:
     return item
 
 
-def boolean(value: Mapping[str, object], name: str) -> bool | None:
+def boolean(value: object, name: str) -> bool | None:
     if not isinstance(value, Mapping):
         return None
     item = value.get(name)
     return item if type(item) is bool else None
 
 
-def integer(value: Mapping[str, object], name: str) -> int | None:
+def integer(value: object, name: str) -> int | None:
     if not isinstance(value, Mapping):
         return None
     item = value.get(name)
@@ -106,9 +106,10 @@ def expected_version(request: ServiceRequest) -> int | None:
 
 
 def query_value(request: ServiceRequest, name: str) -> str | None:
-    if not isinstance(request.query, Mapping):
+    query: object = request.query
+    if not isinstance(query, Mapping):
         return None
-    raw = request.query.get(name)
+    raw = query.get(name)
     if type(raw) is not tuple or len(raw) != 1:
         return None
     value = raw[0]
@@ -118,9 +119,10 @@ def query_value(request: ServiceRequest, name: str) -> str | None:
 
 
 def path_value(request: ServiceRequest, name: str) -> str | None:
-    if not isinstance(request.path_params, Mapping):
+    path_params: object = request.path_params
+    if not isinstance(path_params, Mapping):
         return None
-    value = request.path_params.get(name)
+    value = path_params.get(name)
     return value if type(value) is str and value else None
 
 

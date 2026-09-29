@@ -269,10 +269,7 @@ class DefaultResourceRequestPolicy:
         # the bounded worker wall budget.  Heartbeats never extend this
         # deadline, so an abandoned run remains reclaimable.
         lease_window_ms = self._defaults.lease_duration_ms + self._defaults.requested_wall_ms
-        if (
-            lease_window_ms > _SQLITE_INTEGER_MAX
-            or now_ms > _SQLITE_INTEGER_MAX - lease_window_ms
-        ):
+        if lease_window_ms > _SQLITE_INTEGER_MAX or now_ms > _SQLITE_INTEGER_MAX - lease_window_ms:
             raise AdmissionError(AdmissionErrorCode.INVALID_REQUEST, 400)
         lease_expires_at_ms = now_ms + lease_window_ms
         request_id = (
@@ -363,11 +360,11 @@ __all__ = [
     "DefaultResourceRequestPolicy",
     "ResourceRequestPolicy",
     "ResourceReservationPort",
-    "RunOperation",
+    "RunAdmissionStore",
     "RunIdentityResolver",
+    "RunOperation",
     "RunPolicyPinValidator",
     "RunPublicationBinder",
-    "RunAdmissionStore",
     "RunResourceDefaults",
     "WorkerQueuePort",
     "canonical",

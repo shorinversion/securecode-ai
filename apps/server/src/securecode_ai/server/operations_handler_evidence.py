@@ -147,19 +147,16 @@ class AssuranceOperationsHandler:
         verifiers: AssuranceVerifierRegistry | None = None,
         pins_provider: AssurancePinsProvider | None = None,
     ) -> None:
-        if type(service) is not AssuranceService or (
-            verifiers is not None and type(verifiers) is not AssuranceVerifierRegistry
-        ) or (
-            pins_provider is not None
-            and not callable(getattr(pins_provider, "resolve", None))
+        if (
+            type(service) is not AssuranceService
+            or (verifiers is not None and type(verifiers) is not AssuranceVerifierRegistry)
+            or (pins_provider is not None and not callable(getattr(pins_provider, "resolve", None)))
         ):
             raise TypeError("assurance handler configuration is invalid")
         self._service = service
         self._verifiers = AssuranceVerifierRegistry.deny_all() if verifiers is None else verifiers
         self._pins_provider = (
-            UnavailableAssurancePinsProvider()
-            if pins_provider is None
-            else pins_provider
+            UnavailableAssurancePinsProvider() if pins_provider is None else pins_provider
         )
 
     async def dispatch(self, request: ServiceRequest) -> ServiceResponse:
@@ -280,7 +277,7 @@ class AssuranceOperationsHandler:
                 return CONFLICT
             return response(200, asdict(report))
         try:
-            report = self._service.report_inputs(
+            inputs = self._service.report_inputs(
                 tenant_id=request.identity.tenant_id,
                 repository_id=repository_id,
                 execution_identity_hash=identity_hash,
@@ -288,14 +285,14 @@ class AssuranceOperationsHandler:
         except (AssuranceConflict, TypeError, ValueError):
             return CONFLICT
         if not _report_matches_scope(
-            report,
+            inputs,
             tenant_id=request.identity.tenant_id,
             repository_id=repository_id,
             execution_identity_hash=identity_hash,
         ):
             return CONFLICT
-        sequence = report.get("denominator")
-        return response(200, report, version=sequence if type(sequence) is int else None)
+        sequence = inputs.get("denominator")
+        return response(200, inputs, version=sequence if type(sequence) is int else None)
 
     @staticmethod
     def _record_view(value: AssuranceRecord) -> dict[str, object]:

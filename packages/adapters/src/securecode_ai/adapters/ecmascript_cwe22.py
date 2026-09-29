@@ -42,9 +42,7 @@ _PRESERVING_FUNCTIONS = frozenset(
         "encodeURIComponent",
     }
 )
-_REQUEST_ROOTS = frozenset(
-    {"ctx", "context", "event", "httpRequest", "req", "request"}
-)
+_REQUEST_ROOTS = frozenset({"ctx", "context", "event", "httpRequest", "req", "request"})
 _REQUEST_FIELDS = frozenset(
     {
         "body",
@@ -266,16 +264,20 @@ class EcmaScriptCwe22Signal:
             and self.source.end_byte <= self.source_size_bytes
             and self.sink.end_byte <= self.source_size_bytes
         )
-        expected = _signal_id(
-            self.repository_id,
-            self.revision,
-            self.path,
-            self.content_sha256,
-            self.source_size_bytes,
-            self.source,
-            self.sink,
-            self.operation,
-        ) if valid_ranges and type(self.operation) is EcmaScriptCwe22Operation else ""
+        expected = (
+            _signal_id(
+                self.repository_id,
+                self.revision,
+                self.path,
+                self.content_sha256,
+                self.source_size_bytes,
+                self.source,
+                self.sink,
+                self.operation,
+            )
+            if valid_ranges and type(self.operation) is EcmaScriptCwe22Operation
+            else ""
+        )
         if (
             not valid_identity
             or not valid_ranges
@@ -577,9 +579,7 @@ def _operation_for_call(
     return _OPERATIONS.get(parts[-1])
 
 
-def _sink_arguments(
-    arguments: Node, operation: EcmaScriptCwe22Operation
-) -> tuple[Node, ...]:
+def _sink_arguments(arguments: Node, operation: EcmaScriptCwe22Operation) -> tuple[Node, ...]:
     values = arguments.named_children
     if not values:
         return ()
@@ -625,9 +625,7 @@ def _resolve_source(
         "unary_expression",
         "update_expression",
     }:
-        return _resolve_children(
-            node, scope, source, aliases, limits, depth + 1, visited
-        )
+        return _resolve_children(node, scope, source, aliases, limits, depth + 1, visited)
     if node.type == "call_expression":
         function = node.child_by_field_name("function")
         arguments = node.child_by_field_name("arguments")
@@ -637,9 +635,7 @@ def _resolve_source(
         if canonical is not None and (
             _is_path_builder(canonical) or canonical in _PRESERVING_FUNCTIONS
         ):
-            return _resolve_children(
-                arguments, scope, source, aliases, limits, depth + 1, visited
-            )
+            return _resolve_children(arguments, scope, source, aliases, limits, depth + 1, visited)
         return ()
     if node.type in {
         "binary_expression",
@@ -721,9 +717,10 @@ def _member_request_source(value: str) -> bool:
 
 def _call_request_source(callee: str, expression: str) -> bool:
     pieces = callee.replace("[", ".[").split(".")
-    if not pieces or pieces[0] not in _REQUEST_ROOTS:
-        if not re.search(r"(?:^|\.)searchParams\.get\Z", callee):
-            return False
+    if (not pieces or pieces[0] not in _REQUEST_ROOTS) and not re.search(
+        r"(?:^|\.)searchParams\.get\Z", callee
+    ):
+        return False
     if callee.endswith(".get") or callee.endswith(".param") or callee.endswith(".header"):
         if pieces[0] in _REQUEST_ROOTS:
             return len(pieces) >= 2 and (
@@ -763,9 +760,13 @@ def _latest_binding(scope: Node, name: str, before: int, source: bytes) -> Node 
             right = node.child_by_field_name("right")
         else:
             continue
-        if left is not None and right is not None and left.type == "identifier":
-            if _text(source, left) == name:
-                bound = right
+        if (
+            left is not None
+            and right is not None
+            and left.type == "identifier"
+            and _text(source, left) == name
+        ):
+            bound = right
     return bound
 
 
@@ -995,9 +996,7 @@ def _signal_id(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 
@@ -1031,9 +1030,7 @@ def _scan_sha256(
         "source_size_bytes": source_size_bytes,
     }
     return hashlib.sha256(
-        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode(
-            "ascii"
-        )
+        json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
     ).hexdigest()
 
 

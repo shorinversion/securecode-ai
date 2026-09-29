@@ -112,7 +112,7 @@ class GithubChangedLinesResolver:
                 head_sha=head_sha,
             )
             comparison = response.document
-            if comparison is None:
+            if type(comparison) is not dict:
                 raise ValueError
             _github_compare_lineage(comparison, base_sha=base_sha, head_sha=head_sha)
             if _github_compare_has_next_page(response.headers):
@@ -194,9 +194,13 @@ class GitlabCommitLineageResolver:
         self._api = api
 
     def __call__(self, project_id: str, base_sha: str, head_sha: str) -> tuple[str, ...]:
-        if type(project_id) is not str or _ID.fullmatch(project_id) is None or any(
-            type(value) is not str or _SHA.fullmatch(value) is None
-            for value in (base_sha, head_sha)
+        if (
+            type(project_id) is not str
+            or _ID.fullmatch(project_id) is None
+            or any(
+                type(value) is not str or _SHA.fullmatch(value) is None
+                for value in (base_sha, head_sha)
+            )
         ):
             raise SCMHeadUnavailable("GitLab commit lineage is unavailable")
         try:
@@ -220,9 +224,13 @@ class GitlabChangedLinesResolver:
     def __call__(
         self, project_id: str, base_sha: str, head_sha: str
     ) -> tuple[tuple[str, int], ...]:
-        if type(project_id) is not str or _ID.fullmatch(project_id) is None or any(
-            type(value) is not str or _SHA.fullmatch(value) is None
-            for value in (base_sha, head_sha)
+        if (
+            type(project_id) is not str
+            or _ID.fullmatch(project_id) is None
+            or any(
+                type(value) is not str or _SHA.fullmatch(value) is None
+                for value in (base_sha, head_sha)
+            )
         ):
             raise SCMHeadUnavailable("GitLab changed lines are unavailable")
         try:
@@ -278,14 +286,12 @@ def _github_compare_document(
         head_sha=head_sha,
     )
     document = response.document
-    if document is None:
+    if type(document) is not dict:
         raise ValueError
     return document
 
 
-def _github_compare_lineage(
-    comparison: object, *, base_sha: str, head_sha: str
-) -> tuple[str, ...]:
+def _github_compare_lineage(comparison: object, *, base_sha: str, head_sha: str) -> tuple[str, ...]:
     if type(comparison) is not dict:
         raise ValueError
     status = comparison.get("status")

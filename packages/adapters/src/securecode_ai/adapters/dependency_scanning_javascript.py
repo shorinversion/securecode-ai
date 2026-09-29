@@ -152,9 +152,7 @@ def _v1_pins(document: dict[str, object], max_dependencies: int) -> set[tuple[st
             ):
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
             package_path = (
-                f"{parent_path}/node_modules/{name}"
-                if parent_path
-                else f"node_modules/{name}"
+                f"{parent_path}/node_modules/{name}" if parent_path else f"node_modules/{name}"
             )
             if package_path in seen_paths:
                 raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
@@ -242,13 +240,7 @@ def _reject_constant(_: str) -> object:
 
 
 def _package_name_from_path(path: str) -> str:
-    if (
-        not path
-        or not path.isascii()
-        or len(path) > 1024
-        or "\\" in path
-        or path.startswith("/")
-    ):
+    if not path or not path.isascii() or len(path) > 1024 or "\\" in path or path.startswith("/"):
         raise DependencyScanError(DependencyScanErrorCode.MANIFEST_INVALID)
     parts = path.split("/")
     names: list[str] = []
@@ -296,10 +288,7 @@ def _standard_registry_source(value: object, name: str, version: str) -> bool:
         actual_name = f"@{encoded_scope}/{match.group('encoded_package')}"
     else:
         actual_name = match.group("plain_package")
-    return (
-        actual_name == name
-        and match.group("filename") == f"{expected[-1]}-{version}.tgz"
-    )
+    return actual_name == name and match.group("filename") == f"{expected[-1]}-{version}.tgz"
 
 
 def _point(source: bytes, offset: int) -> SourcePoint:

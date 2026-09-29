@@ -50,8 +50,8 @@ def _comparison(*, status: str = "ahead", behind: int = 0) -> dict[str, object]:
         "base_commit": {"sha": BASE},
         "behind_by": behind,
         "commits": [
-            {"sha": MIDDLE, "commit": {"parents": [{"sha": BASE}]}},
-            {"sha": HEAD, "commit": {"parents": [{"sha": MIDDLE}]}},
+            {"sha": MIDDLE, "commit": {}, "parents": [{"sha": BASE}]},
+            {"sha": HEAD, "commit": {}, "parents": [{"sha": MIDDLE}]},
         ],
         "status": status,
         "total_commits": 2,
@@ -81,8 +81,8 @@ def test_github_commit_lineage_uses_authenticated_compare_and_checks_parent_chai
         {
             **_comparison(),
             "commits": [
-                {"sha": MIDDLE, "commit": {"parents": [{"sha": "d" * 40}]}},
-                {"sha": HEAD, "commit": {"parents": [{"sha": MIDDLE}]}},
+                {"sha": MIDDLE, "commit": {}, "parents": [{"sha": "d" * 40}]},
+                {"sha": HEAD, "commit": {}, "parents": [{"sha": MIDDLE}]},
             ],
         },
         {**_comparison(), "total_commits": 3},

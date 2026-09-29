@@ -22,10 +22,13 @@ from securecode_ai.core.escalation import (
     create_escalation_case,
 )
 from securecode_ai.core.finding_gate import (
+    FindingGateContractError,
     FindingGateDecision,
+    FindingGateInput,
     FindingGateReason,
     FindingRoute,
     InvestigationTerminalStatus,
+    route_finding,
 )
 from securecode_ai.core.investigation import (
     AuditorInvestigationReceipt,
@@ -147,15 +150,39 @@ def test_cross_scope_identity_fails_closed() -> None:
     assert error.value.code is EscalationErrorCode.CROSS_SCOPE
 
 
+def _routed(**overrides: object) -> FindingGateDecision:
+    """Derive a decision through the policy; decisions cannot be forged by replace."""
+
+    decision = _decision()
+    values = {
+        name: getattr(decision, name)
+        for name in FindingGateInput.__dataclass_fields__
+        if name in FindingGateDecision.__dataclass_fields__
+    }
+    return route_finding(FindingGateInput(**{**values, **overrides}))
+
+
+def test_forged_decision_route_is_rejected_by_the_gate_contract() -> None:
+    with pytest.raises(FindingGateContractError):
+        replace(
+            _decision(),
+            route=FindingRoute.CONFIRMED,
+            finding_gate_state=FindingGateState.BLOCKING,
+            reason=FindingGateReason.CONFIRMED,
+        )
+
+
 def test_non_human_route_cannot_create_case() -> None:
+    confirmed = _routed(
+        skeptic_verdict=FindingVerdict.CONFIRMED,
+        skeptic_effective_verdict=FindingVerdict.CONFIRMED,
+        skeptic_objections=(),
+        skeptic_cited_evidence_ids=(),
+    )
+    assert confirmed.route is FindingRoute.CONFIRMED
     with pytest.raises(EscalationCaseError):
         create_escalation_case(
-            replace(
-                _decision(),
-                route=FindingRoute.CONFIRMED,
-                finding_gate_state=FindingGateState.BLOCKING,
-                reason=FindingGateReason.CONFIRMED,
-            ),
+            confirmed,
             tenant_id="tenant-1",
             run_id="run-1",
             execution_identity=_identity(),
@@ -165,12 +192,11 @@ def test_non_human_route_cannot_create_case() -> None:
 
 
 def test_indeterminate_route_is_preserved_as_source_route() -> None:
+    indeterminate = _routed(investigation_terminal_status=InvestigationTerminalStatus.NO_PROGRESS)
+    assert indeterminate.route is FindingRoute.INDETERMINATE
+    assert indeterminate.reason is FindingGateReason.INVESTIGATION_NO_PROGRESS
     case = create_escalation_case(
-        replace(
-            _decision(),
-            route=FindingRoute.INDETERMINATE,
-            reason=FindingGateReason.INVESTIGATION_NO_PROGRESS,
-        ),
+        indeterminate,
         tenant_id="tenant-1",
         run_id="run-1",
         execution_identity=_identity(),

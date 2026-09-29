@@ -36,9 +36,7 @@ _EXEC_PACKAGE = "os/exec"
 _OS_PACKAGE = "os"
 _EXEC_FUNCTIONS = frozenset({"Command", "CommandContext"})
 _ENV_FUNCTIONS = frozenset({"Getenv", "LookupEnv"})
-_REQUEST_FUNCTIONS = frozenset(
-    {"FormValue", "Get", "PathValue", "PostFormValue"}
-)
+_REQUEST_FUNCTIONS = frozenset({"FormValue", "Get", "PathValue", "PostFormValue"})
 _UTILITY_PACKAGES = frozenset({"fmt", "strings"})
 _GO_SCOPES = frozenset({"function_declaration", "method_declaration", "func_literal"})
 
@@ -354,7 +352,7 @@ def _exec_arguments(
     name = _text(source, field)
     if name not in _EXEC_FUNCTIONS:
         return ()
-    values = arguments.named_children
+    values = tuple(arguments.named_children)
     # CommandContext receives context first.  The remaining arguments are the
     # executable and its argv; a constant executable plus dynamic argv is
     # still a source-to-sink flow and is intentionally retained.
@@ -373,23 +371,21 @@ def _capture_assignment(
         values_node = node.child_by_field_name("value")
         if names_node is None or values_node is None:
             return
-        names = names_node.named_children or (names_node,)
-        values = values_node.named_children or (values_node,)
+        names = tuple(names_node.named_children) or (names_node,)
+        values = tuple(values_node.named_children) or (values_node,)
     else:
         left = node.child_by_field_name("left")
         right = node.child_by_field_name("right")
         if left is None or right is None:
             return
-        names = left.named_children if left.type == "expression_list" else (left,)
-        values = right.named_children if right.type == "expression_list" else (right,)
+        names = tuple(left.named_children) if left.type == "expression_list" else (left,)
+        values = tuple(right.named_children) if right.type == "expression_list" else (right,)
     if len(values) == 1 and len(names) > 1:
         values = values * len(names)
     for name, value in zip(names, values, strict=False):
         if name.type != "identifier":
             continue
-        environment[_text(source, name)] = _resolve(
-            value, environment, source, imports, limits, 0
-        )
+        environment[_text(source, name)] = _resolve(value, environment, source, imports, limits, 0)
 
 
 def _resolve(
@@ -436,7 +432,9 @@ def _resolve(
         utility = _utility_function(function, source, imports)
         if utility is None:
             return ()
-        values = arguments.named_children[1:] if utility == "fmt.Sprintf" else arguments.named_children
+        values = (
+            arguments.named_children[1:] if utility == "fmt.Sprintf" else arguments.named_children
+        )
         return _dedupe_flows(
             (
                 flow
@@ -492,16 +490,16 @@ def _external_source(node: Node, source: bytes, imports: dict[str, str]) -> Node
     receiver = _compact_text(source, operand)
     if name in {"FormValue", "PostFormValue", "PathValue"}:
         return node
-    if receiver.endswith(".URL.Query()") or receiver.endswith(".Form") or receiver.endswith(
-        ".PostForm"
+    if (
+        receiver.endswith(".URL.Query()")
+        or receiver.endswith(".Form")
+        or receiver.endswith(".PostForm")
     ):
         return node
     return None
 
 
-def _utility_function(
-    function: Node | None, source: bytes, imports: dict[str, str]
-) -> str | None:
+def _utility_function(function: Node | None, source: bytes, imports: dict[str, str]) -> str | None:
     if function is None or function.type != "selector_expression":
         return None
     operand = function.child_by_field_name("operand")
@@ -550,9 +548,7 @@ def _preorder(root: Node) -> tuple[Node, ...]:
     return tuple(output)
 
 
-def _dedupe_flows(
-    flows: Iterable[_Flow], limits: GoCwe78ScanLimits
-) -> tuple[_Flow, ...]:
+def _dedupe_flows(flows: Iterable[_Flow], limits: GoCwe78ScanLimits) -> tuple[_Flow, ...]:
     unique: dict[tuple[int, int], _Flow] = {}
     for flow in flows:
         unique[(flow.source.start_byte, flow.source.end_byte)] = flow

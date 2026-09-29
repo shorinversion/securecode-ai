@@ -221,12 +221,7 @@ def _integer(
     raw = values.get(name)
     if raw is None:
         return default
-    if (
-        type(raw) is not str
-        or not 1 <= len(raw) <= 19
-        or not raw.isascii()
-        or not raw.isdigit()
-    ):
+    if type(raw) is not str or not 1 <= len(raw) <= 19 or not raw.isascii() or not raw.isdigit():
         raise ValueError("resource configuration is invalid")
     value = int(raw)
     if not minimum <= value <= 9_223_372_036_854_775_807:

@@ -470,15 +470,13 @@ def _configuration_facts(
         value = _single_numeric_value(node, source)
         if value is None:
             continue
-        weak = (
-            kind == "min" and value < _MINIMUM_LENGTH
-        ) or (kind == "max" and value <= _MINIMUM_LENGTH)
+        weak = (kind == "min" and value < _MINIMUM_LENGTH) or (
+            kind == "max" and value <= _MINIMUM_LENGTH
+        )
         if not weak:
             continue
         operation = (
-            GoCwe521Operation.MINIMUM_LENGTH
-            if kind == "min"
-            else GoCwe521Operation.MAXIMUM_LENGTH
+            GoCwe521Operation.MINIMUM_LENGTH if kind == "min" else GoCwe521Operation.MAXIMUM_LENGTH
         )
         output.append((_range(node), _range(node), operation, value))
     return tuple(output)
@@ -532,7 +530,9 @@ def _trivial_password_acceptance(compact: str) -> bool:
         return True
     if re.fullmatch(r"\{return(?:password|passwd|passphrase|passcode|pwd)!=(?:\"\"|``)\}", compact):
         return True
-    if re.fullmatch(r"\{returnlen\((?:password|passwd|passphrase|passcode|pwd)\)(?:>|>=)[01]\}", compact):
+    if re.fullmatch(
+        r"\{returnlen\((?:password|passwd|passphrase|passcode|pwd)\)(?:>|>=)[01]\}", compact
+    ):
         return True
     return bool(
         re.fullmatch(
@@ -765,12 +765,12 @@ Cwe521Signal = GoCwe521Signal
 
 
 __all__ = [
+    "DEFAULT_GO_CWE521_SCAN_LIMITS",
     "Cwe521ScanError",
     "Cwe521ScanErrorCode",
     "Cwe521ScanLimits",
     "Cwe521ScanResult",
     "Cwe521Signal",
-    "DEFAULT_GO_CWE521_SCAN_LIMITS",
     "GoCwe521Operation",
     "GoCwe521ScanError",
     "GoCwe521ScanErrorCode",

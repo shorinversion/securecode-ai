@@ -90,20 +90,20 @@ def test_product_mapping_is_closed_versioned_rule_policy(cwe_id: str, owasp_cate
     assert result.confidence is FindingConfidence.UNSCORED
     assert result.provenance is PRODUCT_CLASSIFICATION_PROVENANCE
     assert result.provenance.mapping_id == "securecode-product-portfolio-classification"
-    assert result.provenance.mapping_version == "1.0.0"
+    assert result.provenance.mapping_version == "1.2.0"
     assert result.provenance.severity_basis == "RULE_CATALOG"
     assert result.provenance.confidence_basis == "PRE_CALIBRATION_UNSCORED"
     assert result.provenance.calibration_record_id is None
 
 
-@pytest.mark.parametrize("cwe_id", ["CWE-79", "CWE-89 ", "", 918])
+@pytest.mark.parametrize("cwe_id", ["CWE-190", "CWE-89 ", "", 918])
 def test_product_mapping_rejects_unknown_or_invalid_cwes_without_echo(cwe_id: object) -> None:
     with pytest.raises(ClassificationError) as captured:
         classify_product_cwe(cwe_id)  # type: ignore[arg-type]
 
     expected = (
         ClassificationErrorCode.UNSUPPORTED_CWE
-        if cwe_id == "CWE-79"
+        if cwe_id == "CWE-190"
         else ClassificationErrorCode.INPUT_INVALID
     )
     assert captured.value.code is expected

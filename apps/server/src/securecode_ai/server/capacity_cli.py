@@ -23,8 +23,8 @@ from .capacity_profile import (
     MAX_LIFECYCLE_RUNS,
     MAX_POLL_INTERVAL_SECONDS,
     MAX_SOAK_REQUESTS,
-    MIN_POLL_INTERVAL_SECONDS,
     MIN_DURATION_SECONDS,
+    MIN_POLL_INTERVAL_SECONDS,
     WorkerLifecycleRequest,
     profile,
     profile_worker_lifecycle,
@@ -109,10 +109,7 @@ def _parser() -> argparse.ArgumentParser:
         "--lifecycle-runs",
         type=_bounded_lifecycle_runs,
         default=1,
-        help=(
-            "worker lifecycle submissions, from 1 to "
-            f"{MAX_LIFECYCLE_RUNS} (default: 1)"
-        ),
+        help=(f"worker lifecycle submissions, from 1 to {MAX_LIFECYCLE_RUNS} (default: 1)"),
     )
     parser.add_argument(
         "--poll-interval-seconds",
@@ -199,10 +196,7 @@ def _bounded_duration(value: str) -> float:
         parsed = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("capacity duration is invalid") from exc
-    if (
-        not math.isfinite(parsed)
-        or not MIN_DURATION_SECONDS <= parsed <= MAX_DURATION_SECONDS
-    ):
+    if not math.isfinite(parsed) or not MIN_DURATION_SECONDS <= parsed <= MAX_DURATION_SECONDS:
         raise argparse.ArgumentTypeError("capacity duration is invalid")
     return parsed
 
@@ -296,7 +290,7 @@ class _NoRedirect(HTTPRedirectHandler):
 class _ConnectedLifecycleClient:
     """Small server-owned transport for the existing connected wire protocol."""
 
-    __slots__ = ("_base_url", "_token", "_timeout", "_opener")
+    __slots__ = ("_base_url", "_opener", "_timeout", "_token")
 
     def __init__(self, base_url: str, token: str, *, timeout_seconds: float) -> None:
         self._base_url = _safe_connected_base_url(base_url)
@@ -330,9 +324,7 @@ class _ConnectedLifecycleClient:
             raise ValueError("worker lifecycle run is invalid")
         return self._call("GET", f"/api/v1/runs/{run_id}", document=None)
 
-    def cancel(
-        self, run_id: str, *, if_match: str, idempotency_key: str
-    ) -> Mapping[str, object]:
+    def cancel(self, run_id: str, *, if_match: str, idempotency_key: str) -> Mapping[str, object]:
         if (
             not _valid_identifier(run_id)
             or not _valid_version(if_match)
@@ -465,11 +457,7 @@ def _valid_identifier(value: object) -> bool:
 
 
 def _valid_idempotency_key(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and _valid_identifier(value)
-        and len(value) >= 8
-    )
+    return isinstance(value, str) and _valid_identifier(value) and len(value) >= 8
 
 
 def _valid_version(value: object) -> bool:
