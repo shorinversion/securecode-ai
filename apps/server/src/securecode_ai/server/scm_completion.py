@@ -8,7 +8,7 @@ from typing import cast
 
 from securecode_ai.adapters.github_annotations import GithubAnnotationReceipt
 from securecode_ai.contracts import AuditRunOutcome
-from securecode_ai.core.scm_policy import ScmPolicyDecision, ScmPolicyEnforcement
+from securecode_ai.core.scm_policy import ScmPolicyDecision, ScmPolicyEnforcement, ScmPolicyMode
 from securecode_ai.core.scm_run_state import (
     PublicationDisposition,
     SCMRunPublicationReceipt,
@@ -148,7 +148,7 @@ class SCMCompletionPublicationService:
         if state_tenant_id != tenant_id:
             raise SCMCompletionError("SCM run binding conflicts")
         audit = audit_outcome(worker_outcome)
-        outcome, waiver_applied, waiver_revision = self._publication_outcome(
+        outcome, waiver_applied, waiver_revision, advisory_findings = self._publication_outcome(
             tenant_id=tenant_id,
             run_id=run_id,
             execution_identity_hash=execution_identity_hash,
@@ -230,6 +230,7 @@ class SCMCompletionPublicationService:
             gitlab_terminal_publication,
             waiver_applied=waiver_applied,
             waiver_revision=waiver_revision,
+            advisory_findings=advisory_findings,
         )
         if write_status == "STALE":
             stale_head = observed_head or self._current_head(target)
@@ -442,7 +443,9 @@ class SCMCompletionPublicationService:
         run_id: str,
         execution_identity_hash: str,
         audit: AuditRunOutcome,
-    ) -> tuple[AuditRunOutcome, bool, str]:
+    ) -> tuple[AuditRunOutcome, bool, str, bool]:
+        """Return the published outcome, waiver state and whether advisory findings exist."""
+
         waiver_revision = ""
         if self._waiver_revision_resolver is not None:
             try:
@@ -460,9 +463,9 @@ class SCMCompletionPublicationService:
             ):
                 raise SCMCompletionError("SCM waiver state is invalid")
         if self._policy_decisions is None:
-            return audit, False, waiver_revision
+            return audit, False, waiver_revision, False
         if audit in {AuditRunOutcome.CANCELLED, AuditRunOutcome.SUPERSEDED}:
-            return audit, False, waiver_revision
+            return audit, False, waiver_revision, False
         try:
             decision = self._policy_decisions(tenant_id, run_id, execution_identity_hash)
         except Exception:
@@ -487,10 +490,16 @@ class SCMCompletionPublicationService:
                     execution_identity_hash,
                     decision,
                 ):
-                    return AuditRunOutcome.PASS, True, waiver_revision
+                    return AuditRunOutcome.PASS, True, waiver_revision, False
             except Exception:
                 raise SCMCompletionError("SCM waiver decision is unavailable") from None
-        return outcome, False, waiver_revision
+        advisory_findings = (
+            audit is AuditRunOutcome.FAIL
+            and outcome is AuditRunOutcome.PASS
+            and decision is not None
+            and decision.mode is ScmPolicyMode.ADVISORY
+        )
+        return outcome, False, waiver_revision, advisory_findings
 
     def _current_head(self, target: SCMPublicationTarget) -> str:
         try:
@@ -669,6 +678,7 @@ class SCMCompletionPublicationService:
         *,
         waiver_applied: bool = False,
         waiver_revision: str = "",
+        advisory_findings: bool = False,
     ) -> tuple[str, str | None]:
         identifier = receipt_id(target)
         delivery_key = (
@@ -690,6 +700,7 @@ class SCMCompletionPublicationService:
                         target,
                         outcome,
                         waiver_applied=waiver_applied,
+                        advisory_findings=advisory_findings,
                     ),
                     delivery_key=delivery_key,
                 )
@@ -701,6 +712,7 @@ class SCMCompletionPublicationService:
                             target,
                             outcome,
                             waiver_applied=waiver_applied,
+                            advisory_findings=advisory_findings,
                         )
                         output = projection.get("output")
                         summary = output.get("summary") if type(output) is dict else None
