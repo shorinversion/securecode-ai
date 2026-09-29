@@ -121,6 +121,8 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 "--cov-report=term-missing",
                 "--cov-fail-under=80",
                 "tests/unit",
+                # The reviewer demo is exercised end to end with fake model runtimes.
+                "tests/integration/test_p917_real_local_demo.py",
             ),
             executes_repository_code=True,
             timeout_seconds=UNIT_STAGE_TIMEOUT_SECONDS,

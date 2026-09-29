@@ -27,7 +27,8 @@ _PIN = re.compile(
     rb"==(?P<version>[A-Za-z0-9](?:[A-Za-z0-9.!+_-]{0,126}[A-Za-z0-9])?)"
     rb"(?P<hashes>(?:[ \t]+--hash=sha256:[0-9a-fA-F]{64})*)[ \t]*(?:#.*)?"
 )
-_OSV_ID = re.compile(r"[A-Z0-9][A-Z0-9._:+-]{0,127}\Z")
+# Real OSV identifiers are mixed case, e.g. GHSA-9hjg-9r4m-mvj7.
+_OSV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}\Z")
 _PURL = re.compile(r"pkg:(?:pypi|npm|golang)/[A-Za-z0-9%._!~+/-]+@[A-Za-z0-9.!+_-]{1,128}\Z")
 _MAX_LIMITS = (1_048_576, 10_000, 10_000, 64)
 
