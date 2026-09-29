@@ -11,11 +11,44 @@ SecureCode AI - локальный прототип аудита безопас�
 детерминированный анализ с локальной LLM, сохраняет evidence решений и
 отказывает закрыто, если обязательный этап не завершился.
 
-> **Статус:** версия пакетов `1.0.0rc1` является кандидатом. M-A2026 отмечен
-> `NOT_READY`, G9 и production readiness не заявляются. Демо Аудитор → Архитектор
+> **Статус:** прототип по курсовому заданию. Демо Аудитор → Архитектор
 > завершается `COMPLETED` и на локальной Qwen, и на DeepSeek: CWE-89 найден, patch
-> проверен в эфемерной копии; расширенный benchmark показывает уровень Semgrep, но
-> не превосходство. См. [статус и ограничения](#статус-и-ограничения).
+> проверен в эфемерной копии; на 600 кейсах CVEfixes комбинация сканеров и LLM на
+> уровне Semgrep, но не лучше. Production readiness не заявляется. Соответствие
+> заданию по пунктам — в [итоговом отчёте](report/final-submission.html#соответствие-заданию).
+
+## Быстрый старт / Quick start
+
+```bash
+python deploy/docker/quickstart.py --demo
+```
+
+Нужен только Docker. Команда собирает образ, проверяет демонстрационный уязвимый
+код и печатает отчёт: находка, CWE, категория OWASP Top 10, строка и, при
+наличии модели, проверенный Auto-Fix patch. Если в окружении или в корневом `.env`
+задан `DEEPSEEK_API_KEY`, Аудитор и Архитектор работают на DeepSeek; без ключа
+работает только детерминированный lane (итог `INDETERMINATE`).
+
+Only Docker is required. The command builds the image, audits the vulnerable demo
+code and prints the report: finding, CWE, OWASP Top 10 category, line and, with a
+model, the validated Auto-Fix patch. With `DEEPSEEK_API_KEY` in the environment or
+the root `.env`, the Auditor and Architect run on DeepSeek; without it only the
+deterministic lane runs (outcome `INDETERMINATE`).
+
+```bash
+python deploy/docker/quickstart.py --demo --provider local
+```
+
+Тот же сценарий на локальной квантованной Qwen: нужны [uv](https://docs.astral.sh/uv/)
+и запущенный [Ollama](https://ollama.com); модель `qwen2.5-coder:7b-instruct-q4_K_M`
+(около 4.7 ГБ) скачается автоматически. Отчёты: `output/demo-report/`.
+The same run on a local quantized Qwen: needs uv and a running Ollama; the model is
+pulled automatically. Reports go to `output/demo-report/`.
+
+Полный прогон инструментов (AST, секреты, уязвимые зависимости, CWE-сканеры,
+единый контракт, агенты, отчёт, метрики) с сохранёнными выводами:
+[notebooks/securecode_demo.ipynb](notebooks/securecode_demo.ipynb).
+A full walkthrough with stored outputs is in the same notebook.
 
 ## Русский
 
@@ -96,14 +129,11 @@ Command Injection, `CWE-22` Path Traversal, `CWE-862` Missing Authorization и
 
 ### Проверка кандидата
 
-Текущий worktree проверен командой
-`uv run --locked --offline --no-sync --group quality python -I scripts/quality.py`.
-Последний полный quality preflight завершился `QUALITY=FAIL`: spec snapshot прошёл,
-но Ruff format/lint и mypy полного дерева не прошли, поэтому unit-stage был
-пропущен. На восьми файлах финального исправления Ruff format/check и mypy чисты.
-Целевой продуктовый набор на текущем дереве прошёл 140 тестов. Полный pytest
-прогон не завершился в пятиминутное окно инструмента и не имеет итогового счёта.
-Это не успешный полный quality receipt.
+Команда `uv run --locked python -I scripts/quality.py` запускает Ruff format и
+lint, mypy для Linux и Windows и pytest (unit-тесты и интеграционные тесты демо) с
+порогом покрытия ядра 80%. На текущем `main` результат `QUALITY=PASS`, 3292 теста;
+CI повторяет те же проверки на Python 3.12, 3.13 и 3.14, а также проверяет секреты
+и зависимости.
 
 ### Требования и установка
 
@@ -171,21 +201,14 @@ uv run --locked --offline --no-sync securecode scan . --diagnostic --format json
 | Expected model digest | `dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364` |
 
 Чтобы повторить текущую real-local демонстрацию, запустите Ollama локально и
-загрузите модель. Команды создают отдельный временный Git-репозиторий с
-публичным fixture и не обращаются к облачному провайдеру:
+загрузите модель. Команда не обращается к облачному провайдеру:
 
-```powershell
-$suffix = [guid]::NewGuid().ToString('N')
-$fixture = Join-Path $env:TEMP "securecode-ai-fixture-$suffix"
-$output = Join-Path $env:TEMP "securecode-ai-output-$suffix"
-New-Item -ItemType Directory -Path $fixture | Out-Null
-Copy-Item demo/fixtures/real-local-cwe89/app.py (Join-Path $fixture 'app.py')
-git -C $fixture init
-git -C $fixture add app.py
-git -C $fixture -c user.name='SecureCode Demo' -c user.email='demo@example.invalid' commit -m 'Initial demo fixture'
-uv run --locked --offline --no-sync python -I demo/p917_real_local_demo.py --repository $fixture --output $output
-Get-Content (Join-Path $output 'p917-local-demo.json')
+```bash
+uv run --locked python -I demo/p917_real_local_demo.py --repository demo/fixtures/real-local-cwe89 --output output/demo-report
 ```
+
+Отчёт: `output/demo-report/security-report.md` (и `.html`); фикстура читается из
+неизменяемого снимка и не изменяется.
 
 Текущая обезличенная квитанция находится в
 [`report/submission-benchmark/evidence/current-real-local-p917.json`](report/submission-benchmark/evidence/current-real-local-p917.json).
@@ -198,8 +221,8 @@ Get-Content (Join-Path $output 'p917-local-demo.json')
 ключ берётся из `DEEPSEEK_API_KEY` или из строки `DEEPSEEK_API_KEY=...` в
 корневом `.env` (файл игнорируется Git), расход ограничен $0.10 на прогон.
 
-```powershell
-uv run --locked --offline --no-sync python -I demo/p917_real_local_demo.py --repository $fixture --output $output --provider deepseek
+```bash
+uv run --locked python -I demo/p917_real_local_demo.py --repository demo/fixtures/real-local-cwe89 --output output/demo-report --provider deepseek
 ```
 
 Квитанция: [`current-deepseek-p917.json`](report/submission-benchmark/evidence/current-deepseek-p917.json)
@@ -476,61 +499,29 @@ control-plane database или SCM write credentials.
 
 ### Статус и ограничения
 
-- M-A2026 bundle имеет статус `NOT_READY`. Не подтверждены все внешние
-  instructor details, durable final reviews и protected delivery.
-- В реальном local run на Ollama 0.34.4 с Qwen Q4_K_M обнаружен один CWE-89;
-  repair-запрос не вернул patch, поэтому outcome `INDETERMINATE`. Применимость,
-  синтаксис и security regression для patch не оценивались. Redacted квитанция
-  находится в
-  [submission evidence](report/submission-benchmark/evidence/current-real-local-p917.json).
-- Отдельная команда установленного `securecode scan` на том же public fixture
-  завершилась кодом 3 `analysis result is indeterminate`; JSON отчёт не создан.
-  Это наблюдение не подтверждает успешный полный product scan. См.
-  [CLI observation](report/submission-benchmark/evidence/current-real-product-cli-scan.json).
-- Последний сохранённый полный canonical quality завершился `FAIL`: spec snapshot
-  прошёл, но форматирование, lint и mypy полного дерева не прошли, поэтому unit-stage
-  был пропущен. После точечных исправлений Ruff format/check и mypy прошли для восьми
-  затронутых файлов. Целевой продуктовый набор на текущих байтах: 140 passed.
-  Полный pytest был остановлен после пятиминутного окна инструмента без итогового
-  счёта; полный canonical quality после scoped fixes не перезапускался.
-- G9 не закрыт, поэтому тег v1.0, production readiness и `PROJECT CLOSED` не
-  заявляются.
-- Development benchmark содержит 312 запланированных и записанных cells, но
-  171 model cell завершилась fail-closed ошибкой structured output. Это
-  диагностический результат, не release benchmark.
-- Расширенный submission benchmark на 600 кейсах: deterministic scanner завершил
-  508 кейсов и ошибся на 92 (непарсящиеся файлы). Derived hybrid получил 32.8%
-  recall на held-out против 32.5% у Semgrep (интервал включает ноль, то есть
-  на уровне SAST); это не полный SecureCode pipeline и не доказательство
-  преимущества над SAST. Подробный двуязычный отчёт, метрики по языкам/CWE,
-  ошибки и SHA-256 находятся в [submission benchmark](report/submission-benchmark/README.md).
-- Архивные benchmark-метрики привязаны к source manifest прежнего кандидата и не
-  пересчитывались на текущем дереве. Они не являются текущим замером кода.
-- В целевом наборе `test_product_audit.py`, `test_product_scanner.py`,
-  `test_product_scanner_worker.py`, `test_cwe_portfolio.py`,
-  `test_cwe_portfolio_pipeline.py` и `test_product_portfolio_reports.py` на текущих
-  байтах прошло 140 тестов. Повтор `test_product_portfolio_reports.py` ранее также
-  прошёл 33 теста. Полный pytest не выдал итогового счёта в пятиминутное окно.
-- Ruff format/check и mypy прошли на восьми изменённых production/test файлах.
-  Общий canonical quality остаётся FAIL, scoped проверки его не заменяют.
-- Ограниченная дополняемость видна в парном held-out срезе: в каждом из трех
-  повторов derived hybrid выявил 14–15 из 120 уязвимых lineage-групп, пропущенных
-  Semgrep; Semgrep выявил 20 групп, пропущенных hybrid. Это exploratory анализ
-  raw outputs, не end-to-end тест и не доказательство превосходства. Model-native
-  и one-shot DeepSeek прогнаны напрямую по 600 публичным кейсам по три раза.
-- В benchmark не выполнялся repair; repair-rate claim отсутствует.
-- Текущий corpus мал и имеет topology confound. Результаты нельзя использовать
-  как доказательство преимущества над полным SAST.
-- Есть Docker-образы server/worker, Compose-конфигурация и инструкция запуска;
-  проверенного production deployment и operational proof пока нет.
-- GitLab trusted worker image path является явным placeholder.
-- Installed CLI требует заранее подготовленную защищенную OS authority; общий
-  end-user provisioning workflow еще не опубликован.
-- Quality receipts доказывают воспроизводимость конкретного subject, а не
-  отсутствие уязвимостей и не production security.
-
-Текущий статус задач и gates: [docs/CONTEXT.md](docs/CONTEXT.md) и
-[docs/PLAN.md](docs/PLAN.md).
+- Демо Аудитор → Архитектор на фикстуре CWE-89 завершается `COMPLETED` на
+  локальной Qwen 2.5 Coder 7B Q4_K_M (Ollama 0.34.4) и на DeepSeek Flash:
+  находка совпадает с детерминированным сканером, patch проходит парсинг, повторный
+  скан и `git apply --check`. Квитанции:
+  [Qwen](report/submission-benchmark/evidence/current-real-local-p917.json),
+  [DeepSeek](report/submission-benchmark/evidence/current-deepseek-p917.json).
+  Демонстрация охватывает одно правило; поведенческие тесты патча не запускаются.
+- Бенчмарк на 600 кейсах CVEfixes: детерминированный lane завершил 508 кейсов
+  (92 непарсящихся файла учтены как незавершённые), hybrid получил 32.8% recall на
+  held-out против 32.5% у Semgrep; интервал включает ноль, то есть hybrid на уровне
+  SAST, но не лучше. Модельные lanes — прямые запросы к DeepSeek, а не полный
+  конвейер с Аудитором и Скептиком; repair на корпусе не оценивался. Precision всех
+  конфигураций около 50%. Подробности:
+  [отчёт бенчмарка](report/submission-benchmark/README.md).
+- Полный `securecode scan` требует заранее подготовленной защищённой OS authority;
+  общий сценарий её подготовки не опубликован, поэтому для проверки предназначены
+  демо и notebook.
+- Docker-образы server/worker и Compose есть; `quickstart.py --up` на Linux не
+  перепроверялся, проверенного production deployment нет. Путь образа trusted worker
+  для GitLab — явный placeholder.
+- Скринкаст снят до исправлений 29 сентября и показывает прежние результаты.
+- Production readiness не заявляется; quality receipts подтверждают
+  воспроизводимость, а не отсутствие уязвимостей.
 
 ### Структура репозитория
 
@@ -712,14 +703,11 @@ development benchmark and its limits remain available separately:
 
 ### Candidate verification
 
-The last full-tree quality preflight ended with `QUALITY=FAIL`: the spec snapshot
-passed, but full-tree Ruff format/lint and mypy failed, so the unit stage was
-skipped. Ruff format/check and mypy passed on the eight files changed in the
-final scoped fix. The current focused product suite passed 140 tests and the
-AST/CST, secrets, dependencies, repository tools, language, Auditor-contract and
-repair suite passed 155 tests. A full pytest run did not return a final count
-within the five-minute tool window. These are not a successful full quality
-receipt.
+`uv run --locked python -I scripts/quality.py` runs Ruff format and lint, mypy for
+Linux and Windows, and pytest (unit tests plus the demo integration tests) with an 80%
+core coverage floor. On the current `main` it reports `QUALITY=PASS` with 3292 tests;
+CI repeats these checks on Python 3.12, 3.13 and 3.14 and also scans secrets and
+dependencies.
 
 ### Requirements and installation
 
@@ -788,21 +776,14 @@ The recorded academic path uses literal loopback and these exact values:
 | Expected model digest | `dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364` |
 
 To repeat the current real-local demonstration, start Ollama locally and pull
-the model. These commands create a separate temporary Git repository from the
-public fixture and do not contact a cloud provider:
+the model. The command does not contact a cloud provider:
 
-```powershell
-$suffix = [guid]::NewGuid().ToString('N')
-$fixture = Join-Path $env:TEMP "securecode-ai-fixture-$suffix"
-$output = Join-Path $env:TEMP "securecode-ai-output-$suffix"
-New-Item -ItemType Directory -Path $fixture | Out-Null
-Copy-Item demo/fixtures/real-local-cwe89/app.py (Join-Path $fixture 'app.py')
-git -C $fixture init
-git -C $fixture add app.py
-git -C $fixture -c user.name='SecureCode Demo' -c user.email='demo@example.invalid' commit -m 'Initial demo fixture'
-uv run --locked --offline --no-sync python -I demo/p917_real_local_demo.py --repository $fixture --output $output
-Get-Content (Join-Path $output 'p917-local-demo.json')
+```bash
+uv run --locked python -I demo/p917_real_local_demo.py --repository demo/fixtures/real-local-cwe89 --output output/demo-report
 ```
+
+The report is `output/demo-report/security-report.md` (and `.html`); the fixture is
+read from an immutable snapshot and never modified.
 
 The retained redacted receipt is
 [`current-real-local-p917.json`](report/submission-benchmark/evidence/current-real-local-p917.json).
@@ -815,8 +796,8 @@ consent recorded in [`deploy/deepseek/owner-consent.json`](deploy/deepseek/owner
 The key comes from `DEEPSEEK_API_KEY` or a `DEEPSEEK_API_KEY=...` line in the
 repository-root `.env` (ignored by Git); spend is capped at $0.10 per run.
 
-```powershell
-uv run --locked --offline --no-sync python -I demo/p917_real_local_demo.py --repository $fixture --output $output --provider deepseek
+```bash
+uv run --locked python -I demo/p917_real_local_demo.py --repository demo/fixtures/real-local-cwe89 --output output/demo-report --provider deepseek
 ```
 
 Receipt: [`current-deepseek-p917.json`](report/submission-benchmark/evidence/current-deepseek-p917.json)
@@ -1102,60 +1083,29 @@ Read [data classification](specs/security/data-classification.md),
 
 ### Status and limitations
 
-- The M-A2026 bundle is `NOT_READY`: external instructor details, durable final
-  reviews, and protected delivery are still pending.
-- A real local run on Ollama 0.34.4 with Qwen Q4_K_M found one CWE-89 candidate;
-  its repair request returned no patch, so the outcome is `INDETERMINATE`.
-  Applicability, syntax, and security regression were not evaluated. See the
-  [redacted submission receipt](report/submission-benchmark/evidence/current-real-local-p917.json).
-- A separate installed `securecode scan` on the same public fixture exited with
-  code 3, `analysis result is indeterminate`, and wrote no JSON report. This does
-  not demonstrate a successful full product scan. See the
-  [CLI observation](report/submission-benchmark/evidence/current-real-product-cli-scan.json).
-- The last recorded full-tree canonical quality run was `FAIL`: the specification
-  snapshot passed, but full-tree formatting, lint and mypy failed, so the unit stage
-  was skipped. That run reported 187/47 format findings, 267/70 lint errors and
-  608/614 Linux/Windows mypy errors. Ruff format/check and mypy passed on the eight
-  files changed in this final scoped fix. A full pytest run did not return a final
-  count within the five-minute tool window. The full gate was not rerun.
-- G9 is open, so this repository does not claim a v1.0 tag, production
-  readiness, or `PROJECT CLOSED`.
-- The development benchmark records all 312 planned cells, but 171 model cells
-  failed closed on structured output. It is a diagnostic study, not a release
-  benchmark.
-- An expanded 600-case submission benchmark is recorded separately. The
-  deterministic scanner completed 508 cases and failed on 92 (unparseable files).
-  Derived hybrid recall is 32.8% on held-out versus 32.5% for Semgrep (the
-  interval includes zero, so on par with SAST). This is not the complete
-  SecureCode pipeline and does not demonstrate superiority over SAST. See the
-  [bilingual report](report/submission-benchmark/README.md) for stratified
-  metrics, failure counts and hashes.
-- The archived benchmark metrics are bound to a prior candidate source manifest,
-  not the current tree, and were not recomputed on the current code. They are not
-  a fresh measurement of this worktree.
-- In this final pass, the focused product suite passed 140 tests across product
-  audit, scanner, worker, CWE portfolio, portfolio pipeline and reports. Another
-  155 passed across AST/CST, secret/dependency scanning, repository tools,
-  multilanguage, Auditor contract and repair suites.
-- Ruff format/check and mypy passed on all eight changed production/test files.
-  These scoped checks do not replace full-tree quality.
-- A limited complementary signal appears in the paired held-out slice: in each
-  of three repetitions the derived hybrid found 14–15 of 120 vulnerable
-  lineage groups missed by Semgrep, while Semgrep found 20 groups missed by the
-  hybrid. This exploratory raw-output analysis is not an end-to-end test or
-  proof of superiority. DeepSeek model-native and one-shot lanes were directly
-  run three times on all 600 public cases.
-- No repair was attempted in that benchmark, so no repair-rate claim exists.
-- The corpus is small and has a topology confound. Results do not establish an
-  advantage over a full SAST product.
-- Docker server/worker images, a Compose configuration, and run instructions
-  exist. A verified production deployment and operational proof are still
-  absent.
-- The GitLab trusted worker image path is an explicit operator placeholder.
-- Installed CLI execution needs pre-provisioned OS-protected authority; a
-  general end-user provisioning workflow is not published yet.
-- Quality receipts establish reproducibility for one exact subject. They do not
-  prove the absence of vulnerabilities or production security.
+- The Auditor → Architect demo on the CWE-89 fixture completes with `COMPLETED` on
+  local Qwen 2.5 Coder 7B Q4_K_M (Ollama 0.34.4) and on DeepSeek Flash: the finding
+  matches the deterministic scanner, and the patch passes parsing, a rescan and
+  `git apply --check`. Receipts:
+  [Qwen](report/submission-benchmark/evidence/current-real-local-p917.json),
+  [DeepSeek](report/submission-benchmark/evidence/current-deepseek-p917.json).
+  The demo covers one rule; no behavioral tests are run on the patch.
+- 600-case CVEfixes benchmark: the deterministic lane completed 508 cases (92
+  unparseable files count as incomplete), and the hybrid reached 32.8% held-out recall
+  versus 32.5% for Semgrep; the interval includes zero, so the hybrid is on par with
+  SAST but not better. The model lanes are direct DeepSeek classifications, not the full
+  Auditor/Skeptic pipeline, and repair was not evaluated on the corpus. Precision is
+  near 50% for every configuration. Details:
+  [benchmark report](report/submission-benchmark/README.md).
+- A full `securecode scan` needs pre-provisioned OS-protected authority; a general
+  provisioning workflow is not published, so reviewers should use the demo and the
+  notebook.
+- Server/worker Docker images and Compose exist; `quickstart.py --up` was not
+  re-verified on Linux and there is no verified production deployment. The GitLab
+  trusted worker image path is an explicit placeholder.
+- The screencast predates the 29 September fixes and shows the earlier results.
+- Production readiness is not claimed; quality receipts establish reproducibility,
+  not the absence of vulnerabilities.
 
 See [current context](docs/CONTEXT.md) and the [canonical plan](docs/PLAN.md)
 for current task and gate status.
