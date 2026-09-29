@@ -36,6 +36,7 @@ from .cst_go import _go_language
 _MAX_LIMITS = (2_000_000, 2_048, 64)
 _SHA1 = re.compile(r"[0-9a-f]{40}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_SIGNAL_ID = re.compile(r"go-cwe532-[0-9a-f]{64}\Z")
 _RULE_ID = "securecode-go-cwe532"
 _DETECTOR = "securecode-go-cwe532@1.0"
 _DETAIL = "sensitive_value_to_log_sink"
@@ -334,7 +335,7 @@ class GoCwe532Signal:
             or type(self.operation) is not GoCwe532Operation
             or type(signal_id) is not str
             or expected_id is None
-            or _SHA256.fullmatch(signal_id) is None
+            or _SIGNAL_ID.fullmatch(signal_id) is None
             or signal_id != expected_id
             or self.rule_id != _RULE_ID
             or self.cwe != "CWE-532"
@@ -898,7 +899,7 @@ def _scope_preorder(scope: Node) -> tuple[Node, ...]:
     while stack:
         node = stack.pop()
         output.append(node)
-        if node is not scope and node.type in _GO_SCOPES:
+        if node != scope and node.type in _GO_SCOPES:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(output)

@@ -1,20 +1,20 @@
 # SecureCode AI: expanded submission benchmark
 
-**Результат анализа завершён 27 сентября 2026 года.** Все шесть конфигураций имеют проверяемые результаты на 600 кейсах, но часть сравнений является архивной или вычислена как парная композиция. Это диагностический бенчмарк, а не подтверждение точности полного SecureCode AI pipeline и не доказательство превосходства над SAST.
+**Детерминированный lane пересчитан 29 сентября 2026 года** после исправления сравнения узлов tree-sitter и лимитов Go-сканеров; модельные lanes DeepSeek — архивные прямые прогоны 27 сентября, hybrid пересобран из них без новых запросов. Все шесть конфигураций имеют проверяемые результаты на 600 кейсах, но часть сравнений является архивной или вычислена как парная композиция. Это диагностический бенчмарк, а не подтверждение точности полного SecureCode AI pipeline и не доказательство превосходства над SAST.
 
-**Analysis completed on 27 September 2026.** All six configurations have auditable results on 600 cases, but some comparisons reuse archived outputs or are paired post-hoc compositions. This is a diagnostic benchmark, not an accuracy claim for the complete SecureCode AI pipeline and not evidence of superiority over SAST.
+**The deterministic lane was rerun on 29 September 2026** after fixing tree-sitter node comparisons and Go scanner limits; the DeepSeek model lanes are the archived direct runs of 27 September, and the hybrid lane was recomposed from them with no new API calls. All six configurations have auditable results on 600 cases, but some comparisons reuse archived outputs or are paired post-hoc compositions. This is a diagnostic benchmark, not an accuracy claim for the complete SecureCode AI pipeline and not evidence of superiority over SAST.
 
 ## Краткий вывод
 
-На held-out части hybrid-композиция получила recall 27.8%, Semgrep 32.5%. Разница hybrid минус Semgrep равна -4.7 процентного пункта; lineage-cluster bootstrap 95% interval составляет от -13.9 до +4.7 п.п. Интервал включает ноль. Hybrid-композиция также завершила только 130 из 240 held-out cases, поскольку deterministic scanner завершился ошибкой на 110 кейсах этой части.
+На held-out части hybrid-композиция получила recall 32.8%, Semgrep 32.5%. Разница hybrid минус Semgrep равна +0.3 процентного пункта; lineage-cluster bootstrap 95% interval составляет от -8.9 до +10.0 п.п. Интервал включает ноль: hybrid находится на уровне Semgrep, превосходство не доказано. Hybrid-композиция завершила 202 из 240 held-out cases (было 130).
 
-В полном корпусе сканер завершился на 347 из 600 кейсов. Оставшиеся 253 ошибки сохранены в знаменателе как `scanner-failed`. Поэтому результат не подтверждает, что SecureCode AI полезнее статического анализатора. Он показывает конкретные текущие ограничения, а не успешность релизного критерия.
+В полном корпусе сканер завершился на 508 из 600 кейсов (было 347); recall детерминированного lane вырос с 19.7% до 25.7%. Оставшиеся 92 ошибки сохранены в знаменателе как `scanner-failed`: это файлы, которые не парсятся (Python 2, частичный или некорректный JS/TS), и они приводят к явному `INDETERMINATE`, а не к молчаливому «чисто». Precision всех lanes около 50%: корпус состоит из пар «до/после исправления» одного файла, и файловый детектор часто срабатывает на обе версии.
 
 ## Executive result
 
-On the held-out split, the derived hybrid lane reached 27.8% recall and Semgrep reached 32.5%. The hybrid-minus-Semgrep difference is -4.7 percentage points; the lineage-cluster bootstrap 95% interval is -13.9 to +4.7 pp and includes zero. The hybrid composition completed only 130 of 240 held-out cases because the deterministic scanner failed on 110 cases in that split.
+On the held-out split, the derived hybrid lane reached 32.8% recall and Semgrep reached 32.5%. The hybrid-minus-Semgrep difference is +0.3 percentage points; the lineage-cluster bootstrap 95% interval is -8.9 to +10.0 pp and includes zero: the hybrid is on par with Semgrep, and superiority is not shown. The hybrid composition completed 202 of 240 held-out cases (previously 130).
 
-Across the full corpus, the scanner completed 347 of 600 cases. The other 253 failures remain visible as `scanner-failed`. These results do not show that SecureCode AI is more useful than static analysis. They document current limits and do not meet a release-quality claim.
+Across the full corpus, the scanner completed 508 of 600 cases (previously 347), and deterministic recall rose from 19.7% to 25.7%. The remaining 92 failures stay visible as `scanner-failed`: files that do not parse (Python 2, partial or malformed JS/TS) yield an explicit `INDETERMINATE`, never a silent clean result. Every lane's precision is near 50% because the corpus pairs the vulnerable and fixed revision of the same file, and a file-level detector often fires on both.
 
 ## Corpus and protocol
 
@@ -25,8 +25,8 @@ Across the full corpus, the scanner completed 347 of 600 cases. The other 253 fa
 - Metadata manifest SHA-256: `82459c8c5112105535f0424d715777a03dbc00e82160e264ed8059aac1db897c`.
 - A source cache check recomputed all 600 source hashes with zero mismatches. The cache and source blobs are not included in this report. The dataset manifest records `NOASSERTION` for licensing.
 - The manifest's NOASSERTION value is not a redistribution grant. Verify the dataset terms and the license of each upstream source before redistributing source files.
-- The archived candidate source manifest records 603 repository files, SHA-256 `d12e34b2623a0747c1800aab344fb72dd34ef9f68e95609dc5653c20621939b1`. It was based on HEAD `88595ae7f50be5906defee9d06e6186ce66ee1f8` plus those content-pinned worktree files. The benchmark was not recomputed against this final worktree; the metrics below remain archived for the prior candidate. The archived DeepSeek direct lanes use the earlier profile pin `c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0`, retained in `model-profile.json`.
-- Current-tree focused checks: 140 product audit/scanner/worker/portfolio tests passed; 155 AST/CST, secret/dependency, repository-tool, multilanguage, Auditor-contract and repair tests passed. Ruff format/check and mypy passed on all eight changed production/test files. The full pytest run did not return a final count within the five-minute tool window. These targeted checks do not update the archived benchmark candidate or replace full-tree quality.
+- The candidate source manifest pins the 603 repository files the deterministic lane was run from; `aggregate_benchmark.py` refuses to aggregate if any of them changed. The archived DeepSeek direct lanes use the earlier profile pin `c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0`, retained in `model-profile.json`.
+- A live 20-case DeepSeek `model_native` smoke run on 29 September 2026 completed 20/20 calls (median latency about 1.1 s, cost $0.035); it confirms the provider path still works and is not part of the scored outputs.
 - Model repetitions stay grouped by lineage in 5,000 deterministic bootstrap samples. Repeated cells are not treated as independent source cases.
 
 ## Results across all cases
@@ -35,11 +35,11 @@ Cells from 3-repeat model lanes are shown together, so their confusion counts ar
 
 | Configuration | Cases x repetitions | Cells | TP | FP | TN | FN | Precision | Recall | F1 | Valid | New API calls |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Deterministic only | 600 x 1 | 600 | 59 | 61 | 239 | 241 | 49.2% | 19.7% | 28.1% | 57.8% | 0 |
-| Scanner-seeded, derived | 600 x 1 | 600 | 14 | 14 | 286 | 286 | 50.0% | 4.7% | 8.5% | 57.8% | 0 |
+| Deterministic only | 600 x 1 | 600 | 77 | 80 | 220 | 223 | 49.0% | 25.7% | 33.7% | 84.7% | 0 |
+| Scanner-seeded, derived | 600 x 1 | 600 | 20 | 21 | 279 | 280 | 48.8% | 6.7% | 11.7% | 84.7% | 0 |
 | DeepSeek model-native, archived direct lane | 600 x 3 | 1,800 | 151 | 148 | 752 | 749 | 50.5% | 16.8% | 25.2% | 100% | 1,800 |
 | DeepSeek one-shot, archived direct lane | 600 x 3 | 1,800 | 204 | 188 | 712 | 696 | 52.0% | 22.7% | 31.6% | 100% | 1,800 |
-| Full hybrid, derived paired union | 600 x 3 | 1,800 | 288 | 289 | 611 | 612 | 49.9% | 32.0% | 39.0% | 57.8% | 0 |
+| Full hybrid, derived paired union | 600 x 3 | 1,800 | 322 | 323 | 577 | 578 | 49.9% | 35.8% | 41.7% | 84.7% | 0 |
 | Semgrep 1.177.0, pinned baseline | 600 requested, 1 scored | 600 | 103 | 103 | 197 | 197 | 50.0% | 34.3% | 40.7% | 100% | 0 |
 
 The precision, recall and F1 cluster-bootstrap intervals for every lane are in [`aggregate.json`](aggregate.json). Full metrics by language, split and all 79 CWE groups are in [`stratified-metrics.csv`](stratified-metrics.csv). The machine-readable hash record is [`aggregate-output-manifest.json`](aggregate-output-manifest.json). Read the standalone [HTML report](report.html) or printable [PDF report](../../site/benchmark.pdf).
@@ -52,22 +52,22 @@ All rows below use the 80 held-out cases per language. Model and hybrid metrics 
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Python | Model-native | 100% | 25 | 31 | 89 | 95 | 44.6% | 20.8% | 28.4% |
 | Python | One-shot | 100% | 38 | 38 | 82 | 82 | 50.0% | 31.7% | 38.8% |
-| Python | Full hybrid, derived | 73.8% | 51 | 55 | 65 | 69 | 48.1% | 42.5% | 45.1% |
+| Python | Full hybrid, derived | 90.0% | 60 | 64 | 56 | 60 | 48.4% | 50.0% | 49.2% |
 | Python | Semgrep | 100% | 18 | 18 | 22 | 22 | 50.0% | 45.0% | 47.4% |
 | JavaScript/TypeScript | Model-native | 100% | 7 | 8 | 112 | 113 | 46.7% | 5.8% | 10.4% |
 | JavaScript/TypeScript | One-shot | 100% | 13 | 14 | 106 | 107 | 48.1% | 10.8% | 17.7% |
-| JavaScript/TypeScript | Full hybrid, derived | 70.0% | 31 | 32 | 88 | 89 | 49.2% | 25.8% | 33.9% |
+| JavaScript/TypeScript | Full hybrid, derived | 72.5% | 31 | 32 | 88 | 89 | 49.2% | 25.8% | 33.9% |
 | JavaScript/TypeScript | Semgrep | 100% | 13 | 14 | 26 | 27 | 48.1% | 32.5% | 38.8% |
 | Go | Model-native | 100% | 15 | 12 | 108 | 105 | 55.6% | 12.5% | 20.4% |
 | Go | One-shot | 100% | 21 | 17 | 103 | 99 | 55.3% | 17.5% | 26.6% |
-| Go | Full hybrid, derived | 18.8% | 18 | 15 | 105 | 102 | 54.5% | 15.0% | 23.5% |
+| Go | Full hybrid, derived | 90.0% | 27 | 24 | 96 | 93 | 52.9% | 22.5% | 31.6% |
 | Go | Semgrep | 100% | 8 | 7 | 33 | 32 | 53.3% | 20.0% | 29.1% |
 
 The numbers above score the three repeated model or Semgrep predictions together for the same 80 cases per language. The full split-by-language and split-by-CWE table in the CSV retains exact cell denominators.
 
 ## Provenance and cost
 
-- Deterministic-only was freshly run from the pinned manifest in twelve validated 50-case shards. Merged output SHA-256: `27bae515b20a1f20d929ea7d0d1e6ee9dff7a2d66462697933a8d54d1711e7cf`.
+- Deterministic-only was freshly run from the pinned manifest in twelve validated 50-case shards. Merged output SHA-256: `bbeecd39e71f30a8332832e8f8b07a4ee2cda8c9d564d00e1576b1be2f700927`.
 - Model-native and one-shot outputs were complete archived direct classifications, not newly rerun in this pass. Their output SHA-256 values are `78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272` and `5b567b6493d2e20437acd6b5efde02c83c7b21ef34fc2b23c4bf84235ca8b467`.
 - Semgrep output SHA-256: `209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6`. Version 1.177.0 used `semgrep/semgrep-rules` commit `a84ff9cc2453ca91d581380de4b8b3f272f6f4be`. Its score is a broad any-finding-in-file policy, not a CWE-aligned comparison.
 - Three Semgrep rows per case were present in the archived output and had identical class labels and completion statuses. The report keeps the full raw output hash, verifies the repeated values, and scores repetition 1 only.
@@ -85,10 +85,10 @@ An earlier, separate local run is retained in [`report/m-a2026/evidence/p917-rea
 
 ## Interpretation and limitations
 
-1. The full-hybrid recall is 2.3 percentage points below Semgrep across all cases and 4.7 points below on held-out. The paired 95% interval includes zero. The release target of at least 90% lower-bound precision and at least 5 points recall improvement over SAST is not met.
+1. The full-hybrid recall is 1.4 percentage points above Semgrep across all cases and 0.3 points above on held-out. The paired 95% intervals include zero, so the lanes are statistically on par. The release target of at least 90% lower-bound precision and at least 5 points recall improvement over SAST is not met.
 2. The model-native and one-shot lanes classify public source directly with an API. They do not execute the complete product chain of scanners, EvidenceGraph, Auditor, Skeptic, validation and verdict.
 3. The scanner-seeded and full-hybrid configurations are paired post-hoc compositions. Their results are useful ablations, but they are not live end-to-end product runs.
-4. Deterministic scanner failures affect 253/600 cases. The scanner completed 154/200 Python, 148/200 JavaScript/TypeScript and 45/200 Go cases. Failed cells remain explicit in the CSV and completion denominators.
+4. Deterministic scanner failures affect 92/600 cases (previously 253). The scanner completed 174/200 Python, 152/200 JavaScript/TypeScript and 182/200 Go cases. Failed cells remain explicit in the CSV and completion denominators.
 5. Semgrep's broad file-level any-finding rule has a different granularity from CWE-specific product findings. This is not a fully equivalent SAST baseline.
 6. No full repair study was performed. Zero unsafe-patch counters mean no such measurements were recorded, not that patches are safe.
 7. The corpus is public, one-file-per-case, and not balanced across 79 CWE labels. Private-repository generalization is unknown. Its license field is `NOASSERTION`; source code is not redistributed here.

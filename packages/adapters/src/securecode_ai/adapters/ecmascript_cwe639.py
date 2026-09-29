@@ -894,7 +894,7 @@ def _scope_nodes(scope: Node, limits: EcmaScriptCwe639ScanLimits) -> tuple[Node,
         output.append(current)
         if len(output) > limits.max_nodes:
             raise EcmaScriptCwe639ScanError(EcmaScriptCwe639ScanErrorCode.NODE_LIMIT)
-        if current is not scope and current.type in _FUNCTION_TYPES:
+        if current != scope and current.type in _FUNCTION_TYPES:
             continue
         stack.extend(reversed(current.named_children))
     return tuple(output)

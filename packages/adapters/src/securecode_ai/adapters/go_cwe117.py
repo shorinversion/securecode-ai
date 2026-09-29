@@ -688,7 +688,7 @@ def _scope_nodes(scope: Node, ceiling: int) -> tuple[Node, ...]:
         out.append(node)
         if len(out) > ceiling:
             raise _TraversalLimit
-        if node is not scope and node.type in _SCOPES:
+        if node != scope and node.type in _SCOPES:
             continue
         stack.extend(reversed(node.named_children))
     return tuple(out)
