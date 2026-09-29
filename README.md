@@ -343,8 +343,8 @@ securecode release --config C:\release\candidate.json
 pwsh -NoProfile -File deploy/docker/build-images.ps1
 ```
 
-Скрипт создает `securecode-ai/runtime:1.0.0rc1`,
-`securecode-ai/server:1.0.0rc1` и `securecode-ai/worker:1.0.0rc1`, затем печатает их
+Скрипт создает `securecode-ai/runtime:1.0.0`,
+`securecode-ai/server:1.0.0` и `securecode-ai/worker:1.0.0`, затем печатает их
 immutable image IDs. Linux `amd64` используется по умолчанию; `linux/arm64`
 можно передать через `-Platform`.
 
@@ -362,7 +362,7 @@ docker run --rm --name securecode-server --network securecode -p 8443:8080 \
   -e SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE=/run/secrets/admin_token \
   -e SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE=/run/secrets/worker_token \
   -e SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES=repository-1 \
-  securecode-ai/server:1.0.0rc1
+  securecode-ai/server:1.0.0
 ```
 
 Каталог secrets должен содержать доступные UID `65532` файлы
@@ -381,7 +381,7 @@ docker run --rm --name securecode-worker --network securecode \
   -e SECURECODE_WORKER_TOKEN_FILE=/run/secrets/worker_token \
   -e SECURECODE_WORKER_ID=worker-1 \
   -e SECURECODE_WORKER_TARGET=/workspace \
-  securecode-ai/worker:1.0.0rc1
+  securecode-ai/worker:1.0.0
 ```
 
 Можно ограничить один запуск через `SECURECODE_WORKER_RUN_ID`. Для GitLab
@@ -919,8 +919,8 @@ Build the three local images from the repository root:
 pwsh -NoProfile -File deploy/docker/build-images.ps1
 ```
 
-The script creates `securecode-ai/runtime:1.0.0rc1`,
-`securecode-ai/server:1.0.0rc1`, and `securecode-ai/worker:1.0.0rc1`, then prints their
+The script creates `securecode-ai/runtime:1.0.0`,
+`securecode-ai/server:1.0.0`, and `securecode-ai/worker:1.0.0`, then prints their
 immutable image IDs. Linux `amd64` is the default; pass `-Platform linux/arm64`
 for ARM64.
 
@@ -938,7 +938,7 @@ docker run --rm --name securecode-server --network securecode -p 8443:8080 \
   -e SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE=/run/secrets/admin_token \
   -e SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE=/run/secrets/worker_token \
   -e SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES=repository-1 \
-  securecode-ai/server:1.0.0rc1
+  securecode-ai/server:1.0.0
 ```
 
 The secrets directory must provide UID `65532` with readable
@@ -960,7 +960,7 @@ docker run --rm --name securecode-worker --network securecode \
   -e SECURECODE_WORKER_TOKEN_FILE=/run/secrets/worker_token \
   -e SECURECODE_WORKER_ID=worker-1 \
   -e SECURECODE_WORKER_TARGET=/workspace \
-  securecode-ai/worker:1.0.0rc1
+  securecode-ai/worker:1.0.0
 ```
 
 Set `SECURECODE_WORKER_RUN_ID` for one specific run. GitLab supplies

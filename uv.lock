@@ -1141,7 +1141,7 @@ wheels = [
 
 [[package]]
 name = "securecode-ai-adapters"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "packages/adapters" }
 dependencies = [
     { name = "pydantic" },
@@ -1168,7 +1168,7 @@ requires-dist = [
 
 [[package]]
 name = "securecode-ai-cli"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "apps/cli" }
 dependencies = [
     { name = "securecode-ai-adapters" },
@@ -1185,7 +1185,7 @@ requires-dist = [
 
 [[package]]
 name = "securecode-ai-contracts"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "packages/contracts" }
 dependencies = [
     { name = "pydantic" },
@@ -1196,7 +1196,7 @@ requires-dist = [{ name = "pydantic", specifier = ">=2.12,<3" }]
 
 [[package]]
 name = "securecode-ai-core"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "securecode-ai-contracts" },
@@ -1207,7 +1207,7 @@ requires-dist = [{ name = "securecode-ai-contracts", editable = "packages/contra
 
 [[package]]
 name = "securecode-ai-server"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "apps/server" }
 dependencies = [
     { name = "securecode-ai-adapters" },
@@ -1224,7 +1224,7 @@ requires-dist = [
 
 [[package]]
 name = "securecode-ai-worker"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { editable = "apps/worker" }
 dependencies = [
     { name = "securecode-ai-adapters" },
@@ -1241,7 +1241,7 @@ requires-dist = [
 
 [[package]]
 name = "securecode-ai-workspace"
-version = "1.0.0rc1"
+version = "1.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "securecode-ai-adapters" },
