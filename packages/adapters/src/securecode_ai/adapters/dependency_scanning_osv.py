@@ -238,6 +238,7 @@ def _exchange(
     if remaining <= 0:
         raise TimeoutError
     connection = _PinnedHttpsConnection(address, remaining)
+    response: http.client.HTTPResponse | None = None
     try:
         connection.request(
             "POST",
@@ -252,7 +253,13 @@ def _exchange(
                 "Connection": "close",
             },
         )
-        response = connection.getresponse()
+        # getresponse() would close the socket for a ``Connection: close`` reply, leaving no
+        # socket to bound each body read; parse the response on the pinned socket instead.
+        sock = connection.sock
+        if sock is None:
+            raise TimeoutError
+        response = http.client.HTTPResponse(sock, method="POST")
+        response.begin()
         if response.status != 200 or response.getheader("Location") is not None:
             raise ValueError("OSV_RESPONSE_STATUS_INVALID")
         content_types = response.headers.get_all("Content-Type", [])
@@ -267,14 +274,16 @@ def _exchange(
                 raise ValueError("OSV_RESPONSE_LENGTH_INVALID")
             if int(lengths[0]) > _MAX_RESPONSE_BYTES:
                 raise ValueError("OSV_RESPONSE_TOO_LARGE")
-        return _read_body(response, connection, deadline, cancelled)
+        return _read_body(response, sock, deadline, cancelled)
     finally:
+        if response is not None:
+            response.close()
         connection.close()
 
 
 def _read_body(
     response: http.client.HTTPResponse,
-    connection: _PinnedHttpsConnection,
+    sock: socket.socket | None,
     deadline: float,
     cancelled: Callable[[], bool],
 ) -> bytes:
@@ -283,9 +292,9 @@ def _read_body(
         remaining = deadline - time.monotonic()
         if cancelled():
             raise ValueError("OSV_REQUEST_CANCELLED")
-        if remaining <= 0 or connection.sock is None:
+        if remaining <= 0 or sock is None:
             raise TimeoutError
-        connection.sock.settimeout(min(_READ_POLL_SECONDS, remaining))
+        sock.settimeout(min(_READ_POLL_SECONDS, remaining))
         chunk = response.read1(min(_READ_CHUNK_BYTES, _MAX_RESPONSE_BYTES + 1 - len(output)))
         if not chunk:
             return bytes(output)

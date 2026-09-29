@@ -27,6 +27,15 @@
 !deploy/
 !deploy/docker/
 !deploy/docker/**
+deploy/docker/.env
+deploy/docker/.local/
+!specs/
+!specs/contracts/
+!specs/contracts/provider-fixtures/
+!specs/contracts/provider-fixtures/valid.local-openai-compatible.json
+!specs/contracts/policy/
+!specs/contracts/policy/fixtures/
+!specs/contracts/policy/fixtures/egress.valid.private-model-source.json
 !apps/cli/
 !apps/cli/src/
 !apps/cli/src/**

@@ -99,6 +99,15 @@ def test_vulnerable_repo_runs_both_lanes_and_validates_model_patch(
     assert len(manifest["patch"]["sha256"]) == 64
     assert hashlib.sha256((repository / "app.py").read_bytes()).hexdigest() == original_hash
 
+    finding = manifest["deterministic_lane"]["findings"][0]
+    assert (finding["owasp_category"], finding["severity"]) == ("A03:2021", "HIGH")
+    for name in ("security-report.md", "p917-local-demo.html"):
+        report = (tmp_path / "out" / name).read_text(encoding="utf-8")
+        assert "A03:2021 Injection" in report
+        assert "app.py:4" in report
+        assert "WHERE name = ?" in report
+        assert manifest["report_sha256"][name] == hashlib.sha256(report.encode()).hexdigest()
+
 
 def test_single_safe_execute_line_can_be_recovered_from_full_file_patch(
     tmp_path: Path, demo_module: ModuleType
@@ -902,3 +911,23 @@ def test_deepseek_runtime_requires_a_key_and_never_reveals_it(demo_module: Modul
     assert "sk-test" not in repr(runtime) + json.dumps(metadata)
     assert metadata["profile_id"] == "deepseek-owner-authorized"
     assert metadata["settled_calls"] == 0
+
+
+def test_offline_runtime_reports_the_deterministic_finding_without_a_model(
+    demo_module: ModuleType, tmp_path: Path
+) -> None:
+    repository, _ = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM t WHERE a = ' + value)\n",
+    )
+
+    manifest = demo_module.run_demo(
+        repository, tmp_path / "out", public_runtime=demo_module.OfflineRuntime()
+    )
+
+    assert manifest["outcome"] == "INDETERMINATE"
+    assert manifest["model_lane"]["status"] == "NOT_CONFIGURED"
+    assert manifest["patch"]["present"] is False
+    report = (tmp_path / "out" / "security-report.md").read_text(encoding="utf-8")
+    assert "A03:2021 Injection" in report
+    assert "No validated patch was produced." in report

@@ -67,6 +67,7 @@ from securecode_ai.contracts import (
     RunExecutionIdentity,
 )
 from securecode_ai.core import EgressPolicyRegistry, ModelAuthorizationIssuer
+from securecode_ai.core.classification import classify_product_cwe
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PROFILE_PATH = (
@@ -90,6 +91,7 @@ _MANIFEST_NAME = "p917-local-demo.json"
 _HTML_NAME = "p917-local-demo.html"
 _VALIDATION_NAME = "p917-ephemeral-validation.json"
 _PATCH_NAME = "model-proposed.patch"
+_REPORT_MD_NAME = "security-report.md"
 _DEEPSEEK_PROFILE_ID = "deepseek-owner-authorized"
 _DEEPSEEK_AUTHORITY = "api.deepseek.com"
 _DEEPSEEK_CONSENT_REF = "consent://project-owner/deepseek-private-source/2026-09-27"
@@ -379,7 +381,11 @@ def run_demo(
         manifest["model_lane"].update(
             {key: metadata[key] for key in ("profile_id", "endpoint", "model_id")}
         )
-    html_bytes = _html_report(manifest).encode("utf-8")
+    diff = None if patch is None else str(patch["diff"])
+    markdown_bytes = _markdown_report(manifest, diff).encode("utf-8")
+    _write_bytes(destination / _REPORT_MD_NAME, markdown_bytes)
+    report_files[_REPORT_MD_NAME] = _sha256(markdown_bytes)
+    html_bytes = _html_report(manifest, diff).encode("utf-8")
     _write_bytes(destination / _HTML_NAME, html_bytes)
     report_files[_HTML_NAME] = _sha256(html_bytes)
     manifest["report_sha256"] = dict(sorted(report_files.items()))
@@ -868,6 +874,18 @@ def _authorized_call(
         identifier.close()
 
 
+class OfflineRuntime:
+    """No model: only the deterministic lane runs, so the outcome stays INDETERMINATE."""
+
+    def invoke(
+        self, snapshot: dict[str, Any], prompt: str, purpose: ModelPurpose
+    ) -> dict[str, Any]:
+        return {"status": "NOT_CONFIGURED", "candidates": None, "patch": None, "transport": "none"}
+
+    def safe_metadata(self) -> dict[str, Any]:
+        return {"profile_id": None, "endpoint": None, "model_id": "none (offline)"}
+
+
 class DeepSeekRuntime:
     """Owner-authorized DeepSeek route for the same discovery and repair requests.
 
@@ -1294,8 +1312,10 @@ def _manifest(
     report_files: dict[str, str],
 ) -> dict[str, Any]:
     findings = [
-        {key: value for key, value in item.items() if key != "signal_sha256"}
-        | {"signal_sha256": item["signal_sha256"]}
+        _classified(
+            {key: value for key, value in item.items() if key != "signal_sha256"}
+            | {"signal_sha256": item["signal_sha256"]}
+        )
         for item in deterministic["findings"]
     ]
     return {
@@ -1347,7 +1367,7 @@ def _manifest(
         "report_sha256": dict(sorted(report_files.items())),
         "limitations": [
             "One bounded Python CWE-89 rule is demonstrated; this is not a general security verdict.",
-            "The model response is transient and is not retained in JSON or HTML reports.",
+            "The raw model response is not retained; reports keep metadata and the validated patch only.",
             "Static parse and rescan do not execute the repository and do not prove behavioral correctness.",
             "A provider, schema, identity, or validation non-success is INDETERMINATE rather than clean or PASS.",
             "Lane agreement is only a diagnostic comparison, not Auditor/Skeptic confirmation or proof of accuracy.",
@@ -1355,12 +1375,152 @@ def _manifest(
     }
 
 
-def _html_report(manifest: dict[str, Any]) -> str:
-    safe = html.escape(json.dumps(manifest, ensure_ascii=True, sort_keys=True, indent=2))
+_OWASP_TITLES = {
+    "A01:2021": "Broken Access Control",
+    "A02:2021": "Cryptographic Failures",
+    "A03:2021": "Injection",
+    "A04:2021": "Insecure Design",
+    "A05:2021": "Security Misconfiguration",
+    "A06:2021": "Vulnerable and Outdated Components",
+    "A07:2021": "Identification and Authentication Failures",
+    "A08:2021": "Software and Data Integrity Failures",
+    "A09:2021": "Security Logging and Monitoring Failures",
+    "A10:2021": "Server-Side Request Forgery",
+}
+
+
+def _classified(finding: dict[str, Any]) -> dict[str, Any]:
+    """Attach the product CWE -> OWASP Top 10 mapping used by the full reports."""
+
+    classification = classify_product_cwe(str(finding["cwe"]))
+    return finding | {
+        "owasp_category": classification.owasp_category,
+        "owasp_title": _OWASP_TITLES.get(classification.owasp_category, ""),
+        "severity": classification.severity.value,
+    }
+
+
+def _report_rows(manifest: dict[str, Any]) -> list[dict[str, str]]:
+    agreed = manifest["lane_agreement"].get("status") == "AGREED"
+    rows = []
+    for finding in manifest["deterministic_lane"]["findings"]:
+        start, end = finding["sink_start_row"], finding["sink_end_row"]
+        rows.append(
+            {
+                "cwe": finding["cwe"],
+                "owasp": f"{finding['owasp_category']} {finding['owasp_title']}",
+                "severity": finding["severity"],
+                "location": f"{finding['path']}:{start}" + ("" if start == end else f"-{end}"),
+                "lanes": "deterministic + model" if agreed else "deterministic",
+            }
+        )
+    return rows
+
+
+def _report_summary(manifest: dict[str, Any]) -> list[tuple[str, str]]:
+    runtime = manifest.get("provider_runtime") or {}
+    validation = manifest["ephemeral_validation"]
+    return [
+        ("Outcome", manifest["outcome"]),
+        ("Model", f"{runtime.get('model_id', 'n/a')} via {manifest['model_lane']['transport']}"),
+        ("Auditor (discovery)", manifest["model_lane"]["status"]),
+        ("Lane agreement", manifest["lane_agreement"].get("status", "n/a")),
+        ("Architect (repair)", manifest["repair"]["status"]),
+        ("Patch", manifest["patch"]["status"]),
+        (
+            "Validation",
+            f"{validation['status']} (parse {validation['parse_status']}, "
+            f"rescan signals {validation['rescan_signal_count']})",
+        ),
+        ("Source checkout changed", "no"),
+    ]
+
+
+def _markdown_report(manifest: dict[str, Any], diff: str | None) -> str:
+    lines = [
+        "# SecureCode AI security report",
+        "",
+        f"Snapshot `{manifest['snapshot']['sha256'][:16]}`, "
+        f"{manifest['snapshot']['python_file_count']} Python file(s).",
+        "",
+        "| | |",
+        "| --- | --- |",
+        *(f"| {name} | {value} |" for name, value in _report_summary(manifest)),
+        "",
+        "## Findings (OWASP Top 10)",
+        "",
+    ]
+    rows = _report_rows(manifest)
+    if rows:
+        lines += [
+            "| CWE | OWASP Top 10 | Severity | Location | Found by |",
+            "| --- | --- | --- | --- | --- |",
+            *(
+                f"| {row['cwe']} | {row['owasp']} | {row['severity']} | "
+                f"`{row['location']}` | {row['lanes']} |"
+                for row in rows
+            ),
+        ]
+    else:
+        lines.append("No findings.")
+    lines += ["", "## Auto-Fix", ""]
+    if diff is None:
+        lines.append("No validated patch was produced.")
+    else:
+        lines += [
+            "Proposed by the Architect model and validated in an ephemeral copy "
+            "(not applied to the source checkout):",
+            "",
+            "```diff",
+            diff.rstrip("\n"),
+            "```",
+        ]
+    lines += ["", "## Limitations", "", *(f"- {item}" for item in manifest["limitations"]), ""]
+    return "\n".join(lines)
+
+
+def _html_report(manifest: dict[str, Any], diff: str | None = None) -> str:
+    def cell(value: object) -> str:
+        return html.escape(str(value))
+
+    summary = "".join(
+        f"<tr><th>{cell(name)}</th><td>{cell(value)}</td></tr>"
+        for name, value in _report_summary(manifest)
+    )
+    rows = "".join(
+        "<tr>"
+        + "".join(
+            f"<td>{cell(row[key])}</td>"
+            for key in ("cwe", "owasp", "severity", "location", "lanes")
+        )
+        + "</tr>"
+        for row in _report_rows(manifest)
+    )
+    findings = (
+        "<table><thead><tr><th>CWE</th><th>OWASP Top 10</th><th>Severity</th>"
+        f"<th>Location</th><th>Found by</th></tr></thead><tbody>{rows}</tbody></table>"
+        if rows
+        else "<p>No findings.</p>"
+    )
+    fix = (
+        "<p>No validated patch was produced.</p>"
+        if diff is None
+        else "<p>Proposed by the Architect model and validated in an ephemeral copy "
+        "(not applied to the source checkout):</p><pre>" + cell(diff) + "</pre>"
+    )
+    limitations = "".join(f"<li>{cell(item)}</li>" for item in manifest["limitations"])
     return (
-        '<!doctype html><meta charset="utf-8"><title>SecureCode AI P9.17</title><h1>SecureCode AI P9.17 local demo</h1><p>Metadata-only report; source and model output are excluded.</p><pre>'
-        + safe
-        + "</pre>"
+        '<!doctype html><html lang="en"><meta charset="utf-8">'
+        "<title>SecureCode AI security report</title>"
+        "<style>body{font-family:system-ui,sans-serif;max-width:60rem;margin:2rem auto;"
+        "padding:0 1rem;color:#1a1a1a}table{border-collapse:collapse;margin:1rem 0}"
+        "th,td{border:1px solid #ccc;padding:.35rem .6rem;text-align:left}"
+        "pre{background:#f6f8fa;padding:1rem;overflow-x:auto}</style>"
+        "<h1>SecureCode AI security report</h1>"
+        f"<p>Snapshot <code>{cell(manifest['snapshot']['sha256'][:16])}</code>, "
+        f"{cell(manifest['snapshot']['python_file_count'])} Python file(s).</p>"
+        f"<table>{summary}</table><h2>Findings (OWASP Top 10)</h2>{findings}"
+        f"<h2>Auto-Fix</h2>{fix}<h2>Limitations</h2><ul>{limitations}</ul></html>"
     )
 
 
@@ -1606,15 +1766,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--provider",
-        choices=("local", "deepseek"),
+        choices=("local", "deepseek", "offline"),
         default="local",
-        help="local Qwen through Ollama (default) or the owner-authorized DeepSeek profile",
+        help="local Qwen through Ollama (default), the owner-authorized DeepSeek profile, "
+        "or offline (deterministic lane only)",
     )
     arguments = parser.parse_args(argv)
     try:
-        runtime = (
-            DeepSeekRuntime(_deepseek_environment()) if arguments.provider == "deepseek" else None
-        )
+        runtime: _PublicBenchmarkRuntime | None = None
+        if arguments.provider == "deepseek":
+            runtime = DeepSeekRuntime(_deepseek_environment())
+        elif arguments.provider == "offline":
+            runtime = OfflineRuntime()
         manifest = run_demo(arguments.repository, arguments.output, public_runtime=runtime)
     except DemoError as error:
         print(
