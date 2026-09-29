@@ -1,8 +1,22 @@
 # SecureCode AI - актуальный контекст
 
-Последнее обновление: 27 сентября 2026 года.
+Последнее обновление: 29 сентября 2026 года.
 
-## Текущая позиция
+## Текущая позиция (v1.0.0)
+
+- Выпущена версия 1.0.0: полное покрытие курсового задания, см.
+  [итоговый отчёт](../report/final-submission.md) и [CHANGELOG](../CHANGELOG.md).
+  Быстрый старт проверяющего: `python deploy/docker/quickstart.py --demo`.
+- `main` зелёный: `scripts/quality.py` и CI (policy, secrets, dependency, quality
+  на 3.12–3.14, gate). Процесс — agile PR-workflow ([D-114](DECISIONS.md)).
+- Демо Аудитор → Архитектор `COMPLETED` на локальной Qwen и на DeepSeek. Бенчмарк на
+  600 кейсах: hybrid на уровне Semgrep по recall, превосходство не доказано.
+- После v1: пять серверных исправлений из [BRANCH_RECOVERY.md](BRANCH_RECOVERY.md),
+  22 устаревших теста `tests/integration/test_artifact_upload.py`, проверка
+  `quickstart.py --up` на Linux, новый скринкаст, точность детекторов (precision
+  около 50%), оценка полного агентного конвейера на корпусе.
+
+## История до v1.0.0
 
 - Работа отправлена через форму курса. UI подтвердил «На проверке» и кнопку
   «Редактировать». Передан коммит de6eabe через публичный source.zip с проверенным

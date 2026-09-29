@@ -185,8 +185,8 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
             "securecode-ai-adapters",
             (
                 "pydantic>=2.12,<3",
-                "securecode-ai-contracts==1.0.0rc1",
-                "securecode-ai-core==1.0.0rc1",
+                "securecode-ai-contracts==1.0.0",
+                "securecode-ai-core==1.0.0",
                 "tree-sitter>=0.25,<0.26",
                 "tree-sitter-go==0.25.0",
                 "tree-sitter-javascript==0.25.0",
@@ -197,13 +197,13 @@ def test_domain_imports_follow_closed_package_allow_lists() -> None:
         (
             "securecode-ai-cli",
             (
-                "securecode-ai-adapters==1.0.0rc1",
-                "securecode-ai-contracts==1.0.0rc1",
-                "securecode-ai-core==1.0.0rc1",
+                "securecode-ai-adapters==1.0.0",
+                "securecode-ai-contracts==1.0.0",
+                "securecode-ai-core==1.0.0",
             ),
         ),
         ("securecode-ai-contracts", "pydantic>=2.12,<3"),
-        ("securecode-ai-core", "securecode-ai-contracts==1.0.0rc1"),
+        ("securecode-ai-core", "securecode-ai-contracts==1.0.0"),
     ],
 )
 def test_declared_dependencies_point_inward(
