@@ -5,8 +5,8 @@
     "seed": 20260927
   },
   "candidate_source_files": 603,
-  "candidate_source_manifest_sha256": "68ca86f9aea78c94a80b820a0e761901f008aac6ffd7aad18c7b6662e972e384",
-  "created_at_utc": "2026-09-29T15:41:29+00:00",
+  "candidate_source_manifest_sha256": "14e0183947ce220d29472ff5ac81e9e080f465a6d52b9e23740c8ecb939087ed",
+  "created_at_utc": "2026-09-29T16:25:20+00:00",
   "dataset": {
     "cases": 600,
     "content_sha256": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",

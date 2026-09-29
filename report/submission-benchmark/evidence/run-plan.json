@@ -10,7 +10,7 @@
     "settled_attempts": 1300,
     "settled_charged_usd": 2.2422
   },
-  "aggregate_output_sha256": "7dfbc5233abeadcca9adf0fde50754bd8c27b034d36510836b8ab23b7e4ee789",
+  "aggregate_output_sha256": "d8dd895b1d9340ec4ecb0c39a45fba082a7fefff7b5c45d5c2a4ea8de80d91b2",
   "analysis_boundary": "All configured diagnostic outputs were validated against the frozen manifest. The model-native and one-shot outputs are archived direct classifications; scanner_seeded and full_hybrid are derived paired compositions, not live SecureCode pipeline runs.",
   "budget": {
     "combined_hard_cap_micro_usd": 40000000,
@@ -30,7 +30,7 @@
     "source_manifest_file": "candidate-source-manifest.json",
     "source_manifest_sha256": "c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0"
   },
-  "completed_at_utc": "2026-09-29T15:41:29+00:00",
+  "completed_at_utc": "2026-09-29T16:25:20+00:00",
   "corpus": {
     "case_count": 600,
     "dataset_content_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
@@ -168,8 +168,8 @@
   },
   "model_profile_sha256": "dfcdd5a415ed6a336da47881f409b3b86349250d8fc46a158a6c5abc0c73f917",
   "outputs_sha256": {
-    "README.md": "5b7184adce6e5c8108618bb7e07a9fdda6670481215d6c6fa6ec2deff88d008a",
-    "aggregate.json": "7dfbc5233abeadcca9adf0fde50754bd8c27b034d36510836b8ab23b7e4ee789",
+    "README.md": "00caacc9597bc1f3eab0205c46febb59a52a5047acd3c98aac7fff9a1cf87b05",
+    "aggregate.json": "d8dd895b1d9340ec4ecb0c39a45fba082a7fefff7b5c45d5c2a4ea8de80d91b2",
     "build_report_pdf.py": "fcfca7674dec8ff86227762e90c65aa0f0f52c2346ac34fc12cfd96487cd05ef",
     "deepseek-full-hybrid-600x3.json": "8212f5870c3cb110d9fef07240bc001fec96ee3b8f287f08237604ceb2239bf2",
     "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
@@ -178,8 +178,8 @@
     "deterministic-600x1.json": "bbeecd39e71f30a8332832e8f8b07a4ee2cda8c9d564d00e1576b1be2f700927",
     "deterministic-shards.json": "d1d9f0bc449a3885505a6cb07cb906773c4d143e97b6a5fa6d1dec1e3895ec5d",
     "lane-composition.json": "615951b25c42dbf97197162f646a34c421b4b744a2bd0c0ad0eb4fb496913ace",
-    "project-README.md": "4fd41b40784e04d8022bcef63f871ac2fde7a94262e523e34b7d5c74ef751754",
-    "report.html": "3f7ffc6d13df83b1a1c2f5a439409d19434da12924a4d961f94edcce5359907f",
+    "project-README.md": "10c384168f7b567f252334534384bc4feb43b2edefbfbebcdbfc3c7c3fa0ab45",
+    "report.html": "a132c34ba3d8b9333565227f635d16171d0af4d1f30e94686bd77ff851ba9786",
     "securecode-ai-submission-benchmark.pdf": "e45025b1ef3daf9711cb4680187ffbad7d2d81d34fdb352a4dc2d43aea0ea5f4",
     "semgrep-600x3.json": "209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6",
     "stratified-metrics.csv": "7fcd3a6b8d4fa532db5ae7a11e30d685e32cfece7fc4667beb940202e1eb674c",
@@ -225,5 +225,5 @@
     "RAM/VRAM and end-to-end scan latency were not measured."
   ],
   "validated_candidate_source_files": 603,
-  "validated_candidate_source_manifest_sha256": "68ca86f9aea78c94a80b820a0e761901f008aac6ffd7aad18c7b6662e972e384"
+  "validated_candidate_source_manifest_sha256": "14e0183947ce220d29472ff5ac81e9e080f465a6d52b9e23740c8ecb939087ed"
 }

@@ -12,9 +12,10 @@ SecureCode AI - локальный прототип аудита безопас�
 отказывает закрыто, если обязательный этап не завершился.
 
 > **Статус:** версия пакетов `1.0.0rc1` является кандидатом. M-A2026 отмечен
-> `NOT_READY`, G9 и production readiness не заявляются. Текущий локальный
-> Qwen-прогон обнаружил один CWE-89, но не выдал patch; расширенный benchmark не
-> подтверждает преимущество над Semgrep. См. [статус и ограничения](#статус-и-ограничения).
+> `NOT_READY`, G9 и production readiness не заявляются. Демо Аудитор → Архитектор
+> завершается `COMPLETED` и на локальной Qwen, и на DeepSeek: CWE-89 найден, patch
+> проверен в эфемерной копии; расширенный benchmark показывает уровень Semgrep, но
+> не превосходство. См. [статус и ограничения](#статус-и-ограничения).
 
 ## Русский
 
@@ -188,9 +189,22 @@ Get-Content (Join-Path $output 'p917-local-demo.json')
 
 Текущая обезличенная квитанция находится в
 [`report/submission-benchmark/evidence/current-real-local-p917.json`](report/submission-benchmark/evidence/current-real-local-p917.json).
-Qwen обнаружила один CWE-89, но ответ на repair-запрос не содержал принятого
-patch-кандидата: `patch=NOT_PROPOSED`, `outcome=INDETERMINATE`. Старый успешный
-ephemeral parse/rescan receipt относится к отдельному запуску на Ollama 0.16.2.
+Прогон 29 сентября 2026: Qwen нашла CWE-89, совпавший с детерминированным
+сканером, и предложила параметризованный запрос; patch распарсился, повторный
+скан дал 0 сигналов, `outcome=COMPLETED`, исходный checkout не изменён.
+
+Тот же сценарий на DeepSeek (профиль `deepseek-owner-authorized`, согласие
+владельца в [`deploy/deepseek/owner-consent.json`](deploy/deepseek/owner-consent.json)):
+ключ берётся из `DEEPSEEK_API_KEY` или из строки `DEEPSEEK_API_KEY=...` в
+корневом `.env` (файл игнорируется Git), расход ограничен $0.10 на прогон.
+
+```powershell
+uv run --locked --offline --no-sync python -I demo/p917_real_local_demo.py --repository $fixture --output $output --provider deepseek
+```
+
+Квитанция: [`current-deepseek-p917.json`](report/submission-benchmark/evidence/current-deepseek-p917.json)
+(`outcome=COMPLETED`, 2 вызова, $0.00014). Условия хранения и обучения у
+DeepSeek не проверены; отправляйте только код, который вы вправе раскрыть.
 
 Пример локальной подготовки:
 
@@ -792,9 +806,22 @@ Get-Content (Join-Path $output 'p917-local-demo.json')
 
 The retained redacted receipt is
 [`current-real-local-p917.json`](report/submission-benchmark/evidence/current-real-local-p917.json).
-Qwen found a CWE-89 candidate, but did not produce an accepted patch:
-`patch=NOT_PROPOSED`, `outcome=INDETERMINATE`. The earlier M-A2026
-parse/rescan receipt belongs to a separate Ollama 0.16.2 run.
+In the 29 September 2026 run Qwen found the CWE-89 candidate the deterministic
+scanner also reported and proposed a parameterized query; the patch parsed, the
+rescan found 0 signals, `outcome=COMPLETED`, and the source checkout was unchanged.
+
+The same scenario runs on DeepSeek (profile `deepseek-owner-authorized`, owner
+consent recorded in [`deploy/deepseek/owner-consent.json`](deploy/deepseek/owner-consent.json)).
+The key comes from `DEEPSEEK_API_KEY` or a `DEEPSEEK_API_KEY=...` line in the
+repository-root `.env` (ignored by Git); spend is capped at $0.10 per run.
+
+```powershell
+uv run --locked --offline --no-sync python -I demo/p917_real_local_demo.py --repository $fixture --output $output --provider deepseek
+```
+
+Receipt: [`current-deepseek-p917.json`](report/submission-benchmark/evidence/current-deepseek-p917.json)
+(`outcome=COMPLETED`, 2 calls, $0.00014). DeepSeek retention and training terms
+are not verified; send only code you are entitled to disclose.
 
 Example local preparation:
 

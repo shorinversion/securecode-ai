@@ -17,6 +17,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass
 from email.message import Message
+from typing import Final
 from urllib.parse import urlsplit
 
 from securecode_ai.core import ApiDialect, ProviderKind, ProviderProfile
@@ -620,6 +621,38 @@ def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) ->
     return canonical
 
 
+# Accounting detail fields real providers add to ``usage`` (DeepSeek reports cache hits and
+# misses).  They are validated and dropped: billing uses prompt and completion tokens only.
+_USAGE_DETAIL_KEYS: Final = frozenset(
+    {
+        "prompt_tokens_details",
+        "completion_tokens_details",
+        "prompt_cache_hit_tokens",
+        "prompt_cache_miss_tokens",
+    }
+)
+
+
+def _valid_usage_details(usage: dict[str, object]) -> bool:
+    for key in ("prompt_tokens_details", "completion_tokens_details"):
+        details = usage.get(key)
+        if details is not None and (
+            not isinstance(details, dict)
+            or not all(
+                isinstance(name, str) and type(value) is int and value >= 0
+                for name, value in details.items()
+            )
+        ):
+            return False
+    cache = [usage.get(key) for key in ("prompt_cache_hit_tokens", "prompt_cache_miss_tokens")]
+    if any(value is not None for value in cache):
+        if any(type(value) is not int or value < 0 for value in cache):
+            return False
+        if cache[0] + cache[1] != usage.get("prompt_tokens"):  # type: ignore[operator]
+            return False
+    return True
+
+
 def _canonicalize_remote_envelope_with_usage(
     response: bytes,
     *,
@@ -641,12 +674,14 @@ def _canonicalize_remote_envelope_with_usage(
         or not isinstance(choices, list)
         or len(choices) != 1
         or not isinstance(choices[0], dict)
-        or set(choices[0]) - {"index", "message", "finish_reason"}
+        or set(choices[0]) - {"index", "message", "finish_reason", "logprobs"}
         or ("index" in choices[0] and choices[0]["index"] != 0)
+        or choices[0].get("logprobs") is not None
         or not isinstance(choices[0].get("message"), dict)
         or choices[0]["message"].get("role") != "assistant"
         or not isinstance(usage, dict)
-        or set(usage) - {"prompt_tokens", "completion_tokens", "total_tokens"}
+        or set(usage) - {"prompt_tokens", "completion_tokens", "total_tokens"} - _USAGE_DETAIL_KEYS
+        or not _valid_usage_details(usage)
         or type(usage.get("prompt_tokens")) is not int
         or type(usage.get("completion_tokens")) is not int
         or not 0 <= usage["prompt_tokens"] <= 1_000_000_000

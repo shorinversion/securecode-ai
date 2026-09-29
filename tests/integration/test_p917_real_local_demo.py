@@ -852,3 +852,53 @@ def test_metadata_http_boundary_is_bounded_literal_loopback(
     assert calls[0] == ("127.0.0.1", 11434, demo_module._METADATA_TIMEOUT)
     assert len(calls) == 3
     assert calls[-1] == "closed"
+
+
+def test_deepseek_route_is_admitted_by_the_owner_consent_profile(
+    demo_module: ModuleType, tmp_path: Path
+) -> None:
+    from securecode_ai.adapters import ProviderProfileRegistry
+    from securecode_ai.contracts import (
+        CONTRACT_SCHEMA_VERSION,
+        DataClass,
+        ExecutionBoundary,
+        ModelPreflightRequest,
+        ModelPurpose,
+    )
+    from securecode_ai.core import EgressPolicyRegistry, ModelAuthorizationIssuer
+
+    repository, _ = _repo(tmp_path, "def f():\n    return 1\n")
+    snapshot = demo_module._snapshot_repository(repository)
+    profile = demo_module._deepseek_profile("deepseek-flash")
+    policy = demo_module._deepseek_policy()
+    issuer = ModelAuthorizationIssuer(
+        provider_registry=ProviderProfileRegistry((profile,)),
+        policy_registry=EgressPolicyRegistry((policy,)),
+    )
+    for purpose in (ModelPurpose.MODEL_NATIVE_DISCOVERY, ModelPurpose.PATCH_GENERATION):
+        request = demo_module._model_request(
+            snapshot, profile, policy, purpose=purpose, prompt_text="prompt"
+        )
+        preflight = ModelPreflightRequest(
+            schema_version=CONTRACT_SCHEMA_VERSION,
+            model_request=request,
+            required_execution_boundary=ExecutionBoundary.PUBLIC_EXTERNAL,
+            required_data_class=DataClass.CONFIDENTIAL_SOURCE,
+            required_purpose=purpose,
+            planned_transforms=("bounded_repository_view",),
+            required_max_bytes=demo_module._MAX_MODEL_CONTEXT_BYTES,
+        )
+        result = issuer.authorize_pre_context(preflight, profile=profile, policy=policy)
+        assert result.result.eligibility.value == "eligible"
+
+
+def test_deepseek_runtime_requires_a_key_and_never_reveals_it(demo_module: ModuleType) -> None:
+    with pytest.raises(demo_module.DemoError):
+        demo_module.DeepSeekRuntime({})
+
+    runtime = demo_module.DeepSeekRuntime({"DEEPSEEK_API_KEY": "sk-test-not-a-real-key"})
+    metadata = runtime.safe_metadata()
+
+    assert "sk-test" not in repr(runtime) + json.dumps(metadata)
+    assert metadata["profile_id"] == "deepseek-owner-authorized"
+    assert metadata["settled_calls"] == 0

@@ -96,3 +96,65 @@ def test_remote_envelope_is_reduced_to_the_contract_subset() -> None:
 def test_remote_envelope_rejects_model_drift() -> None:
     with pytest.raises(ValueError):
         _canonicalize_remote_envelope(b'{"model":"other"}', expected_model_id="deepseek-flash")
+
+
+def _deepseek_envelope(**changes: object) -> bytes:
+    # Shape of a real DeepSeek chat completion (recorded 2026-09-29, public CWE-89 fixture).
+    choice: dict[str, object] = {
+        "index": 0,
+        "message": {"role": "assistant", "content": '{"candidates":[]}'},
+        "logprobs": None,
+        "finish_reason": "stop",
+    }
+    usage: dict[str, object] = {
+        "prompt_tokens": 374,
+        "completion_tokens": 25,
+        "total_tokens": 399,
+        "prompt_tokens_details": {"cached_tokens": 128},
+        "prompt_cache_hit_tokens": 128,
+        "prompt_cache_miss_tokens": 246,
+    }
+    for key, value in changes.items():
+        target = choice if key == "logprobs" else usage
+        if value is ...:
+            target.pop(key)
+        else:
+            target[key] = value
+    document = {
+        "id": "response-1",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "deepseek-flash",
+        "choices": [choice],
+        "usage": usage,
+        "system_fingerprint": "fingerprint",
+    }
+    return json.dumps(document).encode()
+
+
+def test_real_deepseek_envelope_is_accepted_and_accounting_details_dropped() -> None:
+    canonical = json.loads(
+        _canonicalize_remote_envelope(_deepseek_envelope(), expected_model_id="deepseek-flash")
+    )
+
+    assert canonical["usage"] == {"prompt_tokens": 374, "completion_tokens": 25}
+    assert canonical["choices"][0]["message"]["content"] == '{"candidates":[]}'
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"logprobs": {"content": []}},
+        {"prompt_cache_hit_tokens": 1},
+        {"prompt_cache_miss_tokens": "246"},
+        {"prompt_tokens_details": {"cached_tokens": -1}},
+        {"prompt_tokens_details": "cached"},
+    ],
+)
+def test_deepseek_envelope_rejects_inconsistent_accounting_details(
+    changes: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
+        _canonicalize_remote_envelope(
+            _deepseek_envelope(**changes), expected_model_id="deepseek-flash"
+        )
