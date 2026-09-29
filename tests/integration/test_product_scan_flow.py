@@ -22,6 +22,7 @@ from securecode_ai.adapters.product_scan import (
 from securecode_ai.adapters.product_scanner import (
     ProductDeterministicScanResult,
     build_product_auditor_tools,
+    scan_product_sources,
 )
 from securecode_ai.contracts import (
     AuditRunOutcome,
@@ -174,14 +175,13 @@ def _flow(
             if isinstance(result, ProductDeterministicScanResult):
                 scanner_result = result
             return result
-        return EvidenceGraph(
-            graph_id="deterministic-zero",
-            tenant_id=request.tenant_id,
-            head_sha=head,
-            candidates=(),
-            evidence=(),
-            edges=(),
+        # A complete first-party scan with scanner receipts; a bare graph is
+        # deliberately never accepted as complete coverage.
+        result = scan_product_sources(
+            catalogue, tenant_id=request.tenant_id, repository_id="repo-a"
         )
+        scanner_result = result
+        return result
 
     def auditor_factory(graph: EvidenceGraph) -> ProductAuditorInvoker:
         observed["factory_calls"] += 1
