@@ -4,8 +4,10 @@ This runner inspects regular Python files only.  It never imports or executes
 the selected repository; every source byte is read from an immutable digest
 snapshot and a proposed repair is applied only below a temporary directory.
 The ordinary path makes one mandatory discovery request and, on agreement,
-one separate repair request to the literal loopback Qwen profile. Reports contain metadata and
-hashes, never source bytes, credentials, or the raw model response.
+one separate repair request to the literal loopback Qwen profile.  With ``--provider deepseek``
+the same two requests go through the owner-authorized DeepSeek profile instead, with an in-memory
+spend cap.  Reports contain metadata and hashes, never source bytes, credentials, or the raw model
+response.
 """
 
 from __future__ import annotations
@@ -16,9 +18,12 @@ import hashlib
 import html
 import http.client
 import json
+import os
+import re
 import stat
 import tempfile
 import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -34,7 +39,15 @@ from securecode_ai.adapters import (
     parse_provider_profile,
     scan_python_cwe89,
 )
+from securecode_ai.adapters.config import resolve_environment_credential
 from securecode_ai.adapters.openai_compatible_local import OpenAICompatibleLocalHttpConnector
+from securecode_ai.adapters.openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
+from securecode_ai.adapters.product_provider_runtime import ApprovedPublicResolver
+from securecode_ai.adapters.remote_provider_budget import (
+    InMemoryRemoteProviderBudget,
+    RemoteProviderCostReceipt,
+    RemoteProviderSpendPolicy,
+)
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ComponentPin,
@@ -77,6 +90,14 @@ _MANIFEST_NAME = "p917-local-demo.json"
 _HTML_NAME = "p917-local-demo.html"
 _VALIDATION_NAME = "p917-ephemeral-validation.json"
 _PATCH_NAME = "model-proposed.patch"
+_DEEPSEEK_PROFILE_ID = "deepseek-owner-authorized"
+_DEEPSEEK_AUTHORITY = "api.deepseek.com"
+_DEEPSEEK_CONSENT_REF = "consent://project-owner/deepseek-private-source/2026-09-27"
+_DEEPSEEK_MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
+# Off-peak DeepSeek Flash prices recorded in report/submission-benchmark/evidence/model-profile.json.
+_DEEPSEEK_INPUT_MICROUSD_PER_MILLION = 150_000
+_DEEPSEEK_OUTPUT_MICROUSD_PER_MILLION = 600_000
+_DEEPSEEK_MAX_COST_MICROUSD = 100_000
 
 
 class DemoError(ValueError):
@@ -737,7 +758,37 @@ def _model_lane(
     profile_data["model_id"] = _MODEL_ID
     profile_data["model_snapshot"] = "sha256:" + _MODEL_DIGEST
     profile = parse_provider_profile(json.dumps(profile_data, sort_keys=True).encode("utf-8"))
-    policy = _demo_policy()
+    return _authorized_call(
+        snapshot,
+        prompt,
+        purpose,
+        profile=profile,
+        policy=_demo_policy(),
+        boundary=ExecutionBoundary.LOCAL_RUNNER,
+        resolver=_LiteralLoopbackResolver(),
+        connector=OpenAICompatibleLocalHttpConnector(profile=profile, temperature=0.0, seed=42),
+        credential_supplier=lambda selected: None,
+        transport="authorized_loopback",
+    )
+
+
+def _authorized_call(
+    snapshot: dict[str, Any],
+    prompt: str,
+    purpose: ModelPurpose,
+    *,
+    profile: ProviderProfile,
+    policy: EgressPolicyDocument,
+    boundary: ExecutionBoundary,
+    resolver: Any,
+    connector: Any,
+    credential_supplier: Callable[[ProviderProfile], Any],
+    transport: str,
+    cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
+) -> dict[str, Any]:
+    """Send one request through the authorized provider harness and normalize the answer."""
+
+    is_discovery = purpose is ModelPurpose.MODEL_NATIVE_DISCOVERY
     request = _model_request(snapshot, profile, policy, purpose=purpose, prompt_text=prompt)
     harness = AuthorizedProviderHarness(
         model_issuer=ModelAuthorizationIssuer(
@@ -749,12 +800,13 @@ def _model_lane(
         ),
     )
     identifier = HmacContentIdentifier(b"p917-local-demo-content-id-key-0001")
+    failed: dict[str, Any] = {"candidates": None, "patch": None, "transport": transport}
     try:
         execution = harness.execute_remote(
             preflight=ModelPreflightRequest(
                 schema_version=CONTRACT_SCHEMA_VERSION,
                 model_request=request,
-                required_execution_boundary=ExecutionBoundary.LOCAL_RUNNER,
+                required_execution_boundary=boundary,
                 required_data_class=DataClass.CONFIDENTIAL_SOURCE,
                 required_purpose=purpose,
                 planned_transforms=("bounded_repository_view",),
@@ -776,13 +828,9 @@ def _model_lane(
                 tenant_id=request.tenant_id,
                 content_identifier=identifier,
             ),
-            resolver=_LiteralLoopbackResolver(),
-            connector=OpenAICompatibleLocalHttpConnector(
-                profile=profile,
-                temperature=0.0,
-                seed=42,
-            ),
-            credential_supplier=lambda selected: None,
+            resolver=resolver,
+            connector=connector,
+            credential_supplier=credential_supplier,
             validator=JsonObjectValidator(
                 validator=request.output_schema,
                 data_class=DataClass.CONFIDENTIAL_SECURITY,
@@ -790,30 +838,19 @@ def _model_lane(
                 required_keys=("candidates",) if is_discovery else ("patch",),
             ),
             now=time.monotonic(),
+            cost_observer=cost_observer,
         )
     except Exception:
-        return {
-            "status": ModelCallStatus.PROVIDER_ERROR.value,
-            "candidates": None,
-            "patch": None,
-            "transport": "authorized_loopback",
-        }
+        identifier.close()
+        return {"status": ModelCallStatus.PROVIDER_ERROR.value} | failed
     if execution.result is None:
-        return {
-            "status": ModelCallStatus.PROVIDER_ERROR.value,
-            "candidates": None,
-            "patch": None,
-            "transport": "authorized_loopback",
-        }
+        identifier.close()
+        return {"status": ModelCallStatus.PROVIDER_ERROR.value} | failed
     status = execution.result.status.value
     payload = execution.payload
     if status != ModelCallStatus.SUCCEEDED.value or payload is None:
-        return {
-            "status": status,
-            "candidates": None,
-            "patch": None,
-            "transport": "authorized_loopback",
-        }
+        identifier.close()
+        return {"status": status} | failed
     try:
         with payload:
             value = payload.reveal_for(request.request_id)
@@ -823,17 +860,124 @@ def _model_lane(
             "status": status,
             "candidates": value.get("candidates") if is_discovery else None,
             "patch": value.get("patch") if not is_discovery else None,
-            "transport": "authorized_loopback",
+            "transport": transport,
         }
     except Exception:
-        return {
-            "status": ModelCallStatus.INVALID_SCHEMA.value,
-            "candidates": None,
-            "patch": None,
-            "transport": "authorized_loopback",
-        }
+        return {"status": ModelCallStatus.INVALID_SCHEMA.value} | failed
     finally:
         identifier.close()
+
+
+class DeepSeekRuntime:
+    """Owner-authorized DeepSeek route for the same discovery and repair requests.
+
+    Admission uses the scoped ``deepseek-owner-authorized`` profile recorded in
+    ``deploy/deepseek/owner-consent.json``; retention and training terms stay unknown rather
+    than verified.  Every call is charged against an in-memory cap before HTTP bytes are sent.
+    """
+
+    def __init__(self, environment: Mapping[str, str]) -> None:
+        key = environment.get("DEEPSEEK_API_KEY")
+        model_id = environment.get("DEEPSEEK_MODEL") or "deepseek-flash"
+        if not isinstance(key, str) or not key:
+            raise DemoError("DEEPSEEK_API_KEY is required for --provider deepseek")
+        if _DEEPSEEK_MODEL_ID.fullmatch(model_id) is None:
+            raise DemoError("DEEPSEEK_MODEL is invalid")
+        self._profile = _deepseek_profile(model_id)
+        self._policy = _deepseek_policy()
+        self._registry = ProviderProfileRegistry((self._profile,))
+        self._credentials = {"DEEPSEEK_API_KEY": key}
+        self._budget = InMemoryRemoteProviderBudget(
+            (
+                RemoteProviderSpendPolicy(
+                    tenant_id=self._policy.tenant_scope,
+                    model_id=model_id,
+                    window_ms=3_600_000,
+                    max_calls_per_window=4,
+                    max_concurrent_calls=1,
+                    max_tokens_per_window=100_000,
+                    max_cost_microunits_per_window=_DEEPSEEK_MAX_COST_MICROUSD,
+                    input_cost_microunits_per_million_tokens=_DEEPSEEK_INPUT_MICROUSD_PER_MILLION,
+                    output_cost_microunits_per_million_tokens=_DEEPSEEK_OUTPUT_MICROUSD_PER_MILLION,
+                ),
+            )
+        )
+        self._costs: list[int] = []
+
+    def __repr__(self) -> str:
+        return "DeepSeekRuntime(<redacted>)"
+
+    def invoke(
+        self, snapshot: dict[str, Any], prompt: str, purpose: ModelPurpose
+    ) -> dict[str, Any]:
+        return _authorized_call(
+            snapshot,
+            prompt,
+            purpose,
+            profile=self._profile,
+            policy=self._policy,
+            boundary=ExecutionBoundary.PUBLIC_EXTERNAL,
+            resolver=ApprovedPublicResolver(),
+            connector=OpenAICompatibleRemoteHttpsConnector(
+                profile=self._profile, max_output_tokens=1024, spend_budget=self._budget
+            ),
+            credential_supplier=lambda selected: resolve_environment_credential(
+                selected, self._credentials, registry=self._registry
+            ),
+            transport="authorized_remote_owner_consent",
+            cost_observer=lambda receipt: self._costs.append(receipt.cost_microunits),
+        )
+
+    def safe_metadata(self) -> dict[str, Any]:
+        return {
+            "profile_id": self._profile.profile_id,
+            "endpoint": self._profile.endpoint.base_url,
+            "model_id": self._profile.model_id,
+            "consent_ref": _DEEPSEEK_CONSENT_REF,
+            "retention_and_training": "unknown_not_verified",
+            "settled_calls": len(self._costs),
+            "settled_cost_microusd": sum(self._costs),
+        }
+
+
+def _deepseek_profile(model_id: str) -> ProviderProfile:
+    data = json.loads(_PROFILE_PATH.read_text(encoding="utf-8"))
+    data.update(
+        profile_id=_DEEPSEEK_PROFILE_ID,
+        provider_kind="openai_compatible_remote",
+        execution_boundary="public_external",
+        model_id=model_id,
+        model_snapshot=None,
+        credential_ref="env://DEEPSEEK_API_KEY",
+        egress_profiles=["managed_scan_opt_in"],
+        protocol_framing_token_upper_bound=4096,
+    )
+    data["endpoint"] = {
+        "base_url": "https://" + _DEEPSEEK_AUTHORITY,
+        "authority": _DEEPSEEK_AUTHORITY,
+        "allowed_ports": [443],
+        "follow_redirects": False,
+        "local_plaintext_exception": False,
+    }
+    data["data_terms"].update(
+        evidence_status="unverified",
+        residency=[],
+        retention_seconds=None,
+        training_use="unknown",
+        zero_data_retention=None,
+        evidence_ref=_DEEPSEEK_CONSENT_REF,
+    )
+    return parse_provider_profile(json.dumps(data, sort_keys=True).encode("utf-8"))
+
+
+def _deepseek_policy() -> EgressPolicyDocument:
+    data = _demo_policy().model_dump(mode="json")
+    data["policy_id"] = "p917-deepseek-discovery-repair"
+    data["profile"] = "managed_scan_opt_in"
+    data["rules"][0]["rule_id"] = "EGR-P917-DEEPSEEK-DISCOVERY-REPAIR"
+    data["rules"][0]["destinations"] = ["profile://" + _DEEPSEEK_PROFILE_ID]
+    data["rules"][0]["tenant_admin_approval"] = True
+    return EgressPolicyDocument.model_validate_json(json.dumps(data))
 
 
 def _model_request(
@@ -1460,9 +1604,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the bounded P9.17 real local-model demo.")
     parser.add_argument("--repository", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--provider",
+        choices=("local", "deepseek"),
+        default="local",
+        help="local Qwen through Ollama (default) or the owner-authorized DeepSeek profile",
+    )
     arguments = parser.parse_args(argv)
     try:
-        manifest = run_demo(arguments.repository, arguments.output)
+        runtime = (
+            DeepSeekRuntime(_deepseek_environment()) if arguments.provider == "deepseek" else None
+        )
+        manifest = run_demo(arguments.repository, arguments.output, public_runtime=runtime)
     except DemoError as error:
         print(
             json.dumps(
@@ -1474,6 +1627,19 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(json.dumps(manifest, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     return 0 if manifest["outcome"] == "COMPLETED" else 1
+
+
+def _deepseek_environment() -> dict[str, str]:
+    """Read DeepSeek settings from the process, falling back to DEEPSEEK_* lines in ``.env``."""
+
+    values = {key: value for key, value in os.environ.items() if key.startswith("DEEPSEEK_")}
+    dotenv = _ROOT / ".env"
+    if "DEEPSEEK_API_KEY" not in values and dotenv.is_file():
+        for line in dotenv.read_text(encoding="utf-8").splitlines():
+            key, separator, value = line.strip().partition("=")
+            if separator and key.startswith("DEEPSEEK_") and key not in values:
+                values[key] = value.strip().strip("'\"")
+    return values
 
 
 if __name__ == "__main__":

@@ -1785,9 +1785,9 @@
     "sha256": "33c4699630b20d7e0f05306ebcb40a2bd0ee5cbca23443a51e7661ae7f773188"
   },
   {
-    "bytes": 31353,
+    "bytes": 32702,
     "path": "packages/adapters/src/securecode_ai/adapters/openai_compatible_remote.py",
-    "sha256": "b26434e52620763ede587df98fd5207c9111f6543f1bf69af2464c2aeeb44428"
+    "sha256": "ed6e4ef8b493ae5403e840ba1221c3e9e43bfa29124ad218f944b7698e661d9b"
   },
   {
     "bytes": 6922,

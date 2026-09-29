@@ -716,17 +716,22 @@ and <a
 href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/model-profile.json"><code>model-profile.json</code></a>.</li>
 </ul>
 <h2 id="demo-evidence">Demo evidence</h2>
-<p>The current real-local rerun is recorded in <a
+<p>The current real-local rerun (29 September 2026) is recorded in <a
 href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-real-local-p917.json"><code>evidence/current-real-local-p917.json</code></a>.
 Ollama 0.34.4 served <code>qwen2.5-coder:7b-instruct-q4_K_M</code>
 (<code>Q4_K_M</code>, digest
 <code>dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364</code>)
 through literal loopback. The model and deterministic lane agreed on one
-Python CWE-89 candidate at <code>app.py:4</code>; the separate local
-repair request completed but did not emit a patch
-(<code>NOT_PROPOSED</code>). The result is <code>INDETERMINATE</code>;
-patch applicability, syntax, and security regression checks were not
-performed, and the source checkout stayed unchanged.</p>
+Python CWE-89 candidate at <code>app.py:5</code>; the separate repair
+request proposed a parameterized query, the patch parsed in an ephemeral
+copy and the rescan found 0 signals, so the outcome is
+<code>COMPLETED</code>. The source checkout stayed unchanged; behavioral
+tests were not run.</p>
+<p>The same two requests through the owner-authorized DeepSeek profile
+are recorded in <a
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-deepseek-p917.json"><code>evidence/current-deepseek-p917.json</code></a>:
+agreement on the same candidate, a validated parameterized-query patch,
+<code>COMPLETED</code>, two calls costing $0.00014.</p>
 <p>An earlier, separate local run is retained in <a
 href="https://github.com/shorinversion/securecode-ai/blob/main/report/m-a2026/evidence/p917-real-local/p917-local-demo.json"><code>report/m-a2026/evidence/p917-real-local/p917-local-demo.json</code></a>.
 That run used Ollama 0.16.2 and recorded a proposed patch plus
