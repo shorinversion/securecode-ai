@@ -261,9 +261,24 @@ def github_projection(
     outcome: AuditRunOutcome,
     *,
     waiver_applied: bool = False,
+    advisory_findings: bool = False,
 ) -> dict[str, object]:
-    if type(waiver_applied) is not bool:
+    if type(waiver_applied) is not bool or type(advisory_findings) is not bool:
         raise SCMCompletionError("SCM completion outcome is invalid")
+    if advisory_findings:
+        # Advisory policy never blocks, but a green check would hide real findings.
+        if outcome is not AuditRunOutcome.PASS or waiver_applied:
+            raise SCMCompletionError("SCM advisory outcome is invalid")
+        return {
+            "conclusion": "neutral",
+            "output": {
+                "title": "SecureCode AI (advisory): findings reported",
+                "summary": (
+                    "SecureCode AI reported security findings for this revision. "
+                    "Advisory mode does not block the merge; review the findings."
+                ),
+            },
+        }
     conclusion = {
         AuditRunOutcome.PASS: "success",
         AuditRunOutcome.FAIL: "failure",

@@ -970,3 +970,12 @@ the quality `spec` stage are removed. The secret baseline pins detectors and
 filters, while new reviewed digests are approved in the PR that adds them.
 `scripts/spec_gate.py` remains available as an optional tool. The workflow is
 described in `docs/DEVELOPMENT_WORKFLOW.md`.
+
+## D-115: Advisory findings publish a neutral GitHub check
+
+29 September 2026, owner decision, refining D-113. In advisory mode a FAIL
+audit still does not block the merge and the stored outcome stays PASS, but the
+GitHub check conclusion is `neutral` with the title "SecureCode AI (advisory):
+findings reported" instead of a green `success`. A clean advisory run remains
+`success`. Blocking policies and the `new_code` allowance for legacy findings are
+unchanged, and GitLab external statuses keep their existing mapping.
