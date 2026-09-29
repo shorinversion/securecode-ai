@@ -27,3 +27,12 @@
 !deploy/
 !deploy/docker/
 !deploy/docker/**
+!apps/cli/
+!apps/cli/src/
+!apps/cli/src/**
+!demo/
+!demo/**
+!tests/
+!tests/fixtures/
+!tests/fixtures/p4_10/
+!tests/fixtures/p4_10/**

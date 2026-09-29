@@ -595,6 +595,7 @@ def execute_product_audit(
             for record in children.graph.evidence
             if record.artifact_ref is not None
         )
+
         def tools_for(graph: EvidenceGraph) -> RepositoryToolSession:
             return build_product_auditor_tools(
                 execution.catalogue,
