@@ -60,6 +60,7 @@ _PURPOSES: Final = ("model_native_discovery", "candidate_investigation", "skepti
 # Off-peak DeepSeek Flash list prices (USD micro-units per million tokens).
 _INPUT_PRICE: Final = 150_000
 _OUTPUT_PRICE: Final = 600_000
+DEEPSEEK_PRICES_PER_MILLION: Final = (_INPUT_PRICE, _OUTPUT_PRICE)
 
 
 class TrialAnalysisError(ValueError):
@@ -330,6 +331,7 @@ def _ollama_identity(model_id: str) -> tuple[str, str]:
 
 
 __all__ = [
+    "DEEPSEEK_PRICES_PER_MILLION",
     "DEFAULT_LOCAL_MODEL",
     "TrialAnalysis",
     "TrialAnalysisError",

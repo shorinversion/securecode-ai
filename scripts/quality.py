@@ -123,6 +123,7 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 "tests/unit",
                 # The reviewer demo is exercised end to end with fake model runtimes.
                 "tests/integration/test_p917_real_local_demo.py",
+                "tests/integration/test_trial_architect_git.py",
             ),
             executes_repository_code=True,
             timeout_seconds=UNIT_STAGE_TIMEOUT_SECONDS,

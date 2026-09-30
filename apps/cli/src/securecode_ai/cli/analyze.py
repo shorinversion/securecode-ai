@@ -4,14 +4,30 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Mapping, Sequence
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TextIO
 
 from securecode_ai.adapters.local_product_trial import (
+    DEEPSEEK_PRICES_PER_MILLION,
+    DEFAULT_LOCAL_MODEL,
     TrialAnalysis,
     TrialAnalysisError,
     run_trial_analysis,
+)
+from securecode_ai.adapters.trial_architect import (
+    Complete,
+    ProposedFix,
+    findings_from_report,
+    git_revision_reader,
+    openai_compatible_complete,
+    propose_fixes,
+)
+from securecode_ai.adapters.trial_report import (
+    TrialReportContext,
+    render_trial_report,
+    report_paths,
 )
 from securecode_ai.core.reports import ReportFormat
 
@@ -29,9 +45,9 @@ def analyze_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="securecode analyze",
         description=(
-            "Trial audit of one Git checkout with the full pipeline (scanners, Auditor, "
-            "Skeptic, finding gate, OWASP Top 10 report). No host approval is required; "
-            "trial results are not a publishable or CI-blocking verdict."
+            "Audit one Git checkout with the full pipeline: scanners, model Discovery, "
+            "Auditor, Skeptic, finding gate and Architect fixes, with an OWASP Top 10 "
+            "report. No host approval is required; results are not a CI-blocking verdict."
         ),
     )
     parser.add_argument("target", help="Git checkout to audit")
@@ -48,6 +64,10 @@ def analyze_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.0,
         help="spend cap for one DeepSeek run (default 1.0)",
+    )
+    parser.add_argument("--no-fix", action="store_true", help="do not ask the Architect for fixes")
+    parser.add_argument(
+        "--patch-dir", help="write validated fixes as .diff files into this new directory"
     )
     return parser
 
@@ -67,12 +87,17 @@ def run_analyze_command(
     if output is not None and output.exists():
         stderr.write(f"output file already exists: {output}\n")
         return _EXIT_CONFIG
+    patch_dir = Path(arguments.patch_dir) if arguments.patch_dir else None
+    if patch_dir is not None and patch_dir.exists():
+        stderr.write(f"patch directory already exists: {patch_dir}\n")
+        return _EXIT_CONFIG
+    values = _with_dotenv(environment)
     try:
         analysis = run_trial_analysis(
             arguments.target,
             provider=arguments.provider,
             report_format=_FORMATS[arguments.format],
-            environment=_with_dotenv(environment),
+            environment=values,
             max_cost_microusd=max(1, int(arguments.max_cost_usd * 1_000_000)),
         )
     except TrialAnalysisError as error:
@@ -82,6 +107,41 @@ def run_analyze_command(
         stderr.write(f"securecode analyze: failed ({type(error).__name__})\n")
         return _EXIT_INDETERMINATE
     rendered = analysis.result.rendered
+    cost = analysis.cost_microusd
+    readable = arguments.format in {"markdown", "html"}
+    if readable or patch_dir is not None:
+        document = json.loads(analysis.result.composition.json_report)
+        revision = document.get("repository_revision", {})
+        head_sha = str(revision.get("head_sha", "")) if isinstance(revision, dict) else ""
+        repository = Path(arguments.target).resolve()
+        read_source = git_revision_reader(repository, head_sha)
+        fixes: tuple[ProposedFix, ...] = ()
+        findings = findings_from_report(document)
+        if findings and not arguments.no_fix:
+            usage: list[tuple[int, int]] = []
+            fixes = propose_fixes(
+                findings,
+                _architect(arguments.provider, values, usage),
+                read_source=read_source,
+            )
+            if arguments.provider == "deepseek":
+                cost += _deepseek_cost(usage)
+        if readable:
+            rendered = render_trial_report(
+                document,
+                TrialReportContext(
+                    repository,
+                    head_sha,
+                    analysis.provider,
+                    analysis.model_id,
+                    cost,
+                    _sources(read_source, report_paths(document)),
+                ),
+                fixes,
+                html_format=arguments.format == "html",
+            )
+        if patch_dir is not None:
+            _write_patches(patch_dir, fixes)
     if output is None:
         stdout.write(rendered.decode("utf-8"))
         if not rendered.endswith(b"\n"):
@@ -89,11 +149,53 @@ def run_analyze_command(
     else:
         with output.open("xb") as handle:
             handle.write(rendered)
-    stderr.write(_summary(analysis))
+    stderr.write(_summary(analysis, cost))
     return int(analysis.result.exit_code)
 
 
-def _summary(analysis: TrialAnalysis) -> str:
+def _architect(provider: str, values: Mapping[str, str], usage: list[tuple[int, int]]) -> Complete:
+    if provider == "deepseek":
+        return openai_compatible_complete(
+            values.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com",
+            values.get("DEEPSEEK_API_KEY"),
+            values.get("DEEPSEEK_MODEL") or "deepseek-flash",
+            usage=usage,
+        )
+    return openai_compatible_complete(
+        "http://127.0.0.1:11434/v1",
+        None,
+        values.get("SECURECODE_LOCAL_MODEL") or DEFAULT_LOCAL_MODEL,
+        usage=usage,
+    )
+
+
+def _sources(read_source: Callable[[str], str], paths: Sequence[str]) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for path in paths:
+        try:
+            sources[path] = read_source(path)
+        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+            continue
+    return sources
+
+
+def _deepseek_cost(usage: Sequence[tuple[int, int]]) -> int:
+    input_price, output_price = DEEPSEEK_PRICES_PER_MILLION
+    return sum(
+        (prompt * input_price + completion * output_price) // 1_000_000
+        for prompt, completion in usage
+    )
+
+
+def _write_patches(directory: Path, fixes: Sequence[ProposedFix]) -> None:
+    directory.mkdir(parents=True)
+    for index, fix in enumerate(fixes, start=1):
+        if fix.status == "VALIDATED":
+            name = f"{index:02d}-" + fix.path.replace("/", "_") + ".diff"
+            (directory / name).write_text(fix.diff, encoding="utf-8", newline="\n")
+
+
+def _summary(analysis: TrialAnalysis, cost_microusd: int) -> str:
     findings = "?"
     try:
         document = json.loads(analysis.result.sarif_rendered)
@@ -104,7 +206,7 @@ def _summary(analysis: TrialAnalysis) -> str:
     return (
         f"trial analysis: outcome={outcome} findings={findings} "
         f"provider={analysis.provider} model={analysis.model_id} "
-        f"cost=${analysis.cost_microusd / 1_000_000:.4f}\n"
+        f"cost=${cost_microusd / 1_000_000:.4f}\n"
     )
 
 
