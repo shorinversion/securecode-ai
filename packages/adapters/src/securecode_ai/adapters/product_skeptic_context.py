@@ -53,6 +53,7 @@ def _skeptic_context(
     package: EvidencePackage,
     entries: tuple[tuple[str, ArtifactRef, bytes], ...],
     key: bytes,
+    rule_ids: tuple[str, ...] = (),
 ) -> PreparedModelContext:
     if not entries or not _package_matches_snapshot(
         package, snapshot, expected_tenant_id=request.tenant_id
@@ -75,6 +76,7 @@ def _skeptic_context(
             "role": "skeptic",
             "instructions": _SKEPTIC_INSTRUCTIONS,
             "output_schema": json.loads(SKEPTIC_WIRE_SCHEMA_JSON),
+            "allowed_rule_ids": list(rule_ids),
             "source_revision": {"tenant_id": request.tenant_id, "head_sha": request.head_sha},
             "selected_evidence_ids": list(selected_ids),
             "selection_truncated": package.truncated,

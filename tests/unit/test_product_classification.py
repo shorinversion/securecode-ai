@@ -90,7 +90,7 @@ def test_product_mapping_is_closed_versioned_rule_policy(cwe_id: str, owasp_cate
     assert result.confidence is FindingConfidence.UNSCORED
     assert result.provenance is PRODUCT_CLASSIFICATION_PROVENANCE
     assert result.provenance.mapping_id == "securecode-product-portfolio-classification"
-    assert result.provenance.mapping_version == "1.2.0"
+    assert result.provenance.mapping_version == "1.3.0"
     assert result.provenance.severity_basis == "RULE_CATALOG"
     assert result.provenance.confidence_basis == "PRE_CALIBRATION_UNSCORED"
     assert result.provenance.calibration_record_id is None
@@ -134,3 +134,30 @@ def test_legacy_provenance_constructor_retains_its_syntactic_compatibility() -> 
 
     assert legacy.mapping_version == "9.9.9"
     assert legacy.mapping_sha256 == "a" * 64
+
+
+@pytest.mark.parametrize(
+    ("cwe_id", "owasp_category"),
+    [
+        ("CWE-434", "A04:2021"),
+        ("CWE-287", "A07:2021"),
+        ("CWE-319", "A02:2021"),
+        ("CWE-863", "A01:2021"),
+        ("CWE-917", "A03:2021"),
+        ("CWE-829", "A08:2021"),
+    ],
+)
+def test_owasp_mapping_covers_model_native_cwes(cwe_id: str, owasp_category: str) -> None:
+    # Model-native discovery may report CWEs without a deterministic detector; every
+    # classified CWE must still carry its OWASP Top 10 2021 category.
+    assert classify_product_cwe(cwe_id).owasp_category == owasp_category
+
+
+def test_every_classified_cwe_is_reportable_by_the_model() -> None:
+    from securecode_ai.adapters.product_rule_catalogue import PRODUCT_RULE_CWE
+    from securecode_ai.core.classification import PRODUCT_CLASSIFIED_CWES
+
+    assert len(PRODUCT_CLASSIFIED_CWES) > 100
+    for cwe_id in PRODUCT_CLASSIFIED_CWES:
+        assert PRODUCT_RULE_CWE["model-" + cwe_id.lower()] == cwe_id
+        classify_product_cwe(cwe_id)

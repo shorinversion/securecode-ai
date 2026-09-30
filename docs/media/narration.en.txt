@@ -2,7 +2,7 @@ SecureCode AI is a local assistant for code security audits. It finds vulnerabil
 
 Classic analyzers follow rigid rules and flood developers with false positives, while sending private code to external cloud services is forbidden. So we run a quantized model locally, together with code analysis tools.
 
-The system reads an exact snapshot of the repository. The tools build syntax trees, look for secrets, vulnerable library versions and thirty-five kinds of vulnerabilities by rule. In parallel, the Auditor agent searches for vulnerabilities on its own, without being limited to that list. Then the Skeptic agent tries to refute each finding. Only a confirmed finding is fixed by the Architect agent, and the system validates the patch in a temporary copy and builds the report. In the short demo the deterministic scanner acts as the second opinion.
+The system reads an exact snapshot of the repository. The tools build syntax trees, look for secrets, vulnerable library versions and thirty-five kinds of vulnerabilities by rule. In parallel, the Discovery agent searches for vulnerabilities on its own, without being limited to that list. The Auditor agent checks every candidate against the code, and the Skeptic agent tries to refute its conclusion. Only a confirmed finding is fixed by the Architect agent, and the system validates the patch in a temporary copy and builds the report. In the short demo the deterministic scanner acts as the second opinion.
 
 One command runs it on the local Qwen 2.5 Coder model with seven billion parameters and four-bit quantization. The Auditor found an SQL injection that matches the deterministic scanner. The Architect proposed a fix, and the patch passed parsing and a rescan. The outcome is completed.
 

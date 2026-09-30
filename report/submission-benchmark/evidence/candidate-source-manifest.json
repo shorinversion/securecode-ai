@@ -1565,9 +1565,9 @@
     "sha256": "f07b18bcfcb2438c4333a7f6d3995e160649df79335988c438fe06af5b4ae260"
   },
   {
-    "bytes": 27537,
+    "bytes": 28548,
     "path": "packages/adapters/src/securecode_ai/adapters/local_product_runner_execution.py",
-    "sha256": "a66664ebc5309b4d82662a1ee3def0db026673f535440f2ad401282673dfcdeb"
+    "sha256": "f0724214aee1d965fd92379a3891d1245df0f87f4572af19de5789e2bd12974c"
   },
   {
     "bytes": 1106,
@@ -1885,9 +1885,9 @@
     "sha256": "cf941246e06704ed3fbf8abff1d66a2bfd15139dcf11daa37e7728445c6ac7b8"
   },
   {
-    "bytes": 5820,
+    "bytes": 6149,
     "path": "packages/adapters/src/securecode_ai/adapters/product_rule_catalogue.py",
-    "sha256": "5c619297d4bb5b476bec5b299121e503fb68b5b60adbcdb2965b87773c4a7d9a"
+    "sha256": "136c88b1fc56ba7d181cdc805dcf4abcf4a20432cf0897bb32f67f8c6fb134cc"
   },
   {
     "bytes": 2149,
@@ -1895,14 +1895,14 @@
     "sha256": "944aaac41c955512ae13220c9940ec9c04dd3f48d8e0863f6e0f592ec3efd62f"
   },
   {
-    "bytes": 11109,
+    "bytes": 11387,
     "path": "packages/adapters/src/securecode_ai/adapters/product_runtime_auditor.py",
-    "sha256": "78d6d7b97e8034da38763d0693ea768ba3b8e93e673008120f166ece6c2fe8c1"
+    "sha256": "93c9dfa817cc6386acc58d8e1fd6ed403bc7924b58547ea9d96c01283ed45691"
   },
   {
-    "bytes": 23186,
+    "bytes": 25180,
     "path": "packages/adapters/src/securecode_ai/adapters/product_runtime_contracts.py",
-    "sha256": "bafda5689ccbc149cdf06c939c55846f269e9a53b3aea8473abc86344f2f93bb"
+    "sha256": "df0a06c16b52b91771a1ab06220a17fe723daeb2624dc8aebf806c9975c8af4d"
   },
   {
     "bytes": 10530,
@@ -1990,19 +1990,19 @@
     "sha256": "17e59fd7b23b85b03352d6ae1eb09f58f14bc69662cb11c3de7340e8544b83b3"
   },
   {
-    "bytes": 4383,
+    "bytes": 4467,
     "path": "packages/adapters/src/securecode_ai/adapters/product_skeptic_context.py",
-    "sha256": "d381a83d76c73e72ee81d415a8dcdec8d04e8c80d63f40c5ed1aeeda94080e89"
+    "sha256": "fda86ee168b039cdf17d1ff5f4a727af1620b3606eabbc41671578bba6796e28"
   },
   {
-    "bytes": 6833,
+    "bytes": 7336,
     "path": "packages/adapters/src/securecode_ai/adapters/product_skeptic_contracts.py",
-    "sha256": "10b4eb7420520a705da8b1380942ea87b8f8944962e12e4c9bb62b51d11bd968"
+    "sha256": "fb80bdeb3b675bde549f2a7777d1f5df911d09cae4e88bc3277f26c5dbf6557c"
   },
   {
-    "bytes": 9833,
+    "bytes": 10061,
     "path": "packages/adapters/src/securecode_ai/adapters/product_skeptic_port.py",
-    "sha256": "34f07fe6cb4e806c2d57d8b6b1541415a27719c9a1eb4aa3d16c5410ec37c919"
+    "sha256": "0e92f14d702e4500d2adb0a7af42233f27c79148f4f7fe2491f461962b51a424"
   },
   {
     "bytes": 5884,
@@ -2520,9 +2520,9 @@
     "sha256": "cd21bb06d4f8451e0a5470aaf10db6ae81b0e9fa8581e48e9929f774b4d555ae"
   },
   {
-    "bytes": 10880,
+    "bytes": 16530,
     "path": "packages/core/src/securecode_ai/core/classification.py",
-    "sha256": "196b79b5771801d9553db72a7a3a8ded08f486b58bb5ee114c215bc0d3dbcf1b"
+    "sha256": "360e9e01d8e5ec8d6230e3d56f0f743e786616b19ef06548ae5a4cb8077ba158"
   },
   {
     "bytes": 5871,

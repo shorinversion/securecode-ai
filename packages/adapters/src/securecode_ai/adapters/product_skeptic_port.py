@@ -43,6 +43,7 @@ class ProductSkepticReviewPort:
 
     __slots__ = (
         "_catalogue",
+        "_claim_for",
         "_executor",
         "_key",
         "_package_for",
@@ -65,6 +66,7 @@ class ProductSkepticReviewPort:
         request_factory: Callable[
             [AuditorSnapshot, EvidencePackage, int, ComponentPin], ModelRequest
         ],
+        claim_for: Callable[[AuditorSnapshot], tuple[str, ...]] | None = None,
     ) -> None:
         if (
             type(executor) is not AuthorizedLocalModelExecutor
@@ -90,6 +92,7 @@ class ProductSkepticReviewPort:
         self._tenant_id = tenant_id
         self._package_for = package_for
         self._request_factory = request_factory
+        self._claim_for = claim_for
 
     def review(self, snapshot: AuditorSnapshot) -> SkepticInvocation:
         try:
@@ -151,6 +154,7 @@ class ProductSkepticReviewPort:
                     package=package,
                     entries=entries,
                     key=self._key,
+                    rule_ids=() if self._claim_for is None else self._claim_for(snapshot),
                 )
 
             execution = self._executor.execute(
