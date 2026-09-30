@@ -20,9 +20,9 @@
     "sha256": "d3b67d0e90baf1128e7847fbea2c51d1ccb26bb819dd57fc9b8a9d751de8d0d9"
   },
   {
-    "bytes": 11939,
+    "bytes": 12166,
     "path": "apps/cli/src/securecode_ai/cli/application.py",
-    "sha256": "a24ce09c279923118a9c67820771bc834b9f8a6cc3e5257dc259259a99dc9e3b"
+    "sha256": "459ef2fa3016587761ccc2fd9fce8d842bfff1513367ca96d6285f70ed3cfc28"
   },
   {
     "bytes": 13885,
@@ -30,9 +30,9 @@
     "sha256": "2e3918b7b262e167af6589038faeb54fecb2200086c566e6867731f3af6c1276"
   },
   {
-    "bytes": 11612,
+    "bytes": 11830,
     "path": "apps/cli/src/securecode_ai/cli/application_parser.py",
-    "sha256": "19de050201bbb5f2a5ba0d903776049038f42066de3008cd44a17a784edaaf43"
+    "sha256": "7cd6823b5b42c4201257f8298b5d75eda7782306cdbb464da972c75ff7874f26"
   },
   {
     "bytes": 7962,
@@ -1565,9 +1565,9 @@
     "sha256": "f07b18bcfcb2438c4333a7f6d3995e160649df79335988c438fe06af5b4ae260"
   },
   {
-    "bytes": 27130,
+    "bytes": 27537,
     "path": "packages/adapters/src/securecode_ai/adapters/local_product_runner_execution.py",
-    "sha256": "5a612134ae82f0a6109a8664741c05b0f14c989cfa189df037ca9408dc652801"
+    "sha256": "a66664ebc5309b4d82662a1ee3def0db026673f535440f2ad401282673dfcdeb"
   },
   {
     "bytes": 1106,
@@ -1785,9 +1785,9 @@
     "sha256": "33c4699630b20d7e0f05306ebcb40a2bd0ee5cbca23443a51e7661ae7f773188"
   },
   {
-    "bytes": 32702,
+    "bytes": 33659,
     "path": "packages/adapters/src/securecode_ai/adapters/openai_compatible_remote.py",
-    "sha256": "ed6e4ef8b493ae5403e840ba1221c3e9e43bfa29124ad218f944b7698e661d9b"
+    "sha256": "2283d6b2b7a6bdd7297027c10635fe62f749a7da5c1de91bf58c1a1c81fdb49d"
   },
   {
     "bytes": 6922,
@@ -1860,9 +1860,9 @@
     "sha256": "2051c818e72d1c8d9cbee4a776937581497881e46d11b719155ff9c2f2e09368"
   },
   {
-    "bytes": 17062,
+    "bytes": 17358,
     "path": "packages/adapters/src/securecode_ai/adapters/product_provider_runtime.py",
-    "sha256": "c14e75cebcba0e38e862601679dded433dfc996cd75f467355909ca98e9538c3"
+    "sha256": "81f924d2a0f55822b43836a45c1abb2109919d8611fe9690adec5ae8487727d0"
   },
   {
     "bytes": 776,

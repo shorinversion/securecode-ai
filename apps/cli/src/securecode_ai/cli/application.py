@@ -166,6 +166,12 @@ def main(
             + chr(10)
         )
         return int(CliExitCode.INVALID_USAGE_OR_CONFIG)
+    if stripped and stripped[0] == "analyze":
+        from .analyze import run_analyze_command
+
+        return run_analyze_command(
+            stripped, stdout=output, stderr=errors, environment=selected_environment
+        )
     if stripped and stripped[0] in _CONNECTED_COMMAND_HANDLERS:
         return _CONNECTED_COMMAND_HANDLERS[stripped[0]](
             stripped,

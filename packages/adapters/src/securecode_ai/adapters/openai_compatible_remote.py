@@ -77,7 +77,14 @@ class _RemoteHttpsChannel:
 class OpenAICompatibleRemoteHttpsConnector:
     """A single-request HTTPS connector for an approved remote profile."""
 
-    __slots__ = ("_endpoint_path", "_max_output_tokens", "_port", "_profile", "_spend_budget")
+    __slots__ = (
+        "_endpoint_path",
+        "_max_output_tokens",
+        "_port",
+        "_profile",
+        "_reasoning_effort",
+        "_spend_budget",
+    )
 
     def __init__(
         self,
@@ -85,6 +92,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         profile: ProviderProfile,
         max_output_tokens: int | None = None,
         spend_budget: RemoteProviderBudgetPort | None = None,
+        reasoning_effort: str = "none",
     ) -> None:
         parsed = urlsplit(profile.endpoint.base_url)
         if (
@@ -106,6 +114,8 @@ class OpenAICompatibleRemoteHttpsConnector:
             or not 1 <= max_output_tokens <= profile.capabilities.max_output_tokens
         ):
             raise ValueError("REMOTE_CONNECTOR_OUTPUT_LIMIT_REJECTED")
+        if reasoning_effort not in REASONING_EFFORTS:
+            raise ValueError("REMOTE_CONNECTOR_REASONING_REJECTED")
         self._endpoint_path = (parsed.path.rstrip("/") + "/chat/completions") or "/chat/completions"
         self._max_output_tokens = (
             profile.capabilities.max_output_tokens
@@ -115,6 +125,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         self._port = port
         self._profile = profile
         self._spend_budget = spend_budget
+        self._reasoning_effort = reasoning_effort
 
     def __repr__(self) -> str:
         return "OpenAICompatibleRemoteHttpsConnector(<redacted>)"
@@ -267,6 +278,7 @@ class OpenAICompatibleRemoteHttpsConnector:
                     prompt=prompt,
                     native_frame=native_frame,
                     max_tokens=min(self._max_output_tokens, call_budget.max_output_tokens),
+                    reasoning_effort=self._reasoning_effort,
                 ),
                 ensure_ascii=True,
                 allow_nan=False,
@@ -476,20 +488,24 @@ class OpenAICompatibleRemoteHttpsConnector:
             channel.close()
 
 
+# DeepSeek reasoning effort levels; "none" disables thinking mode.
+REASONING_EFFORTS: Final = frozenset({"none", "low", "high", "max"})
+
+
 def _request_payload(
     *,
     model_id: str,
     prompt: str,
     native_frame: tuple[dict[str, object], list[object], str] | None,
     max_tokens: int,
+    reasoning_effort: str = "none",
 ) -> dict[str, object]:
-    payload: dict[str, object] = {
-        "model": model_id,
-        "max_tokens": max_tokens,
-        "temperature": 0,
-        "thinking": {"type": "disabled"},
-        "reasoning_effort": "none",
-    }
+    payload: dict[str, object] = {"model": model_id, "max_tokens": max_tokens}
+    if reasoning_effort == "none":
+        payload.update(temperature=0, thinking={"type": "disabled"}, reasoning_effort="none")
+    else:
+        # Thinking mode ignores sampling parameters, so none are sent.
+        payload.update(thinking={"type": "enabled"}, reasoning_effort=reasoning_effort)
     if native_frame is None:
         payload["messages"] = [{"role": "user", "content": prompt}]
         payload["response_format"] = {"type": "json_object"}
@@ -704,6 +720,8 @@ def _canonicalize_remote_envelope_with_usage(
             not in (
                 {"role", "content", "tool_calls"},
                 {"role", "content", "tool_calls", "refusal"},
+                {"role", "content", "tool_calls", "reasoning_content"},
+                {"role", "content", "tool_calls", "refusal", "reasoning_content"},
             )
             or message["content"] not in (None, "")
             or ("refusal" in message and message["refusal"] is not None)
@@ -720,7 +738,8 @@ def _canonicalize_remote_envelope_with_usage(
             raise ValueError("remote native response tool calls are invalid") from None
     else:
         if (
-            set(message) - {"role", "content", "refusal"}
+            set(message) - {"role", "content", "refusal", "reasoning_content"}
+            or not isinstance(message.get("reasoning_content", ""), (str, type(None)))
             or not isinstance(message.get("content"), str)
             or message.get("refusal") is not None
             or choice.get("finish_reason") not in {"stop", "length", "content_filter"}
