@@ -2,9 +2,9 @@
 
 Статус: отправлено 27 сентября 2026 года. В форме подтверждён статус «На проверке». Точная версия и архив: SUBMISSION_RECEIPT.json. Ниже сохранён подготовительный текст.
 
-Сайт материалов: http://82.202.143.138/
-Видео: http://82.202.143.138/securecode-demo.mp4
-Отчёт: http://82.202.143.138/final-submission.html
+Сайт материалов: https://mydev.stream/
+Видео: https://mydev.stream/securecode-demo.mp4
+Отчёт: https://mydev.stream/final-submission.html
 Проверены HTTP 200. Это сайт материалов, не онлайн-аудит.
 
 Проект: SecureCode AI, локальный AI-ассистент разработчика для аудита безопасности кода.
