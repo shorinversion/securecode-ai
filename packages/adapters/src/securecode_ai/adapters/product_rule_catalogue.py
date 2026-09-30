@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import MappingProxyType
 
+from securecode_ai.core.classification import PRODUCT_CLASSIFIED_CWES
+
 # Keep this catalogue aligned with the rule IDs passed or constructed by
 # FirstPartyStaticWorker._fact_to_raw_signal.  The suffix form is the worker's
 # stable fallback for modules whose signal rule ID is not forwarded directly.
@@ -107,6 +109,9 @@ PRODUCT_RULE_CWE = MappingProxyType(
         "securecode-go-cwe862": "CWE-862",
         "portfolio-cwe-918": "CWE-918",
         "cwe-89-sql-interpolation": "CWE-89",
+        # Model-native discovery may report any classified CWE, not only the CWEs with a
+        # deterministic detector.  ``model-cwe-<n>`` is never produced by a scanner.
+        **{"model-" + cwe.lower(): cwe for cwe in sorted(PRODUCT_CLASSIFIED_CWES)},
     }
 )
 

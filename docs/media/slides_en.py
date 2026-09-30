@@ -16,12 +16,13 @@ SLIDES_EN: list[tuple[str, str]] = [
         "quantized model locally, together with code analysis tools.",
     ),
     (
-        """<h2>Architecture</h2><div class="flow"><span>Git snapshot: Python, JS/TS, Go</span><b>→</b><span>Tools: AST, secrets, OSV, rules for 35 CWEs</span><b>+</b><span>Auditor (LLM)</span><b>→</b><span>Evidence graph</span><b>→</b><span>Skeptic (LLM)</span><b>→</b><span>Architect: diff</span><b>→</b><span>Validation in a copy</span><b>→</b><span>OWASP Top 10 report</span></div>
-<div class="grid g4" style="margin-top:56px"><div class="card"><h3>Auditor</h3><p class="muted">looks for vulnerabilities independently of the scanners</p></div><div class="card"><h3>Skeptic</h3><p class="muted">tries to refute a finding before it is accepted</p></div><div class="card"><h3>Architect</h3><p class="muted">writes a patch only for a confirmed finding</p></div><div class="card"><h3>Validation</h3><p class="muted">parse and rescan in a temporary copy</p></div></div>""",
+        """<h2>Architecture</h2><div class="flow"><span>Git snapshot: Python, JS/TS, Go</span><b>→</b><span>Tools: AST, secrets, OSV, rules for 35 CWEs</span><b>+</b><span>Discovery (LLM)</span><b>→</b><span>Evidence graph</span><b>→</b><span>Auditor (LLM)</span><b>→</b><span>Skeptic (LLM)</span><b>→</b><span>Architect: diff</span><b>→</b><span>Validation in a copy</span><b>→</b><span>OWASP Top 10 report</span></div>
+<div class="grid g4" style="margin-top:56px"><div class="card"><h3>Discovery</h3><p class="muted">searches independently of the scanners, any of 139 CWEs</p></div><div class="card"><h3>Auditor</h3><p class="muted">checks every candidate against the code</p></div><div class="card"><h3>Skeptic</h3><p class="muted">tries to refute a finding before it is accepted</p></div><div class="card"><h3>Architect</h3><p class="muted">writes a patch only for a confirmed finding</p></div></div>""",
         "The system reads an exact snapshot of the repository. The tools build syntax trees, look "
         "for secrets, vulnerable library versions and thirty-five kinds of vulnerabilities by rule. "
-        "In parallel, the Auditor agent searches for vulnerabilities on its own, without being "
-        "limited to that list. Then the Skeptic agent tries to refute each finding. Only a "
+        "In parallel, the Discovery agent searches for vulnerabilities on its own, without being "
+        "limited to that list. The Auditor agent checks every candidate against the code, and "
+        "the Skeptic agent tries to refute its conclusion. Only a "
         "confirmed finding is fixed by the Architect agent, and the system validates the patch "
         "in a temporary copy and builds the report. In the short demo the deterministic scanner "
         "acts as the second opinion.",

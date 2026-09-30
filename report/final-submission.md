@@ -124,7 +124,7 @@ Windows, 3292 теста (unit и интеграционные тесты дем
 | Итоговый отчёт с метриками | выполнено | этот отчёт, [бенчмарк](submission-benchmark/report.html) |
 | Dockerfile и инструкция | выполнено для демо | `deploy/docker/demo.Dockerfile`, `quickstart.py --demo`; полный стек сервер + worker (`--up`) на Linux не перепроверялся |
 | Датасеты ссылками | выполнено | CVEfixes на Zenodo; в репозитории только манифест без исходников |
-| Скринкаст 2–5 минут | выполнено | `docs/media/securecode-demo.mp4` (2:47, результаты v1.0; английская версия — `securecode-demo.en.mp4`); пересборка `docs/media/build_video.py` |
+| Скринкаст 2–5 минут | выполнено | `docs/media/securecode-demo.mp4` (2:50, результаты v1.0; английская версия — `securecode-demo.en.mp4`); пересборка `docs/media/build_video.py` |
 
 ## 5. Ограничения
 

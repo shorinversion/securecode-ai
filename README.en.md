@@ -6,7 +6,7 @@
 
 SecureCode AI is a local AI assistant for security auditing of Python, JavaScript,
 TypeScript and Go code. Deterministic tools (AST, secrets, vulnerable dependencies,
-CWE scanners) and a quantized LLM acting as the **Auditor**, the **Skeptic** and the **Architect** find
+CWE scanners) and LLM agents (**Discovery**, **Auditor**, **Skeptic** and **Architect**) find
 vulnerabilities, propose fixes as diffs and validate them in an ephemeral copy; the
 result is a report classified by OWASP Top 10.
 
@@ -66,6 +66,19 @@ Skeptic protocol, which ends as `INDETERMINATE`.
 Exit codes: `0` no vulnerabilities, `2` vulnerabilities found, `3` analysis incomplete, `4`
 configuration error. No host provisioning is needed; the result is a trial one, and blocking
 CI checks use `securecode scan` with an approved host.
+
+## Agent roles
+
+| Role | What it does |
+| --- | --- |
+| **Discovery** | the model searches the whole code snapshot for vulnerabilities, independently of the scanners |
+| **Auditor** | checks every candidate (from a scanner or from discovery): does untrusted input reach the vulnerable operation, with real impact |
+| **Skeptic** | tries to refute the Auditor: looks for sanitization, safe APIs, unreachable paths |
+| **Architect** | writes a diff fix only for a confirmed finding; the patch is validated in a temporary copy |
+
+The claim-verification method draws on open work by
+[Anthropic](https://github.com/anthropics/claude-code-security-review) and
+[Cloudflare](https://github.com/cloudflare/security-audit-skill) (MIT).
 
 ## Overview
 
@@ -127,15 +140,17 @@ Read the [architecture](docs/ARCHITECTURE.md),
 
 | Area | Current implementation | Boundary |
 | --- | --- | --- |
-| Python | `.py`, `.pyi`; AST and CST, symbol index, CWE-89 and about 30 other CWE scanners | Coverage depends on supported source/sink patterns |
-| JavaScript / TypeScript | `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`, `.tsx`; CST, symbol index, CWE-89 and about 30 other CWEs | TypeScript types do not make this a full compiler pass |
-| Go | `.go`; CST, symbol index, CWE-89 and about 30 other CWEs | A limited set of verified patterns |
+| Python | `.py`, `.pyi`; AST and CST, symbol index, deterministic rules for 35 CWEs | Coverage depends on supported source/sink patterns |
+| JavaScript / TypeScript | `.js`, `.mjs`, `.cjs`, `.jsx`, `.ts`, `.tsx`; CST, symbol index, deterministic rules for 35 CWEs | TypeScript types do not make this a full compiler pass |
+| Go | `.go`; CST, symbol index, deterministic rules for 35 CWEs | A limited set of verified patterns |
 | All files | hardcoded secrets; pip, npm and Go manifests checked against OSV | Secret values are never stored |
 
 The scanners cover injection (CWE-78, 79, 89, 90, 94), path traversal (22), SSRF
 (918), missing authorization and authentication (862, 306), unsafe deserialization
 (502), weak cryptography and randomness (327, 338), hardcoded credentials (798),
-ReDoS (1333) and more. Each CWE maps to an OWASP Top 10 2021 category.
+ReDoS (1333) and more. The LLM Discovery and Auditor are not limited to this list: the
+model can report any of the 139 CWEs in the classification table (the official OWASP
+Top 10 2021 mapping), and every finding gets an OWASP category and severity.
 
 This is an inventory of implemented rules. It is not a complete-CWE coverage
 claim or a claim of superiority over SAST. The current 600-case comparison is

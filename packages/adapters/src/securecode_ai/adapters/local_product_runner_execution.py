@@ -93,6 +93,7 @@ from .product_model import AUDITOR_WIRE_PIN, MODEL_NATIVE_DISCOVERY_WIRE_PIN
 from .product_provider_runtime import ProductProviderRuntime
 from .product_review import ProductReviewResult, run_product_candidate_review
 from .product_rule_catalogue import PRODUCT_RULE_CWE as _RULES
+from .product_rule_catalogue import ProductRuleMappingError
 from .product_runtime import (
     PRODUCT_AUDITOR_PROMPT_PIN,
     PRODUCT_DISCOVERY_PROMPT_PIN,
@@ -532,6 +533,13 @@ def _run_local_product_scan(
         cost_observer=cost_observer,
     )
     tools_budget = RepositoryToolBudget(16, 65536, max_input)
+    # The review session is shared by every Auditor and Skeptic investigation of the run, so
+    # it must cover several candidates, not one discovery turn.
+    review_tools_budget = (
+        RepositoryToolBudget(64, 262_144, max_input * 4)
+        if local_provider
+        else RepositoryToolBudget(512, 8_388_608, 8_388_608)
+    )
     plan = ModelNativeDiscoveryPlan(
         receipt_id=run_id + "-native-receipt",
         request=request,
@@ -571,6 +579,7 @@ def _run_local_product_scan(
                 PRODUCT_AUDITOR_PROMPT_PIN,
             ),
             observer=observations.append,
+            claim_for=lambda package: _candidate_claim(graph, package.candidate_id),
         )
 
     def review_factory(
@@ -604,6 +613,7 @@ def _run_local_product_scan(
                 ModelPurpose.SKEPTIC_REVIEW,
                 PRODUCT_SKEPTIC_PROMPT_PIN,
             ),
+            claim_for=lambda snapshot: _candidate_claim(flow.graph, snapshot.candidate_id),
         )
         return run_product_candidate_review(
             flow,
@@ -689,7 +699,7 @@ def _run_local_product_scan(
             32,
             profile.budgets.timeout_seconds * 1000,
         ),
-        tool_budget=tools_budget,
+        tool_budget=review_tools_budget,
     )
     cancellation.checkpoint()
     if isinstance(result, ProductAuditObstacle):
@@ -717,3 +727,15 @@ def _run_local_product_scan(
     )
     outcome.require_publication()
     return outcome
+
+
+def _candidate_claim(graph: EvidenceGraph, candidate_id: str) -> tuple[str, ...]:
+    """The candidate's rule ID (it names the CWE) for the Auditor and Skeptic contexts."""
+
+    for candidate in graph.candidates:
+        if candidate.candidate_id == candidate_id:
+            try:
+                return (_candidate_family(candidate, graph)[0],)
+            except ProductRuleMappingError:
+                return ()
+    return ()

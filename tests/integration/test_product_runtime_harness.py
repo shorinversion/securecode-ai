@@ -513,7 +513,7 @@ def _auditor_composition(
         evidence_catalogue=(evidence,),
         content_key=b"a" * 32,
         request_factory=request_factory,
-        **({"observer": observer} if observer is not None else {}),
+        observer=observer,
     )
     return invoker, package, endpoint, tools
 

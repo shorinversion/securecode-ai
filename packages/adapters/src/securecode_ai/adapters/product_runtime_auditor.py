@@ -75,7 +75,15 @@ class ProductAuditorInvocationObservation:
 class ProductAuditorInvoker:
     """Core Auditor port using the authorized executor and package-bound strict wire leaf."""
 
-    __slots__ = ("_catalogue", "_executor", "_key", "_observer", "_request_factory", "_resolver")
+    __slots__ = (
+        "_catalogue",
+        "_claim_for",
+        "_executor",
+        "_key",
+        "_observer",
+        "_request_factory",
+        "_resolver",
+    )
 
     def __init__(
         self,
@@ -86,6 +94,7 @@ class ProductAuditorInvoker:
         content_key: bytes,
         request_factory: Callable[[EvidencePackage, int, object], ModelRequest],
         observer: Callable[[ProductAuditorInvocationObservation], None] | None = None,
+        claim_for: Callable[[EvidencePackage], tuple[str, ...]] | None = None,
     ) -> None:
         if (
             type(executor) is not AuthorizedLocalModelExecutor
@@ -102,6 +111,7 @@ class ProductAuditorInvoker:
         self._key = bytes(content_key)
         self._request_factory = request_factory
         self._observer = observer
+        self._claim_for = claim_for
 
     def invoke(self, package: EvidencePackage, *, attempt: int) -> AuditorInvocation:
         if type(package) is not EvidencePackage or type(attempt) is not int or attempt < 1:
@@ -179,6 +189,7 @@ class ProductAuditorInvoker:
                 key=self._key,
                 role="auditor",
                 schema=AUDITOR_WIRE_SCHEMA_JSON,
+                rule_ids=() if self._claim_for is None else self._claim_for(package),
             )
 
         execution = self._executor.execute(
