@@ -143,6 +143,7 @@ def _run_local_product_scan(
     git_command: _GitCommand = _git,
     reader_factory: _ReaderFactory = OfflineGitObjectReader,
     provider_runtime: ProductProviderRuntime | None = None,
+    authority_loader: Callable[[], LocalProductHost] | None = None,
 ) -> LocalProductScanResult:
     cancellation = LocalProductCancellationGuard(cancelled)
     cancellation.checkpoint()
@@ -263,11 +264,18 @@ def _run_local_product_scan(
     )
     identity = select_run_identity(derived_identity, execution_identity)
     run_id = select_run_id(run_id, "local-" + uuid.uuid4().hex)
+    # A small local model keeps a tight 8K/2K window.  A remote provider gets room for
+    # its reasoning trace and the whole bounded repository view: its connector counts
+    # UTF-8 bytes plus protocol framing as tokens.
     max_output = min(
-        2048, profile.capabilities.max_output_tokens, profile.budgets.max_total_tokens // 2
+        2048 if local_provider else 32768,
+        profile.capabilities.max_output_tokens,
+        profile.budgets.max_total_tokens // 2,
     )
     max_input = min(
-        8192, profile.capabilities.max_context_tokens, profile.budgets.max_total_tokens - max_output
+        8192 if local_provider else 131072,
+        profile.capabilities.max_context_tokens,
+        profile.budgets.max_total_tokens - max_output,
     )
     budget = ModelCallBudget(
         schema_version="0.2.0",
@@ -440,7 +448,7 @@ def _run_local_product_scan(
         try:
             # Includes opened-object protection, exact anchored bytes, installed
             # pins, and real review/admit on every reporting/publication probe.
-            current = load_local_product_host()
+            current = (authority_loader or load_local_product_host)()
             current_authority = (
                 current.approval_record_sha256,
                 current.artifact_manifest_sha256,

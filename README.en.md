@@ -48,6 +48,25 @@ A full walkthrough of the tools (AST, secrets, vulnerable dependencies, CWE scan
 the unified contract, agents, report, metrics) with stored outputs:
 [notebooks/securecode_demo.ipynb](notebooks/securecode_demo.ipynb).
 
+## Full audit of your project: `securecode analyze`
+
+```bash
+uv sync --locked
+uv run securecode analyze path/to/repo --output report.md
+```
+
+The command runs the whole pipeline on a Git repository: deterministic scanners, model
+discovery, the Auditor, the Skeptic and a decision for every finding, then writes a report
+with CWE, OWASP Top 10 category, severity and lines (`--format markdown|html|json|sarif`).
+The default model is DeepSeek with reasoning enabled (`DEEPSEEK_API_KEY` in the environment
+or `.env`, spend cap `--max-cost-usd`, default $1). A small repository costs less than a
+cent. `--provider local` uses Ollama, but 7B models often fail the strict Auditor and
+Skeptic protocol, which ends as `INDETERMINATE`.
+
+Exit codes: `0` no vulnerabilities, `2` vulnerabilities found, `3` analysis incomplete, `4`
+configuration error. No host provisioning is needed; the result is a trial one, and blocking
+CI checks use `securecode scan` with an approved host.
+
 ## Overview
 
 SecureCode AI audits an exact Git revision, combines deterministic discovery

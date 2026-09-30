@@ -32,7 +32,7 @@ from .config import (
 )
 from .endpoint import Resolver
 from .model import CredentialSupplier
-from .openai_compatible_remote import OpenAICompatibleRemoteHttpsConnector
+from .openai_compatible_remote import REASONING_EFFORTS, OpenAICompatibleRemoteHttpsConnector
 from .product_runtime_contracts import ProviderConnector
 from .remote_provider_budget import RemoteProviderBudgetPort, RemoteProviderSpendPolicy
 from .remote_provider_budget_sqlite import build_sqlite_remote_provider_budget
@@ -242,7 +242,12 @@ def load_product_provider_runtime(
     budget = build_sqlite_remote_provider_budget(environment, policy=spend_policy)
     if budget is None:
         raise ProductProviderConfigurationError("remote spend budget is unavailable")
-    connector = OpenAICompatibleRemoteHttpsConnector(profile=profile, spend_budget=budget)
+    reasoning = environment.get("SECURECODE_REMOTE_REASONING_EFFORT", "none")
+    if reasoning not in REASONING_EFFORTS:
+        raise ProductProviderConfigurationError("remote reasoning effort is invalid")
+    connector = OpenAICompatibleRemoteHttpsConnector(
+        profile=profile, spend_budget=budget, reasoning_effort=reasoning
+    )
 
     def credential_supplier(selected: ProviderProfile) -> CredentialLease | None:
         return resolve_environment_credential(selected, environment, registry=registry)
@@ -282,7 +287,7 @@ def load_product_provider_runtime(
                 repair_budget = None
             if repair_budget is not None:
                 repair_connector = OpenAICompatibleRemoteHttpsConnector(
-                    profile=profile, spend_budget=repair_budget
+                    profile=profile, spend_budget=repair_budget, reasoning_effort=reasoning
                 )
                 repair_operation = ProductProviderOperation(
                     purpose=ModelPurpose.PATCH_GENERATION,

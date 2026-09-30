@@ -16,6 +16,7 @@ _GRANT_HELP = "grant or read a bounded credential reference through the control 
 COMMAND_DESCRIPTIONS: Final = MappingProxyType(
     {
         "doctor": "validate foundation configuration without source or network access",
+        "analyze": "trial audit of one checkout with the full agent pipeline (no host approval)",
         "scan": "audit one local checkout",
         "fix": "propose a bounded repair for one local checkout",
         "validate": "validate one retained repair artifact in isolation",
@@ -63,6 +64,10 @@ def _command_help(command: str) -> str:
     description = COMMAND_DESCRIPTIONS.get(command)
     if description is None:
         raise ValueError("command is invalid")
+    if command == "analyze":
+        from .analyze import analyze_parser
+
+        return analyze_parser().format_help()
     parser = argparse.ArgumentParser(prog=f"securecode {command}", description=description)
     if command in {"scan", "fix", "validate", "approve"}:
         parser.add_argument("target", help="absolute or relative checkout path")
