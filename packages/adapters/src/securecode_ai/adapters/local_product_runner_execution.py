@@ -269,12 +269,12 @@ def _run_local_product_scan(
     # its reasoning trace and the whole bounded repository view: its connector counts
     # UTF-8 bytes plus protocol framing as tokens.
     max_output = min(
-        2048 if local_provider else 32768,
+        2048 if local_provider else 65536,
         profile.capabilities.max_output_tokens,
         profile.budgets.max_total_tokens // 2,
     )
     max_input = min(
-        8192 if local_provider else 131072,
+        8192 if local_provider else 786432,
         profile.capabilities.max_context_tokens,
         profile.budgets.max_total_tokens - max_output,
     )
@@ -282,8 +282,10 @@ def _run_local_product_scan(
         schema_version="0.2.0",
         max_input_tokens=max_input,
         max_output_tokens=max_output,
-        max_repository_calls=16,
-        max_context_bytes=65536,
+        max_repository_calls=16 if local_provider else 64,
+        # The bounded view is JSON-escaped with its instructions and anchors, so a remote
+        # context gets the whole input window: a 17 KB file can frame into 110 KB.
+        max_context_bytes=65536 if local_provider else max_input,
         timeout_ms=profile.budgets.timeout_seconds * 1000,
     )
     scope_pin = _pin(
@@ -532,7 +534,12 @@ def _run_local_product_scan(
         usage_observer=observe_usage,
         cost_observer=cost_observer,
     )
-    tools_budget = RepositoryToolBudget(16, 65536, max_input)
+    # A large file yields many anchors and long reads; a remote window can hold them.
+    tools_budget = (
+        RepositoryToolBudget(16, 65536, max_input)
+        if local_provider
+        else RepositoryToolBudget(64, max_input, max_input)
+    )
     # The review session is shared by every Auditor and Skeptic investigation of the run, so
     # it must cover several candidates, not one discovery turn.
     review_tools_budget = (
