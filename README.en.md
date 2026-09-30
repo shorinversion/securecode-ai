@@ -67,6 +67,21 @@ Exit codes: `0` no vulnerabilities, `2` vulnerabilities found, `3` analysis inco
 configuration error. No host provisioning is needed; the result is a trial one, and blocking
 CI checks use `securecode scan` with an approved host.
 
+Verified live on Python, JavaScript and Go: SQL injection, command injection, open redirect,
+path traversal and JWT without signature verification are confirmed by the Auditor and the
+Skeptic. When both a scanner and the model find the same weakness, the report shows one entry
+marked `deterministic + model_native`.
+
+A fix as a pull request: the Architect demo accepts `--open-pr`, commits the validated patch
+on a new `securecode/fix-…` branch of the target repository and, when it has an `origin`
+remote and the GitHub CLI is installed, opens a pull request:
+
+```bash
+uv run python -I demo/p917_real_local_demo.py --repository path/to/repo --output out --provider deepseek --open-pr
+```
+
+Example: a [fix pull request](https://github.com/shorinversion/securecode-demo-app/pull/1) opened by the Architect in the demo repository.
+
 ## Agent roles
 
 | Role | What it does |

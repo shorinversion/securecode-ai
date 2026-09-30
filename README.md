@@ -68,6 +68,21 @@ OWASP Top 10, уровнем и строками (`--format markdown|html|json|s
 ошибка настройки. Команда не требует подготовки хоста; её результат — пробный, для
 блокирующей проверки в CI используется `securecode scan` с одобренным хостом.
 
+Проверено вживую на Python, JavaScript и Go: SQL-инъекции, внедрение команд, открытый
+редирект, обход пути и JWT без проверки подписи подтверждаются Аудитором и Скептиком.
+Если одну уязвимость нашли и сканер, и модель, в отчёте это одна запись с пометкой
+`deterministic + model_native`.
+
+Исправление в виде pull request: демо с Архитектором принимает `--open-pr`, коммитит
+проверенный патч в новую ветку `securecode/fix-…` целевого репозитория и, если у него есть
+`origin` и установлен GitHub CLI, открывает pull request:
+
+```bash
+uv run python -I demo/p917_real_local_demo.py --repository путь/к/репо --output out --provider deepseek --open-pr
+```
+
+Пример: [pull request с исправлением](https://github.com/shorinversion/securecode-demo-app/pull/1), открытый Архитектором в демо-репозитории.
+
 ## Роли агентов
 
 | Роль | Что делает |

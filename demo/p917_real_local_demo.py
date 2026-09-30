@@ -1771,6 +1771,12 @@ def main(argv: list[str] | None = None) -> int:
         help="local Qwen through Ollama (default), the owner-authorized DeepSeek profile, "
         "or offline (deterministic lane only)",
     )
+    parser.add_argument(
+        "--open-pr",
+        action="store_true",
+        help="commit the validated fix on a new branch of --repository and, when it has an "
+        "origin remote and the GitHub CLI is installed, push it and open a pull request",
+    )
     arguments = parser.parse_args(argv)
     try:
         runtime: _PublicBenchmarkRuntime | None = None
@@ -1788,8 +1794,86 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 2
+    if arguments.open_pr and manifest["outcome"] == "COMPLETED" and manifest["patch"]["present"]:
+        manifest["pull_request"] = open_fix_pull_request(
+            arguments.repository, arguments.output / _PATCH_NAME, manifest
+        )
     print(json.dumps(manifest, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     return 0 if manifest["outcome"] == "COMPLETED" else 1
+
+
+def open_fix_pull_request(
+    repository: Path, patch: Path, manifest: dict[str, Any]
+) -> dict[str, Any]:
+    """Commit the validated patch on a new branch; push and open a PR when possible.
+
+    The patch was already validated in an ephemeral copy.  This is the only step that
+    writes to the repository, and it runs only on explicit request.
+    """
+
+    import shutil
+    import subprocess
+
+    finding = manifest["deterministic_lane"]["findings"][0]
+    cwe = str(finding.get("cwe", "CWE-89"))
+    branch = f"securecode/fix-{cwe.lower()}-{manifest['patch']['sha256'][:8]}"
+
+    def git(*arguments: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", "-C", str(repository), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    if git("status", "--porcelain").stdout.strip():
+        return {"status": "SKIPPED", "reason": "working tree has uncommitted changes"}
+    steps = (
+        ("switch", "-c", branch),
+        ("apply", str(patch.resolve())),
+        ("add", "--all"),
+        (
+            "-c",
+            "user.name=SecureCode AI",
+            "-c",
+            "user.email=securecode-ai@users.noreply.github.com",
+            "commit",
+            "-m",
+            f"fix({cwe}): parameterize the SQL query",
+            "-m",
+            f"SecureCode AI Architect patch, validated in an ephemeral copy "
+            f"(parse and rescan: {manifest['ephemeral_validation']['rescan_signal_count']} "
+            "signals). OWASP A03:2021 Injection.",
+        ),
+    )
+    for step in steps:
+        if git(*step).returncode != 0:
+            return {"status": "FAILED", "step": step[0], "branch": branch}
+    result: dict[str, Any] = {"status": "COMMITTED", "branch": branch}
+    if not git("remote", "get-url", "origin").stdout.strip() or shutil.which("gh") is None:
+        result["next"] = f"git push -u origin {branch} && gh pr create --fill"
+        return result
+    if git("push", "-u", "origin", branch).returncode != 0:
+        result["status"] = "PUSH_FAILED"
+        return result
+    created = subprocess.run(
+        [
+            "gh", "pr", "create", "--head", branch,
+            "--title", f"fix({cwe}): parameterize the SQL query",
+            "--body", "Proposed by the SecureCode AI Architect and validated in an ephemeral "
+            f"copy. Finding: {cwe} (OWASP A03:2021 Injection) at "
+            f"{finding.get('path')}:{finding.get('sink_start_row')}.",
+        ],
+        cwd=repository,
+        capture_output=True,
+        text=True,
+        check=False,
+    )  # fmt: skip
+    if created.returncode == 0:
+        result.update(status="PR_OPENED", url=created.stdout.strip())
+    else:
+        result["status"] = "PR_FAILED"
+    return result
 
 
 def _deepseek_environment() -> dict[str, str]:

@@ -931,3 +931,52 @@ def test_offline_runtime_reports_the_deterministic_finding_without_a_model(
     report = (tmp_path / "out" / "security-report.md").read_text(encoding="utf-8")
     assert "A03:2021 Injection" in report
     assert "No validated patch was produced." in report
+
+
+def test_open_pr_commits_the_validated_fix_on_a_new_branch(
+    demo_module: ModuleType, tmp_path: Path
+) -> None:
+    import subprocess
+
+    repository, _ = _repo(
+        tmp_path,
+        "def find(conn, value):\n    return conn.execute('SELECT * FROM t WHERE a = ' + value)\n",
+    )
+    for arguments in (
+        ("init", "-q"),
+        ("add", "."),
+        ("-c", "user.name=t", "-c", "user.email=t@e.invalid", "commit", "-qm", "init"),
+    ):
+        subprocess.run(["git", "-C", str(repository), *arguments], check=True, capture_output=True)
+    model = FakeModel(
+        [
+            {
+                "status": "SUCCEEDED",
+                "candidates": [{"path": "app.py", "line": 2, "cwe_id": "CWE-89"}],
+            },
+            {
+                "status": "SUCCEEDED",
+                "patch": {
+                    "path": "app.py",
+                    "line": 2,
+                    "replacement": "    return conn.execute('SELECT * FROM t WHERE a = ?', (value,))",
+                },
+            },
+        ]
+    )
+    manifest = _run(demo_module, repository, tmp_path / "out", model)
+    assert manifest["outcome"] == "COMPLETED"
+
+    result = demo_module.open_fix_pull_request(
+        repository, tmp_path / "out" / "model-proposed.patch", manifest
+    )
+
+    assert result["status"] == "COMMITTED"
+    assert result["branch"].startswith("securecode/fix-cwe-89-")
+    committed = subprocess.run(
+        ["git", "-C", str(repository), "show", "HEAD:app.py"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert "?', (value,))" in committed

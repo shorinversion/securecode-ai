@@ -2845,9 +2845,9 @@
     "sha256": "e67b223bb069dd79b6ae7138efc45c7329cf9b4e7c8d7ff4247e15b3704b14d7"
   },
   {
-    "bytes": 6888,
+    "bytes": 8528,
     "path": "packages/core/src/securecode_ai/core/reports_render.py",
-    "sha256": "e0eafc3fe8ec992787d80aee02c31c6c2cf4755e9fc57491b5e9d2f4d40730be"
+    "sha256": "c33471856fc3bfde40acf67c82fe579e91744fdcbd04025b7ba15df034378b43"
   },
   {
     "bytes": 10654,

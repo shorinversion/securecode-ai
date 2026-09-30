@@ -6,12 +6,15 @@ import hashlib
 import html
 from collections.abc import Callable
 
+from securecode_ai.contracts import SourceLocation
+
 from .classification import FindingSeverity
 from .reports_contracts import (
     _CONTROL,
     DeterministicReport,
     ReportError,
     ReportErrorCode,
+    ReportFinding,
     ReportFormat,
     _canonical_json,
 )
@@ -80,7 +83,7 @@ def _render_markdown(report: DeterministicReport) -> str:
     ]
     if not report.run.coverage_manifest.coverage_complete:
         lines.extend(["Coverage is incomplete; this report is not a clean result.", ""])
-    for item in report.findings:
+    for item, origin, locations in _presentation_groups(report):
         finding = item.finding
         classification = item.classification
         lines.extend(
@@ -91,10 +94,10 @@ def _render_markdown(report: DeterministicReport) -> str:
                 f"- Confidence: `{classification.confidence.value}`",
                 f"- OWASP: `{classification.owasp_category}`",
                 f"- Verdict: `{finding.finding_verdict.value}`",
-                f"- Origin: `{finding.candidate_origin.value}`",
+                f"- Origin: `{origin}`",
             ]
         )
-        for location in finding.locations:
+        for location in locations:
             lines.append(
                 f"- Location: `{_markdown(location.path)}` "
                 f"({location.start.line}:{location.start.column})"
@@ -104,6 +107,45 @@ def _render_markdown(report: DeterministicReport) -> str:
         ["## Canonical semantics", "", "```json", _safe_json_text(report.document), "```", ""]
     )
     return "\n".join(lines)
+
+
+def _presentation_groups(
+    report: DeterministicReport,
+) -> list[tuple[ReportFinding, str, tuple[SourceLocation, ...]]]:
+    """Merge one weakness confirmed by both lanes into one human-readable entry.
+
+    A scanner and the model can each confirm the same CWE in the same file; the canonical
+    semantics keep both findings, while Markdown and HTML show one entry with both origins.
+    A finding without a same-file, same-CWE partner from another lane renders unchanged.
+    """
+
+    groups: list[tuple[ReportFinding, list[str], list[SourceLocation]]] = []
+    for item in report.findings:
+        finding = item.finding
+        origin = finding.candidate_origin.value
+        path = finding.locations[0].path if finding.locations else ""
+        for first, origins, locations in groups:
+            if (
+                first.finding.cwe_id == finding.cwe_id
+                and first.finding.locations
+                and first.finding.locations[0].path == path
+                and origin not in origins
+            ):
+                origins.append(origin)
+                locations.extend(item for item in finding.locations if item not in locations)
+                break
+        else:
+            groups.append((item, [origin], list(finding.locations)))
+    return [
+        (
+            first,
+            " + ".join(sorted(origins)),
+            tuple(
+                sorted(locations, key=lambda item: (item.path, item.start.line, item.start.column))
+            ),
+        )
+        for first, origins, locations in groups
+    ]
 
 
 def _render_html(report: DeterministicReport) -> str:
@@ -117,11 +159,11 @@ def _render_html(report: DeterministicReport) -> str:
         "<td>"
         + "<br>".join(
             f"{html.escape(location.path)} ({location.start.line}:{location.start.column})"
-            for location in item.finding.locations
+            for location in locations
         )
         + "</td>"
         "</tr>"
-        for item in report.findings
+        for item, _origin, locations in _presentation_groups(report)
     )
     warning = (
         "<p><strong>Coverage is incomplete; this is not a clean result.</strong></p>"
