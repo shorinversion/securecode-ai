@@ -10,7 +10,7 @@
     "settled_attempts": 1300,
     "settled_charged_usd": 2.2422
   },
-  "aggregate_output_sha256": "3993024684b7df04a6c68f91bbb9835feed18fbf4c2bf9f74a1920769ecd4a89",
+  "aggregate_output_sha256": "ff3de72d2422be3722e8f5239844f38f346d8a846a902f21ae0eb8b0268d80a5",
   "analysis_boundary": "All configured diagnostic outputs were validated against the frozen manifest. The model-native and one-shot outputs are archived direct classifications; scanner_seeded and full_hybrid are derived paired compositions, not live SecureCode pipeline runs.",
   "budget": {
     "combined_hard_cap_micro_usd": 40000000,
@@ -30,7 +30,7 @@
     "source_manifest_file": "candidate-source-manifest.json",
     "source_manifest_sha256": "c3074e7d816a295675a6ad09612c4567606ac8b5242e4b237a7ba781fff994d0"
   },
-  "completed_at_utc": "2026-09-30T05:06:54+00:00",
+  "completed_at_utc": "2026-09-30T06:31:41+00:00",
   "corpus": {
     "case_count": 600,
     "dataset_content_digest": "sha256:24003f707114d46af60391bfd15ee8d8ad11c4e649309a3f24296c66268dd9c6",
@@ -169,7 +169,7 @@
   "model_profile_sha256": "dfcdd5a415ed6a336da47881f409b3b86349250d8fc46a158a6c5abc0c73f917",
   "outputs_sha256": {
     "README.md": "00caacc9597bc1f3eab0205c46febb59a52a5047acd3c98aac7fff9a1cf87b05",
-    "aggregate.json": "3993024684b7df04a6c68f91bbb9835feed18fbf4c2bf9f74a1920769ecd4a89",
+    "aggregate.json": "ff3de72d2422be3722e8f5239844f38f346d8a846a902f21ae0eb8b0268d80a5",
     "build_report_pdf.py": "fcfca7674dec8ff86227762e90c65aa0f0f52c2346ac34fc12cfd96487cd05ef",
     "deepseek-full-hybrid-600x3.json": "8212f5870c3cb110d9fef07240bc001fec96ee3b8f287f08237604ceb2239bf2",
     "deepseek-model-native-600x3.json": "78faeca8574564702b82abfffa7b39a6a67a5209a92838dbaddf93d50bbb7272",
@@ -178,9 +178,9 @@
     "deterministic-600x1.json": "bbeecd39e71f30a8332832e8f8b07a4ee2cda8c9d564d00e1576b1be2f700927",
     "deterministic-shards.json": "d1d9f0bc449a3885505a6cb07cb906773c4d143e97b6a5fa6d1dec1e3895ec5d",
     "lane-composition.json": "615951b25c42dbf97197162f646a34c421b4b744a2bd0c0ad0eb4fb496913ace",
-    "project-README.md": "9edcd25425254f095a7b52feff2cc913960164e04fe2b4fdc963c4ba4f8d9cec",
+    "project-README.md": "53693f50e61797a3c15c817415218d24992c21603280bd939dcf8c7ba947cedb",
     "report.html": "49f31d28f201844b1124178064aca9e05151f92d2b1d0ef2de23291bc5827e6c",
-    "securecode-ai-submission-benchmark.pdf": "c03a9bf706b486b791a566cdf30c9be7118095f22410061e69ebb6f7fb35656e",
+    "securecode-ai-submission-benchmark.pdf": "99dc5b409548bea8b147a35006ed31a155983c49be8aef657b835307baad12d6",
     "semgrep-600x3.json": "209f4bfc996d44a926fdf4d8b0fe1f40467b039b212dc01f89cf1528d36688b6",
     "stratified-metrics.csv": "7fcd3a6b8d4fa532db5ae7a11e30d685e32cfece7fc4667beb940202e1eb674c",
     "style.html": "1690c1a34529ca294df362a2f20489957e1570466cfa5f89a154db62cd06dd1e"

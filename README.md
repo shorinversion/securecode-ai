@@ -2,7 +2,7 @@
 
 **Русский** | [English](README.en.md)
 
-[Видео, 2:40](docs/media/securecode-demo.mp4) · [Итоговый отчёт](report/final-submission.html) · [Бенчмарк](report/submission-benchmark/report.html) · [Notebook](notebooks/securecode_demo.ipynb) · [Сайт проекта](http://82.202.143.138/) · [Релизы](https://github.com/shorinversion/securecode-ai/releases)
+[Видео, 2:40](docs/media/securecode-demo.mp4) · [Итоговый отчёт](report/final-submission.html) · [Бенчмарк](report/submission-benchmark/report.html) · [Notebook](notebooks/securecode_demo.ipynb) · [Сайт проекта](https://mydev.stream/) · [Релизы](https://github.com/shorinversion/securecode-ai/releases)
 
 SecureCode AI — локальный AI-ассистент для аудита безопасности кода на Python,
 JavaScript, TypeScript и Go. Детерминированные инструменты (AST, секреты, уязвимые
