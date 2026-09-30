@@ -35,13 +35,14 @@ footer{color:var(--muted);font-size:14px;margin-top:28px}
 <div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Практическое задание № 2</span><span class="pill light">Версия 1.0</span></div>
 <h1>SecureCode AI</h1>
 <p class="lead">Локальный AI-ассистент разработчика для аудита безопасности кода: находит уязвимости, предлагает исправления и проверяет их, не отправляя код в облако.</p>
-<a class="btn red" href="https://github.com/shorinversion/securecode-ai">Репозиторий</a><a class="btn" href="final-submission.html">Итоговый отчёт</a><a class="btn outline" href="benchmark.html">Эксперименты</a><a class="btn outline" href="https://github.com/shorinversion/securecode-ai/releases">Релизы</a>
+<a class="btn red" href="https://github.com/shorinversion/securecode-ai">Репозиторий</a><a class="btn" href="final-submission.html">Итоговый отчёт</a><a class="btn outline" href="benchmark.html">Эксперименты</a><a class="btn outline" href="notebook.html">Notebook</a><a class="btn outline" href="https://github.com/shorinversion/securecode-ai/releases">Релизы</a>
 
 <div class="card" style="margin-top:32px"><h2>Задача</h2><p>Статические анализаторы работают по жёстким правилам и дают много ложных срабатываний, а отправлять приватный код во внешние облачные сервисы нельзя. SecureCode AI анализирует локальный репозиторий на Python, JavaScript, TypeScript и Go с помощью квантованной языковой модели, находит уязвимости и предлагает проверенные исправления.</p></div>
 
 <div class="grid">
-<div class="card"><h3>Инструменты</h3><p class="muted">Синтаксические деревья (ast, tree-sitter), поиск захардкоженных секретов, уязвимые версии библиотек по базе OSV, около 30 CWE-сканеров на язык.</p></div>
+<div class="card"><h3>Инструменты</h3><p class="muted">Синтаксические деревья (ast, tree-sitter), поиск захардкоженных секретов, уязвимые версии библиотек по базе OSV, правила для 35 типов CWE.</p></div>
 <div class="card"><h3>Аудитор</h3><p class="muted">Языковая модель ищет уязвимости независимо от сканеров. Находка принимается, когда её подтверждают оба пути.</p></div>
+<div class="card"><h3>Скептик</h3><p class="muted">Второй агент пытается опровергнуть находку; принимаются только те, что выдержали проверку.</p></div>
 <div class="card"><h3>Архитектор</h3><p class="muted">Модель предлагает исправление в виде diff. Патч проверяется во временной копии; исходный репозиторий не меняется.</p></div>
 <div class="card"><h3>Отчёт</h3><p class="muted">Markdown и HTML: CWE, категория OWASP Top 10, строка и готовое исправление.</p></div>
 </div>
@@ -68,7 +69,7 @@ footer{color:var(--muted);font-size:14px;margin-top:28px}
 cd securecode-ai
 python deploy/docker/quickstart.py --demo                   # нужен только Docker
 python deploy/docker/quickstart.py --demo --provider local  # uv и Ollama, модель скачается</pre>
-<a class="btn" href="https://github.com/shorinversion/securecode-ai/blob/main/notebooks/securecode_demo.ipynb">Notebook</a><a class="btn outline" href="source.zip">Исходники (source.zip)</a></div>
+<a class="btn" href="notebook.html">Notebook с выводами</a><a class="btn outline" href="source.zip">Исходники (source.zip)</a></div>
 
 <footer>SecureCode AI 1.0 · Материалы практического задания № 2 · МТС True Tech</footer>
 </main></html>
