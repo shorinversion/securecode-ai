@@ -1,15 +1,74 @@
-<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SecureCode AI | Учебный проект</title><style>body{margin:0;background:#101b30;color:#edf5ff;font:18px/1.65 system-ui}main{max-width:1040px;margin:auto;padding:48px 24px}h1{font-size:52px;margin-bottom:8px}h2{color:#7cdec9}a{color:#8bcdff}section{background:#1b2c46;padding:28px;border-radius:16px;margin:24px 0}video{width:100%;border-radius:12px}.tag{color:#ffd59a}li{margin:8px 0}footer{color:#bacbe1}</style><main><small>ПРАКТИЧЕСКОЕ ЗАДАНИЕ № 2</small>
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SecureCode AI | Итоговый проект · задача № 2</title>
+<style>
+:root{--red:#ff0032;--ink:#1d2023;--muted:#626c77;--bg:#f4f4f4;--card:#fff;--line:#e4e4e4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 MTSSans,"MTS Sans",Arial,Roboto,"Segoe UI",sans-serif}
+main{max-width:1120px;margin:auto;padding:28px 20px 60px}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:28px}
+.pill{background:var(--red);color:#fff;border-radius:30px;padding:6px 16px;font-size:14px;text-decoration:none}
+.pill.dark{background:var(--ink)}
+.pill.light{background:#fff;color:var(--ink);border:1px solid var(--line)}
+h1{font-size:clamp(40px,7vw,84px);line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:-.02em;margin:0 0 20px}
+h2{font-size:clamp(26px,3.4vw,38px);font-weight:400;text-transform:uppercase;letter-spacing:-.01em;margin:0 0 18px;line-height:1.05}
+.lead{font-size:22px;max-width:760px;margin:0 0 28px}
+.card{background:var(--card);border-radius:32px;padding:36px;margin:16px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.grid .card{margin:0;padding:28px}
+.card h3{margin:0 0 8px;font-size:20px}
+.num{font-size:48px;line-height:1;margin:6px 0}
+.muted{color:var(--muted)}
+.btn{display:inline-block;background:var(--ink);color:#fff;border-radius:30px;padding:12px 30px;text-decoration:none;margin:6px 8px 0 0}
+.btn.red{background:var(--red)}
+.btn.outline{background:#fff;color:var(--ink);border:1px solid var(--ink)}
+a{color:var(--ink)}
+table{border-collapse:collapse;width:100%;margin:8px 0 16px}
+th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}
+th{font-weight:500;color:var(--muted)}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.hi td{font-weight:600}
+pre{background:#1d2023;color:#f4f4f4;padding:18px 20px;border-radius:20px;overflow-x:auto;font-size:14px;line-height:1.5}
+.add{color:#5bd48a}.del{color:#ff6b81}
+video{width:100%;border-radius:24px;background:#000}
+footer{color:var(--muted);font-size:14px;margin-top:28px}
+</style>
+<main>
+<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.0</span></div>
 <h1>SecureCode AI</h1>
-<p>AI-ассистент разработчика для аудита безопасности кода</p>
-<p><a href="https://github.com/shorinversion/securecode-ai">Репозиторий</a> · <a href="final-submission.html">Отчёт о проекте</a> · <a href="benchmark.html">Результаты экспериментов</a></p>
-<section><h2>Задача</h2><p>Разработать ассистента, который анализирует локальный репозиторий, объясняет найденные уязвимости и предлагает исправления. В работе исследуется совместное применение статического анализа и языковой модели для Python, JavaScript, TypeScript и Go.</p></section>
-<section><h2>Устройство приложения</h2><p>Инструменты анализа извлекают сведения о коде, секретах и зависимостях. Языковая модель выполняет поиск потенциальных уязвимостей. Аудитор сопоставляет находки с доказательствами, Архитектор готовит предложение исправления. Результаты сохраняются в отчёте с указанием файла, строк и класса CWE.</p><p>Приложение включает командный интерфейс, серверный API и рабочий процесс для CI. Патчи проверяются в отдельной рабочей копии. Исходный репозиторий сохраняется.</p></section>
-<section><h2>Демонстрация</h2><video controls preload="metadata" src="securecode-demo.mp4"></video><p>Продолжительность: 4 минуты 12 секунд. В видео представлены результаты демонстрационных запусков и экспериментов. Голос синтезирован.</p></section>
-<section><h2>Эксперименты</h2><p>Для сравнения использованы 600 примеров CVEfixes: по 200 для Python, JavaScript/TypeScript и Go. Уязвимые и исправленные версии объединены в пары. Связанные примеры находятся в одной части выборки.</p><p>DeepSeek проверен в двух режимах, каждый с тремя повторениями на всём корпусе. Статический анализатор Semgrep использован как базовый метод сравнения. В отложенной выборке полнота составила 27,8% для производной гибридной конфигурации и 32,5% для Semgrep.</p><p>В исходном прогоне собственного сканера завершились 347 из 600 случаев. Для 253 случаев сохранён статус ошибки. Эти случаи включены в расчёт доли завершённых проверок. Подробные таблицы, методика расчёта и границы применимости результатов приведены в <a href="benchmark.html">отчёте об экспериментах</a>.</p></section>
-<section><h2>Результаты локальной демонстрации</h2><p>Квантованная модель Qwen 2.5 Coder 7B, запущенная через Ollama, обнаружила SQL-инъекцию CWE-89 в демонстрационном файле. Детерминированное правило указало ту же строку. В этом запуске пригодное исправление получено не было; проверки применимости патча и безопасности после исправления остались невыполненными.</p><p>Установка зависимостей и демонстрации повторены в чистом каталоге. Продуктовый набор из 140 тестов прошёл. Полная проверка качества текущего дерева содержит нерешённые замечания. Обобщённое превосходство над Semgrep результатами экспериментов не установлено.</p></section>
-<section><h2>Воспроизведение</h2><pre>uv sync --locked --group quality
-uv run python -I demo/mvp_cwe89_demo.py --output tmp/demo
-uv run python -I demo/p917_real_local_demo.py \
-  --repository demo/fixtures/real-local-cwe89 --output tmp/local-demo</pre><p>Для локального модельного запуска необходимы Ollama и Qwen 2.5 Coder 7B Q4_K_M. Настройки, зависимости и команды приведены в README. Учебный notebook и ссылки на датасет находятся в репозитории.</p></section>
-<section><h2>Развёртывание</h2><p>Материалы проекта размещены на Cloud.ru. Серверный API запущен в отдельном Docker-контейнере; проверка готовности проходит. Подключение публичного интерфейса аудита к DeepSeek находится в работе.</p></section>
-<footer>SecureCode AI · Материалы практического задания № 2</footer></main></html>
+<p class="lead">Локальный AI-ассистент разработчика для аудита безопасности кода: находит уязвимости, предлагает исправления и проверяет их, не отправляя код в облако.</p>
+<a class="btn red" href="https://github.com/shorinversion/securecode-ai">Репозиторий</a><a class="btn" href="final-submission.html">Итоговый отчёт</a><a class="btn outline" href="benchmark.html">Эксперименты</a><a class="btn outline" href="https://github.com/shorinversion/securecode-ai/blob/main/notebooks/securecode_demo.ipynb">Notebook</a><a class="btn outline" href="https://github.com/shorinversion/securecode-ai/releases">Релизы</a>
+
+<div class="card" style="margin-top:32px"><h2>Задача</h2><p>Статические анализаторы работают по жёстким правилам и дают много ложных срабатываний, а отправлять приватный код во внешние облачные сервисы нельзя. SecureCode AI анализирует локальный репозиторий на Python, JavaScript, TypeScript и Go с помощью квантованной языковой модели, находит уязвимости и предлагает проверенные исправления.</p></div>
+
+<div class="grid">
+<div class="card"><h3>Инструменты</h3><p class="muted">Синтаксические деревья (ast, tree-sitter), поиск захардкоженных секретов, уязвимые версии библиотек по базе OSV, правила для 35 типов CWE.</p></div>
+<div class="card"><h3>Аудитор</h3><p class="muted">Языковая модель ищет уязвимости независимо от сканеров. Находка принимается, когда её подтверждают оба пути.</p></div>
+<div class="card"><h3>Скептик</h3><p class="muted">Второй агент пытается опровергнуть находку; принимаются только те, что выдержали проверку.</p></div>
+<div class="card"><h3>Архитектор</h3><p class="muted">Модель предлагает исправление в виде diff. Патч проверяется во временной копии; исходный репозиторий не меняется.</p></div>
+<div class="card"><h3>Отчёт</h3><p class="muted">Markdown и HTML: CWE, категория OWASP Top 10, строка и готовое исправление.</p></div>
+</div>
+
+<div class="card"><h2>Результат аудита</h2><p>Демонстрационный файл с SQL-инъекцией. Одинаковый результат на локальной Qwen 2.5 Coder 7B (Q4_K_M, Ollama) и на DeepSeek.</p>
+<table><tr><th>CWE</th><th>OWASP Top 10</th><th>Уровень</th><th>Место</th><th>Итог</th></tr><tr><td>CWE-89</td><td>A03:2021 Injection</td><td>HIGH</td><td>app.py:5</td><td>COMPLETED</td></tr></table>
+<pre><span class="del">-    return conn.execute("SELECT * FROM users WHERE name = '" + name + "'")</span>
+<span class="add">+    return conn.execute("SELECT * FROM users WHERE name = ?", (name,))</span></pre>
+<p class="muted">Патч прошёл разбор и повторное сканирование (0 сигналов). Прогон на DeepSeek стоил $0.00014.</p>
+<a class="btn" href="demo-report-qwen.html">Отчёт: Qwen</a><a class="btn outline" href="demo-report-deepseek.html">Отчёт: DeepSeek</a></div>
+
+<div class="grid">
+<div class="card"><span class="muted">Корпус CVEfixes</span><div class="num">600</div><span class="muted">примеров, по 200 на Python, JS/TS и Go</span></div>
+<div class="card"><span class="muted">Recall hybrid</span><div class="num">35.8%</div><span class="muted">против 34.3% у Semgrep</span></div>
+<div class="card"><span class="muted">Автотестов</span><div class="num">3292</div><span class="muted">линтеры, типы и тесты в CI</span></div>
+</div>
+
+<div class="card"><h2>Эксперименты</h2><table><tr><th>Конфигурация</th><th>Precision</th><th>Recall</th><th>F1</th></tr><tr><td>Сканеры SecureCode</td><td class="n">49.0%</td><td class="n">25.7%</td><td class="n">33.7%</td></tr><tr><td>DeepSeek, one-shot</td><td class="n">52.0%</td><td class="n">22.7%</td><td class="n">31.6%</td></tr><tr class="hi"><td>Hybrid: сканеры и DeepSeek</td><td class="n">49.9%</td><td class="n">35.8%</td><td class="n">41.7%</td></tr><tr><td>Semgrep 1.177.0</td><td class="n">50.0%</td><td class="n">34.3%</td><td class="n">40.7%</td></tr></table>
+<p class="muted">На отложенной выборке полнота hybrid 32,8% против 32,5% у Semgrep; интервал разницы включает ноль, то есть hybrid на уровне статического анализатора, но не лучше. Precision около 50% объясняется устройством корпуса: одна и та же функция встречается в уязвимой и исправленной версиях.</p><a class="btn outline" href="benchmark.html">Подробнее об экспериментах</a></div>
+
+<div class="card"><h2>Демонстрация</h2><video controls preload="metadata" src="securecode-demo.mp4?v=20260930b"></video><p class="muted"><a href="securecode-demo.en.mp4?v=20260930b">English version</a></p></div>
+
+<div class="card"><h2>Запуск</h2><pre>git clone https://github.com/shorinversion/securecode-ai
+cd securecode-ai
+python deploy/docker/quickstart.py --demo                   # нужен только Docker
+python deploy/docker/quickstart.py --demo --provider local  # uv и Ollama, модель скачается</pre></div>
+
+<footer>SecureCode AI 1.0 · Итоговый проект, задача № 2 · МТС True Tech</footer>
+</main></html>
