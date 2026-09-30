@@ -27,7 +27,7 @@ STYLE = """
 body{background:#f4f4f4;color:#1d2023;font:34px/1.45 MTSSans,"MTS Sans",Arial,"Segoe UI",sans-serif;padding:84px 110px}
 .pills{display:flex;gap:14px;margin-bottom:44px}
 .pill{background:#ff0032;color:#fff;border-radius:40px;padding:10px 28px;font-size:26px}
-.pill.dark{background:#1d2023}.pill.light{background:#fff;border:1px solid #d9d9d9}
+.pill.dark{background:#1d2023}.pill.light{background:#fff;color:#1d2023;border:1px solid #d9d9d9}
 h1{font-size:150px;line-height:.95;font-weight:400;text-transform:uppercase;letter-spacing:-.03em;margin:0 0 36px}
 h2{font-size:84px;line-height:1;font-weight:400;text-transform:uppercase;letter-spacing:-.02em;margin:0 0 44px}
 .card{background:#fff;border-radius:44px;padding:44px 52px}
