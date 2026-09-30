@@ -274,7 +274,7 @@ def _run_local_product_scan(
         profile.budgets.max_total_tokens // 2,
     )
     max_input = min(
-        8192 if local_provider else 786432,
+        8192 if local_provider else 983040,
         profile.capabilities.max_context_tokens,
         profile.budgets.max_total_tokens - max_output,
     )

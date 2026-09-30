@@ -148,6 +148,20 @@ def test_identifiers_paths_uuids_and_messages_are_not_secrets() -> None:
     assert _scan(source).candidates == ()
 
 
+def test_public_keys_and_generated_hash_names_are_not_secrets() -> None:
+    body = _entropy_value(64)
+    source = (
+        b"-----BEGIN PUBLIC KEY-----\n"
+        + body
+        + b"\n-----END PUBLIC KEY-----\n"
+        + b'sample: "-----BEGIN CERTIFICATE-----\\n'
+        + body
+        + b'..."\n'
+        + b"var fileDescriptor_4fee6d65e34a64b6 = []byte{}\n"
+    )
+    assert _scan(source).candidates == ()
+
+
 def test_random_tokens_next_to_code_text_are_still_detected() -> None:
     token = b"Q7x3Lm+9" + b"Vp2Rz8Tk" + b"4Nw6Bc0A"
     result = _scan(b"describe_instances_v6 = '" + token + b"'\n")

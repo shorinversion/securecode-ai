@@ -25,6 +25,7 @@ from .product_skeptic_context import _package_matches_snapshot
 from .product_skeptic_contracts import (
     _ID,
     _MAX_EVIDENCE_IDS,
+    _MAX_NOTE_CHARACTERS,
     _MAX_OBJECTIONS,
     _MAX_WIRE_BYTES,
     SKEPTIC_WIRE_PIN,
@@ -101,7 +102,13 @@ class SkepticPayloadValidator:
             total_evidence_ids = 0
             selected_ids = {item.evidence_id for item in self._package.selected}
             for item in objections_value:
-                if type(item) is not dict or set(item) != {"kind", "evidence_ids"}:
+                # A short free-text note is accepted and dropped: only the objection
+                # kind and its evidence IDs carry meaning.
+                if type(item) is not dict or set(item) - {"note"} != {"kind", "evidence_ids"}:
+                    raise ValueError
+                if "note" in item and (
+                    type(item["note"]) is not str or len(item["note"]) > _MAX_NOTE_CHARACTERS
+                ):
                     raise ValueError
                 evidence_ids = item["evidence_ids"]
                 if (

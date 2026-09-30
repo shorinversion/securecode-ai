@@ -7,6 +7,7 @@ redirect, oversized response or unexpected envelope as a provider failure.
 
 from __future__ import annotations
 
+import hashlib
 import http.client
 import ipaddress
 import json
@@ -629,6 +630,44 @@ def _validate_native_history(history: list[object], *, head_sha: str) -> None:
             cursor += 1
 
 
+def _tool_call_written_as_text(content: str, head_sha: str) -> list[object] | None:
+    """Return a native call when the model wrote one as JSON text instead of a tool call.
+
+    DeepSeek sometimes answers a native turn with ``{"tool": "read_range",
+    "arguments_json": "..."}`` in ``content``. The call is rebuilt in the standard
+    shape and passes the same strict argument checks as a real tool call; anything
+    else stays a final answer.
+    """
+
+    try:
+        value = json.loads(content)
+    except (TypeError, ValueError, RecursionError):
+        return None
+    if type(value) is not dict or type(value.get("arguments_json")) is not str:
+        return None
+    name = value.get("function", value.get("tool"))
+    if type(name) is not str or set(value) - {
+        "arguments_json",
+        "function",
+        "tool",
+        "schema_version",
+        "instruction_authority",
+    }:
+        return None
+    calls: list[object] = [
+        {
+            "id": "call_text_" + hashlib.sha256(content.encode("utf-8")).hexdigest()[:16],
+            "type": "function",
+            "function": {"name": name, "arguments": value["arguments_json"]},
+        }
+    ]
+    try:
+        parse_native_tool_calls(calls, head_sha=head_sha, max_calls=4)
+    except (TypeError, ValueError):
+        return None
+    return calls
+
+
 def _canonicalize_remote_envelope(response: bytes, *, expected_model_id: str) -> bytes:
     """Accept the public OpenAI-compatible subset and strip provider metadata."""
     canonical, _, _ = _canonicalize_remote_envelope_with_usage(
@@ -745,6 +784,8 @@ def _canonicalize_remote_envelope_with_usage(
             or choice.get("finish_reason") not in {"stop", "length", "content_filter"}
         ):
             raise ValueError("remote response envelope is invalid")
+        if native and expected_head_sha is not None:
+            tool_calls = _tool_call_written_as_text(message["content"], expected_head_sha)
     canonical_message: dict[str, object]
     if tool_calls is None:
         canonical_message = {
@@ -764,7 +805,9 @@ def _canonicalize_remote_envelope_with_usage(
             "id": document["id"],
             "choices": [
                 {
-                    "finish_reason": choices[0]["finish_reason"],
+                    "finish_reason": "tool_calls"
+                    if tool_calls is not None
+                    else choices[0]["finish_reason"],
                     "message": canonical_message,
                 }
             ],

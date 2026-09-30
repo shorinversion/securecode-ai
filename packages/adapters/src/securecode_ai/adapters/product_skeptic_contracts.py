@@ -34,6 +34,7 @@ _SCHEMA_ID_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
 _MAX_OBJECTIONS: Final = 1_024
 _MAX_EVIDENCE_IDS: Final = 4_096
 _MAX_WIRE_BYTES: Final = 64 * 1024
+_MAX_NOTE_CHARACTERS: Final = 2_000
 
 _SKEPTIC_INSTRUCTIONS: Final = (
     "Independently review the Auditor metadata against exactly the host-selected "
@@ -82,6 +83,7 @@ _SKEPTIC_SCHEMA: Final = {
                         "uniqueItems": True,
                         "items": {"type": "string", "pattern": _SCHEMA_ID_PATTERN},
                     },
+                    "note": {"type": "string", "maxLength": _MAX_NOTE_CHARACTERS},
                 },
             },
         },

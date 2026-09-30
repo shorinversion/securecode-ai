@@ -85,10 +85,29 @@ def test_skeptic_wire_is_closed_and_maps_only_to_core_output() -> None:
     assert "\\Z" not in SKEPTIC_WIRE_SCHEMA_JSON.decode()
 
 
+def test_skeptic_objection_note_is_accepted_and_dropped() -> None:
+    validator = _validator()
+    payload = _payload()
+    objections = payload["objections"]
+    assert isinstance(objections, list)
+    objections[0]["note"] = "The query is parameterized two lines above."
+
+    output = validator.parse(payload, request=_request(validator))
+
+    assert output.objections[0].kind is SkepticObjectionKind.CONTRADICTORY_EVIDENCE
+    assert "parameterized" not in repr(output)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         {"finding_verdict": "CONFIRMED", "objections": [], "prose": "raw"},
+        {
+            "finding_verdict": "CONFIRMED",
+            "objections": [
+                {"kind": "CONTRADICTORY_EVIDENCE", "evidence_ids": ["evidence-a"], "note": 7}
+            ],
+        },
         {
             "finding_verdict": "CONFIRMED",
             "objections": [

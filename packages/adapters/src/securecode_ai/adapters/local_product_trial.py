@@ -186,9 +186,10 @@ def _deepseek_profile(model_id: str) -> ProviderProfile:
     )
     # deepseek-flash accepts a 1M-token context and up to 384K output tokens; one run keeps
     # a generous but bounded window.
-    # Byte counts stand in for tokens, so a 72 KB file framed as a bounded view needs ~420K.
-    capabilities.update(max_context_tokens=786_432, max_output_tokens=65_536)
-    budgets.update(timeout_seconds=300, max_attempts=2, max_total_tokens=851_968)
+    # Byte counts stand in for tokens, so a 72 KB file framed as a bounded view needs ~420K;
+    # the provider accepts 1M tokens.
+    capabilities.update(max_context_tokens=983_040, max_output_tokens=65_536)
+    budgets.update(timeout_seconds=300, max_attempts=2, max_total_tokens=1_048_576)
     return parse_provider_profile(json.dumps(data).encode("utf-8"))
 
 
