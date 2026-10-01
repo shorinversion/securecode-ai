@@ -319,6 +319,10 @@ class ModelNativeDiscoveryPayloadValidator:
             evidence = value["evidence_ids"]
             if type(evidence) is not list:
                 raise ValueError("discovery wire payload is invalid")
+            # Models often list the supporting evidence but omit the root itself, or
+            # repeat an ID. The root must still be host-registered evidence below.
+            root = value["root_evidence_id"]
+            evidence = list(dict.fromkeys(([root] if root not in evidence else []) + evidence))
             try:
                 candidate = ModelNativeDiscoveryWireCandidate(
                     rule_id=value["rule_id"],

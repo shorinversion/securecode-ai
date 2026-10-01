@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 from bisect import bisect_right
 from collections import Counter
 
@@ -127,7 +128,7 @@ def _collect_patterns(
             _require_match_budget(start, end, limits)
             value = source[start:end]
             if kind is SecretKind.ASSIGNED_CREDENTIAL and (
-                _is_placeholder(value) or len(set(value)) <= 3
+                _is_placeholder(value) or len(set(value)) <= 3 or b" " in value.strip()
             ):
                 continue
             _append(output, kind, start, end, limits)
@@ -138,11 +139,21 @@ def _collect_entropy(
     output: list[tuple[SecretKind, int, int, SecretProducer]],
     limits: SecretDetectionLimits,
 ) -> None:
+    public_blocks = [match.span() for match in _PUBLIC_PEM.finditer(source)]
     for match in _ENTROPY_TOKEN.finditer(source):
         start, end = match.span()
         _require_match_budget(start, end, limits)
         value = match.group()
-        if _is_placeholder(value) or _looks_like_digest(value) or not _high_entropy(value):
+        if (
+            any(
+                block_start <= start and end <= block_end
+                for block_start, block_end in public_blocks
+            )
+            or _is_placeholder(value)
+            or _looks_like_digest(value)
+            or _looks_like_code_text(value)
+            or not _high_entropy(value)
+        ):
             continue
         if any(
             existing_start <= start and end <= existing_end
@@ -291,6 +302,53 @@ def _looks_like_digest(value: bytes) -> bool:
     return len(value) in {32, 40, 64, 128} and all(
         byte in b"0123456789abcdefABCDEF" for byte in value
     )
+
+
+_UUID = re.compile(rb"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+_SEPARATORS = re.compile(rb"[/_+=.-]+")
+# Public keys and certificates are published material, not credentials; a truncated
+# sample without an END line covers the rest of its line.
+_PUBLIC_PEM = re.compile(
+    rb"-----BEGIN ((?:RSA )?PUBLIC KEY|CERTIFICATE)-----"
+    rb"(?:.{0,65536}?-----END \1-----|[^\r\n]*)",
+    re.DOTALL,
+)
+# Generated names carry a content hash: ``fileDescriptor_4fee6d65e34a64b6``.
+_HEX_SUFFIX = re.compile(rb"[0-9a-f]{8,64}")
+_CAMEL_PART = re.compile(rb"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
+_WORD_PART = re.compile(rb"[A-Za-z]+[0-9]{0,5}|[0-9]+")
+
+
+def _looks_like_code_text(value: bytes) -> bool:
+    """Identifiers, paths and UUIDs are long and mixed-case but not credentials.
+
+    ``source_security_group_owner_id``, ``_SecureModuleImporter``,
+    ``//www.apache.org/licenses/LICENSE-2`` and ``describe_instances_v6`` split
+    into plain words (optionally with a short numeric suffix); a random key such
+    as ``Q7x3Lm+9Vp2Rz8Tk`` leaves digits inside its parts.
+    """
+
+    if _UUID.fullmatch(value):
+        return True
+    numbered = 0
+    segments = [segment for segment in _SEPARATORS.split(value) if segment]
+    for index, segment in enumerate(segments):
+        if index and _HEX_SUFFIX.fullmatch(segment) and not _HEX_SUFFIX.fullmatch(segments[0]):
+            continue
+        parts = [segment] if _WORD_PART.fullmatch(segment) else _CAMEL_PART.findall(segment)
+        if b"".join(parts) != segment:
+            return False
+        merged: list[bytes] = []
+        for part in parts:
+            if part.isdigit() and merged and len(part) <= 5 and not merged[-1].isdigit():
+                merged[-1] += part
+            else:
+                merged.append(part)
+        if not all(_WORD_PART.fullmatch(part) for part in merged):
+            return False
+        numbered += sum(1 for part in merged if part[:1].isalpha() and part[-1:].isdigit())
+    # A random key split on case changes yields many short numbered parts.
+    return numbered <= 2
 
 
 def _high_entropy(value: bytes) -> bool:

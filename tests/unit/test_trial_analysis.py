@@ -10,6 +10,7 @@ from securecode_ai.adapters import local_product_trial as trial
 from securecode_ai.adapters.openai_compatible_remote import (
     OpenAICompatibleRemoteHttpsConnector,
     _canonicalize_remote_envelope,
+    _canonicalize_remote_envelope_with_usage,
     _request_payload,
 )
 from securecode_ai.cli.analyze import run_analyze_command
@@ -137,3 +138,68 @@ def test_analyze_without_a_key_explains_what_is_missing(
     assert code == 4
     assert "DEEPSEEK_API_KEY" in stderr.getvalue()
     assert stdout.getvalue() == ""
+
+
+def _native_envelope(content: str) -> bytes:
+    return json.dumps(
+        {
+            "id": "response-2",
+            "model": "deepseek-flash",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": content},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        }
+    ).encode()
+
+
+def test_tool_call_written_as_text_becomes_a_native_call() -> None:
+    head = "a" * 40
+    arguments = json.dumps(
+        {
+            "end_line": 40,
+            "head_sha": head,
+            "path": "app.py",
+            "schema_version": "0.1.0",
+            "start_line": 1,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    content = json.dumps({"tool": "read_range", "arguments_json": arguments})
+
+    canonical, _, _ = _canonicalize_remote_envelope_with_usage(
+        _native_envelope(content),
+        expected_model_id="deepseek-flash",
+        native=True,
+        expected_head_sha=head,
+    )
+
+    choice = json.loads(canonical)["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    assert choice["message"]["content"] is None
+    assert choice["message"]["tool_calls"][0]["function"] == {
+        "name": "read_range",
+        "arguments": arguments,
+    }
+
+
+@pytest.mark.parametrize(
+    "content",
+    ['{"candidates":[]}', '{"tool":"delete_repo","arguments_json":"{}"}', "not json"],
+)
+def test_final_answers_and_unknown_tools_stay_text(content: str) -> None:
+    canonical, _, _ = _canonicalize_remote_envelope_with_usage(
+        _native_envelope(content),
+        expected_model_id="deepseek-flash",
+        native=True,
+        expected_head_sha="a" * 40,
+    )
+
+    choice = json.loads(canonical)["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["message"]["content"] == content

@@ -132,6 +132,42 @@ def test_placeholders_hashes_and_low_entropy_values_are_negative() -> None:
     assert _scan(source).candidates == ()
 
 
+def test_identifiers_paths_uuids_and_messages_are_not_secrets() -> None:
+    source = (
+        b"class _SecureModuleImporter:\n"
+        b"    source_security_group_owner_id = None\n"
+        b"    def describe_instances_v6(self): pass\n"
+        b"# http://www.apache.org/licenses/LICENSE-2.0\n"
+        b"# https://stackoverflow.com/a/22107079/1688568\n"
+        b"if CRYPTOGRAPHY_HAS_ED25519: pass\n"
+        b"uid = '155d900f-4e14-4e4c-a73d-069cbf4541e6'\n"
+        + b"pass"
+        + b"word"
+        + b' = "Password must meet the criteria below"\n'
+    )
+    assert _scan(source).candidates == ()
+
+
+def test_public_keys_and_generated_hash_names_are_not_secrets() -> None:
+    body = _entropy_value(64)
+    source = (
+        b"-----BEGIN PUBLIC KEY-----\n"
+        + body
+        + b"\n-----END PUBLIC KEY-----\n"
+        + b'sample: "-----BEGIN CERTIFICATE-----\\n'
+        + body
+        + b'..."\n'
+        + b"var fileDescriptor_4fee6d65e34a64b6 = []byte{}\n"
+    )
+    assert _scan(source).candidates == ()
+
+
+def test_random_tokens_next_to_code_text_are_still_detected() -> None:
+    token = b"Q7x3Lm+9" + b"Vp2Rz8Tk" + b"4Nw6Bc0A"
+    result = _scan(b"describe_instances_v6 = '" + token + b"'\n")
+    assert [item.kind for item in result.candidates] == [SecretKind.HIGH_ENTROPY_TOKEN]
+
+
 class _ExternalScanner:
     scanner_id = "detect-secrets"
     scanner_version = "1.5.0"

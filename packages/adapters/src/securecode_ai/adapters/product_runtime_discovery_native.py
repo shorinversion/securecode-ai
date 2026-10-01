@@ -450,7 +450,11 @@ class _ProductDiscoveryNativeCycle:
                     return failure(ModelCallStatus.PROVIDER_ERROR)
                 if ordinal == 0 and (len(calls) != 1 or calls[0].request != guided_first_request):
                     return failure(ModelCallStatus.GUARDRAIL_BLOCKED)
-                if len(history) + len(calls) + 1 > 32 or len(seen_call_ids) + len(calls) > 16:
+                call_cap = max(16, request.budget.max_repository_calls)
+                if (
+                    len(history) + len(calls) + 1 > 2 * call_cap
+                    or len(seen_call_ids) + len(calls) > call_cap
+                ):
                     raise RepositoryContextBudgetExhausted("native history budget exhausted")
                 uncached_requests = {
                     call.request for call in calls if call.request not in repository_results

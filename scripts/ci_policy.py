@@ -31,9 +31,9 @@ WORKSPACE_PROJECTS: Final = {
     "apps/cli/pyproject.toml": (
         "securecode-ai-cli",
         [
-            "securecode-ai-adapters==1.0.1",
-            "securecode-ai-contracts==1.0.1",
-            "securecode-ai-core==1.0.1",
+            "securecode-ai-adapters==1.1.0",
+            "securecode-ai-contracts==1.1.0",
+            "securecode-ai-core==1.1.0",
         ],
         {
             "securecode-ai-adapters": {"workspace": True},
@@ -45,9 +45,9 @@ WORKSPACE_PROJECTS: Final = {
     "apps/server/pyproject.toml": (
         "securecode-ai-server",
         [
-            "securecode-ai-adapters==1.0.1",
-            "securecode-ai-contracts==1.0.1",
-            "securecode-ai-core==1.0.1",
+            "securecode-ai-adapters==1.1.0",
+            "securecode-ai-contracts==1.1.0",
+            "securecode-ai-core==1.1.0",
         ],
         {
             "securecode-ai-adapters": {"workspace": True},
@@ -59,9 +59,9 @@ WORKSPACE_PROJECTS: Final = {
     "apps/worker/pyproject.toml": (
         "securecode-ai-worker",
         [
-            "securecode-ai-adapters==1.0.1",
-            "securecode-ai-contracts==1.0.1",
-            "securecode-ai-core==1.0.1",
+            "securecode-ai-adapters==1.1.0",
+            "securecode-ai-contracts==1.1.0",
+            "securecode-ai-core==1.1.0",
         ],
         {
             "securecode-ai-adapters": {"workspace": True},
@@ -78,7 +78,7 @@ WORKSPACE_PROJECTS: Final = {
     ),
     "packages/core/pyproject.toml": (
         "securecode-ai-core",
-        ["securecode-ai-contracts==1.0.1"],
+        ["securecode-ai-contracts==1.1.0"],
         {"securecode-ai-contracts": {"workspace": True}},
         "securecode_ai.core",
     ),
@@ -86,8 +86,8 @@ WORKSPACE_PROJECTS: Final = {
         "securecode-ai-adapters",
         [
             "pydantic>=2.12,<3",
-            "securecode-ai-contracts==1.0.1",
-            "securecode-ai-core==1.0.1",
+            "securecode-ai-contracts==1.1.0",
+            "securecode-ai-core==1.1.0",
             "tree-sitter>=0.25,<0.26",
             "tree-sitter-go==0.25.0",
             "tree-sitter-javascript==0.25.0",
@@ -201,12 +201,12 @@ EXPECTED_QUALITY_DEPENDENCIES: Final = {
     "zizmor==1.28.0",
 }
 EXPECTED_ROOT_DEPENDENCIES: Final = [
-    "securecode-ai-adapters==1.0.1",
-    "securecode-ai-cli==1.0.1",
-    "securecode-ai-contracts==1.0.1",
-    "securecode-ai-core==1.0.1",
-    "securecode-ai-server==1.0.1",
-    "securecode-ai-worker==1.0.1",
+    "securecode-ai-adapters==1.1.0",
+    "securecode-ai-cli==1.1.0",
+    "securecode-ai-contracts==1.1.0",
+    "securecode-ai-core==1.1.0",
+    "securecode-ai-server==1.1.0",
+    "securecode-ai-worker==1.1.0",
 ]
 LEGACY_EXPECTED_ROOT_DEPENDENCIES: Final = [
     "securecode-ai-adapters==0.1.0a0",
@@ -259,14 +259,14 @@ LEGACY_WORKSPACE_MEMBERS: Final = [
 ]
 EXPECTED_SERVER_PROJECT: Final = {
     "name": "securecode-ai-server",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "SecureCode AI ASGI control-plane boundary",
     "readme": "README.md",
     "requires-python": ">=3.12,<3.15",
     "dependencies": [
-        "securecode-ai-adapters==1.0.1",
-        "securecode-ai-contracts==1.0.1",
-        "securecode-ai-core==1.0.1",
+        "securecode-ai-adapters==1.1.0",
+        "securecode-ai-contracts==1.1.0",
+        "securecode-ai-core==1.1.0",
     ],
     "classifiers": ["Private :: Do Not Upload"],
     "scripts": {
@@ -277,14 +277,14 @@ EXPECTED_SERVER_PROJECT: Final = {
 }
 EXPECTED_WORKER_PROJECT: Final = {
     "name": "securecode-ai-worker",
-    "version": "1.0.1",
+    "version": "1.1.0",
     "description": "Linux-only offline SecureCode AI CI metadata worker",
     "readme": "README.md",
     "requires-python": ">=3.12,<3.15",
     "dependencies": [
-        "securecode-ai-adapters==1.0.1",
-        "securecode-ai-contracts==1.0.1",
-        "securecode-ai-core==1.0.1",
+        "securecode-ai-adapters==1.1.0",
+        "securecode-ai-contracts==1.1.0",
+        "securecode-ai-core==1.1.0",
     ],
     "classifiers": [
         "Private :: Do Not Upload",
@@ -313,6 +313,15 @@ LEGACY_EXPECTED_WORKER_PROJECT: Final = {
         "Programming Language :: Python :: 3.14",
     ],
     "scripts": {"securecode-worker": "securecode_ai.worker.cli:main"},
+}
+
+
+# Packages allowed to be newer than the global exclude-newer date, each only up to the
+# day after the release that fixed a published vulnerability (pip-audit, 2026-09-30).
+REVIEWED_SECURITY_UPDATES = {
+    "urllib3": "2026-09-16T00:00:00Z",
+    "virtualenv": "2026-09-19T00:00:00Z",
+    "python-discovery": "2026-09-19T00:00:00Z",
 }
 
 
@@ -345,7 +354,7 @@ def _workspace_state_for_root(pyproject: Mapping[str, Any]) -> str:
     )
     states = {
         "release": (
-            "1.0.1",
+            "1.1.0",
             EXPECTED_ROOT_DEPENDENCIES,
             RC_WORKSPACE_SOURCES,
             RC_WORKSPACE_MEMBERS,
@@ -826,12 +835,15 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
         "required-version",
         "default-groups",
         "exclude-newer",
+        "exclude-newer-package",
         "build-constraint-dependencies",
         "sources",
         "workspace",
         "index",
     }:
         errors.append("root uv keys differ from the closed set")
+    if uv.get("exclude-newer-package") != REVIEWED_SECURITY_UPDATES:
+        errors.append("per-package upload-time exceptions differ from the reviewed security fixes")
     if uv.get("required-version") != "==0.12.0":
         errors.append("uv required-version must be exactly 0.12.0")
     if uv.get("default-groups") != [] or uv.get("package") is not False:
@@ -902,7 +914,7 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
     direct_dependencies = list(_sequence(project.get("dependencies"), "project.dependencies"))
     if (
         project.get("name") != "securecode-ai-workspace"
-        or project.get("version") != ("1.0.1" if release_candidate else "0.1.0a0")
+        or project.get("version") != ("1.1.0" if release_candidate else "0.1.0a0")
         or project.get("description") != "Reproducible workspace authority for SecureCode AI"
         or project.get("readme") != "README.md"
         or project.get("requires-python") != ">=3.12,<3.15"
@@ -953,7 +965,7 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
             observed_workspace_sources[name] = source
             if source != expected_lock_sources[name]:
                 errors.append(f"workspace source mismatch for {name}")
-            expected_workspace_version = "1.0.1" if release_candidate else "0.1.0a0"
+            expected_workspace_version = "1.1.0" if release_candidate else "0.1.0a0"
             if package.get("version") != expected_workspace_version:
                 errors.append(f"workspace version mismatch for {name}")
             continue
@@ -993,7 +1005,7 @@ def workspace_metadata_errors(documents: Mapping[str, Mapping[str, Any]]) -> lis
         errors.append("workspace pyproject inventory differs from the closed set")
         return errors
     release_candidate = projects is WORKSPACE_PROJECTS
-    expected_version = "1.0.1" if release_candidate else "0.1.0a0"
+    expected_version = "1.1.0" if release_candidate else "0.1.0a0"
     expected_console_scripts = (
         WORKSPACE_CONSOLE_SCRIPTS if release_candidate else LEGACY_WORKSPACE_CONSOLE_SCRIPTS
     )

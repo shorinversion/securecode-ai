@@ -456,3 +456,36 @@ def test_discovery_stale_context_cannot_mint_foreign_tenant_provenance(
     assert result.error_code == "REQUEST_CONTEXT_MISMATCH"
     assert result.content_id is None
     assert result.data_class is None
+
+
+def test_discovery_adds_an_omitted_root_and_drops_repeated_evidence() -> None:
+    payload = {
+        "candidates": [
+            {
+                "rule_id": "rule-sqli",
+                "root_evidence_id": "evidence-a",
+                "evidence_ids": ["evidence-b", "evidence-b"],
+            }
+        ]
+    }
+    validator = _discovery_validator()
+
+    assert validator.validate(payload, request=_discovery_request()).accepted
+    parsed = validator.parse(payload)
+    assert parsed[0].evidence_ids == ("evidence-a", "evidence-b")
+
+
+def test_discovery_still_rejects_an_unregistered_root() -> None:
+    payload = {
+        "candidates": [
+            {
+                "rule_id": "rule-sqli",
+                "root_evidence_id": "invented-evidence",
+                "evidence_ids": ["evidence-a"],
+            }
+        ]
+    }
+
+    result = _discovery_validator().validate(payload, request=_discovery_request())
+
+    assert not result.accepted

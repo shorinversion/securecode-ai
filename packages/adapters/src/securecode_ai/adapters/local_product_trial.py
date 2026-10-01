@@ -60,6 +60,7 @@ _PURPOSES: Final = ("model_native_discovery", "candidate_investigation", "skepti
 # Off-peak DeepSeek Flash list prices (USD micro-units per million tokens).
 _INPUT_PRICE: Final = 150_000
 _OUTPUT_PRICE: Final = 600_000
+DEEPSEEK_PRICES_PER_MILLION: Final = (_INPUT_PRICE, _OUTPUT_PRICE)
 
 
 class TrialAnalysisError(ValueError):
@@ -186,8 +187,10 @@ def _deepseek_profile(model_id: str) -> ProviderProfile:
     )
     # deepseek-flash accepts a 1M-token context and up to 384K output tokens; one run keeps
     # a generous but bounded window.
-    capabilities.update(max_context_tokens=262_144, max_output_tokens=65_536)
-    budgets.update(timeout_seconds=300, max_attempts=2, max_total_tokens=327_680)
+    # Byte counts stand in for tokens, so a 72 KB file framed as a bounded view needs ~420K;
+    # the provider accepts 1M tokens.
+    capabilities.update(max_context_tokens=983_040, max_output_tokens=65_536)
+    budgets.update(timeout_seconds=300, max_attempts=2, max_total_tokens=1_048_576)
     return parse_provider_profile(json.dumps(data).encode("utf-8"))
 
 
@@ -328,6 +331,7 @@ def _ollama_identity(model_id: str) -> tuple[str, str]:
 
 
 __all__ = [
+    "DEEPSEEK_PRICES_PER_MILLION",
     "DEFAULT_LOCAL_MODEL",
     "TrialAnalysis",
     "TrialAnalysisError",

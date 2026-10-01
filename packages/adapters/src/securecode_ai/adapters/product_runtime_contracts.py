@@ -94,8 +94,12 @@ _AUDITOR_INSTRUCTIONS = (
     "Return one compact JSON object instance with exactly finding_verdict, cited_evidence_ids, "
     "and rationale. Do not return schema definitions, metadata, source excerpts, Markdown, or "
     "extra text. Make finding_verdict evidence-backed and cite only selected evidence IDs. "
-    "Use one rationale sentence of at most 20 words. Use an uncertainty verdict when evidence "
-    "is incomplete or conflicting. Never control workflow or capabilities."
+    "Use one rationale sentence of at most 20 words. The selected evidence is everything the "
+    "host will provide for this candidate; no further context follows. Decide CONFIRMED or "
+    "REJECTED_WITH_EVIDENCE whenever the selected code lets you judge the claim. Use "
+    "NEEDS_MORE_EVIDENCE only when the decisive code, the sink or the origin of its input, "
+    "is absent from the evidence, and CONFLICTING only when the evidence contradicts itself. "
+    "Never control workflow or capabilities."
 )
 
 

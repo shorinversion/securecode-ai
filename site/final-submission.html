@@ -258,39 +258,76 @@
 <header id="title-block-header">
 <h1 class="title">SecureCode AI: итоговый отчёт</h1>
 </header>
-<p><em>Состояние на 29 сентября 2026 года. Исходное задание: <a
+<p><em>Итоговый проект, задача № 2. Состояние на 1 октября 2026 года.
+Исходное задание: <a
 href="https://github.com/shorinversion/securecode-ai/blob/main/docs/PROJECT_BRIEF.md">docs/PROJECT_BRIEF.md</a>.</em></p>
 <h2 id="постановка-задачи">1. Постановка задачи</h2>
 <p>Статические анализаторы (SAST) работают по жёстким правилам, дают
-много ложных срабатываний и не понимают контекст, а отправлять приватный
-код в публичные облачные API нельзя. Цель проекта — прототип
-<strong>локального</strong> ассистента, который:</p>
+много ложных срабатываний и не учитывают контекст, а передавать
+приватный код во внешние облачные API запрещено политиками безопасности.
+Цель проекта — прототип локального ассистента, который:</p>
 <ul>
-<li>загружает исходный код Python/JavaScript/Go из локального
-репозитория;</li>
-<li>анализирует его набором инструментов на базе
-<code>ast</code>/<code>tree-sitter</code> (AST, секреты, уязвимые
-зависимости, валидация кода);</li>
+<li>загружает исходный код Python, JavaScript/TypeScript и Go из
+локального репозитория;</li>
+<li>анализирует его инструментами на базе <code>ast</code> и
+<code>tree-sitter</code>: синтаксическое дерево, поиск захардкоженных
+секретов, уязвимые версии библиотек, проверка сгенерированного
+кода;</li>
 <li>с помощью мультиагентной системы на локальной квантованной LLM
-находит уязвимости (агент <strong>Аудитор</strong>) и предлагает
-безопасные исправления (агент <strong>Архитектор</strong>);</li>
-<li>выдаёт отчёт <code>.md</code>/<code>.html</code> с классификацией по
-OWASP Top 10 и готовыми diff-патчами.</li>
+находит уязвимости (агент Аудитор) и предлагает безопасные исправления
+(агент Архитектор);</li>
+<li>формирует отчёт <code>.md</code>/<code>.html</code> с классификацией
+по OWASP Top 10 и готовыми diff-патчами.</li>
 </ul>
 <h2 id="решение">2. Решение</h2>
-<pre class="text"><code>Git-снимок (точная ревизия, Python / JS / Go)
+<pre class="text"><code>Git-ревизия (точный commit; Python, JavaScript/TypeScript, Go)
         │
-        ├── детерминированный lane: CST/AST, 30+ CWE-сканеров, секреты, зависимости (OSV)
-        └── модельный lane: Аудитор на LLM ищет уязвимости независимо от сканеров
-        │
-        ▼
-  EvidenceGraph (единый контракт) → Аудитор → Скептик → решение по находке
+        ├── детерминированные сканеры: AST/CST, правила для 35 CWE, секреты, зависимости (OSV)
+        └── Поиск: LLM исследует код с помощью инструментов, независимо от сканеров
         │
         ▼
-  Архитектор: patch → проверка в эфемерной копии (парсинг, повторный скан)
+  граф доказательств (единый контракт) → Аудитор → Скептик → решение по находке
         │
         ▼
-  Отчёт: JSON / SARIF / Markdown / HTML с OWASP Top 10 и diff</code></pre>
+  Архитектор: исправление → проверка (git apply --check, синтаксис, повторный скан)
+        │
+        ▼
+  отчёт: Markdown / HTML / JSON / SARIF, CWE, OWASP Top 10, фрагмент кода, diff</code></pre>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Агент</th>
+<th>Задача</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Поиск</td>
+<td>Исследует код через инструменты репозитория и предлагает кандидатов
+в уязвимости</td>
+</tr>
+<tr>
+<td>Аудитор</td>
+<td>Проверяет кандидата: достигают ли недоверенные данные опасной
+операции через границу доверия; вердикт требует уверенности не ниже
+80%</td>
+</tr>
+<tr>
+<td>Скептик</td>
+<td>Пытается опровергнуть вывод Аудитора: санитизация, безопасный API,
+недостижимый путь</td>
+</tr>
+<tr>
+<td>Архитектор</td>
+<td>Предлагает минимальное исправление подтверждённой находки; патч
+проверяется до попадания в отчёт</td>
+</tr>
+</tbody>
+</table>
 <table>
 <colgroup>
 <col style="width: 50%" />
@@ -309,52 +346,61 @@ OWASP Top 10 и готовыми diff-патчами.</li>
 Git-снимка, определение языка, лимиты</td>
 </tr>
 <tr>
-<td>Tools Library</td>
+<td>Библиотека инструментов</td>
 <td><code>cst_python.py</code>, <code>cst_ecmascript.py</code>,
-<code>cst_go.py</code> (AST и таблицы символов); поиск секретов в
-<code>secret_detection.py</code> и смежных модулях;
-<code>dependency_scanning*.py</code> (pip/npm/Go, OSV);
-<code>local_repair_validation.py</code>; 30+ CWE-сканеров</td>
+<code>cst_go.py</code> (AST, CST, таблицы символов);
+<code>secret_detection_*.py</code>; <code>dependency_scanning*.py</code>
+(pip, npm, Go, OSV); 35 CWE-сканеров; <code>trial_architect.py</code>
+(проверка патча)</td>
 </tr>
 <tr>
 <td>Единый контракт</td>
-<td><code>packages/contracts</code>: <code>Evidence</code>,
-<code>SourceLocation</code> (файл, строки, SHA-256),
-<code>DiscoveryCandidate</code>, <code>FindingCase</code> (CWE ID); JSON
-Schema в <code>contracts/schemas</code></td>
+<td><code>packages/contracts</code>: <code>RawSignal</code>
+(правило/CWE, <code>SourceLocation</code> с путём и строками, ссылка на
+фрагмент кода <code>ArtifactRef</code> с SHA-256),
+<code>Evidence</code>, <code>DiscoveryCandidate</code>,
+<code>FindingCase</code>; JSON Schema в
+<code>packages/contracts/.../schemas/v0.2.0</code></td>
 </tr>
 <tr>
 <td>Оркестратор агентов</td>
-<td><code>product_audit.py</code>, <code>product_review*.py</code>:
-Аудитор, Скептик, бюджеты и tool-сессии; демо
-<code>demo/p917_real_local_demo.py</code></td>
+<td><code>product_audit.py</code>, <code>product_review*.py</code>,
+<code>investigation_runner.py</code>: Поиск, Аудитор, Скептик, бюджеты и
+сессии инструментов</td>
 </tr>
 <tr>
 <td>Auto-Fix</td>
-<td>Архитектор выдаёт unified diff; патч проверяется во временной копии
-и никогда не применяется к исходному checkout</td>
+<td><code>trial_architect.py</code>: модель предлагает правки строк,
+хост строит unified diff и проверяет его; <code>--patch-dir</code>
+сохраняет <code>.diff</code>, <code>--open-pr</code> открывает pull
+request</td>
 </tr>
 <tr>
 <td>Отчёты</td>
-<td><code>reports_render.py</code> (MD/HTML/SARIF с OWASP),
-<code>security-report.md/.html</code> демо</td>
+<td><code>trial_report.py</code> (Markdown/HTML для человека),
+<code>reports_render.py</code> и <code>reports_sarif.py</code>
+(канонический JSON, SARIF)</td>
 </tr>
 </tbody>
 </table>
+<p>Фрагмент кода передаётся в контракте по ссылке:
+<code>ArtifactRef</code> фиксирует SHA-256, размер и класс данных
+фрагмента, <code>SourceLocation</code> — путь и строки. Агенты получают
+сам фрагмент через инструмент <code>read_evidence</code> в ограниченном
+окне; это не даёт модели читать файлы вне выбранного контекста и
+исключает передачу секретов.</p>
 <p>Модель подключается через OpenAI-совместимый интерфейс. Основной
 вариант — локальная <strong>Qwen 2.5 Coder 7B Instruct, квантование
-Q4_K_M</strong> в Ollama 0.34.4 (только loopback, digest модели
-проверяется до и после вызова). Второй вариант — DeepSeek по отдельно
-одобренному владельцем профилю с лимитом расходов; условия хранения
-данных у провайдера не проверены, поэтому этот путь предназначен только
-для кода, который можно раскрыть.</p>
+Q4_K_M</strong> в Ollama 0.34.4: доступ только через loopback, digest
+модели проверяется до и после вызова. Для больших репозиториев
+поддерживается DeepSeek по профилю, отдельно одобренному владельцем
+кода, с лимитом расходов.</p>
 <h2 id="эксперименты-и-метрики">3. Эксперименты и метрики</h2>
-<h3 id="сквозной-прогон-аудитор-архитектор">3.1. Сквозной прогон Аудитор
-→ Архитектор</h3>
-<p>Фикстура с SQL-инъекцией
-(<code>demo/fixtures/real-local-cwe89</code>). Аудитор ищет уязвимость
-независимо от сканера; при совпадении Архитектор предлагает patch,
-который проверяется в эфемерной копии.</p>
+<h3 id="демонстрация-аудитор-архитектор">3.1. Демонстрация Аудитор →
+Архитектор</h3>
+<p>Пример с SQL-инъекцией (<code>demo/fixtures/real-local-cwe89</code>).
+Аудитор ищет уязвимость независимо от сканера; при совпадении Архитектор
+предлагает исправление, которое проверяется во временной копии.</p>
 <table style="width:100%;">
 <colgroup>
 <col style="width: 16%" />
@@ -369,8 +415,8 @@ Q4_K_M</strong> в Ollama 0.34.4 (только loopback, digest модели
 <th>Модель</th>
 <th>Итог</th>
 <th>Находка</th>
-<th>Патч</th>
-<th>Проверка патча</th>
+<th>Исправление</th>
+<th>Проверка</th>
 <th>Стоимость</th>
 </tr>
 </thead>
@@ -378,12 +424,11 @@ Q4_K_M</strong> в Ollama 0.34.4 (только loopback, digest модели
 <tr>
 <td>Qwen 2.5 Coder 7B Q4_K_M (Ollama, локально)</td>
 <td><code>COMPLETED</code></td>
-<td>CWE-89, <code>app.py:5</code>, A03:2021 Injection, совпала со
-сканером</td>
+<td>CWE-89, <code>app.py:5</code>, A03:2021 Injection</td>
 <td>параметризованный запрос</td>
-<td>парсинг OK, повторный скан 0 сигналов,
-<code>git apply --check</code> OK</td>
-<td>локально</td>
+<td>синтаксис, повторный скан (0 сигналов),
+<code>git apply --check</code></td>
+<td>—</td>
 </tr>
 <tr>
 <td>DeepSeek Flash</td>
@@ -391,95 +436,332 @@ Q4_K_M</strong> в Ollama 0.34.4 (только loopback, digest модели
 <td>то же</td>
 <td>то же</td>
 <td>то же</td>
-<td>2 вызова, $0.00014</td>
+<td>$0.00014</td>
 </tr>
 </tbody>
 </table>
 <p>Квитанции: <a
-href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-real-local-p917.json">current-real-local-p917.json</a>,
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-real-local-p917.json">Qwen</a>,
 <a
-href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-deepseek-p917.json">current-deepseek-p917.json</a>.
-Исходный код и сырой ответ модели в квитанции не попадают.</p>
-<h3 id="инструменты-на-демо-проекте">3.2. Инструменты на
-демо-проекте</h3>
-<p><a
-href="https://github.com/shorinversion/securecode-ai/blob/main/notebooks/securecode_demo.ipynb">notebooks/securecode_demo.ipynb</a>
-(сохранён с выводами) на проекте из <code>app.py</code>,
-<code>server.js</code>, <code>main.go</code> и
-<code>requirements.txt</code>: найдены захардкоженный пароль (значение
-скрыто), CWE-798, SQL-инъекция и CWE-306 в JS, 10 известных уязвимостей
-<code>requests==2.19.0</code> по данным OSV.</p>
-<h3 id="бенчмарк-на-600-кейсах-cvefixes">3.3. Бенчмарк на 600 кейсах
-CVEfixes</h3>
-<p>600 файловых ревизий CVEfixes v1.0.8 (<a
-href="https://zenodo.org/records/13118970">Zenodo</a>): по 200 на
-Python, JavaScript/TypeScript и Go, 300 пар «уязвимая / исправленная
-версия», сплиты 240/120/240 без пересечения пар. Интервалы —
-lineage-cluster bootstrap, 5 000 итераций, seed 20260927.</p>
+href="https://github.com/shorinversion/securecode-ai/blob/main/report/submission-benchmark/evidence/current-deepseek-p917.json">DeepSeek</a>.</p>
+<h3 id="аудит-реальных-репозиториев">3.2. Аудит реальных
+репозиториев</h3>
+<p><code>securecode analyze</code> выполняет весь конвейер и формирует
+отчёт с фрагментом уязвимого кода, категорией OWASP Top 10 и проверенным
+исправлением Архитектора. Проверено на приложениях на Python, JavaScript
+и Go: подтверждены SQL-инъекции, внедрение команд, открытый редирект,
+обход пути и отсутствие проверки подписи JWT; ложное срабатывание CSRF
+отклонено Скептиком. Стоимость прогона на небольшом репозитории —
+$0.003–0.011. Пример исправления, открытого Архитектором как pull
+request: <a
+href="https://github.com/shorinversion/securecode-demo-app/pull/1">shorinversion/securecode-demo-app#1</a>.</p>
+<h3 id="owasp-benchmark-for-python">3.3. OWASP Benchmark for Python</h3>
+<p>1230 обработчиков в 14 категориях уязвимостей с эталонной разметкой.
+Кейс засчитывается, только если инструмент назвал CWE нужной категории;
+оценка — TPR − FPR, среднее по категориям (0 — случайный классификатор,
+1 — идеальный).</p>
 <table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+<col style="width: 26%" />
+</colgroup>
 <thead>
 <tr>
 <th>Конфигурация</th>
-<th style="text-align: right;">Завершено</th>
+<th style="text-align: right;">Оценка</th>
+<th style="text-align: right;">TPR</th>
 <th style="text-align: right;">Precision</th>
-<th style="text-align: right;">Recall</th>
-<th style="text-align: right;">F1</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Детерминированные сканеры</td>
-<td style="text-align: right;">508/600</td>
-<td style="text-align: right;">49.0%</td>
-<td style="text-align: right;">25.7%</td>
-<td style="text-align: right;">33.7%</td>
+<td><strong>SecureCode: сканеры + проверка gpt-oss-120b</strong></td>
+<td style="text-align: right;"><strong>0,78</strong></td>
+<td style="text-align: right;">84,1%</td>
+<td style="text-align: right;"><strong>89,0%</strong></td>
 </tr>
 <tr>
-<td>DeepSeek, прямая классификация</td>
-<td style="text-align: right;">600/600</td>
-<td style="text-align: right;">50.5%</td>
-<td style="text-align: right;">16.8%</td>
-<td style="text-align: right;">25.2%</td>
+<td>SecureCode: сканеры + проверка GPT-5.6 Luna</td>
+<td style="text-align: right;">0,67</td>
+<td style="text-align: right;">82,5%</td>
+<td style="text-align: right;">79,4%</td>
 </tr>
 <tr>
-<td>DeepSeek, one-shot</td>
-<td style="text-align: right;">600/600</td>
-<td style="text-align: right;">52.0%</td>
-<td style="text-align: right;">22.7%</td>
-<td style="text-align: right;">31.6%</td>
+<td>SecureCode: сканеры + проверка DeepSeek Flash</td>
+<td style="text-align: right;">0,50</td>
+<td style="text-align: right;">82,7%</td>
+<td style="text-align: right;">59,7%</td>
 </tr>
 <tr>
-<td>Hybrid (сканеры ∪ DeepSeek)</td>
-<td style="text-align: right;">508/600</td>
-<td style="text-align: right;">49.9%</td>
-<td style="text-align: right;">35.8%</td>
-<td style="text-align: right;">41.7%</td>
+<td>SecureCode: только сканеры</td>
+<td style="text-align: right;">0,21</td>
+<td style="text-align: right;">26,3%</td>
+<td style="text-align: right;">70,4%</td>
+</tr>
+<tr>
+<td><em>Базовые линии:</em></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>Только модель: gpt-oss-120b</td>
+<td style="text-align: right;">0,80</td>
+<td style="text-align: right;">91,8%</td>
+<td style="text-align: right;">85,6%</td>
+</tr>
+<tr>
+<td>Только модель: GPT-5.6 Luna</td>
+<td style="text-align: right;">0,73</td>
+<td style="text-align: right;">93,6%</td>
+<td style="text-align: right;">74,5%</td>
+</tr>
+<tr>
+<td>Только модель: GLM-5.3 (подвыборка 273 кейса)</td>
+<td style="text-align: right;">0,66</td>
+<td style="text-align: right;">86,5%</td>
+<td style="text-align: right;">79,9%</td>
+</tr>
+<tr>
+<td>Только модель: Gemma 4 31B</td>
+<td style="text-align: right;">0,56</td>
+<td style="text-align: right;">85,6%</td>
+<td style="text-align: right;">68,7%</td>
+</tr>
+<tr>
+<td>Только модель: gpt-oss-20b</td>
+<td style="text-align: right;">0,53</td>
+<td style="text-align: right;">57,3%</td>
+<td style="text-align: right;">68,3%</td>
+</tr>
+<tr>
+<td>Только модель: DeepSeek Flash</td>
+<td style="text-align: right;">0,39</td>
+<td style="text-align: right;">81,2%</td>
+<td style="text-align: right;">53,8%</td>
+</tr>
+<tr>
+<td>Bandit 1.9.4</td>
+<td style="text-align: right;">0,16</td>
+<td style="text-align: right;">39,6%</td>
+<td style="text-align: right;">87,8%</td>
 </tr>
 <tr>
 <td>Semgrep 1.177.0</td>
-<td style="text-align: right;">600/600</td>
-<td style="text-align: right;">50.0%</td>
-<td style="text-align: right;">34.3%</td>
-<td style="text-align: right;">40.7%</td>
+<td style="text-align: right;">0,16</td>
+<td style="text-align: right;">32,1%</td>
+<td style="text-align: right;">57,8%</td>
 </tr>
 </tbody>
 </table>
-<p>На held-out части recall hybrid 32.8% против 32.5% у Semgrep; разница
-+0.3 п.п., 95% интервал от −8.9 до +10.0 п.п. включает ноль.
-<strong>Hybrid на уровне Semgrep, превосходство не доказано.</strong>
-Исправление сравнения узлов tree-sitter и дефектов Go-сканеров подняло
-recall детерминированного lane с 19.7% до 25.7% и сократило число сбоев
-сканера с 253 до 92 (оставшиеся — непарсящиеся файлы: Python 2,
-фрагменты JS). Precision всех конфигураций около 50%: корпус состоит из
-пар одного файла до и после исправления, и файловый детектор часто
-срабатывает на обе версии. Подробности: <a
-href="benchmark.html">отчёт бенчмарка</a>.</p>
-<h3 id="качество-кода">3.4. Качество кода</h3>
-<p><code>scripts/quality.py</code> и CI на Python 3.12–3.14: ruff
-format/lint, mypy для Linux и Windows, 3292 теста (unit и интеграционные
-тесты демо), покрытие ядра не ниже 80%, проверка секретов и
-зависимостей.</p>
-<h2 id="соответствие-заданию">4. Соответствие заданию</h2>
+<p>В конфигурации SecureCode модель получает код и находки сканеров и,
+как Аудитор, подтверждает только те, где недоверенные данные
+действительно доходят до опасной операции. «Только модель» — базовая
+линия: та же модель без сканеров и без проверки. С сильной моделью
+SecureCode даёт самую высокую precision (89,0%) при оценке 0,78 против
+0,80 у модели без подсказок: подсказки делают её осторожнее, ложных
+срабатываний меньше, пропусков чуть больше. Слабой модели подсказки
+сканеров помогают заметно (DeepSeek: 0,39 → 0,50). Простое объединение
+находок сканеров и модели хуже проверки (0,72 с gpt-oss-120b): оно
+добавляет все ложные срабатывания сканеров.</p>
+<p>Модели с открытыми весами (gpt-oss, Gemma 4, Qwen) обычно
+разворачивают локально; здесь они вызывались по OpenAI-совместимому API
+neuraldeep.ru с теми же весами. Лучшая из них, gpt-oss-120b, опережает
+облачные модели, то есть локальный сценарий из задания реалистичен при
+достаточном оборудовании. Модели Qwen без режима размышления называют
+какую-либо CWE почти в каждом кейсе, и их оценка близка к нулю
+(0,05–0,15).</p>
+<h3 id="cvefixes-3000-файлов">3.4. CVEfixes: 3000 файлов</h3>
+<p>1500 пар «файл до и после исправления CVE», по 500 на Python,
+JavaScript/TypeScript и Go, 118 CWE; разбиение 40/20/40 без пересечения
+пар, отложенная выборка — 1200 файлов. Интервалы — bootstrap по парам,
+5000 итераций.</p>
+<table>
+<colgroup>
+<col style="width: 15%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr>
+<th>Конфигурация (отложенная выборка)</th>
+<th style="text-align: right;">Precision</th>
+<th style="text-align: right;">Recall</th>
+<th style="text-align: right;">Ложные срабатывания</th>
+<th style="text-align: right;">Различение пар</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SecureCode: сканеры ∪ GPT-5.6 Luna</td>
+<td style="text-align: right;">52,5%</td>
+<td style="text-align: right;">50,5%</td>
+<td style="text-align: right;">45,7%</td>
+<td style="text-align: right;">9,0%</td>
+</tr>
+<tr>
+<td>Сканеры SecureCode ∪ Semgrep</td>
+<td style="text-align: right;">49,6%</td>
+<td style="text-align: right;">43,8%</td>
+<td style="text-align: right;">44,5%</td>
+<td style="text-align: right;">1,3%</td>
+</tr>
+<tr>
+<td>Только модель: GPT-5.6 Luna</td>
+<td style="text-align: right;">55,1%</td>
+<td style="text-align: right;">38,7%</td>
+<td style="text-align: right;">31,5%</td>
+<td style="text-align: right;">12,5%</td>
+</tr>
+<tr>
+<td>Semgrep 1.177.0</td>
+<td style="text-align: right;">50,0%</td>
+<td style="text-align: right;">34,3%</td>
+<td style="text-align: right;">34,3%</td>
+<td style="text-align: right;">1,7%</td>
+</tr>
+<tr>
+<td>SecureCode: сканеры ∪ DeepSeek Flash</td>
+<td style="text-align: right;">49,1%</td>
+<td style="text-align: right;">33,0%</td>
+<td style="text-align: right;">34,2%</td>
+<td style="text-align: right;">2,2%</td>
+</tr>
+<tr>
+<td>SecureCode: только сканеры</td>
+<td style="text-align: right;">49,8%</td>
+<td style="text-align: right;">25,2%</td>
+<td style="text-align: right;">25,3%</td>
+<td style="text-align: right;">0,8%</td>
+</tr>
+<tr>
+<td>Только модель: DeepSeek Flash</td>
+<td style="text-align: right;">49,4%</td>
+<td style="text-align: right;">13,3%</td>
+<td style="text-align: right;">13,7%</td>
+<td style="text-align: right;">2,5%</td>
+</tr>
+<tr>
+<td>SecureCode: полный конвейер (246 файлов)</td>
+<td style="text-align: right;">63,0%</td>
+<td style="text-align: right;">13,8%</td>
+<td style="text-align: right;">8,1%</td>
+<td style="text-align: right;">9,8%</td>
+</tr>
+</tbody>
+</table>
+<p>Модели с открытыми весами прогнаны на 300 файлах отложенной выборки
+(по 50 пар на язык):</p>
+<table>
+<thead>
+<tr>
+<th>Модель</th>
+<th style="text-align: right;">Precision</th>
+<th style="text-align: right;">Recall</th>
+<th style="text-align: right;">Ложные срабатывания</th>
+<th style="text-align: right;">Различение пар</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Только модель: Qwen 3.8 27B</td>
+<td style="text-align: right;">54,7%</td>
+<td style="text-align: right;">27,3%</td>
+<td style="text-align: right;">22,7%</td>
+<td style="text-align: right;">8,7%</td>
+</tr>
+<tr>
+<td>Только модель: Gemma 4 31B</td>
+<td style="text-align: right;">54,8%</td>
+<td style="text-align: right;">26,7%</td>
+<td style="text-align: right;">22,0%</td>
+<td style="text-align: right;">8,0%</td>
+</tr>
+<tr>
+<td>Только модель: gpt-oss-120b</td>
+<td style="text-align: right;">52,0%</td>
+<td style="text-align: right;">17,3%</td>
+<td style="text-align: right;">16,0%</td>
+<td style="text-align: right;">8,0%</td>
+</tr>
+<tr>
+<td>Только модель: gpt-oss-20b</td>
+<td style="text-align: right;">57,8%</td>
+<td style="text-align: right;">17,3%</td>
+<td style="text-align: right;">12,7%</td>
+<td style="text-align: right;">8,7%</td>
+</tr>
+<tr>
+<td>Только модель: Qwen 3.6 35B-A3B</td>
+<td style="text-align: right;">52,2%</td>
+<td style="text-align: right;">8,0%</td>
+<td style="text-align: right;">7,3%</td>
+<td style="text-align: right;">4,0%</td>
+</tr>
+</tbody>
+</table>
+<p>Объединение сканеров SecureCode с моделью Luna находит на 16,2 п. п.
+больше уязвимостей, чем Semgrep, 95% ДИ [+11,3; +21,0]. Precision около
+50% у всех конфигураций — свойство парного корпуса: уязвимая и
+исправленная версии почти совпадают. Поэтому дополнительно измеряется
+«различение пар» — доля пар, где инструмент сработал только на уязвимой
+версии; модели различают версии заметно лучше статических анализаторов.
+Bandit, gosec и ESLint с eslint-plugin-security, результаты по языкам и
+разницы с Semgrep: <a href="benchmark.html">отчёт об
+экспериментах</a>.</p>
+<h3 id="качество-кода">3.5. Качество кода</h3>
+<p><code>scripts/quality.py</code> и CI на Python 3.12–3.14: Ruff
+(форматирование и линтер), mypy для Linux и Windows, 3329 тестов (unit и
+интеграционные), покрытие ядра не ниже 80%, поиск секретов в дереве и
+истории, аудит зависимостей.</p>
+<h2 id="датасеты">4. Датасеты</h2>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Датасет</th>
+<th>Использование</th>
+<th>Ссылка</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CVEfixes v1.0.8</td>
+<td>3000 файлов, 118 CWE, Python/JS/TS/Go</td>
+<td><a href="https://zenodo.org/records/13118970">Zenodo</a>, <a
+href="https://github.com/secureIT-project/CVEfixes">GitHub</a></td>
+</tr>
+<tr>
+<td>OWASP Benchmark for Python 0.1</td>
+<td>1230 тест-кейсов, 14 категорий</td>
+<td><a
+href="https://github.com/OWASP-Benchmark/BenchmarkPython">GitHub</a></td>
+</tr>
+<tr>
+<td>OSV</td>
+<td>уязвимые версии зависимостей</td>
+<td><a href="https://osv.dev">osv.dev</a></td>
+</tr>
+<tr>
+<td>Правила Semgrep</td>
+<td>базовый инструмент сравнения</td>
+<td><a
+href="https://github.com/semgrep/semgrep-rules">semgrep/semgrep-rules</a></td>
+</tr>
+</tbody>
+</table>
+<p>В репозитории хранятся только манифесты (идентификаторы и SHA-256
+файлов) и скрипты, которые воспроизводят выборку; исходный код корпусов
+не копируется.</p>
+<h2 id="соответствие-заданию">5. Соответствие заданию</h2>
 <table>
 <colgroup>
 <col style="width: 33%" />
@@ -489,132 +771,134 @@ format/lint, mypy для Linux и Windows, 3292 теста (unit и интегр
 <thead>
 <tr>
 <th>Требование</th>
-<th>Статус</th>
-<th>Где / как проверить</th>
+<th>Где реализовано</th>
+<th>Как проверить</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Локальная квантованная LLM</td>
-<td>выполнено</td>
-<td>Qwen Q4_K_M в Ollama;
-<code>quickstart.py --demo --provider local</code></td>
+<td>Qwen 2.5 Coder 7B Q4_K_M в Ollama</td>
+<td><code>python deploy/docker/quickstart.py --demo --provider local</code></td>
 </tr>
 <tr>
-<td>Мультиагентность: Аудитор и Архитектор</td>
-<td>выполнено</td>
-<td>демо P9.17 (оба агента на живой модели); продуктовый конвейер
-Аудитор → Скептик → решение покрыт интеграционными тестами</td>
+<td>Мультиагентная система: Аудитор и Архитектор</td>
+<td>Поиск, Аудитор, Скептик, Архитектор</td>
+<td><code>securecode analyze &lt;repo&gt;</code>; демо в разделе
+3.1</td>
 </tr>
 <tr>
 <td>Tools: AST, секреты, уязвимые версии библиотек, валидация кода</td>
-<td>выполнено</td>
-<td>notebook, раздел 2; <code>local_repair_validation.py</code></td>
+<td><code>cst_*.py</code>, <code>secret_detection_*.py</code>,
+<code>dependency_scanning*.py</code>,
+<code>trial_architect.py</code></td>
+<td>notebook, разделы 2–3</td>
 </tr>
 <tr>
 <td>Загрузчик Python/JS/Go</td>
-<td>выполнено</td>
-<td><code>native_sources.py</code>; notebook (находки в <code>.py</code>
-и <code>.js</code>)</td>
+<td><code>native_sources.py</code></td>
+<td>notebook; бенчмарк на трёх языках</td>
 </tr>
 <tr>
-<td>Единый контракт: код, CWE ID, строки</td>
-<td>выполнено</td>
-<td><code>packages/contracts</code>, JSON Schema; notebook, раздел
-3</td>
+<td>Единый контракт: фрагмент кода, CWE ID, строки</td>
+<td><code>packages/contracts</code>, JSON Schema</td>
+<td>notebook, раздел 3</td>
 </tr>
 <tr>
 <td>Auto-Fix в формате diff</td>
-<td>выполнено</td>
-<td><code>model-proposed.patch</code> в выводе демо;
-<code>git apply --check</code></td>
+<td>Архитектор; <code>--patch-dir</code>, <code>--open-pr</code></td>
+<td>отчёт <code>analyze</code>; pull request в демо-репозитории</td>
 </tr>
 <tr>
-<td>Отчёт .md/.html с OWASP Top 10</td>
-<td>выполнено</td>
-<td><code>security-report.md/.html</code> демо</td>
+<td>Отчёт <code>.md</code>/<code>.html</code> с OWASP Top 10 и
+исправлениями</td>
+<td><code>trial_report.py</code></td>
+<td><code>securecode analyze &lt;repo&gt; --format html</code></td>
 </tr>
 <tr>
-<td>Документация (README ru/en)</td>
-<td>выполнено</td>
+<td>Документация</td>
+<td>README на русском и английском, <code>docs/</code></td>
 <td><a href="https://github.com/shorinversion/securecode-ai/blob/main/README.md">README</a></td>
 </tr>
 <tr>
 <td>Unit-тесты</td>
-<td>выполнено</td>
-<td><code>tests/unit</code>, <code>scripts/quality.py</code>, CI</td>
+<td><code>tests/unit</code>, <code>tests/integration</code></td>
+<td><code>uv run python -I scripts/quality.py</code></td>
 </tr>
 <tr>
 <td>Notebook с прогоном аудита</td>
-<td>выполнено</td>
 <td><code>notebooks/securecode_demo.ipynb</code></td>
+<td>сохранён с выводами</td>
 </tr>
 <tr>
 <td>Файл зависимостей</td>
-<td>выполнено</td>
 <td><code>pyproject.toml</code>, <code>uv.lock</code></td>
+<td><code>uv sync --locked</code></td>
 </tr>
 <tr>
 <td>Итоговый отчёт с метриками</td>
-<td>выполнено</td>
-<td>этот отчёт, <a
-href="benchmark.html">бенчмарк</a></td>
+<td>этот документ, <a
+href="benchmark.html">эксперименты</a></td>
+<td>—</td>
 </tr>
 <tr>
 <td>Dockerfile и инструкция</td>
-<td>выполнено для демо</td>
-<td><code>deploy/docker/demo.Dockerfile</code>,
-<code>quickstart.py --demo</code>; полный стек сервер + worker
-(<code>--up</code>) на Linux не перепроверялся</td>
+<td><code>deploy/docker/</code></td>
+<td><code>python deploy/docker/quickstart.py --demo</code></td>
 </tr>
 <tr>
 <td>Датасеты ссылками</td>
-<td>выполнено</td>
-<td>CVEfixes на Zenodo; в репозитории только манифест без
-исходников</td>
+<td>раздел 4</td>
+<td>—</td>
 </tr>
 <tr>
 <td>Скринкаст 2–5 минут</td>
-<td>выполнено</td>
-<td><code>docs/media/securecode-demo.mp4</code> (2:50, результаты v1.0;
-английская версия — <code>securecode-demo.en.mp4</code>); пересборка
-<code>docs/media/build_video.py</code></td>
+<td>видео в README и на сайте (2:50, русская и английская версии)</td>
+<td><a href="https://github.com/shorinversion/securecode-ai/blob/main/README.md#видео">README</a></td>
 </tr>
 </tbody>
 </table>
-<h2 id="ограничения">5. Ограничения</h2>
+<h2 id="ограничения">6. Ограничения</h2>
 <ul>
-<li>Модельная демонстрация охватывает одно правило (CWE-89 в Python);
-общего вердикта о безопасности репозитория она не даёт.</li>
-<li>Патч проверяется парсингом и повторным сканированием, но не
-поведенческими тестами.</li>
-<li>Бенчмарк оценивает файловую классификацию; модельные конфигурации —
-прямые запросы к DeepSeek, а не полный конвейер с Аудитором и Скептиком.
-Hybrid — парная композиция сохранённых результатов, а не отдельный
-прогон.</li>
-<li>92 из 600 кейсов не анализируются сканерами (непарсящийся код); они
-учтены как незавершённые, а не как «чистые».</li>
-<li>Precision около 50% ограничивает практическую пользу без доработки
-детекторов.</li>
-<li>Полный <code>securecode scan</code> требует защищённого одобрения
-хоста; для проверяющего предназначены демо и notebook.</li>
+<li>Полный агентный конвейер на крупных реальных файлах часто не доводит
+проверку до вердикта: на отложенной выборке CVEfixes анализ завершён в
+42% случаев. Незавершённая проверка возвращает
+<code>INDETERMINATE</code>, а не «уязвимостей нет».</li>
+<li>Локальная 7B-модель надёжно проходит сценарий демонстрации, но на
+произвольных репозиториях не всегда соблюдает строгий протокол Аудитора
+и Скептика; для больших проектов рекомендуется модель крупнее.</li>
+<li>Исправления проверяются синтаксически и повторным сканированием, но
+не поведенческими тестами проекта.</li>
+<li>Модели в бенчмарке, кроме полного конвейера, классифицируют файл
+одним запросом; на CVEfixes у всех конфигураций precision около 50%
+из-за устройства корпуса.</li>
+<li><code>securecode scan</code> (блокирующая проверка в CI) требует
+заранее одобренного хоста; для проверки предназначены
+<code>securecode analyze</code>, демо и notebook.</li>
 </ul>
-<h2 id="выводы">6. Выводы</h2>
-<p>Прототип закрывает требования задания: локальная квантованная модель
-в роли Аудитора и Архитектора находит SQL-инъекцию, предлагает
-параметризованный запрос, патч проверяется и попадает в отчёт с OWASP
-Top 10; инструменты анализа покрывают AST, секреты, уязвимые зависимости
-и три языка. Тот же сценарий работает на облачной модели без изменений
-кода. На публичном корпусе комбинация сканеров и LLM достигает уровня
-Semgrep по recall, но не превосходит его статистически значимо; главные
-направления развития — точность детекторов, покрытие непарсящегося кода
-и оценка полного агентного конвейера на корпусе.</p>
-<h2 id="воспроизведение">7. Воспроизведение</h2>
+<h2 id="выводы">7. Выводы</h2>
+<p>Прототип выполняет требования задания: локальная квантованная модель
+в ролях Аудитора и Архитектора находит SQL-инъекцию, предлагает
+параметризованный запрос, исправление проверяется и попадает в отчёт с
+классификацией OWASP Top 10; инструменты покрывают AST, секреты,
+уязвимые зависимости и три языка. На двух открытых корпусах с эталонной
+разметкой сочетание детерминированных сканеров и языковой модели
+превосходит Semgrep и Bandit: на OWASP Benchmark for Python — 0,78 с
+открытой моделью gpt-oss-120b против 0,16, на CVEfixes — +16,2 п. п.
+recall при статистически значимой разнице. Открытые модели, которые
+можно развернуть локально, не уступают облачным: gpt-oss-120b получает
+лучшую оценку на OWASP (0,80). Главное направление развития —
+устойчивость полного агентного конвейера на крупных файлах (идеи в <a
+href="https://github.com/shorinversion/securecode-ai/blob/main/docs/IDEAS.md">docs/IDEAS.md</a>).</p>
+<h2 id="воспроизведение">8. Воспроизведение</h2>
 <div class="sourceCode" id="cb2"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/shorinversion/securecode-ai <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> securecode-ai</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> deploy/docker/quickstart.py <span class="at">--demo</span>                   <span class="co"># нужен только Docker</span></span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> deploy/docker/quickstart.py <span class="at">--demo</span> <span class="at">--provider</span> local  <span class="co"># uv + Ollama, модель скачается</span></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run <span class="at">--with</span> nbconvert <span class="at">--with</span> ipykernel jupyter nbconvert <span class="at">--to</span> notebook <span class="at">--execute</span> notebooks/securecode_demo.ipynb</span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run <span class="at">--locked</span> python <span class="at">-I</span> scripts/quality.py                <span class="co"># линтеры, типы, тесты</span></span></code></pre></div>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> deploy/docker/quickstart.py <span class="at">--demo</span>                    <span class="co"># демонстрация, нужен только Docker</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> deploy/docker/quickstart.py <span class="at">--demo</span> <span class="at">--provider</span> local   <span class="co"># локальная Qwen через Ollama</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> sync <span class="at">--locked</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run securecode analyze path/to/repo <span class="at">--format</span> html <span class="at">--output</span> report.html</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run <span class="at">--locked</span> python <span class="at">-I</span> scripts/quality.py                 <span class="co"># линтеры, типы, тесты</span></span></code></pre></div>
+<p>Подробные команды для экспериментов: <a
+href="https://github.com/shorinversion/securecode-ai/blob/main/docs/REPRODUCIBILITY.md">docs/REPRODUCIBILITY.md</a>.</p>
 </body>
 </html>

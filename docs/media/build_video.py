@@ -43,7 +43,7 @@ th{color:#626c77;font-weight:500;border-bottom:3px solid #1d2023}td.n{text-align
 
 SLIDES: list[tuple[str, str]] = [
     (
-        """<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.0</span></div>
+        """<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.1</span></div>
 <h1>SecureCode AI</h1><p style="font-size:48px;max-width:1400px">Локальный AI-ассистент для аудита безопасности кода: находит уязвимости, предлагает исправления и проверяет их, не отправляя код в облако.</p>""",
         "SecureCode AI — локальный ассистент для аудита безопасности кода. Он находит уязвимости, "
         "предлагает исправления и проверяет их, не отправляя исходный код в облако. "
@@ -99,15 +99,16 @@ SLIDES: list[tuple[str, str]] = [
         "Все находки описаны в единой схеме: файл, строки, CWE и хеш содержимого.",
     ),
     (
-        """<h2>Эксперименты</h2><table><tr><th>600 примеров CVEfixes</th><th>Precision</th><th>Recall</th><th>F1</th></tr><tr><td>Сканеры SecureCode</td><td class="n">49.0%</td><td class="n">25.7%</td><td class="n">33.7%</td></tr><tr><td>DeepSeek, one-shot</td><td class="n">52.0%</td><td class="n">22.7%</td><td class="n">31.6%</td></tr><tr class="hi"><td>Hybrid: сканеры + DeepSeek</td><td class="n">49.9%</td><td class="n">35.8%</td><td class="n">41.7%</td></tr><tr><td>Semgrep 1.177.0</td><td class="n">50.0%</td><td class="n">34.3%</td><td class="n">40.7%</td></tr></table>
-<p class="muted">На отложенной выборке hybrid на уровне Semgrep: 32.8% против 32.5%, разница статистически не значима.</p>""",
-        "На шестистах примерах из CVEfixes гибрид сканеров и модели находит больше всех — "
-        "почти тридцать шесть процентов уязвимостей. На отложенной выборке он на уровне Semgrep, "
-        "статистически значимого превосходства нет. Исправления сканеров подняли их полноту "
-        "с двадцати до двадцати шести процентов.",
+        """<h2>Эксперименты</h2><table><tr><th>OWASP Benchmark for Python, 1230 кейсов</th><th>Оценка</th></tr><tr class="hi"><td>SecureCode: сканеры + проверка gpt-oss-120b</td><td class="n">0,78</td></tr><tr><td>Только модель gpt-oss-120b</td><td class="n">0,80</td></tr><tr><td>SecureCode: только сканеры</td><td class="n">0,21</td></tr><tr><td>Bandit и Semgrep</td><td class="n">0,16</td></tr></table>
+<p class="muted">CVEfixes, 3000 файлов: SecureCode с моделью находит 50,5% уязвимостей против 34,3% у Semgrep, разница статистически значима.</p>""",
+        "Эксперименты проведены на двух открытых корпусах. На OWASP Benchmark для Python "
+        "SecureCode, где открытая модель gpt-oss проверяет находки сканеров, получает "
+        "оценку ноль семьдесят восемь и самую высокую точность, а Semgrep и Bandit — "
+        "всего ноль шестнадцать. На трёх тысячах файлов CVEfixes SecureCode с моделью "
+        "находит половину уязвимостей, на шестнадцать пунктов больше Semgrep.",
     ),
     (
-        """<h2>Итог</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">команда для запуска демо</p></div><div class="card"><div class="num">3292</div><p class="muted">автотеста в CI</p></div><div class="card"><div class="num">2</div><p class="muted">модели: Qwen локально и DeepSeek</p></div></div>
+        """<h2>Итог</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">команда для запуска демо</p></div><div class="card"><div class="num">3329</div><p class="muted">автотеста в CI</p></div><div class="card"><div class="num">2</div><p class="muted">модели: Qwen локально и DeepSeek</p></div></div>
 <pre style="margin-top:48px">git clone https://github.com/shorinversion/securecode-ai
 python deploy/docker/quickstart.py --demo</pre>""",
         "Проект запускается одной командой, покрыт тремя тысячами автотестов и работает как "
