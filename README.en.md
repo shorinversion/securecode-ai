@@ -157,7 +157,9 @@ positive rejected. A run costs less than $0.01.
 
 | Tool | Score |
 | --- | ---: |
+| gpt-oss-120b (open weights) | 0.80 |
 | GPT-5.6 Luna | 0.73 |
+| SecureCode scanners + gpt-oss-120b | 0.72 |
 | SecureCode scanners + Luna | 0.64 |
 | SecureCode scanners + DeepSeek | 0.45 |
 | SecureCode scanners | 0.21 |

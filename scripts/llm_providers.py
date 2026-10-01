@@ -81,8 +81,8 @@ for _key, _name, _model, _input, _output in (
         _output,
         {"temperature": 0, "max_tokens": 1024},
         currency="RUB",
-        max_parallel=4,
-        requests_per_minute=18,
+        max_parallel=8,
+        requests_per_minute=None,
     )
 
 

@@ -166,7 +166,9 @@ DeepSeek: SQL-инъекция (CWE-89, A03:2021) найдена, исправл
 
 | Инструмент | Оценка |
 | --- | ---: |
+| gpt-oss-120b (открытые веса) | 0,80 |
 | GPT-5.6 Luna | 0,73 |
+| Сканеры SecureCode + gpt-oss-120b | 0,72 |
 | Сканеры SecureCode + Luna | 0,64 |
 | Сканеры SecureCode + DeepSeek | 0,45 |
 | Сканеры SecureCode | 0,21 |
