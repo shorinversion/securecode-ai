@@ -19,6 +19,8 @@ package = false
 required-version = "==0.12.0"
 default-groups = []
 exclude-newer = "2026-08-13T00:00:00Z"
+# Security fixes published after the global cut-off (pip-audit, 2026-09-30).
+exclude-newer-package = { urllib3 = "2026-09-16T00:00:00Z", virtualenv = "2026-09-19T00:00:00Z", python-discovery = "2026-09-19T00:00:00Z" }
 build-constraint-dependencies = ["uv_build>=0.11.32,<0.13"]
 
 [dependency-groups]

@@ -316,6 +316,15 @@ LEGACY_EXPECTED_WORKER_PROJECT: Final = {
 }
 
 
+# Packages allowed to be newer than the global exclude-newer date, each only up to the
+# day after the release that fixed a published vulnerability (pip-audit, 2026-09-30).
+REVIEWED_SECURITY_UPDATES = {
+    "urllib3": "2026-09-16T00:00:00Z",
+    "virtualenv": "2026-09-19T00:00:00Z",
+    "python-discovery": "2026-09-19T00:00:00Z",
+}
+
+
 def _workspace_projects_for_paths(
     paths: set[str],
 ) -> Mapping[str, tuple[str, list[str], Mapping[str, Any], str]] | None:
@@ -826,12 +835,15 @@ def lock_errors(pyproject: Mapping[str, Any], lock: Mapping[str, Any]) -> list[s
         "required-version",
         "default-groups",
         "exclude-newer",
+        "exclude-newer-package",
         "build-constraint-dependencies",
         "sources",
         "workspace",
         "index",
     }:
         errors.append("root uv keys differ from the closed set")
+    if uv.get("exclude-newer-package") != REVIEWED_SECURITY_UPDATES:
+        errors.append("per-package upload-time exceptions differ from the reviewed security fixes")
     if uv.get("required-version") != "==0.12.0":
         errors.append("uv required-version must be exactly 0.12.0")
     if uv.get("default-groups") != [] or uv.get("package") is not False:
