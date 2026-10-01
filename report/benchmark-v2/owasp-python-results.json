@@ -1,0 +1,1802 @@
+{
+  "cases": 1230,
+  "cost_usd": {
+    "deepseek": 0.1097,
+    "glm": 0.2518,
+    "luna": 0.5073
+  },
+  "sample": {
+    "cases": 273,
+    "per_category": 20,
+    "tools": {
+      "bandit": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 7,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 3,
+            "fpr": 0.3,
+            "score": 0.4,
+            "tp": 7,
+            "tpr": 0.7
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 11,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.8,
+            "tp": 8,
+            "tpr": 0.8
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          }
+        },
+        "precision": 0.6557,
+        "score": 0.1571,
+        "tpr": 0.3008
+      },
+      "deepseek": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 6,
+            "fpr": 0.8571,
+            "score": 0.1429,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.1,
+            "tp": 1,
+            "tpr": 0.1
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 8,
+            "fpr": 0.8,
+            "score": 0.2,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 7,
+            "fpr": 0.7,
+            "score": 0.3,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 9,
+            "fpr": 0.9,
+            "score": 0.1,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 6,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.6369,
+        "score": 0.3888,
+        "tpr": 0.8571
+      },
+      "glm": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 2,
+            "fpr": 0.2857,
+            "score": 0.7143,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.6,
+            "tp": 6,
+            "tpr": 0.6
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 3,
+            "fpr": 0.3,
+            "score": 0.6,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.2,
+            "tp": 7,
+            "tpr": 0.7
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.6,
+            "tp": 8,
+            "tpr": 0.8
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.3,
+            "tp": 4,
+            "tpr": 0.4
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.8,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.8,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.4167,
+            "score": 0.5833,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.7986,
+        "score": 0.6641,
+        "tpr": 0.8647
+      },
+      "luna": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 1,
+            "fpr": 0.1429,
+            "score": 0.8571,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.3,
+            "tp": 8,
+            "tpr": 0.8
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.7,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.2,
+            "tp": 2,
+            "tpr": 0.2
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.8,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.8,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.1667,
+            "score": 0.8333,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.8243,
+        "score": 0.735,
+        "tpr": 0.9173
+      },
+      "securecode": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.0,
+            "tp": 2,
+            "tpr": 0.2
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.0833,
+            "score": 0.1667,
+            "tp": 2,
+            "tpr": 0.25
+          }
+        },
+        "precision": 0.6964,
+        "score": 0.1976,
+        "tpr": 0.2932
+      },
+      "securecode+deepseek": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 6,
+            "fpr": 0.8571,
+            "score": 0.1429,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 8,
+            "fpr": 0.8,
+            "score": 0.2,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 7,
+            "fpr": 0.7,
+            "score": 0.3,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 9,
+            "fpr": 0.9,
+            "score": 0.1,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 6,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.6543,
+        "score": 0.4531,
+        "tpr": 0.9248
+      },
+      "securecode+luna": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 1,
+            "fpr": 0.1429,
+            "score": 0.8571,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.5,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.2,
+            "tp": 2,
+            "tpr": 0.2
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.8,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 2,
+            "fpr": 0.2,
+            "score": 0.8,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 3,
+            "fpr": 0.25,
+            "score": 0.75,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.7515,
+        "score": 0.6434,
+        "tpr": 0.9323
+      },
+      "semgrep": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 7,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.9,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 10,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 3,
+            "fpr": 0.3,
+            "score": -0.3,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 12,
+            "fpr": 1.0,
+            "score": 0.0,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.5741,
+        "score": 0.1571,
+        "tpr": 0.4662
+      }
+    }
+  },
+  "source": "https://github.com/OWASP-Benchmark/BenchmarkPython",
+  "tools": {
+    "bandit": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 7,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 7,
+          "fpr": 0.1944,
+          "score": 0.5278,
+          "tp": 13,
+          "tpr": 0.7222
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 71,
+          "tpr": 1.0
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 11,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.7778,
+          "tp": 77,
+          "tpr": 0.7778
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        }
+      },
+      "precision": 0.8775,
+      "score": 0.1647,
+      "tpr": 0.396
+    },
+    "deepseek": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 6,
+          "fpr": 0.8571,
+          "score": 0.1429,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 33,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 12,
+          "fpr": 0.3333,
+          "score": 0.6667,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0563,
+          "tp": 4,
+          "tpr": 0.0563
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 13,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 16,
+          "tpr": 1.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 82,
+          "fpr": 0.7961,
+          "score": 0.2039,
+          "tp": 65,
+          "tpr": 1.0
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 14,
+          "fpr": 0.6667,
+          "score": 0.3333,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 24,
+          "tpr": 1.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 99,
+          "tpr": 1.0
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 108,
+          "fpr": 0.8,
+          "score": 0.2,
+          "tp": 51,
+          "tpr": 1.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 36,
+          "fpr": 0.6207,
+          "score": 0.3793,
+          "tp": 31,
+          "tpr": 1.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 11,
+          "fpr": 0.55,
+          "score": 0.45,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.5381,
+      "score": 0.388,
+      "tpr": 0.8119
+    },
+    "luna": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 1,
+          "fpr": 0.1429,
+          "score": 0.8571,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 3,
+          "fpr": 0.0909,
+          "score": 0.9091,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 5,
+          "fpr": 0.1389,
+          "score": 0.8056,
+          "tp": 17,
+          "tpr": 0.9444
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 37,
+          "fpr": 0.4625,
+          "score": 0.4248,
+          "tp": 63,
+          "tpr": 0.8873
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 6,
+          "fpr": 0.4615,
+          "score": 0.5385,
+          "tp": 16,
+          "tpr": 1.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 47,
+          "fpr": 0.4563,
+          "score": 0.5129,
+          "tp": 63,
+          "tpr": 0.9692
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 5,
+          "fpr": 0.2381,
+          "score": 0.685,
+          "tp": 12,
+          "tpr": 0.9231
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 24,
+          "tpr": 1.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 1,
+          "fpr": 0.0526,
+          "score": 0.0585,
+          "tp": 2,
+          "tpr": 0.1111
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 11,
+          "fpr": 0.0485,
+          "score": 0.9515,
+          "tp": 99,
+          "tpr": 1.0
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 11,
+          "fpr": 0.0815,
+          "score": 0.9185,
+          "tp": 51,
+          "tpr": 1.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 13,
+          "fpr": 0.2241,
+          "score": 0.7436,
+          "tp": 30,
+          "tpr": 0.9677
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 5,
+          "fpr": 0.25,
+          "score": 0.75,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.7447,
+      "score": 0.7254,
+      "tpr": 0.9358
+    },
+    "securecode": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 33,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 12,
+          "fpr": 0.3333,
+          "score": 0.6667,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 71,
+          "tpr": 1.0
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 3,
+          "fpr": 0.1429,
+          "score": 0.0879,
+          "tp": 3,
+          "tpr": 0.2308
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 2,
+          "fpr": 0.1,
+          "score": 0.15,
+          "tp": 2,
+          "tpr": 0.25
+        }
+      },
+      "precision": 0.7041,
+      "score": 0.2075,
+      "tpr": 0.2633
+    },
+    "securecode+deepseek": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 6,
+          "fpr": 0.8571,
+          "score": 0.1429,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 33,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 12,
+          "fpr": 0.3333,
+          "score": 0.6667,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 71,
+          "tpr": 1.0
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 13,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 16,
+          "tpr": 1.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 82,
+          "fpr": 0.7961,
+          "score": 0.2039,
+          "tp": 65,
+          "tpr": 1.0
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 15,
+          "fpr": 0.7143,
+          "score": 0.2857,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 24,
+          "tpr": 1.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 99,
+          "tpr": 1.0
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 108,
+          "fpr": 0.8,
+          "score": 0.2,
+          "tp": 51,
+          "tpr": 1.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 36,
+          "fpr": 0.6207,
+          "score": 0.3793,
+          "tp": 31,
+          "tpr": 1.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 12,
+          "fpr": 0.6,
+          "score": 0.4,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.5779,
+      "score": 0.4485,
+      "tpr": 0.9602
+    },
+    "securecode+luna": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 1,
+          "fpr": 0.1429,
+          "score": 0.8571,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 33,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 12,
+          "fpr": 0.3333,
+          "score": 0.6667,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 37,
+          "fpr": 0.4625,
+          "score": 0.5375,
+          "tp": 71,
+          "tpr": 1.0
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 6,
+          "fpr": 0.4615,
+          "score": 0.5385,
+          "tp": 16,
+          "tpr": 1.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 47,
+          "fpr": 0.4563,
+          "score": 0.5129,
+          "tp": 63,
+          "tpr": 0.9692
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 8,
+          "fpr": 0.381,
+          "score": 0.5421,
+          "tp": 12,
+          "tpr": 0.9231
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 24,
+          "tpr": 1.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 1,
+          "fpr": 0.0526,
+          "score": 0.0585,
+          "tp": 2,
+          "tpr": 0.1111
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 11,
+          "fpr": 0.0485,
+          "score": 0.9515,
+          "tp": 99,
+          "tpr": 1.0
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 11,
+          "fpr": 0.0815,
+          "score": 0.9185,
+          "tp": 51,
+          "tpr": 1.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 13,
+          "fpr": 0.2241,
+          "score": 0.7436,
+          "tp": 30,
+          "tpr": 0.9677
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 6,
+          "fpr": 0.3,
+          "score": 0.7,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.699,
+      "score": 0.6448,
+      "tpr": 0.9558
+    },
+    "semgrep": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 7,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 33,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 12,
+          "fpr": 0.3333,
+          "score": 0.6667,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.7606,
+          "tp": 54,
+          "tpr": 0.7606
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 2,
+          "fpr": 0.0194,
+          "score": 0.0114,
+          "tp": 2,
+          "tpr": 0.0308
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 1,
+          "fpr": 0.0476,
+          "score": 0.0293,
+          "tp": 1,
+          "tpr": 0.0769
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 15,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 24,
+          "tpr": 1.0
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 16,
+          "fpr": 0.2759,
+          "score": -0.2759,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 20,
+          "fpr": 1.0,
+          "score": 0.0,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.5777,
+      "score": 0.1566,
+      "tpr": 0.3208
+    }
+  }
+}

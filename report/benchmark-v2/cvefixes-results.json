@@ -1,0 +1,864 @@
+{
+  "cases": 3000,
+  "configurations": {
+    "bandit": {
+      "all": {
+        "analyzed": 0.89,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4939,
+        "false_positive_rate": 0.47,
+        "fp": 235,
+        "pair_discrimination": 0.022,
+        "precision": 0.5063,
+        "recall": 0.482,
+        "tp": 241
+      },
+      "go": {
+        "analyzed": 0.0,
+        "cases": 0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.0,
+        "false_positive_rate": 0.0,
+        "fp": 0,
+        "pair_discrimination": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "held-out": {
+        "analyzed": 0.92,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.5051,
+        "false_positive_rate": 0.48,
+        "fp": 96,
+        "pair_discrimination": 0.02,
+        "precision": 0.5102,
+        "recall": 0.5,
+        "tp": 100
+      },
+      "javascript-typescript": {
+        "analyzed": 0.0,
+        "cases": 0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.0,
+        "false_positive_rate": 0.0,
+        "fp": 0,
+        "pair_discrimination": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "python": {
+        "analyzed": 0.89,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4939,
+        "false_positive_rate": 0.47,
+        "fp": 235,
+        "pair_discrimination": 0.022,
+        "precision": 0.5063,
+        "recall": 0.482,
+        "tp": 241
+      }
+    },
+    "deepseek": {
+      "all": {
+        "analyzed": 0.9937,
+        "cases": 3000,
+        "cost_rub": 0.0,
+        "cost_usd": 4.0247,
+        "f1": 0.2165,
+        "false_positive_rate": 0.1367,
+        "fp": 205,
+        "pair_discrimination": 0.03,
+        "precision": 0.5024,
+        "recall": 0.138,
+        "tp": 207
+      },
+      "go": {
+        "analyzed": 1.0,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 1.2484,
+        "f1": 0.1864,
+        "false_positive_rate": 0.09,
+        "fp": 45,
+        "pair_discrimination": 0.036,
+        "precision": 0.5545,
+        "recall": 0.112,
+        "tp": 56
+      },
+      "held-out": {
+        "analyzed": 0.99,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 1.5974,
+        "f1": 0.21,
+        "false_positive_rate": 0.1367,
+        "fp": 82,
+        "pair_discrimination": 0.025,
+        "precision": 0.4938,
+        "recall": 0.1333,
+        "tp": 80
+      },
+      "javascript-typescript": {
+        "analyzed": 0.981,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 1.749,
+        "f1": 0.2374,
+        "false_positive_rate": 0.158,
+        "fp": 79,
+        "pair_discrimination": 0.028,
+        "precision": 0.4968,
+        "recall": 0.156,
+        "tp": 78
+      },
+      "python": {
+        "analyzed": 1.0,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 1.0272,
+        "f1": 0.2232,
+        "false_positive_rate": 0.162,
+        "fp": 81,
+        "pair_discrimination": 0.026,
+        "precision": 0.474,
+        "recall": 0.146,
+        "tp": 73
+      }
+    },
+    "eslint": {
+      "all": {
+        "analyzed": 0.79,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4313,
+        "false_positive_rate": 0.382,
+        "fp": 191,
+        "pair_discrimination": 0.002,
+        "precision": 0.4987,
+        "recall": 0.38,
+        "tp": 190
+      },
+      "go": {
+        "analyzed": 0.0,
+        "cases": 0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.0,
+        "false_positive_rate": 0.0,
+        "fp": 0,
+        "pair_discrimination": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "held-out": {
+        "analyzed": 0.7525,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4207,
+        "false_positive_rate": 0.37,
+        "fp": 74,
+        "pair_discrimination": 0.005,
+        "precision": 0.4966,
+        "recall": 0.365,
+        "tp": 73
+      },
+      "javascript-typescript": {
+        "analyzed": 0.79,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4313,
+        "false_positive_rate": 0.382,
+        "fp": 191,
+        "pair_discrimination": 0.002,
+        "precision": 0.4987,
+        "recall": 0.38,
+        "tp": 190
+      },
+      "python": {
+        "analyzed": 0.0,
+        "cases": 0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.0,
+        "false_positive_rate": 0.0,
+        "fp": 0,
+        "pair_discrimination": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      }
+    },
+    "gosec": {
+      "all": {
+        "analyzed": 0.308,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.2711,
+        "false_positive_rate": 0.186,
+        "fp": 93,
+        "pair_discrimination": 0.006,
+        "precision": 0.5,
+        "recall": 0.186,
+        "tp": 93
+      },
+      "go": {
+        "analyzed": 0.308,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.2711,
+        "false_positive_rate": 0.186,
+        "fp": 93,
+        "pair_discrimination": 0.006,
+        "precision": 0.5,
+        "recall": 0.186,
+        "tp": 93
+      },
+      "held-out": {
+        "analyzed": 0.3225,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.2857,
+        "false_positive_rate": 0.2,
+        "fp": 40,
+        "pair_discrimination": 0.01,
+        "precision": 0.5,
+        "recall": 0.2,
+        "tp": 40
+      },
+      "javascript-typescript": {
+        "analyzed": 0.0,
+        "cases": 0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.0,
+        "false_positive_rate": 0.0,
+        "fp": 0,
+        "pair_discrimination": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      },
+      "python": {
+        "analyzed": 0.0,
+        "cases": 0,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.0,
+        "false_positive_rate": 0.0,
+        "fp": 0,
+        "pair_discrimination": 0.0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "tp": 0
+      }
+    },
+    "luna": {
+      "all": {
+        "analyzed": 0.9817,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 2.0338,
+        "f1": 0.4545,
+        "false_positive_rate": 0.315,
+        "fp": 189,
+        "pair_discrimination": 0.125,
+        "precision": 0.5511,
+        "recall": 0.3867,
+        "tp": 232
+      },
+      "go": {
+        "analyzed": 0.99,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.6436,
+        "f1": 0.4379,
+        "false_positive_rate": 0.32,
+        "fp": 64,
+        "pair_discrimination": 0.12,
+        "precision": 0.5362,
+        "recall": 0.37,
+        "tp": 74
+      },
+      "held-out": {
+        "analyzed": 0.9817,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 2.0338,
+        "f1": 0.4545,
+        "false_positive_rate": 0.315,
+        "fp": 189,
+        "pair_discrimination": 0.125,
+        "precision": 0.5511,
+        "recall": 0.3867,
+        "tp": 232
+      },
+      "javascript-typescript": {
+        "analyzed": 0.955,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.6543,
+        "f1": 0.4746,
+        "false_positive_rate": 0.35,
+        "fp": 70,
+        "pair_discrimination": 0.105,
+        "precision": 0.5455,
+        "recall": 0.42,
+        "tp": 84
+      },
+      "python": {
+        "analyzed": 1.0,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.7359,
+        "f1": 0.4498,
+        "false_positive_rate": 0.275,
+        "fp": 55,
+        "pair_discrimination": 0.15,
+        "precision": 0.5736,
+        "recall": 0.37,
+        "tp": 74
+      }
+    },
+    "pipeline": {
+      "all": {
+        "analyzed": 0.4228,
+        "cases": 246,
+        "cost_rub": 0.0,
+        "cost_usd": 3.607,
+        "f1": 0.2267,
+        "false_positive_rate": 0.0813,
+        "fp": 10,
+        "pair_discrimination": 0.0976,
+        "precision": 0.6296,
+        "recall": 0.1382,
+        "tp": 17
+      },
+      "go": {
+        "analyzed": 0.35,
+        "cases": 80,
+        "cost_rub": 0.0,
+        "cost_usd": 0.8181,
+        "f1": 0.1333,
+        "false_positive_rate": 0.05,
+        "fp": 2,
+        "pair_discrimination": 0.075,
+        "precision": 0.6,
+        "recall": 0.075,
+        "tp": 3
+      },
+      "held-out": {
+        "analyzed": 0.4228,
+        "cases": 246,
+        "cost_rub": 0.0,
+        "cost_usd": 3.607,
+        "f1": 0.2267,
+        "false_positive_rate": 0.0813,
+        "fp": 10,
+        "pair_discrimination": 0.0976,
+        "precision": 0.6296,
+        "recall": 0.1382,
+        "tp": 17
+      },
+      "javascript-typescript": {
+        "analyzed": 0.425,
+        "cases": 80,
+        "cost_rub": 0.0,
+        "cost_usd": 0.7981,
+        "f1": 0.2083,
+        "false_positive_rate": 0.075,
+        "fp": 3,
+        "pair_discrimination": 0.075,
+        "precision": 0.625,
+        "recall": 0.125,
+        "tp": 5
+      },
+      "python": {
+        "analyzed": 0.4884,
+        "cases": 86,
+        "cost_rub": 0.0,
+        "cost_usd": 1.9908,
+        "f1": 0.3158,
+        "false_positive_rate": 0.1163,
+        "fp": 5,
+        "pair_discrimination": 0.1395,
+        "precision": 0.6429,
+        "recall": 0.2093,
+        "tp": 9
+      }
+    },
+    "securecode": {
+      "all": {
+        "analyzed": 0.8593,
+        "cases": 3000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.3395,
+        "false_positive_rate": 0.2653,
+        "fp": 398,
+        "pair_discrimination": 0.006,
+        "precision": 0.4936,
+        "recall": 0.2587,
+        "tp": 388
+      },
+      "go": {
+        "analyzed": 0.896,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.178,
+        "false_positive_rate": 0.126,
+        "fp": 63,
+        "pair_discrimination": 0.004,
+        "precision": 0.4661,
+        "recall": 0.11,
+        "tp": 55
+      },
+      "held-out": {
+        "analyzed": 0.86,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.3344,
+        "false_positive_rate": 0.2533,
+        "fp": 152,
+        "pair_discrimination": 0.0083,
+        "precision": 0.4983,
+        "recall": 0.2517,
+        "tp": 151
+      },
+      "javascript-typescript": {
+        "analyzed": 0.833,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.3477,
+        "false_positive_rate": 0.264,
+        "fp": 132,
+        "pair_discrimination": 0.006,
+        "precision": 0.5019,
+        "recall": 0.266,
+        "tp": 133
+      },
+      "python": {
+        "analyzed": 0.849,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.443,
+        "false_positive_rate": 0.406,
+        "fp": 203,
+        "pair_discrimination": 0.008,
+        "precision": 0.4963,
+        "recall": 0.4,
+        "tp": 200
+      }
+    },
+    "securecode+deepseek": {
+      "all": {
+        "analyzed": 0.859,
+        "cases": 3000,
+        "cost_rub": 0.0,
+        "cost_usd": 4.0247,
+        "f1": 0.4063,
+        "false_positive_rate": 0.3547,
+        "fp": 532,
+        "pair_discrimination": 0.026,
+        "precision": 0.4933,
+        "recall": 0.3453,
+        "tp": 518
+      },
+      "go": {
+        "analyzed": 0.896,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 1.2484,
+        "f1": 0.2922,
+        "false_positive_rate": 0.204,
+        "fp": 102,
+        "pair_discrimination": 0.034,
+        "precision": 0.5024,
+        "recall": 0.206,
+        "tp": 103
+      },
+      "held-out": {
+        "analyzed": 0.86,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 1.5974,
+        "f1": 0.3948,
+        "false_positive_rate": 0.3417,
+        "fp": 205,
+        "pair_discrimination": 0.0217,
+        "precision": 0.4913,
+        "recall": 0.33,
+        "tp": 198
+      },
+      "javascript-typescript": {
+        "analyzed": 0.832,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 1.749,
+        "f1": 0.4194,
+        "false_positive_rate": 0.372,
+        "fp": 186,
+        "pair_discrimination": 0.024,
+        "precision": 0.4946,
+        "recall": 0.364,
+        "tp": 182
+      },
+      "python": {
+        "analyzed": 0.849,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 1.0272,
+        "f1": 0.477,
+        "false_positive_rate": 0.488,
+        "fp": 244,
+        "pair_discrimination": 0.02,
+        "precision": 0.4885,
+        "recall": 0.466,
+        "tp": 233
+      }
+    },
+    "securecode+luna": {
+      "all": {
+        "analyzed": 0.86,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 2.0338,
+        "f1": 0.5149,
+        "false_positive_rate": 0.4567,
+        "fp": 274,
+        "pair_discrimination": 0.09,
+        "precision": 0.5251,
+        "recall": 0.505,
+        "tp": 303
+      },
+      "go": {
+        "analyzed": 0.9,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.6436,
+        "f1": 0.4568,
+        "false_positive_rate": 0.385,
+        "fp": 77,
+        "pair_discrimination": 0.1,
+        "precision": 0.5157,
+        "recall": 0.41,
+        "tp": 82
+      },
+      "held-out": {
+        "analyzed": 0.86,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 2.0338,
+        "f1": 0.5149,
+        "false_positive_rate": 0.4567,
+        "fp": 274,
+        "pair_discrimination": 0.09,
+        "precision": 0.5251,
+        "recall": 0.505,
+        "tp": 303
+      },
+      "javascript-typescript": {
+        "analyzed": 0.805,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.6543,
+        "f1": 0.5179,
+        "false_positive_rate": 0.445,
+        "fp": 89,
+        "pair_discrimination": 0.085,
+        "precision": 0.5316,
+        "recall": 0.505,
+        "tp": 101
+      },
+      "python": {
+        "analyzed": 0.875,
+        "cases": 400,
+        "cost_rub": 0.0,
+        "cost_usd": 0.7359,
+        "f1": 0.5607,
+        "false_positive_rate": 0.54,
+        "fp": 108,
+        "pair_discrimination": 0.085,
+        "precision": 0.5263,
+        "recall": 0.6,
+        "tp": 120
+      }
+    },
+    "securecode+semgrep": {
+      "all": {
+        "analyzed": 0.8497,
+        "cases": 3000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4678,
+        "false_positive_rate": 0.45,
+        "fp": 675,
+        "pair_discrimination": 0.01,
+        "precision": 0.4959,
+        "recall": 0.4427,
+        "tp": 664
+      },
+      "go": {
+        "analyzed": 0.894,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.3125,
+        "false_positive_rate": 0.242,
+        "fp": 121,
+        "pair_discrimination": 0.01,
+        "precision": 0.4873,
+        "recall": 0.23,
+        "tp": 115
+      },
+      "held-out": {
+        "analyzed": 0.8525,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4655,
+        "false_positive_rate": 0.445,
+        "fp": 267,
+        "pair_discrimination": 0.0133,
+        "precision": 0.4962,
+        "recall": 0.4383,
+        "tp": 263
+      },
+      "javascript-typescript": {
+        "analyzed": 0.811,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.499,
+        "false_positive_rate": 0.504,
+        "fp": 252,
+        "pair_discrimination": 0.008,
+        "precision": 0.498,
+        "recall": 0.5,
+        "tp": 250
+      },
+      "python": {
+        "analyzed": 0.844,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.5431,
+        "false_positive_rate": 0.604,
+        "fp": 302,
+        "pair_discrimination": 0.012,
+        "precision": 0.4975,
+        "recall": 0.598,
+        "tp": 299
+      }
+    },
+    "semgrep": {
+      "all": {
+        "analyzed": 0.903,
+        "cases": 3000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4051,
+        "false_positive_rate": 0.3387,
+        "fp": 508,
+        "pair_discrimination": 0.0147,
+        "precision": 0.501,
+        "recall": 0.34,
+        "tp": 510
+      },
+      "go": {
+        "analyzed": 0.917,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.2451,
+        "false_positive_rate": 0.16,
+        "fp": 80,
+        "pair_discrimination": 0.008,
+        "precision": 0.5031,
+        "recall": 0.162,
+        "tp": 81
+      },
+      "held-out": {
+        "analyzed": 0.9092,
+        "cases": 1200,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4071,
+        "false_positive_rate": 0.3433,
+        "fp": 206,
+        "pair_discrimination": 0.0167,
+        "precision": 0.5,
+        "recall": 0.3433,
+        "tp": 206
+      },
+      "javascript-typescript": {
+        "analyzed": 0.873,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4323,
+        "false_positive_rate": 0.378,
+        "fp": 189,
+        "pair_discrimination": 0.014,
+        "precision": 0.5013,
+        "recall": 0.38,
+        "tp": 190
+      },
+      "python": {
+        "analyzed": 0.919,
+        "cases": 1000,
+        "cost_rub": 0.0,
+        "cost_usd": 0.0,
+        "f1": 0.4888,
+        "false_positive_rate": 0.478,
+        "fp": 239,
+        "pair_discrimination": 0.022,
+        "precision": 0.5,
+        "recall": 0.478,
+        "tp": 239
+      }
+    }
+  },
+  "recall_difference_vs_semgrep": {
+    "bandit": {
+      "all": [
+        0.004,
+        -0.042,
+        0.052
+      ],
+      "held-out": [
+        -0.005,
+        -0.075,
+        0.07
+      ]
+    },
+    "deepseek": {
+      "all": [
+        -0.202,
+        -0.2287,
+        -0.176
+      ],
+      "held-out": [
+        -0.21,
+        -0.2517,
+        -0.1683
+      ]
+    },
+    "eslint": {
+      "all": [
+        0.0,
+        -0.048,
+        0.048
+      ],
+      "held-out": [
+        0.005,
+        -0.07,
+        0.08
+      ]
+    },
+    "gosec": {
+      "all": [
+        0.024,
+        -0.006,
+        0.054
+      ],
+      "held-out": [
+        0.035,
+        -0.01,
+        0.08
+      ]
+    },
+    "luna": {
+      "all": [
+        0.0433,
+        -0.0067,
+        0.095
+      ],
+      "held-out": [
+        0.0433,
+        -0.0067,
+        0.095
+      ]
+    },
+    "pipeline": {
+      "all": [
+        -0.187,
+        -0.2764,
+        -0.0976
+      ],
+      "held-out": [
+        -0.187,
+        -0.2764,
+        -0.0976
+      ]
+    },
+    "securecode": {
+      "all": [
+        -0.0813,
+        -0.108,
+        -0.0553
+      ],
+      "held-out": [
+        -0.0917,
+        -0.1333,
+        -0.05
+      ]
+    },
+    "securecode+deepseek": {
+      "all": [
+        0.0053,
+        -0.0213,
+        0.0327
+      ],
+      "held-out": [
+        -0.0133,
+        -0.055,
+        0.0283
+      ]
+    },
+    "securecode+luna": {
+      "all": [
+        0.1617,
+        0.1133,
+        0.21
+      ],
+      "held-out": [
+        0.1617,
+        0.1133,
+        0.21
+      ]
+    },
+    "securecode+semgrep": {
+      "all": [
+        0.1027,
+        0.088,
+        0.118
+      ],
+      "held-out": [
+        0.095,
+        0.0717,
+        0.1183
+      ]
+    }
+  }
+}

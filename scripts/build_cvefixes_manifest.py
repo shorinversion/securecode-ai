@@ -1,4 +1,4 @@
-"""Build the source-free 600-case CVEfixes release-corpus manifest.
+"""Build a source-free paired CVEfixes corpus manifest (600 cases by default).
 
 The database is opened immutable and read-only.  Source bytes are used only to
 calculate identities; neither the manifest nor the command output contain a
@@ -102,6 +102,9 @@ def _pairs(
 
 
 def _split(group_index: int) -> str:
+    # Every block of 100 pairs keeps the 40/20/40 split, so a larger corpus starts with
+    # exactly the pairs and splits of the 100-pair corpus.
+    group_index %= 100
     cursor = 0
     for name, count in SPLITS:
         cursor += count
@@ -124,8 +127,11 @@ def _case(pair: Pair, content: str, *, revision: str, label: str, split: str) ->
     }
 
 
-def build_manifest(database: Path) -> dict[str, object]:
-    """Select 100 paired, non-overlapping lineage groups per language."""
+def build_manifest(database: Path, pairs_per_language: int = 100) -> dict[str, object]:
+    """Select paired, non-overlapping lineage groups per language (100 by default)."""
+
+    if type(pairs_per_language) is not int or not 1 <= pairs_per_language <= 5000:
+        raise ValueError("pairs per language must be between 1 and 5000")
     selected_cases: list[dict[str, object]] = []
     seen_content: set[str] = set()
     with _connection(database) as connection:
@@ -149,9 +155,9 @@ def build_manifest(database: Path) -> dict[str, object]:
                 )
                 seen_content.update((before, after))
                 selected += 1
-                if selected == 100:
+                if selected == pairs_per_language:
                     break
-            if selected != 100:
+            if selected != pairs_per_language:
                 raise ValueError(f"insufficient eligible CVEfixes pairs for {label}")
 
     cases = sorted(selected_cases, key=lambda item: str(item["case_id"]))
@@ -159,7 +165,9 @@ def build_manifest(database: Path) -> dict[str, object]:
         "schema_version": SCHEMA_VERSION,
         "datasets": [
             {
-                "dataset_id": DATASET_ID,
+                "dataset_id": DATASET_ID
+                if pairs_per_language == 100
+                else f"{DATASET_ID}-{pairs_per_language * 6}",
                 "version": "1.0.8",
                 "source_id": "zenodo:10.5281/zenodo.4476563",
                 "revision": "sqlite:CVEfixes_v1.0.8.sqlite",
@@ -176,9 +184,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--pairs-per-language", type=int, default=100)
     arguments = parser.parse_args(argv)
     try:
-        manifest = build_manifest(arguments.database.resolve(strict=True))
+        manifest = build_manifest(
+            arguments.database.resolve(strict=True), arguments.pairs_per_language
+        )
         output = arguments.output.resolve()
         if not output.is_absolute() or output.suffix != ".json":
             raise ValueError("output must be an absolute JSON path")
