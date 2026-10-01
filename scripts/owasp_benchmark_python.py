@@ -156,7 +156,7 @@ def llm(provider_name: str, root: Path, cases: Sequence[Case]) -> tuple[dict[str
         found = {int(value) for value in values if str(value).isdigit()} | _cwes(json.dumps(values))
         return name, found, cost
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=provider.max_parallel) as pool:
         results = list(pool.map(one, cases))
     return {name: found for name, found, _ in results}, sum(cost for *_, cost in results)
 

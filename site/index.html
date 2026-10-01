@@ -43,9 +43,9 @@ footer{color:var(--muted);font-size:14px;margin-top:28px}
 <div class="card"><h3>Инструменты</h3><p class="muted">Синтаксические деревья (ast, tree-sitter), поиск захардкоженных секретов, уязвимые версии библиотек по базе OSV, детерминированные правила для 35 типов CWE.</p></div>
 <div class="card"><h3>Поиск</h3><p class="muted">Языковая модель сама ищет уязвимости по всему коду, независимо от сканеров; может сообщить о любой из 139 CWE.</p></div>
 <div class="card"><h3>Аудитор</h3><p class="muted">Проверяет каждого кандидата: доходят ли недоверенные данные до уязвимой операции и есть ли реальный ущерб.</p></div>
-<div class="card"><h3>Скептик</h3><p class="muted">Второй агент пытается опровергнуть находку; принимаются только те, что выдержали проверку.</p></div>
-<div class="card"><h3>Архитектор</h3><p class="muted">Модель предлагает исправление в виде diff. Патч проверяется во временной копии; исходный репозиторий не меняется.</p></div>
-<div class="card"><h3>Отчёт</h3><p class="muted">Markdown и HTML: CWE, категория OWASP Top 10, строка и готовое исправление.</p></div>
+<div class="card"><h3>Скептик</h3><p class="muted">Пытается опровергнуть вывод Аудитора; в отчёт попадают только находки, выдержавшие проверку.</p></div>
+<div class="card"><h3>Архитектор</h3><p class="muted">Предлагает исправление в виде diff; патч проверяется (git apply, синтаксис, повторный скан) до попадания в отчёт.</p></div>
+<div class="card"><h3>Отчёт</h3><p class="muted">Markdown, HTML, JSON и SARIF: CWE, категория OWASP Top 10, фрагмент кода и проверенное исправление.</p></div>
 </div>
 
 <div class="card"><h2>Результат аудита</h2><p>Демонстрационный файл с SQL-инъекцией. Одинаковый результат на локальной Qwen 2.5 Coder 7B (Q4_K_M, Ollama) и на DeepSeek.</p>
@@ -56,13 +56,12 @@ footer{color:var(--muted);font-size:14px;margin-top:28px}
 <a class="btn" href="demo-report-qwen.html">Отчёт: Qwen</a><a class="btn outline" href="demo-report-deepseek.html">Отчёт: DeepSeek</a></div>
 
 <div class="grid">
-<div class="card"><span class="muted">Корпус CVEfixes</span><div class="num">600</div><span class="muted">примеров, по 200 на Python, JS/TS и Go</span></div>
-<div class="card"><span class="muted">Recall hybrid</span><div class="num">35.8%</div><span class="muted">против 34.3% у Semgrep</span></div>
-<div class="card"><span class="muted">Автотестов</span><div class="num">3292</div><span class="muted">линтеры, типы и тесты в CI</span></div>
+<div class="card"><span class="muted">OWASP Benchmark for Python</span><div class="num">0,64</div><span class="muted">сканеры SecureCode + LLM против 0,16 у Semgrep и Bandit</span></div>
+<div class="card"><span class="muted">CVEfixes, 3000 файлов</span><div class="num">+16,2 п. п.</div><span class="muted">recall гибрида против Semgrep (50,5% и 34,3%)</span></div>
+<div class="card"><span class="muted">Автотестов</span><div class="num">3329</div><span class="muted">линтеры, типы и тесты в CI</span></div>
 </div>
 
-<div class="card"><h2>Эксперименты</h2><table><tr><th>Конфигурация</th><th>Precision</th><th>Recall</th><th>F1</th></tr><tr><td>Сканеры SecureCode</td><td class="n">49.0%</td><td class="n">25.7%</td><td class="n">33.7%</td></tr><tr><td>DeepSeek, one-shot</td><td class="n">52.0%</td><td class="n">22.7%</td><td class="n">31.6%</td></tr><tr class="hi"><td>Hybrid: сканеры и DeepSeek</td><td class="n">49.9%</td><td class="n">35.8%</td><td class="n">41.7%</td></tr><tr><td>Semgrep 1.177.0</td><td class="n">50.0%</td><td class="n">34.3%</td><td class="n">40.7%</td></tr></table>
-<p class="muted">На отложенной выборке полнота hybrid 32,8% против 32,5% у Semgrep; интервал разницы включает ноль, то есть hybrid на уровне статического анализатора, но не лучше. Precision около 50% объясняется устройством корпуса: одна и та же функция встречается в уязвимой и исправленной версиях.</p><a class="btn outline" href="benchmark.html">Подробнее об экспериментах</a></div>
+<div class="card"><h2>Эксперименты</h2><p class="muted">OWASP Benchmark for Python: 1230 кейсов, 14 категорий; оценка TPR − FPR, 1 — идеально.</p><table><tr><th>Инструмент</th><th>Оценка</th></tr><tr><td>GPT-5.6 Luna</td><td class="n">0,73</td></tr><tr class="hi"><td>Сканеры SecureCode + Luna</td><td class="n">0,64</td></tr><tr><td>Сканеры SecureCode + DeepSeek</td><td class="n">0,45</td></tr><tr><td>Сканеры SecureCode</td><td class="n">0,21</td></tr><tr><td>Bandit 1.9.4</td><td class="n">0,16</td></tr><tr><td>Semgrep 1.177.0</td><td class="n">0,16</td></tr></table><p class="muted">CVEfixes: 3000 файлов, пары «до и после исправления CVE», отложенная выборка 1200 файлов.</p><table><tr><th>Конфигурация</th><th>Recall</th><th>Разница с Semgrep, п. п.</th></tr><tr class="hi"><td>Сканеры SecureCode + Luna</td><td class="n">50,5%</td><td class="n">+16,2 [+11,3; +21,0]</td></tr><tr><td>Сканеры SecureCode + Semgrep</td><td class="n">43,8%</td><td class="n">+9,5 [+7,2; +11,8]</td></tr><tr><td>Semgrep 1.177.0</td><td class="n">34,3%</td><td class="n">—</td></tr><tr><td>Сканеры SecureCode</td><td class="n">25,2%</td><td class="n">−9,2 [−13,3; −5,0]</td></tr></table><p class="muted">Precision около 50% у всех инструментов на CVEfixes — свойство парного корпуса: уязвимая и исправленная версии файла почти совпадают. Датасеты: <a href="https://zenodo.org/records/13118970">CVEfixes</a>, <a href="https://github.com/OWASP-Benchmark/BenchmarkPython">OWASP Benchmark for Python</a>.</p><a class="btn outline" href="benchmark.html">Подробнее об экспериментах</a></div>
 
 <div class="card"><h2>Демонстрация</h2><video controls preload="metadata" src="securecode-demo.mp4?v=20260930c"></video><p class="muted"><a href="securecode-demo.en.mp4?v=20260930c">English version</a></p></div>
 

@@ -304,7 +304,7 @@ def _llm(provider_name: str) -> Callable[[Sequence[tuple[Case, str]]], dict[str,
         return case.case_id, {"predicted": value, "status": "completed", cost_field: cost}
 
     def run(values: Sequence[tuple[Case, str]]) -> dict[str, Record]:
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=provider.max_parallel) as pool:
             return dict(pool.map(one, values))
 
     return run

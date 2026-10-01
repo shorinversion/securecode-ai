@@ -26,6 +26,7 @@ class Provider:
     output_microusd_per_million: int
     parameters: dict[str, Any] = field(default_factory=dict)
     currency: str = "USD"
+    max_parallel: int = 8
 
 
 PROVIDERS: Final[dict[str, Provider]] = {
@@ -78,6 +79,7 @@ for _key, _name, _model, _input, _output in (
         _output,
         {"temperature": 0, "max_tokens": 1024},
         currency="RUB",
+        max_parallel=8,
     )
 
 
@@ -111,7 +113,7 @@ def _last_json_object(text: str) -> dict[str, Any]:
 
 
 def complete_json(
-    provider: Provider, prompt: str, *, attempts: int = 3
+    provider: Provider, prompt: str, *, attempts: int = 5
 ) -> tuple[dict[str, Any], int]:
     """Send one JSON-mode prompt; return the parsed object and its cost in micro-USD."""
 
@@ -142,7 +144,11 @@ def complete_json(
             ) // 1_000_000
             content = frame["choices"][0]["message"]["content"] or ""
             return _last_json_object(content), cost
-        except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError) as error:
+        except urllib.error.HTTPError as error:
+            last_error = error
+            # Rate limits get a longer back-off than transient failures.
+            time.sleep((15 if error.code == 429 else 2) * (attempt + 1))
+        except (OSError, ValueError, KeyError, TypeError) as error:
             last_error = error
             time.sleep(2 * (attempt + 1))
     raise ValueError(f"{provider.name} request failed: {last_error}")

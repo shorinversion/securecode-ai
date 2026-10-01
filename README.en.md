@@ -153,17 +153,30 @@ SQL injection (CWE-89, A03:2021) found, the parameterized-query fix validated. R
 redirect, path traversal and missing JWT signature verification confirmed; a CSRF false
 positive rejected. A run costs less than $0.01.
 
-**CVEfixes benchmark** (600 files: vulnerable/fixed pairs, 200 per language):
+**OWASP Benchmark for Python** (1230 cases, 14 categories; score TPR − FPR, 1 is perfect):
 
-| Configuration | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: |
-| SecureCode scanners | 49.0% | 25.7% | 33.7% |
-| SecureCode scanners + DeepSeek | 49.9% | 35.8% | 41.7% |
-| Semgrep 1.177.0 | 50.0% | 34.3% | 40.7% |
+| Tool | Score |
+| --- | ---: |
+| GPT-5.6 Luna | 0.73 |
+| SecureCode scanners + Luna | 0.64 |
+| SecureCode scanners + DeepSeek | 0.45 |
+| SecureCode scanners | 0.21 |
+| Bandit 1.9.4 | 0.16 |
+| Semgrep 1.177.0 | 0.16 |
 
-On the held-out split (240 files) the hybrid recall is 32.8% against 32.5% for Semgrep;
-the difference is not statistically significant (95% CI −8.9 to +10.0 pp). Method,
-per-language results and limitations: [experiments report](https://mydev.stream/benchmark.html).
+**CVEfixes** (3000 files: before/after CVE-fix pairs, 118 CWEs; held-out split of 1200 files):
+
+| Configuration | Recall | Difference to Semgrep, pp (95% CI) |
+| --- | ---: | ---: |
+| SecureCode scanners + Luna | 50.5% | +16.2 [+11.3; +21.0] |
+| SecureCode scanners + Semgrep | 43.8% | +9.5 [+7.2; +11.8] |
+| Semgrep 1.177.0 | 34.3% | — |
+| SecureCode scanners | 25.2% | −9.2 [−13.3; −5.0] |
+
+Method, Bandit, gosec, ESLint, open-weight models, per-language results and limitations:
+[experiments report](report/benchmark-v2/README.md) (in Russian). Datasets:
+[CVEfixes](https://zenodo.org/records/13118970),
+[OWASP Benchmark for Python](https://github.com/OWASP-Benchmark/BenchmarkPython).
 
 ## Languages and rules
 
