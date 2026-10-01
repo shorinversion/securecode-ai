@@ -2,7 +2,7 @@
 
 SLIDES_EN: list[tuple[str, str]] = [
     (
-        """<div class="pills"><span class="pill">MTS True Tech</span><span class="pill dark">Final project · task 2</span><span class="pill light">Version 1.0</span></div>
+        """<div class="pills"><span class="pill">MTS True Tech</span><span class="pill dark">Final project · task 2</span><span class="pill light">Version 1.1</span></div>
 <h1>SecureCode AI</h1><p style="font-size:48px;max-width:1400px">A local AI assistant for code security audits: it finds vulnerabilities, proposes fixes and validates them without sending code to the cloud.</p>""",
         "SecureCode AI is a local assistant for code security audits. It finds vulnerabilities, "
         "proposes fixes and validates them, without sending source code to the cloud. "
@@ -58,15 +58,16 @@ Outcome     <span class="add">COMPLETED</span></pre>""",
         "are found. Every finding uses one schema: file, lines, CWE and content hash.",
     ),
     (
-        """<h2>Experiments</h2><table><tr><th>600 CVEfixes cases</th><th>Precision</th><th>Recall</th><th>F1</th></tr><tr><td>SecureCode scanners</td><td class="n">49.0%</td><td class="n">25.7%</td><td class="n">33.7%</td></tr><tr><td>DeepSeek, one-shot</td><td class="n">52.0%</td><td class="n">22.7%</td><td class="n">31.6%</td></tr><tr class="hi"><td>Hybrid: scanners + DeepSeek</td><td class="n">49.9%</td><td class="n">35.8%</td><td class="n">41.7%</td></tr><tr><td>Semgrep 1.177.0</td><td class="n">50.0%</td><td class="n">34.3%</td><td class="n">40.7%</td></tr></table>
-<p class="muted">On the held-out split the hybrid is on par with Semgrep: 32.8% vs 32.5%, not a significant difference.</p>""",
-        "On six hundred CVEfixes cases, the hybrid of scanners and the model finds the most "
-        "vulnerabilities, almost thirty-six percent. On the held-out split it is on par with "
-        "Semgrep, with no significant advantage. Scanner fixes raised their recall from twenty "
-        "to twenty-six percent.",
+        """<h2>Experiments</h2><table><tr><th>OWASP Benchmark for Python, 1230 cases</th><th>Score</th></tr><tr class="hi"><td>SecureCode: scanners + gpt-oss-120b verification</td><td class="n">0.78</td></tr><tr><td>Model only: gpt-oss-120b</td><td class="n">0.80</td></tr><tr><td>SecureCode: scanners only</td><td class="n">0.21</td></tr><tr><td>Bandit and Semgrep</td><td class="n">0.16</td></tr></table>
+<p class="muted">CVEfixes, 3000 files: SecureCode with a model finds 50.5% of vulnerabilities against 34.3% for Semgrep, a significant difference.</p>""",
+        "We ran experiments on two open corpora. On the OWASP Benchmark for Python, "
+        "SecureCode, where the open gpt-oss model verifies the scanner findings, scores "
+        "zero point seven eight with the highest precision, while Semgrep and Bandit "
+        "score only zero point one six. On three thousand CVEfixes files SecureCode with "
+        "a model finds half of the vulnerabilities, sixteen points more than Semgrep.",
     ),
     (
-        """<h2>Summary</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">command to run the demo</p></div><div class="card"><div class="num">3292</div><p class="muted">automated tests in CI</p></div><div class="card"><div class="num">2</div><p class="muted">models: local Qwen and DeepSeek</p></div></div>
+        """<h2>Summary</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">command to run the demo</p></div><div class="card"><div class="num">3329</div><p class="muted">automated tests in CI</p></div><div class="card"><div class="num">2</div><p class="muted">models: local Qwen and DeepSeek</p></div></div>
 <pre style="margin-top:48px">git clone https://github.com/shorinversion/securecode-ai
 python deploy/docker/quickstart.py --demo</pre>""",
         "The project starts with one command, is covered by more than three thousand automated "

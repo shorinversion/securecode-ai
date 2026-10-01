@@ -9,12 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
-NAMES: Final = {
-    "securecode": "Сканеры SecureCode",
-    "semgrep": "Semgrep 1.177.0",
-    "bandit": "Bandit 1.9.4",
-    "gosec": "gosec",
-    "eslint": "ESLint + eslint-plugin-security",
+_MODELS: Final = {
     "deepseek": "DeepSeek Flash",
     "luna": "GPT-5.6 Luna",
     "glm": "GLM-5.3",
@@ -24,10 +19,21 @@ NAMES: Final = {
     "gpt-oss-120b": "gpt-oss-120b",
     "gpt-oss-20b": "gpt-oss-20b",
     "gemma-4-31b": "Gemma 4 31B",
-    "securecode+deepseek": "Гибрид: сканеры SecureCode + DeepSeek",
-    "securecode+luna": "Гибрид: сканеры SecureCode + Luna",
-    "securecode+semgrep": "Сканеры SecureCode + Semgrep",
-    "pipeline": "Полный конвейер SecureCode (Поиск, Аудитор, Скептик)",
+}
+# SecureCode configurations first, then the baselines: open analyzers and models alone.
+NAMES: Final = {
+    "pipeline": "SecureCode: полный конвейер (Поиск, Аудитор, Скептик)",
+    **{
+        f"verified+{key}": f"SecureCode: сканеры + проверка {name}" for key, name in _MODELS.items()
+    },
+    **{f"securecode+{key}": f"SecureCode: сканеры ∪ {name}" for key, name in _MODELS.items()},
+    "securecode+semgrep": "Сканеры SecureCode ∪ Semgrep",
+    "securecode": "SecureCode: только сканеры",
+    "semgrep": "Semgrep 1.177.0",
+    "bandit": "Bandit 1.9.4",
+    "gosec": "gosec",
+    "eslint": "ESLint + eslint-plugin-security",
+    **{key: f"Только модель: {name}" for key, name in _MODELS.items()},
 }
 SCOPES: Final = {
     "python": "Python",
@@ -203,7 +209,17 @@ def _owasp_table(tools: Mapping[str, Mapping[str, Any]], title: str) -> list[str
             f"| {NAMES.get(name, name)} | {score} | {_percent(value['tpr'])} | "
             f"{_percent(value['precision'])} |"
         )
-    names = list(tools)
+    key = (
+        "verified+gpt-oss-120b",
+        "gpt-oss-120b",
+        "verified+deepseek",
+        "deepseek",
+        "glm",
+        "securecode",
+        "semgrep",
+        "bandit",
+    )
+    names = [name for name in key if name in tools]
     out += [
         "",
         "| Категория | " + " | ".join(NAMES.get(name, name) for name in names) + " |",

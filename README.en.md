@@ -19,7 +19,7 @@ reported. The model can run locally, so source code does not leave the developer
 
 ## Video
 
-https://github.com/user-attachments/assets/64b92705-5b49-4424-b656-cb100d147ece
+https://github.com/user-attachments/assets/c4a309ba-cf06-43dd-af2f-c7c824c7a57d
 
 The Russian version is in [README.md](README.md#видео).
 
@@ -153,27 +153,28 @@ SQL injection (CWE-89, A03:2021) found, the parameterized-query fix validated. R
 redirect, path traversal and missing JWT signature verification confirmed; a CSRF false
 positive rejected. A run costs less than $0.01.
 
-**OWASP Benchmark for Python** (1230 cases, 14 categories; score TPR − FPR, 1 is perfect):
+**OWASP Benchmark for Python** (1230 cases, 14 categories; score TPR − FPR, 1 is perfect).
+In the SecureCode configuration the model verifies the scanner findings like the Auditor;
+"model only" is the same model without scanners, for comparison:
 
-| Tool | Score |
-| --- | ---: |
-| gpt-oss-120b (open weights) | 0.80 |
-| GPT-5.6 Luna | 0.73 |
-| SecureCode scanners + gpt-oss-120b | 0.72 |
-| SecureCode scanners + Luna | 0.64 |
-| SecureCode scanners + DeepSeek | 0.45 |
-| SecureCode scanners | 0.21 |
-| Bandit 1.9.4 | 0.16 |
-| Semgrep 1.177.0 | 0.16 |
+| Configuration | Score | Precision |
+| --- | ---: | ---: |
+| **SecureCode: scanners + gpt-oss-120b verification** | **0.78** | **89.0%** |
+| SecureCode: scanners + DeepSeek Flash verification | 0.50 | 59.7% |
+| SecureCode: scanners only | 0.21 | 70.4% |
+| Model only: gpt-oss-120b | 0.80 | 85.6% |
+| Model only: DeepSeek Flash | 0.39 | 53.8% |
+| Bandit 1.9.4 | 0.16 | 87.8% |
+| Semgrep 1.177.0 | 0.16 | 57.8% |
 
 **CVEfixes** (3000 files: before/after CVE-fix pairs, 118 CWEs; held-out split of 1200 files):
 
 | Configuration | Recall | Difference to Semgrep, pp (95% CI) |
 | --- | ---: | ---: |
-| SecureCode scanners + Luna | 50.5% | +16.2 [+11.3; +21.0] |
-| SecureCode scanners + Semgrep | 43.8% | +9.5 [+7.2; +11.8] |
+| SecureCode: scanners ∪ GPT-5.6 Luna | 50.5% | +16.2 [+11.3; +21.0] |
+| SecureCode scanners ∪ Semgrep | 43.8% | +9.5 [+7.2; +11.8] |
 | Semgrep 1.177.0 | 34.3% | — |
-| SecureCode scanners | 25.2% | −9.2 [−13.3; −5.0] |
+| SecureCode: scanners only | 25.2% | −9.2 [−13.3; −5.0] |
 
 Method, Bandit, gosec, ESLint, open-weight models, per-language results and limitations:
 [experiments report](report/benchmark-v2/README.md) (in Russian). Datasets:

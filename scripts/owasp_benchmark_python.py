@@ -132,8 +132,17 @@ def bandit(root: Path, cases: Sequence[Case]) -> dict[str, set[int]]:
     return found
 
 
-def llm(provider_name: str, root: Path, cases: Sequence[Case]) -> tuple[dict[str, set[int]], int]:
-    """Ask one OpenAI-compatible model for the CWEs of every case."""
+def llm(
+    provider_name: str,
+    root: Path,
+    cases: Sequence[Case],
+    hints: dict[str, set[int]] | None = None,
+) -> tuple[dict[str, set[int]], int]:
+    """Ask one OpenAI-compatible model for the CWEs of every case.
+
+    With ``hints`` the model acts as the SecureCode Auditor: it receives the CWEs the
+    first-party scanners reported for the file and keeps only those it can confirm.
+    """
 
     from scripts.llm_providers import PROVIDERS, answer_value, complete_json
 
@@ -145,8 +154,18 @@ def llm(provider_name: str, root: Path, cases: Sequence[Case]) -> tuple[dict[str
         prompt = (
             "Audit this Python web handler for security vulnerabilities. Report only real, "
             'exploitable weaknesses. Return strict json {"cwe": [<CWE numbers>]}, empty if '
-            "the code is safe. Do not explain.\nSource:\n" + source
+            "the code is safe. Do not explain.\n"
         )
+        flagged = sorted((hints or {}).get(name, set()))
+        if hints is not None:
+            prompt += (
+                "Static scanners flagged: "
+                + (", ".join(f"CWE-{cwe}" for cwe in flagged) or "nothing")
+                + ". Treat these as unverified candidates: keep a CWE only if untrusted input "
+                "really reaches the dangerous operation, and add real weaknesses the scanners "
+                "missed.\n"
+            )
+        prompt += "Source:\n" + source
         try:
             answer, cost = complete_json(provider, prompt)
         except ValueError:
@@ -229,6 +248,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--sampled-models", nargs="*", default=[], help="models scored on a balanced sample only"
     )
     parser.add_argument("--sample-per-category", type=int, default=20)
+    parser.add_argument(
+        "--verified-models",
+        nargs="*",
+        default=[],
+        help="models that verify the scanner findings, like the SecureCode Auditor",
+    )
     arguments = parser.parse_args(argv)
     from scripts.llm_providers import load_dotenv
 
@@ -250,6 +275,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         found[f"securecode+{model}"] = {
             name: found["securecode"][name] | found[model].get(name, set()) for name, *_ in cases
         }
+    for model in arguments.verified_models:
+        found[f"verified+{model}"], costs[f"verified+{model}"] = _cached(
+            cache / f"{model}-verified.json",
+            lambda model=model: llm(model, root, cases, found["securecode"]),
+        )
     sample = balanced_sample(cases, arguments.sample_per_category)
     sampled: dict[str, dict[str, set[int]]] = {}
     for model in arguments.sampled_models:

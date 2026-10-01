@@ -35,6 +35,8 @@ Changelog отвечает на вопрос «что и когда измени
 - Бенчмарк v2: CVEfixes (3000 файлов, 118 CWE) и OWASP Benchmark for Python (1230 кейсов);
   Semgrep, Bandit, gosec, ESLint, DeepSeek, GPT-5.6 Luna, GLM-5.3 и модели с открытыми
   весами (gpt-oss, Gemma 4, Qwen). Отчёт: [report/benchmark-v2](report/benchmark-v2/README.md).
+  На OWASP модель проверяет находки сканеров, как Аудитор: SecureCode с gpt-oss-120b —
+  оценка 0,78 и precision 89,0% против 0,16 у Semgrep и Bandit.
 - Notebook показывает фрагменты кода, полученные по ссылке из единого контракта.
 - Документы [OPERATIONS](docs/OPERATIONS.md), [REPRODUCIBILITY](docs/REPRODUCIBILITY.md)
   и [IDEAS](docs/IDEAS.md); README в стиле проекта со встроенным видео.
