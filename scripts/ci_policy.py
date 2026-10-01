@@ -576,9 +576,9 @@ def workflow_errors(workflow: Mapping[str, Any]) -> list[str]:
         errors.append(f"workflow events must be exactly {sorted(required_events)}")
     push = _mapping(events.get("push"), "workflow.on.push")
     if set(push) != {"branches"} or list(_sequence(push.get("branches"), "push.branches")) != [
-        "master"
+        "main"
     ]:
-        errors.append("push must target only master")
+        errors.append("push must target only main")
     for event_name in ("pull_request", "merge_group"):
         event = _mapping(events.get(event_name), f"workflow.on.{event_name}")
         if event:
