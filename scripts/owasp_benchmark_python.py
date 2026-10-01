@@ -135,7 +135,7 @@ def bandit(root: Path, cases: Sequence[Case]) -> dict[str, set[int]]:
 def llm(provider_name: str, root: Path, cases: Sequence[Case]) -> tuple[dict[str, set[int]], int]:
     """Ask one OpenAI-compatible model for the CWEs of every case."""
 
-    from scripts.llm_providers import PROVIDERS, complete_json
+    from scripts.llm_providers import PROVIDERS, answer_value, complete_json
 
     provider = PROVIDERS[provider_name]
 
@@ -151,7 +151,7 @@ def llm(provider_name: str, root: Path, cases: Sequence[Case]) -> tuple[dict[str
             answer, cost = complete_json(provider, prompt)
         except ValueError:
             return name, set(), 0
-        values = answer.get("cwe", [])
+        values = answer_value(answer, "cwe") or []
         values = values if isinstance(values, list) else []
         found = {int(value) for value in values if str(value).isdigit()} | _cwes(json.dumps(values))
         return name, found, cost

@@ -281,7 +281,7 @@ def _eslint(values: Sequence[tuple[Case, str]]) -> dict[str, Record]:
 def _llm(provider_name: str) -> Callable[[Sequence[tuple[Case, str]]], dict[str, Record]]:
     """Direct classification of one file by an OpenAI-compatible model."""
 
-    from scripts.llm_providers import PROVIDERS, complete_json
+    from scripts.llm_providers import PROVIDERS, answer_value, complete_json
 
     provider = PROVIDERS[provider_name]
     cost_field = "cost_microusd" if provider.currency == "USD" else "cost_microrub"
@@ -298,7 +298,7 @@ def _llm(provider_name: str) -> Callable[[Sequence[tuple[Case, str]]], dict[str,
             answer, cost = complete_json(provider, prompt)
         except ValueError:
             return case.case_id, {"predicted": False, "status": "failed"}
-        value = answer.get("vulnerable")
+        value = answer_value(answer, "vulnerable")
         if type(value) is not bool:
             return case.case_id, {"predicted": False, "status": "failed", cost_field: cost}
         return case.case_id, {"predicted": value, "status": "completed", cost_field: cost}
@@ -624,6 +624,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--output", required=True, type=Path)
     run.add_argument("--semgrep-config", type=Path)
     run.add_argument("--split", choices=("development", "calibration", "held-out"))
+    run.add_argument(
+        "--pairs-per-language", type=int, help="only the first N pairs of every language"
+    )
     summary = commands.add_parser("aggregate")
     summary.add_argument("--manifest", required=True, type=Path)
     summary.add_argument("--predictions", required=True, type=Path)
@@ -645,6 +648,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.split is not None:
             rows = _manifest_rows(arguments.manifest)
             cases = [case for case in cases if rows[case.case_id]["split"] == arguments.split]
+        if arguments.pairs_per_language is not None:
+            rows = _manifest_rows(arguments.manifest)
+            chosen: dict[str, list[str]] = {}
+            for case in cases:
+                pairs = chosen.setdefault(case.language, [])
+                pair = rows[case.case_id]["pair"]
+                if pair not in pairs and len(pairs) < arguments.pairs_per_language:
+                    pairs.append(pair)
+            selected = {pair for pairs in chosen.values() for pair in pairs}
+            cases = [case for case in cases if rows[case.case_id]["pair"] in selected]
         connection = sqlite3.connect(arguments.database)
         written = run_tool(
             arguments.tool,

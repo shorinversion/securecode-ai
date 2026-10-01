@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -27,6 +28,7 @@ class Provider:
     parameters: dict[str, Any] = field(default_factory=dict)
     currency: str = "USD"
     max_parallel: int = 8
+    requests_per_minute: int | None = None
 
 
 PROVIDERS: Final[dict[str, Provider]] = {
@@ -79,7 +81,8 @@ for _key, _name, _model, _input, _output in (
         _output,
         {"temperature": 0, "max_tokens": 1024},
         currency="RUB",
-        max_parallel=8,
+        max_parallel=4,
+        requests_per_minute=18,
     )
 
 
@@ -112,6 +115,35 @@ def _last_json_object(text: str) -> dict[str, Any]:
     return found
 
 
+_LIMITS: dict[str, tuple[threading.Lock, list[float]]] = {}
+
+
+def _wait_for_slot(provider: Provider) -> None:
+    """Keep at most ``requests_per_minute`` request starts in any 60-second window."""
+
+    if provider.requests_per_minute is None:
+        return
+    lock, starts = _LIMITS.setdefault(provider.base_url, (threading.Lock(), []))
+    while True:
+        with lock:
+            now = time.monotonic()
+            starts[:] = [moment for moment in starts if now - moment < 60]
+            if len(starts) < provider.requests_per_minute:
+                starts.append(now)
+                return
+            delay = 60 - (now - starts[0])
+        time.sleep(max(delay, 0.5))
+
+
+def answer_value(answer: dict[str, Any], key: str) -> Any:
+    """Read ``key`` even when a model decorates it (``/cwe``, ``"CWE"``)."""
+
+    for name, value in answer.items():
+        if "".join(character for character in name.lower() if character.isalnum()) == key:
+            return value
+    return None
+
+
 def complete_json(
     provider: Provider, prompt: str, *, attempts: int = 5
 ) -> tuple[dict[str, Any], int]:
@@ -134,6 +166,7 @@ def complete_json(
     )
     last_error: Exception | None = None
     for attempt in range(attempts):
+        _wait_for_slot(provider)
         try:
             with urllib.request.urlopen(request, timeout=180) as response:
                 frame = json.loads(response.read().decode("utf-8"))
