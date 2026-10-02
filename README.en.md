@@ -151,10 +151,10 @@ SQL injection (CWE-89, A03:2021) found, the parameterized-query fix validated. R
 
 **Real repositories** in Python, JavaScript and Go: SQL injection, command injection, open
 redirect, path traversal and missing JWT signature verification confirmed; a CSRF false
-positive rejected. A run costs less than $0.01.
+positive rejected. A run costs $0.003–0.011.
 
 **OWASP Benchmark for Python** (1230 cases, 14 categories; score TPR − FPR, 1 is perfect).
-SecureCode decides by agreement of three passes: Discovery (the model without hints), the
+The SecureCode configuration decides by agreement of three passes: Discovery (the model without hints), the
 Auditor (the model verifies the scanner findings) and a second model; a CWE is reported when
 at least two of the three name it (votes are compared by CWE family from the MITRE
 hierarchy); weak hashing is decided by the deterministic rule. "Model only" is the same
