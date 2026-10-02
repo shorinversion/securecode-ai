@@ -58,13 +58,14 @@ Outcome     <span class="add">COMPLETED</span></pre>""",
         "are found. Every finding uses one schema: file, lines, CWE and content hash.",
     ),
     (
-        """<h2>Experiments</h2><table><tr><th>OWASP Benchmark for Python, 1230 cases</th><th>Score</th></tr><tr class="hi"><td>SecureCode: scanners + gpt-oss-120b verification</td><td class="n">0.78</td></tr><tr><td>Model only: gpt-oss-120b</td><td class="n">0.80</td></tr><tr><td>SecureCode: scanners only</td><td class="n">0.21</td></tr><tr><td>Bandit and Semgrep</td><td class="n">0.16</td></tr></table>
+        """<h2>Experiments</h2><table><tr><th>OWASP Benchmark for Python, 1230 cases</th><th>Score</th></tr><tr class="hi"><td>SecureCode: agreement of three passes</td><td class="n">0.84</td></tr><tr><td>Model only: gpt-oss-120b</td><td class="n">0.80</td></tr><tr><td>SecureCode: scanners only</td><td class="n">0.21</td></tr><tr><td>Bandit and Semgrep</td><td class="n">0.16</td></tr></table>
 <p class="muted">CVEfixes, 3000 files: SecureCode with a model finds 50.5% of vulnerabilities against 34.3% for Semgrep, a significant difference.</p>""",
         "We ran experiments on two open corpora. On the OWASP Benchmark for Python, "
-        "SecureCode, where the open gpt-oss model verifies the scanner findings, scores "
-        "zero point seven eight with the highest precision, while Semgrep and Bandit "
-        "score only zero point one six. On three thousand CVEfixes files SecureCode with "
-        "a model finds half of the vulnerabilities, sixteen points more than Semgrep.",
+        "SecureCode decides by agreement of three passes: the model without hints, the "
+        "model verifying the scanner findings, and a second model. It scores zero point "
+        "eight four, above the same model without scanners, while Semgrep and Bandit score "
+        "only zero point one six. On three thousand CVEfixes files SecureCode with a "
+        "model finds half of the vulnerabilities, sixteen points more than Semgrep.",
     ),
     (
         """<h2>Summary</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">command to run the demo</p></div><div class="card"><div class="num">3329</div><p class="muted">automated tests in CI</p></div><div class="card"><div class="num">2</div><p class="muted">models: local Qwen and DeepSeek</p></div></div>
