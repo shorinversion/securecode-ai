@@ -180,6 +180,25 @@ def llm(
     return {name: found for name, found, _ in results}, sum(cost for *_, cost in results)
 
 
+def consensus(*votes: dict[str, set[int]]) -> dict[str, set[int]]:
+    """Keep a CWE that a strict majority of the independent votes reported.
+
+    SecureCode decides a finding by agreement of independent passes: Discovery reads the
+    code without scanner output, the Auditor verifies the scanner candidates, and a second
+    model verifies them again.  A CWE survives only when most of the passes report it.
+    """
+
+    names = set().union(*votes)
+    return {
+        name: {
+            cwe
+            for cwe in set().union(*(vote.get(name, set()) for vote in votes))
+            if 2 * sum(cwe in vote.get(name, set()) for vote in votes) > len(votes)
+        }
+        for name in names
+    }
+
+
 def balanced_sample(cases: Sequence[Case], per_category: int) -> list[Case]:
     """The first ``per_category`` cases of every category, half vulnerable where possible."""
 
@@ -254,6 +273,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help="models that verify the scanner findings, like the SecureCode Auditor",
     )
+    parser.add_argument(
+        "--consensus",
+        nargs=2,
+        action="append",
+        default=[],
+        metavar=("MODEL", "SECOND"),
+        help="majority of MODEL alone, MODEL verifying the scanners and SECOND verifying them",
+    )
     arguments = parser.parse_args(argv)
     from scripts.llm_providers import load_dotenv
 
@@ -279,6 +306,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         found[f"verified+{model}"], costs[f"verified+{model}"] = _cached(
             cache / f"{model}-verified.json",
             lambda model=model: llm(model, root, cases, found["securecode"]),
+        )
+    for model, second in arguments.consensus:
+        found[f"consensus+{model}+{second}"] = consensus(
+            found[model], found[f"verified+{model}"], found[f"verified+{second}"]
         )
     sample = balanced_sample(cases, arguments.sample_per_category)
     sampled: dict[str, dict[str, set[int]]] = {}

@@ -137,6 +137,244 @@
         "score": 0.1571,
         "tpr": 0.3008
       },
+      "consensus+gpt-oss-120b+deepseek": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 1,
+            "fpr": 0.1429,
+            "score": 0.8571,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.5,
+            "score": 0.5,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.7,
+            "tp": 7,
+            "tpr": 0.7
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 5,
+            "fpr": 0.4167,
+            "score": 0.5833,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.9091,
+        "score": 0.8243,
+        "tpr": 0.9023
+      },
+      "consensus+gpt-oss-120b+luna": {
+        "categories": {
+          "cmdi": {
+            "cases": 17,
+            "fp": 1,
+            "fpr": 0.1429,
+            "score": 0.8571,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "codeinj": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "deserialization": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "hash": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.9,
+            "tp": 9,
+            "tpr": 0.9
+          },
+          "ldapi": {
+            "cases": 20,
+            "fp": 1,
+            "fpr": 0.1,
+            "score": 0.9,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "pathtraver": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.4,
+            "score": 0.6,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "redirect": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "securecookie": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "sqli": {
+            "cases": 16,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 5,
+            "tpr": 1.0
+          },
+          "trustbound": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.0,
+            "tp": 0,
+            "tpr": 0.0
+          },
+          "weakrand": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 0.7,
+            "tp": 7,
+            "tpr": 0.7
+          },
+          "xpathi": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xss": {
+            "cases": 20,
+            "fp": 0,
+            "fpr": 0.0,
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
+          },
+          "xxe": {
+            "cases": 20,
+            "fp": 4,
+            "fpr": 0.3333,
+            "score": 0.6667,
+            "tp": 8,
+            "tpr": 1.0
+          }
+        },
+        "precision": 0.9225,
+        "score": 0.8303,
+        "tpr": 0.8947
+      },
       "deepseek": {
         "categories": {
           "cmdi": {
@@ -2877,6 +3115,244 @@
       "precision": 0.8775,
       "score": 0.1647,
       "tpr": 0.396
+    },
+    "consensus+gpt-oss-120b+deepseek": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 1,
+          "fpr": 0.1429,
+          "score": 0.8571,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 5,
+          "fpr": 0.1515,
+          "score": 0.8485,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 2,
+          "fpr": 0.0556,
+          "score": 0.9444,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.8873,
+          "tp": 63,
+          "tpr": 0.8873
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 3,
+          "fpr": 0.2308,
+          "score": 0.7692,
+          "tp": 16,
+          "tpr": 1.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 38,
+          "fpr": 0.3689,
+          "score": 0.6311,
+          "tp": 65,
+          "tpr": 1.0
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 1,
+          "fpr": 0.0476,
+          "score": 0.9524,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.9583,
+          "tp": 23,
+          "tpr": 0.9583
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.8485,
+          "tp": 84,
+          "tpr": 0.8485
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 4,
+          "fpr": 0.0296,
+          "score": 0.9508,
+          "tp": 50,
+          "tpr": 0.9804
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 3,
+          "fpr": 0.0517,
+          "score": 0.9483,
+          "tp": 31,
+          "tpr": 1.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 5,
+          "fpr": 0.25,
+          "score": 0.75,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.8684,
+      "score": 0.8104,
+      "tpr": 0.9049
+    },
+    "consensus+gpt-oss-120b+luna": {
+      "categories": {
+        "cmdi": {
+          "cases": 20,
+          "fp": 1,
+          "fpr": 0.1429,
+          "score": 0.8571,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "codeinj": {
+          "cases": 53,
+          "fp": 2,
+          "fpr": 0.0606,
+          "score": 0.9394,
+          "tp": 20,
+          "tpr": 1.0
+        },
+        "deserialization": {
+          "cases": 54,
+          "fp": 2,
+          "fpr": 0.0556,
+          "score": 0.9444,
+          "tp": 18,
+          "tpr": 1.0
+        },
+        "hash": {
+          "cases": 151,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.8873,
+          "tp": 63,
+          "tpr": 0.8873
+        },
+        "ldapi": {
+          "cases": 29,
+          "fp": 3,
+          "fpr": 0.2308,
+          "score": 0.7692,
+          "tp": 16,
+          "tpr": 1.0
+        },
+        "pathtraver": {
+          "cases": 168,
+          "fp": 34,
+          "fpr": 0.3301,
+          "score": 0.6545,
+          "tp": 64,
+          "tpr": 0.9846
+        },
+        "redirect": {
+          "cases": 34,
+          "fp": 1,
+          "fpr": 0.0476,
+          "score": 0.9524,
+          "tp": 13,
+          "tpr": 1.0
+        },
+        "securecookie": {
+          "cases": 39,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.9583,
+          "tp": 23,
+          "tpr": 0.9583
+        },
+        "sqli": {
+          "cases": 16,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 1.0,
+          "tp": 5,
+          "tpr": 1.0
+        },
+        "trustbound": {
+          "cases": 37,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.0,
+          "tp": 0,
+          "tpr": 0.0
+        },
+        "weakrand": {
+          "cases": 326,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.7677,
+          "tp": 76,
+          "tpr": 0.7677
+        },
+        "xpathi": {
+          "cases": 186,
+          "fp": 0,
+          "fpr": 0.0,
+          "score": 0.9804,
+          "tp": 50,
+          "tpr": 0.9804
+        },
+        "xss": {
+          "cases": 89,
+          "fp": 3,
+          "fpr": 0.0517,
+          "score": 0.9483,
+          "tp": 31,
+          "tpr": 1.0
+        },
+        "xxe": {
+          "cases": 28,
+          "fp": 4,
+          "fpr": 0.2,
+          "score": 0.8,
+          "tp": 8,
+          "tpr": 1.0
+        }
+      },
+      "precision": 0.8889,
+      "score": 0.8185,
+      "tpr": 0.885
     },
     "deepseek": {
       "categories": {

@@ -23,6 +23,10 @@ _MODELS: Final = {
 # SecureCode configurations first, then the baselines: open analyzers and models alone.
 NAMES: Final = {
     "pipeline": "SecureCode: полный конвейер (Поиск, Аудитор, Скептик)",
+    "consensus+gpt-oss-120b+luna": "SecureCode: согласие трёх проверок (gpt-oss-120b, Luna)",
+    "consensus+gpt-oss-120b+deepseek": (
+        "SecureCode: согласие трёх проверок (gpt-oss-120b, DeepSeek Flash)"
+    ),
     **{
         f"verified+{key}": f"SecureCode: сканеры + проверка {name}" for key, name in _MODELS.items()
     },
@@ -189,7 +193,9 @@ def render(cvefixes: Mapping[str, Any], owasp: Mapping[str, Any] | None, summary
         "uv run python -m scripts.benchmark_v2 aggregate --manifest ... --predictions predictions \\",
         "  --output report/benchmark-v2",
         "uv run python -m scripts.owasp_benchmark_python --benchmark BenchmarkPython \\",
-        "  --semgrep-config semgrep-rules --output report/benchmark-v2/owasp-python.json",
+        "  --semgrep-config semgrep-rules --output report/benchmark-v2/owasp-python.json \\",
+        "  --models gpt-oss-120b luna deepseek --verified-models gpt-oss-120b luna deepseek \\",
+        "  --consensus gpt-oss-120b luna --consensus gpt-oss-120b deepseek",
         "```",
         "",
     ]
@@ -210,6 +216,7 @@ def _owasp_table(tools: Mapping[str, Mapping[str, Any]], title: str) -> list[str
             f"{_percent(value['precision'])} |"
         )
     key = (
+        "consensus+gpt-oss-120b+luna",
         "verified+gpt-oss-120b",
         "gpt-oss-120b",
         "verified+deepseek",

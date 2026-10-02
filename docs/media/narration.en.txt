@@ -10,6 +10,6 @@ The report shows the CWE number, the OWASP Top 10 category, the severity, the li
 
 The notebook shows every tool on a small project. A hardcoded password is found and its value is hidden. For an old version of the requests library, the OSV database returned ten vulnerabilities. In the JavaScript file, SQL injection and missing authentication are found. Every finding uses one schema: file, lines, CWE and content hash.
 
-We ran experiments on two open corpora. On the OWASP Benchmark for Python, SecureCode, where the open gpt-oss model verifies the scanner findings, scores zero point seven eight with the highest precision, while Semgrep and Bandit score only zero point one six. On three thousand CVEfixes files SecureCode with a model finds half of the vulnerabilities, sixteen points more than Semgrep.
+We ran experiments on two open corpora. On the OWASP Benchmark for Python, SecureCode decides by agreement of three passes: the model without hints, the model verifying the scanner findings, and a second model. It scores zero point eight two, above the same model without scanners, while Semgrep and Bandit score only zero point one six. On three thousand CVEfixes files SecureCode with a model finds half of the vulnerabilities, sixteen points more than Semgrep.
 
 The project starts with one command, is covered by more than three thousand automated tests and works with both a local and a cloud model. Next come detector precision and an evaluation of the full agent pipeline on a larger corpus. Thank you.
