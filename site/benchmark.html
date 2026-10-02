@@ -248,7 +248,8 @@
   th { color: var(--muted); font-weight: 500; text-align: left; border-bottom: 2px solid var(--ink); }
   th, td { border-bottom: 1px solid var(--rule); padding: .6em .65em; vertical-align: top; }
   code { background: var(--pale); border-radius: 6px; padding: .1em .3em; overflow-wrap: anywhere; }
-  pre { background: var(--ink); color: #f4f4f4; padding: 1.1em 1.3em; overflow-x: auto; border-radius: 20px; }
+  pre, pre.sourceCode, div.sourceCode { background: var(--pale); color: var(--ink); }
+  pre { padding: 1.1em 1.3em; overflow-x: auto; border-radius: 20px; border: 1px solid var(--rule); }
   pre code { background: none; color: inherit; }
   a { color: var(--ink); text-decoration-color: var(--red); text-underline-offset: 3px; }
   hr { border: 0; border-top: 1px solid var(--rule); margin: 3em 0; }
@@ -300,6 +301,17 @@ Luna и третьей модели (DeepSeek, Gemma 4 или gpt-oss-20b) да�
 ответам моделей, без новых запросов. Модели Qwen без режима размышления
 называют какую-либо CWE почти в каждом кейсе, их оценка близка к
 нулю.</li>
+<li><strong>Неудачная попытка улучшить Аудитора.</strong> Отдельный
+прогон gpt-oss-120b с переписанным промптом Аудитора: подсказки как
+нейтральные кандидаты, без CWE, которые сканер ставит больше чем в
+половине файлов, «уязвимость считается и без недоверенных данных», самый
+точный номер CWE. На 1120 кейсах, где провайдер вернул ответ (110
+запросов завершились ошибкой), такой Аудитор находит больше (TPR 93,9%
+против 84,7%), но даёт много ложных срабатываний на слабой случайности,
+XPath, десериализации и внедрении кода: оценка 0,71 против 0,78 у
+прежнего Аудитора, согласие трёх проверок с ним — 0,82 против 0,84.
+Основная конфигурация оставлена с прежним Аудитором; прогон стоил 18,6
+₽.</li>
 <li><strong>CVEfixes, recall.</strong> Гибрид «сканеры SecureCode +
 Luna» находит 50,5% уязвимых файлов отложенной выборки против 34,3% у
 Semgrep: разница +16,2 п. п., 95% ДИ [+11,3; +21,0]. Комбинация сканеров

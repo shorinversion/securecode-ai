@@ -6,7 +6,7 @@ SLIDES_EN: list[tuple[str, str]] = [
 <h1>SecureCode AI</h1><p style="font-size:48px;max-width:1400px">A local AI assistant for code security audits: it finds vulnerabilities, proposes fixes and validates them without sending code to the cloud.</p>""",
         "SecureCode AI is a local assistant for code security audits. It finds vulnerabilities, "
         "proposes fixes and validates them, without sending source code to the cloud. "
-        "This is the final project, task two, version one point zero.",
+        "This is the final project, task two.",
     ),
     (
         """<h2>The problem</h2><div class="grid g2"><div class="card"><h3>Problem</h3><p class="muted">Static analyzers follow rigid rules and produce many false positives. Private code must not be sent to public cloud APIs.</p></div>
@@ -68,7 +68,7 @@ Outcome     <span class="add">COMPLETED</span></pre>""",
         "model finds half of the vulnerabilities, sixteen points more than Semgrep.",
     ),
     (
-        """<h2>Summary</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">command to run the demo</p></div><div class="card"><div class="num">3329</div><p class="muted">automated tests in CI</p></div><div class="card"><div class="num">2</div><p class="muted">models: local Qwen and DeepSeek</p></div></div>
+        """<h2>Summary</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">command to run the demo</p></div><div class="card"><div class="num">3300+</div><p class="muted">automated tests in CI</p></div><div class="card"><div class="num">2</div><p class="muted">models: local Qwen and DeepSeek</p></div></div>
 <pre style="margin-top:48px">git clone https://github.com/shorinversion/securecode-ai
 python deploy/docker/quickstart.py --demo</pre>""",
         "The project starts with one command, is covered by more than three thousand automated "
