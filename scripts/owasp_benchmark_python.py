@@ -180,22 +180,61 @@ def llm(
     return {name: found for name, found, _ in results}, sum(cost for *_, cost in results)
 
 
+# MITRE CWE Research view (CWE-1000) ChildOf relations used to compare votes: a pass that
+# names a child weakness agrees with a pass that names its parent.
+CWE_FAMILIES: Final = {
+    23: 22,
+    36: 22,
+    328: 327,
+    916: 327,
+    338: 330,
+    80: 79,
+    95: 94,
+    78: 77,
+    643: 91,
+}
+# Weak hash is decided by the deterministic rule: it resolves the hashlib call itself and
+# needs no data flow, so the model neither adds nor removes such findings.
+SCANNER_DECIDES: Final = frozenset({327})
+
+
+def _family(cwe: int) -> int:
+    return CWE_FAMILIES.get(cwe, cwe)
+
+
 def consensus(*votes: dict[str, set[int]]) -> dict[str, set[int]]:
-    """Keep a CWE that a strict majority of the independent votes reported.
+    """Keep the weaknesses that a strict majority of the independent votes reported.
 
     SecureCode decides a finding by agreement of independent passes: Discovery reads the
     code without scanner output, the Auditor verifies the scanner candidates, and a second
-    model verifies them again.  A CWE survives only when most of the passes report it.
+    model verifies them again.  Votes are compared by CWE family, so CWE-643 and its parent
+    CWE-91 count as the same weakness; the CWEs of an agreed family are all kept.
     """
 
     names = set().union(*votes)
-    return {
-        name: {
-            cwe
-            for cwe in set().union(*(vote.get(name, set()) for vote in votes))
-            if 2 * sum(cwe in vote.get(name, set()) for vote in votes) > len(votes)
+    result: dict[str, set[int]] = {}
+    for name in names:
+        ballots = [{_family(cwe) for cwe in vote.get(name, set())} for vote in votes]
+        agreed = {
+            family
+            for family in set().union(*ballots)
+            if 2 * sum(family in ballot for ballot in ballots) > len(ballots)
         }
-        for name in names
+        result[name] = {
+            cwe for vote in votes for cwe in vote.get(name, set()) if _family(cwe) in agreed
+        }
+    return result
+
+
+def scanner_decides(
+    found: dict[str, set[int]], scanner: dict[str, set[int]]
+) -> dict[str, set[int]]:
+    """Take the families in ``SCANNER_DECIDES`` from the deterministic scanner only."""
+
+    return {
+        name: {cwe for cwe in cwes if _family(cwe) not in SCANNER_DECIDES}
+        | {cwe for cwe in scanner.get(name, set()) if _family(cwe) in SCANNER_DECIDES}
+        for name, cwes in found.items()
     }
 
 
@@ -279,7 +318,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="append",
         default=[],
         metavar=("MODEL", "SECOND"),
-        help="majority of MODEL alone, MODEL verifying the scanners and SECOND verifying them",
+        help="majority (by CWE family) of MODEL alone, MODEL verifying the scanners and SECOND "
+        "verifying them; weak hash is taken from the scanner",
     )
     arguments = parser.parse_args(argv)
     from scripts.llm_providers import load_dotenv
@@ -308,8 +348,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             lambda model=model: llm(model, root, cases, found["securecode"]),
         )
     for model, second in arguments.consensus:
-        found[f"consensus+{model}+{second}"] = consensus(
-            found[model], found[f"verified+{model}"], found[f"verified+{second}"]
+        found[f"consensus+{model}+{second}"] = scanner_decides(
+            consensus(found[model], found[f"verified+{model}"], found[f"verified+{second}"]),
+            found["securecode"],
         )
     sample = balanced_sample(cases, arguments.sample_per_category)
     sampled: dict[str, dict[str, set[int]]] = {}

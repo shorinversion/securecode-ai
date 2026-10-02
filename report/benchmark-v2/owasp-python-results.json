@@ -223,9 +223,9 @@
             "cases": 20,
             "fp": 0,
             "fpr": 0.0,
-            "score": 0.7,
-            "tp": 7,
-            "tpr": 0.7
+            "score": 0.8,
+            "tp": 8,
+            "tpr": 0.8
           },
           "xpathi": {
             "cases": 20,
@@ -252,9 +252,9 @@
             "tpr": 1.0
           }
         },
-        "precision": 0.9091,
-        "score": 0.8243,
-        "tpr": 0.9023
+        "precision": 0.9098,
+        "score": 0.8315,
+        "tpr": 0.9098
       },
       "consensus+gpt-oss-120b+luna": {
         "categories": {
@@ -286,9 +286,9 @@
             "cases": 20,
             "fp": 0,
             "fpr": 0.0,
-            "score": 0.9,
-            "tp": 9,
-            "tpr": 0.9
+            "score": 1.0,
+            "tp": 10,
+            "tpr": 1.0
           },
           "ldapi": {
             "cases": 20,
@@ -342,9 +342,9 @@
             "cases": 20,
             "fp": 0,
             "fpr": 0.0,
-            "score": 0.7,
-            "tp": 7,
-            "tpr": 0.7
+            "score": 0.9,
+            "tp": 9,
+            "tpr": 0.9
           },
           "xpathi": {
             "cases": 20,
@@ -371,9 +371,9 @@
             "tpr": 1.0
           }
         },
-        "precision": 0.9225,
-        "score": 0.8303,
-        "tpr": 0.8947
+        "precision": 0.9242,
+        "score": 0.8517,
+        "tpr": 0.9173
       },
       "deepseek": {
         "categories": {
@@ -3146,9 +3146,9 @@
           "cases": 151,
           "fp": 0,
           "fpr": 0.0,
-          "score": 0.8873,
-          "tp": 63,
-          "tpr": 0.8873
+          "score": 1.0,
+          "tp": 71,
+          "tpr": 1.0
         },
         "ldapi": {
           "cases": 29,
@@ -3202,17 +3202,17 @@
           "cases": 326,
           "fp": 0,
           "fpr": 0.0,
-          "score": 0.8485,
-          "tp": 84,
-          "tpr": 0.8485
+          "score": 0.9293,
+          "tp": 92,
+          "tpr": 0.9293
         },
         "xpathi": {
           "cases": 186,
-          "fp": 4,
-          "fpr": 0.0296,
-          "score": 0.9508,
-          "tp": 50,
-          "tpr": 0.9804
+          "fp": 12,
+          "fpr": 0.0889,
+          "score": 0.9111,
+          "tp": 51,
+          "tpr": 1.0
         },
         "xss": {
           "cases": 89,
@@ -3231,9 +3231,9 @@
           "tpr": 1.0
         }
       },
-      "precision": 0.8684,
-      "score": 0.8104,
-      "tpr": 0.9049
+      "precision": 0.8589,
+      "score": 0.8214,
+      "tpr": 0.9425
     },
     "consensus+gpt-oss-120b+luna": {
       "categories": {
@@ -3265,9 +3265,9 @@
           "cases": 151,
           "fp": 0,
           "fpr": 0.0,
-          "score": 0.8873,
-          "tp": 63,
-          "tpr": 0.8873
+          "score": 1.0,
+          "tp": 71,
+          "tpr": 1.0
         },
         "ldapi": {
           "cases": 29,
@@ -3321,17 +3321,17 @@
           "cases": 326,
           "fp": 0,
           "fpr": 0.0,
-          "score": 0.7677,
-          "tp": 76,
-          "tpr": 0.7677
+          "score": 0.9596,
+          "tp": 95,
+          "tpr": 0.9596
         },
         "xpathi": {
           "cases": 186,
-          "fp": 0,
-          "fpr": 0.0,
-          "score": 0.9804,
-          "tp": 50,
-          "tpr": 0.9804
+          "fp": 2,
+          "fpr": 0.0148,
+          "score": 0.9852,
+          "tp": 51,
+          "tpr": 1.0
         },
         "xss": {
           "cases": 89,
@@ -3350,9 +3350,9 @@
           "tpr": 1.0
         }
       },
-      "precision": 0.8889,
-      "score": 0.8185,
-      "tpr": 0.885
+      "precision": 0.8917,
+      "score": 0.8406,
+      "tpr": 0.9469
     },
     "deepseek": {
       "categories": {

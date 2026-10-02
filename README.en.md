@@ -156,13 +156,14 @@ positive rejected. A run costs less than $0.01.
 **OWASP Benchmark for Python** (1230 cases, 14 categories; score TPR − FPR, 1 is perfect).
 SecureCode decides by agreement of three passes: Discovery (the model without hints), the
 Auditor (the model verifies the scanner findings) and a second model; a CWE is reported when
-at least two of the three name it. "Model only" is the same model without scanners, for
-comparison:
+at least two of the three name it (votes are compared by CWE family from the MITRE
+hierarchy); weak hashing is decided by the deterministic rule. "Model only" is the same
+model without scanners, for comparison:
 
 | Configuration | Score | Precision |
 | --- | ---: | ---: |
-| **SecureCode: agreement of three passes (gpt-oss-120b, Luna)** | **0.82** | **88.9%** |
-| SecureCode: agreement of three passes (gpt-oss-120b, DeepSeek Flash) | 0.81 | 86.8% |
+| **SecureCode: agreement of three passes (gpt-oss-120b, Luna)** | **0.84** | **89.2%** |
+| SecureCode: agreement of three passes (gpt-oss-120b, DeepSeek Flash) | 0.82 | 85.9% |
 | SecureCode: scanners + gpt-oss-120b verification | 0.78 | 89.0% |
 | SecureCode: scanners + DeepSeek Flash verification | 0.50 | 59.7% |
 | SecureCode: scanners only | 0.21 | 70.4% |

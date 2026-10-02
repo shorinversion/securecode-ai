@@ -99,12 +99,12 @@ SLIDES: list[tuple[str, str]] = [
         "Все находки описаны в единой схеме: файл, строки, CWE и хеш содержимого.",
     ),
     (
-        """<h2>Эксперименты</h2><table><tr><th>OWASP Benchmark for Python, 1230 кейсов</th><th>Оценка</th></tr><tr class="hi"><td>SecureCode: согласие трёх проверок</td><td class="n">0,82</td></tr><tr><td>Только модель gpt-oss-120b</td><td class="n">0,80</td></tr><tr><td>SecureCode: только сканеры</td><td class="n">0,21</td></tr><tr><td>Bandit и Semgrep</td><td class="n">0,16</td></tr></table>
+        """<h2>Эксперименты</h2><table><tr><th>OWASP Benchmark for Python, 1230 кейсов</th><th>Оценка</th></tr><tr class="hi"><td>SecureCode: согласие трёх проверок</td><td class="n">0,84</td></tr><tr><td>Только модель gpt-oss-120b</td><td class="n">0,80</td></tr><tr><td>SecureCode: только сканеры</td><td class="n">0,21</td></tr><tr><td>Bandit и Semgrep</td><td class="n">0,16</td></tr></table>
 <p class="muted">CVEfixes, 3000 файлов: SecureCode с моделью находит 50,5% уязвимостей против 34,3% у Semgrep, разница статистически значима.</p>""",
         "Эксперименты проведены на двух открытых корпусах. На OWASP Benchmark для Python "
         "SecureCode принимает решение согласием трёх проверок: модель без подсказок, "
         "модель, проверяющая находки сканеров, и вторая модель. Так он получает оценку "
-        "ноль восемьдесят два — выше, чем та же модель без сканеров, а Semgrep и Bandit — "
+        "ноль восемьдесят четыре — выше, чем та же модель без сканеров, а Semgrep и Bandit — "
         "всего ноль шестнадцать. На трёх тысячах файлов CVEfixes SecureCode с моделью "
         "находит половину уязвимостей, на шестнадцать пунктов больше Semgrep.",
     ),
