@@ -20,7 +20,7 @@ OWASP Top 10 и предлагает исправления в виде diff, к
 
 ## Видео
 
-https://github.com/user-attachments/assets/2bf95066-98d4-426b-b0cf-1fd1e42bf752
+https://github.com/user-attachments/assets/ada9aef9-aae1-4235-a82d-4bab4dc0852b
 
 Английская версия — в [README.en.md](README.en.md#video).
 

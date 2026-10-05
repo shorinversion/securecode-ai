@@ -19,7 +19,7 @@ reported. The model can run locally, so source code does not leave the developer
 
 ## Video
 
-https://github.com/user-attachments/assets/e10a1bb2-0634-45a8-bd17-5d33919f476f
+https://github.com/user-attachments/assets/0223bd5a-1549-4028-b4d4-510dca9a894a
 
 The Russian version is in [README.md](README.md#видео).
 

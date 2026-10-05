@@ -44,7 +44,7 @@ th{color:#626c77;font-weight:500;border-bottom:3px solid #1d2023}td.n{text-align
 
 SLIDES: list[tuple[str, str]] = [
     (
-        """<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.1</span></div>
+        """<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.2</span></div>
 <h1>SecureCode AI</h1><p style="font-size:48px;max-width:1400px">Локальный AI-ассистент для аудита безопасности кода: находит уязвимости, предлагает исправления и проверяет их, не отправляя код в облако.</p>""",
         "SecureCode AI — локальный ассистент для аудита безопасности кода. Он находит уязвимости, "
         "предлагает исправления и проверяет их, не отправляя исходный код в облако. "
