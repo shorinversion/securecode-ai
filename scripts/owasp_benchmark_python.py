@@ -16,6 +16,7 @@ import hashlib
 import json
 import re
 import subprocess
+import threading
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -137,11 +138,16 @@ def llm(
     root: Path,
     cases: Sequence[Case],
     hints: dict[str, set[int]] | None = None,
+    auditor: bool = False,
+    journal: Path | None = None,
 ) -> tuple[dict[str, set[int]], int]:
     """Ask one OpenAI-compatible model for the CWEs of every case.
 
     With ``hints`` the model acts as the SecureCode Auditor: it receives the CWEs the
     first-party scanners reported for the file and keeps only those it can confirm.
+    ``auditor`` selects the revised Auditor prompt: the hints are neutral candidates,
+    weaknesses without untrusted input are in scope and the most specific CWE is asked for.
+    ``journal`` records every answer as it arrives, so an interrupted run resumes.
     """
 
     from scripts.llm_providers import PROVIDERS, answer_value, complete_json
@@ -157,7 +163,18 @@ def llm(
             "the code is safe. Do not explain.\n"
         )
         flagged = sorted((hints or {}).get(name, set()))
-        if hints is not None:
+        if auditor:
+            prompt = (
+                "Audit this Python web handler for security vulnerabilities. Report only real, "
+                "exploitable weaknesses of this code; a weakness counts even when no untrusted "
+                "input reaches it, for example a weak algorithm. Use the most specific CWE ID (a "
+                'child weakness rather than its parent class). Return strict json {"cwe": '
+                "[<CWE numbers>]}, empty if the code is safe. Do not explain.\n"
+                "Static scanners suggested: "
+                + (", ".join(f"CWE-{cwe}" for cwe in flagged) or "nothing")
+                + ". These suggestions may be wrong; judge each one from the code itself.\n"
+            )
+        elif hints is not None:
             prompt += (
                 "Static scanners flagged: "
                 + (", ".join(f"CWE-{cwe}" for cwe in flagged) or "nothing")
@@ -173,10 +190,21 @@ def llm(
         values = answer_value(answer, "cwe") or []
         values = values if isinstance(values, list) else []
         found = {int(value) for value in values if str(value).isdigit()} | _cwes(json.dumps(values))
+        if journal is not None:
+            with lock, journal.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"name": name, "cwe": sorted(found), "cost": cost}) + "\n")
         return name, found, cost
 
+    done: dict[str, tuple[set[int], int]] = {}
+    if journal is not None and journal.is_file():
+        for line in journal.read_text(encoding="utf-8").splitlines():
+            entry = json.loads(line)
+            done[entry["name"]] = (set(entry["cwe"]), entry["cost"])
+    lock = threading.Lock()
+    todo = [case for case in cases if case[0] not in done]
     with ThreadPoolExecutor(max_workers=provider.max_parallel) as pool:
-        results = list(pool.map(one, cases))
+        results = list(pool.map(one, todo))
+    results += [(name, found, cost) for name, (found, cost) in done.items()]
     return {name: found for name, found, _ in results}, sum(cost for *_, cost in results)
 
 
@@ -236,6 +264,17 @@ def scanner_decides(
         | {cwe for cwe in scanner.get(name, set()) if _family(cwe) in SCANNER_DECIDES}
         for name, cwes in found.items()
     }
+
+
+def informative_hints(scanner: dict[str, set[int]]) -> dict[str, set[int]]:
+    """Drop the scanner CWEs raised on more than half of the files: they carry no signal."""
+
+    counts: dict[int, int] = {}
+    for cwes in scanner.values():
+        for cwe in cwes:
+            counts[cwe] = counts.get(cwe, 0) + 1
+    common = {cwe for cwe, count in counts.items() if 2 * count > len(scanner)}
+    return {name: cwes - common for name, cwes in scanner.items()}
 
 
 def balanced_sample(cases: Sequence[Case], per_category: int) -> list[Case]:
@@ -313,6 +352,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="models that verify the scanner findings, like the SecureCode Auditor",
     )
     parser.add_argument(
+        "--auditor-models",
+        nargs="*",
+        default=[],
+        help="models that verify the informative scanner findings with the revised prompt",
+    )
+    parser.add_argument(
         "--consensus",
         nargs=2,
         action="append",
@@ -347,11 +392,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             cache / f"{model}-verified.json",
             lambda model=model: llm(model, root, cases, found["securecode"]),
         )
+    for model in arguments.auditor_models:
+        found[f"auditor+{model}"], costs[f"auditor+{model}"] = _cached(
+            cache / f"{model}-auditor.json",
+            lambda model=model: llm(
+                model,
+                root,
+                cases,
+                informative_hints(found["securecode"]),
+                auditor=True,
+                journal=cache / f"{model}-auditor.jsonl",
+            ),
+        )
     for model, second in arguments.consensus:
         found[f"consensus+{model}+{second}"] = scanner_decides(
             consensus(found[model], found[f"verified+{model}"], found[f"verified+{second}"]),
             found["securecode"],
         )
+        if f"auditor+{model}" in found:
+            found[f"consensus-auditor+{model}+{second}"] = scanner_decides(
+                consensus(found[model], found[f"auditor+{model}"], found[f"verified+{second}"]),
+                found["securecode"],
+            )
     sample = balanced_sample(cases, arguments.sample_per_category)
     sampled: dict[str, dict[str, set[int]]] = {}
     for model in arguments.sampled_models:

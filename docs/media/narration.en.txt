@@ -1,4 +1,4 @@
-SecureCode AI is a local assistant for code security audits. It finds vulnerabilities, proposes fixes and validates them, without sending source code to the cloud. This is the final project, task two, version one point zero.
+SecureCode AI is a local assistant for code security audits. It finds vulnerabilities, proposes fixes and validates them, without sending source code to the cloud. This is the final project, task two.
 
 Classic analyzers follow rigid rules and flood developers with false positives, while sending private code to external cloud services is forbidden. So we run a quantized model locally, together with code analysis tools.
 

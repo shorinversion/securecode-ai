@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -47,7 +48,7 @@ SLIDES: list[tuple[str, str]] = [
 <h1>SecureCode AI</h1><p style="font-size:48px;max-width:1400px">Локальный AI-ассистент для аудита безопасности кода: находит уязвимости, предлагает исправления и проверяет их, не отправляя код в облако.</p>""",
         "SecureCode AI — локальный ассистент для аудита безопасности кода. Он находит уязвимости, "
         "предлагает исправления и проверяет их, не отправляя исходный код в облако. "
-        "Это итоговый проект, задача номер два, версия один ноль.",
+        "Это итоговый проект, задача номер два.",
     ),
     (
         """<h2>Задача</h2><div class="grid g2"><div class="card"><h3>Проблема</h3><p class="muted">Статические анализаторы работают по жёстким правилам и дают много ложных срабатываний. Отправлять приватный код в публичные облачные API нельзя.</p></div>
@@ -109,10 +110,10 @@ SLIDES: list[tuple[str, str]] = [
         "находит половину уязвимостей, на шестнадцать пунктов больше Semgrep.",
     ),
     (
-        """<h2>Итог</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">команда для запуска демо</p></div><div class="card"><div class="num">3329</div><p class="muted">автотеста в CI</p></div><div class="card"><div class="num">2</div><p class="muted">модели: Qwen локально и DeepSeek</p></div></div>
+        """<h2>Итог</h2><div class="grid g3"><div class="card"><div class="num">1</div><p class="muted">команда для запуска демо</p></div><div class="card"><div class="num">3300+</div><p class="muted">автотестов в CI</p></div><div class="card"><div class="num">2</div><p class="muted">модели: Qwen локально и DeepSeek</p></div></div>
 <pre style="margin-top:48px">git clone https://github.com/shorinversion/securecode-ai
 python deploy/docker/quickstart.py --demo</pre>""",
-        "Проект запускается одной командой, покрыт тремя тысячами автотестов и работает как "
+        "Проект запускается одной командой, покрыт более чем тремя тысячами автотестов и работает как "
         "с локальной моделью, так и с облачной. Дальше — точность детекторов и оценка полного "
         "агентного конвейера на большом корпусе. Спасибо за внимание.",
     ),
@@ -202,11 +203,24 @@ def _build(language: str) -> None:
             encoding="utf-8",
         )
         image = WORK / f"{language}-slide-{index}.png"
-        subprocess.run(
-            [browser, "--headless=new", "--disable-gpu", "--hide-scrollbars",
-             "--window-size=1920,1080", f"--screenshot={image}", page.as_uri()],
-            check=True, capture_output=True,
-        )  # fmt: skip
+        # A stale image from an earlier build must never reach the video.
+        image.unlink(missing_ok=True)
+        for _ in range(3):
+            subprocess.run(
+                [browser, "--headless=new", "--disable-gpu", "--hide-scrollbars",
+                 f"--user-data-dir={WORK / 'browser-profile'}",
+                 "--window-size=1920,1080", f"--screenshot={image}", page.as_uri()],
+                check=True, capture_output=True,
+            )  # fmt: skip
+            # Edge may write the screenshot after its launcher process has exited.
+            for _ in range(30):
+                if image.exists():
+                    break
+                time.sleep(0.5)
+            if image.exists():
+                break
+        else:
+            raise SystemExit(f"{image.name}: the browser wrote no screenshot")
         # Cache narration by its text so an edited sentence is always re-spoken.
         digest = hashlib.sha256(narration.encode("utf-8")).hexdigest()[:16]
         audio = WORK / f"{language}-{digest}.mp3"
