@@ -28,14 +28,6 @@ stable ID and an oracle that will become an executable conformance test in P1.
 - `SC-DATA-004`: Secret findings MUST retain only location, type and keyed
   fingerprint/redaction, never the secret value. **Oracle:** canary is absent
   from serialized finding, logs, traces and reports.
-- `SC-DATA-004a`: The named downgrade rule `secret-mask@1` turns a `DC4` source
-  file into a `DC3` model view only when the secret stage verified every
-  candidate span of the file at the analysed revision: each span is replaced by
-  the detector's redaction marker, line breaks are kept, and raw evidence
-  windows of the file stay unavailable to every tool. Without a verified secret
-  stage the whole file stays `DC4` and is withheld. **Oracle:** a canary secret
-  in an analysed file is absent from every model request, while the masked line
-  numbers and surrounding code are present.
 - `SC-DATA-005`: Prompts, responses, patches, crash dumps, caches and backups
   MUST inherit classification; “derived” MUST NOT imply safe. **Oracle:** sink
   inventory shows an equal-or-higher class.
