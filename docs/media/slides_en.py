@@ -2,7 +2,7 @@
 
 SLIDES_EN: list[tuple[str, str]] = [
     (
-        """<div class="pills"><span class="pill">MTS True Tech</span><span class="pill dark">Final project · task 2</span><span class="pill light">Version 1.1</span></div>
+        """<div class="pills"><span class="pill">MTS True Tech</span><span class="pill dark">Final project · task 2</span><span class="pill light">Version 1.2</span></div>
 <h1>SecureCode AI</h1><p style="font-size:48px;max-width:1400px">A local AI assistant for code security audits: it finds vulnerabilities, proposes fixes and validates them without sending code to the cloud.</p>""",
         "SecureCode AI is a local assistant for code security audits. It finds vulnerabilities, "
         "proposes fixes and validates them, without sending source code to the cloud. "
