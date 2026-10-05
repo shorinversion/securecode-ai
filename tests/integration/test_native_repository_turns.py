@@ -527,9 +527,14 @@ def _cycle_fixture(
                 ]
             }
         )
-    sequence = _NativeSequenceEndpoint(
-        monkeypatch, [json.dumps(body).encode() for body in (first, middle, final)]
-    )
+    bodies = [first, middle, final]
+    if second == "malformed_then_valid":
+        malformed = json.loads(_success_body())
+        malformed["choices"][0]["message"]["content"] = json.dumps(
+            {"tool": "repository.evidence.list", "arguments": {"paths": ["a.py"]}}
+        )
+        bodies = [first, middle, malformed, final]
+    sequence = _NativeSequenceEndpoint(monkeypatch, [json.dumps(body).encode() for body in bodies])
     base._executor._connector = OpenAICompatibleLocalHttpConnector(
         profile=base._executor._profile, native_frames=True
     )
@@ -743,3 +748,45 @@ def test_actual_native_harness_spends_total_cycle_across_individually_bounded_tu
     assert len(sequence.endpoint.requests) == calls
     if expected == "SUCCEEDED":
         assert payload.model_result.usage.elapsed_ms == 54000
+
+
+def test_product_native_cycle_repeats_one_malformed_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from securecode_ai.contracts import ModelCallStatus
+
+    backend, tools, request, sequence = _cycle_fixture(
+        monkeypatch, candidate=True, second="malformed_then_valid"
+    )
+    outcome = backend.discover(request=request, tools=tools)
+
+    assert outcome.model_result.status is ModelCallStatus.SUCCEEDED
+    assert len(outcome.candidates) == 1
+    requests = sequence.endpoint.requests
+    assert len(requests) == 4
+    messages = [json.loads(body)["messages"] for _, _, body in requests]
+    assert messages[2] == messages[3]
+    assert tools.calls_used == 1
+
+
+def test_discovery_seed_exclusion_keeps_the_lane_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from tests.integration.test_product_runtime_harness import _composition
+
+    base, _, _, _, _ = _composition(monkeypatch)
+    anchor = base._catalogue[0]
+    other = SimpleNamespace(location=SimpleNamespace(path="other.py"))
+    object.__setattr__(base, "_catalogue", (anchor, other))
+
+    assert base.excluding_paths(frozenset()) is base
+    assert base.excluding_paths(frozenset({anchor.location.path, "other.py"})) is base
+    narrowed = base.excluding_paths(frozenset({"other.py"}))
+    assert narrowed is not base
+    assert narrowed._catalogue == (anchor,)
+    assert len(base._catalogue) == 2
+    invalid: object = {"other.py"}
+    with pytest.raises(ValueError, match="exclusion"):
+        base.excluding_paths(invalid)  # type: ignore[arg-type]

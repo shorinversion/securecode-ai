@@ -48,6 +48,7 @@ from .model import (
     NativeTurnBoundaryExecution,
     PreparedModelContext,
 )
+from .model_egress import egress_data_class, keyed_entries
 from .model_types import (
     ConnectedChannel,
     ProviderAttempt,
@@ -363,6 +364,7 @@ def _context(
 ) -> PreparedModelContext:
     if not entries or any(artifact.tenant_id != request.tenant_id for _, artifact, _ in entries):
         raise ValueError("model context is invalid")
+    entries = keyed_entries(entries, key)
     unique: dict[str, tuple[ArtifactRef, bytes, list[str]]] = {}
     for evidence_id, artifact, content in entries:
         previous = unique.get(artifact.content_id)
@@ -440,17 +442,14 @@ def _context(
     payload = json.dumps(
         material, ensure_ascii=True, separators=(",", ":"), sort_keys=True
     ).encode()
-    egress_data_class = max(
-        (artifact.data_class for artifact, _, _ in unique.values()),
-        key=_DATA_CLASS_RANK.__getitem__,
-    )
+    context_class = egress_data_class(artifact.data_class for artifact, _, _ in unique.values())
     return PreparedModelContext(
         payload=payload,
         content=tuple(
             EgressContentRef(
                 schema_version="0.2.0",
                 content_id=artifact.content_id,
-                data_class=egress_data_class,
+                data_class=context_class,
             )
             for artifact, _, _ in unique.values()
         ),

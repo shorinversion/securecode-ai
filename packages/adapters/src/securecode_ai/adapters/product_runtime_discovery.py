@@ -122,6 +122,27 @@ class ProductDiscoveryBackend(_ProductDiscoveryNativeCycle):
             str, tuple[str, int, tuple[str, ...], ModelNativeDiscoveryPayload]
         ] = {}
 
+    def excluding_paths(self, paths: frozenset[str]) -> ProductDiscoveryBackend:
+        """Return a backend whose seed omits files the host withholds from the model.
+
+        A file with a detected secret is read only through the masking view; seeding it
+        would compare masked bytes with the raw anchor and fail the whole lane. When every
+        anchor is withheld the original backend is kept, so the lane stays fail-closed.
+        """
+
+        if type(paths) is not frozenset or any(type(path) is not str for path in paths):
+            raise ValueError("discovery exclusion is invalid")
+        kept = tuple(item for item in self._catalogue if item.location.path not in paths)
+        if not kept or len(kept) == len(self._catalogue):
+            return self
+        clone = object.__new__(ProductDiscoveryBackend)
+        for name in self.__slots__:
+            object.__setattr__(clone, name, getattr(self, name))
+        clone._catalogue = kept
+        clone._native_lock = threading.Lock()
+        clone._native_results = {}
+        return clone
+
     def discover(
         self, *, request: ModelRequest, tools: RepositoryToolSession
     ) -> ModelNativeDiscoveryPayload:

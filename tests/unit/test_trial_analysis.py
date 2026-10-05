@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
+from pathlib import Path
 
 import pytest
 from securecode_ai.adapters import local_product_trial as trial
@@ -138,6 +140,42 @@ def test_analyze_without_a_key_explains_what_is_missing(
     assert code == 4
     assert "DEEPSEEK_API_KEY" in stderr.getvalue()
     assert stdout.getvalue() == ""
+
+
+def test_analyze_refuses_an_existing_output_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.chdir(str(tmp_path))
+    stdout, stderr = io.StringIO(), io.StringIO()
+
+    code = run_analyze_command(
+        ("analyze", ".", "--output-dir", "."), stdout=stdout, stderr=stderr, environment={}
+    )
+
+    assert code == 4
+    assert "output directory already exists" in stderr.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("output", "accepted"),
+    [
+        ("git version 2.43.0", False),
+        ("git version 2.44.0", True),
+        ("git version 2.45.1.windows.1", True),
+        ("unexpected", False),
+    ],
+)
+def test_git_without_no_lazy_fetch_is_rejected_with_the_required_version(
+    monkeypatch: pytest.MonkeyPatch, output: str, accepted: bool
+) -> None:
+    completed = subprocess.CompletedProcess(("git", "--version"), 0, output, "")
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    if accepted:
+        trial._require_git_version(Path("git"))
+    else:
+        with pytest.raises(trial.TrialAnalysisError, match=r"Git 2\.44 or newer"):
+            trial._require_git_version(Path("git"))
 
 
 def _native_envelope(content: str) -> bytes:

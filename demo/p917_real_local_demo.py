@@ -1775,7 +1775,15 @@ def main(argv: list[str] | None = None) -> int:
         "--open-pr",
         action="store_true",
         help="commit the validated fix on a new branch of --repository and, when it has an "
-        "origin remote and the GitHub CLI is installed, push it and open a pull request",
+        "origin remote and the forge CLI (gh or glab) is installed, push it and open a "
+        "pull request (GitHub) or a merge request (GitLab)",
+    )
+    parser.add_argument(
+        "--forge",
+        choices=("auto", "github", "gitlab"),
+        default="auto",
+        help="where --open-pr opens the request; auto picks GitLab when the origin URL "
+        "names a GitLab host, otherwise GitHub",
     )
     arguments = parser.parse_args(argv)
     try:
@@ -1796,19 +1804,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if arguments.open_pr and manifest["outcome"] == "COMPLETED" and manifest["patch"]["present"]:
         manifest["pull_request"] = open_fix_pull_request(
-            arguments.repository, arguments.output / _PATCH_NAME, manifest
+            arguments.repository, arguments.output / _PATCH_NAME, manifest, forge=arguments.forge
         )
     print(json.dumps(manifest, ensure_ascii=True, sort_keys=True, separators=(",", ":")))
     return 0 if manifest["outcome"] == "COMPLETED" else 1
 
 
 def open_fix_pull_request(
-    repository: Path, patch: Path, manifest: dict[str, Any]
+    repository: Path, patch: Path, manifest: dict[str, Any], *, forge: str = "auto"
 ) -> dict[str, Any]:
-    """Commit the validated patch on a new branch; push and open a PR when possible.
+    """Commit the validated patch on a new branch; push and open a PR or MR when possible.
 
     The patch was already validated in an ephemeral copy.  This is the only step that
-    writes to the repository, and it runs only on explicit request.
+    writes to the repository, and it runs only on explicit request.  GitHub requests go
+    through ``gh``, GitLab merge requests through ``glab``; both use the CLI's own login.
     """
 
     import shutil
@@ -1850,27 +1859,37 @@ def open_fix_pull_request(
         if git(*step).returncode != 0:
             return {"status": "FAILED", "step": step[0], "branch": branch}
     result: dict[str, Any] = {"status": "COMMITTED", "branch": branch}
-    if not git("remote", "get-url", "origin").stdout.strip() or shutil.which("gh") is None:
-        result["next"] = f"git push -u origin {branch} && gh pr create --fill"
+    origin = git("remote", "get-url", "origin").stdout.strip()
+    if forge == "auto":
+        forge = "gitlab" if "gitlab" in origin.lower() else "github"
+    result["forge"] = forge
+    title = f"fix({cwe}): parameterize the SQL query"
+    body = (
+        "Proposed by the SecureCode AI Architect and validated in an ephemeral copy. "
+        f"Finding: {cwe} (OWASP A03:2021 Injection) at "
+        f"{finding.get('path')}:{finding.get('sink_start_row')}."
+    )
+    if forge == "gitlab":
+        tool = "glab"
+        command = [
+            "glab", "mr", "create", "--source-branch", branch,
+            "--title", title, "--description", body, "--yes",
+        ]  # fmt: skip
+        hint = "glab mr create --fill --yes"
+    else:
+        tool = "gh"
+        command = ["gh", "pr", "create", "--head", branch, "--title", title, "--body", body]
+        hint = "gh pr create --fill"
+    if not origin or shutil.which(tool) is None:
+        result["next"] = f"git push -u origin {branch} && {hint}"
         return result
     if git("push", "-u", "origin", branch).returncode != 0:
         result["status"] = "PUSH_FAILED"
         return result
-    created = subprocess.run(
-        [
-            "gh", "pr", "create", "--head", branch,
-            "--title", f"fix({cwe}): parameterize the SQL query",
-            "--body", "Proposed by the SecureCode AI Architect and validated in an ephemeral "
-            f"copy. Finding: {cwe} (OWASP A03:2021 Injection) at "
-            f"{finding.get('path')}:{finding.get('sink_start_row')}.",
-        ],
-        cwd=repository,
-        capture_output=True,
-        text=True,
-        check=False,
-    )  # fmt: skip
+    created = subprocess.run(command, cwd=repository, capture_output=True, text=True, check=False)
     if created.returncode == 0:
-        result.update(status="PR_OPENED", url=created.stdout.strip())
+        urls = [word for word in created.stdout.split() if word.startswith("https://")]
+        result.update(status="PR_OPENED", url=urls[-1] if urls else created.stdout.strip())
     else:
         result["status"] = "PR_FAILED"
     return result

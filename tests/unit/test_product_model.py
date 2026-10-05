@@ -351,6 +351,20 @@ def test_auditor_wire_hashes_ephemeral_rationale_before_core_parser() -> None:
 
 
 @pytest.mark.parametrize(
+    "citations", [["evidence-a", "seen-in-metadata"], ["evidence-a", "evidence-a"]]
+)
+def test_auditor_keeps_admitted_citations_and_drops_repeated_or_foreign_ones(
+    citations: list[str],
+) -> None:
+    validator = _auditor_validator()
+    payload = dict(_auditor_payload(), cited_evidence_ids=citations)
+
+    verdict = validator.parse(payload, request=_auditor_request(validator))
+
+    assert verdict.cited_evidence_ids == ("evidence-a",)
+
+
+@pytest.mark.parametrize(
     "payload",
     [
         {

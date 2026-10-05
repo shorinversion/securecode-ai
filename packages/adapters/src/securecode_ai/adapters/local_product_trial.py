@@ -20,6 +20,7 @@ import http.client
 import json
 import re
 import shutil
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,9 @@ _PURPOSES: Final = ("model_native_discovery", "candidate_investigation", "skepti
 _INPUT_PRICE: Final = 150_000
 _OUTPUT_PRICE: Final = 600_000
 DEEPSEEK_PRICES_PER_MILLION: Final = (_INPUT_PRICE, _OUTPUT_PRICE)
+# The sealed snapshot reader passes --no-lazy-fetch, which Git added in 2.44.
+MINIMUM_GIT_VERSION: Final = (2, 44)
+_GIT_VERSION: Final = re.compile(r"git version (\d+)\.(\d+)")
 
 
 class TrialAnalysisError(ValueError):
@@ -94,6 +98,7 @@ def run_trial_analysis(
         costs: list[int] = []
         host = _host(_local_profile(DEFAULT_LOCAL_MODEL, "0" * 64), runtime.policy)
         try:
+            _require_git_version(git_path)
             result = _run_local_product_scan(
                 host,
                 target,
@@ -111,6 +116,7 @@ def run_trial_analysis(
         model_id = environment.get("SECURECODE_LOCAL_MODEL") or DEFAULT_LOCAL_MODEL
         if _MODEL_ID.fullmatch(model_id) is None:
             raise TrialAnalysisError("SECURECODE_LOCAL_MODEL is invalid")
+        _require_git_version(git_path)
         version, digest = _ollama_identity(model_id)
         profile = _local_profile(model_id, digest)
         host = _host(profile, _policy(profile, "private_model_zdr", approval=False))
@@ -126,6 +132,23 @@ def run_trial_analysis(
             )
         return TrialAnalysis(provider, model_id, result, 0)
     raise TrialAnalysisError("provider must be deepseek or local")
+
+
+def _require_git_version(git: Path) -> None:
+    try:
+        output = subprocess.run(
+            [str(git), "--version"], capture_output=True, text=True, timeout=30, check=True
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        raise TrialAnalysisError("git --version failed") from error
+    match = _GIT_VERSION.search(output)
+    found = (int(match.group(1)), int(match.group(2))) if match else (0, 0)
+    if found < MINIMUM_GIT_VERSION:
+        required = ".".join(map(str, MINIMUM_GIT_VERSION))
+        raise TrialAnalysisError(
+            f"Git {required} or newer is required (found {output.strip() or 'unknown'}): "
+            "the sealed snapshot reader uses --no-lazy-fetch"
+        )
 
 
 def _fixture(name: str) -> dict[str, object]:

@@ -173,6 +173,9 @@ class _ProductDiscoveryNativeCycle:
         tool_refs: dict[str, EgressContentRef] = {}
         seen_call_ids: set[str] = set()
         successful_native_inspections = 0
+        # One malformed final answer (for example a tool call written as text with an
+        # unknown tool name) is answered by repeating the same turn once.
+        regenerations_left = 1
         by_id = {item.evidence_id: item for item in self._catalogue}
         guided_first_request = self._catalogue[0].request
         validator = ModelNativeDiscoveryPayloadValidator(
@@ -397,14 +400,27 @@ class _ProductDiscoveryNativeCycle:
                         request=turn,
                         elapsed_ms=self._executor.elapsed_since(turn_started),
                     )
+                    drafts = None
+                    if checked.status is ModelCallStatus.SUCCEEDED and terminal.payload is not None:
+                        try:
+                            wire = validator.parse(terminal.payload.reveal_for(turn.request_id))
+                            drafts = tuple(_draft(item, by_id, request) for item in wire)
+                        except Exception:
+                            drafts = None
+                    malformed = drafts is None and checked.status in {
+                        ModelCallStatus.SUCCEEDED,
+                        ModelCallStatus.INVALID_SCHEMA,
+                        ModelCallStatus.EMPTY_OUTPUT,
+                    }
+                    if malformed and regenerations_left and ordinal < 15:
+                        regenerations_left -= 1
+                        if terminal_payload is not None:
+                            terminal_payload.close()
+                            terminal_payload = None
+                        continue
                     if checked.status is not ModelCallStatus.SUCCEEDED:
                         return failure(checked.status, validator.last_schema_refusal_category)
-                    if terminal.payload is None:
-                        return failure(ModelCallStatus.INVALID_SCHEMA)
-                    try:
-                        wire = validator.parse(terminal.payload.reveal_for(turn.request_id))
-                        drafts = tuple(_draft(item, by_id, request) for item in wire)
-                    except Exception:
+                    if drafts is None:
                         return failure(ModelCallStatus.INVALID_SCHEMA)
                     total = measured_usage()
                     if (

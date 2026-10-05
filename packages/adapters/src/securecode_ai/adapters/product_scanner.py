@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic_ns
@@ -39,8 +40,10 @@ from securecode_ai.core.tool_policy import (
     RepositoryToolBudget,
     RepositoryToolGuard,
     RepositoryToolScope,
+    RepositoryView,
 )
 
+from .masked_sources import MaskedSourceView
 from .native_sources import NativeSourceCatalogue
 from .product_scanner_evidence import _scanner_graph_from_signals
 from .product_scanner_graph import (
@@ -406,8 +409,13 @@ def build_product_auditor_tools(
     deterministic: ProductDeterministicScanResult | None = None,
     child_artifacts: tuple[tuple[Evidence, bytes], ...] = (),
     denied_source_paths: tuple[str, ...] = (),
+    masked_sources: Mapping[str, str] | None = None,
 ) -> RepositoryToolSession:
-    """Admit only graph evidence backed by retained host-owned source mappings."""
+    """Admit only graph evidence backed by retained host-owned source mappings.
+
+    A restricted file listed in ``masked_sources`` becomes readable by line range with
+    its secret values masked; its raw evidence windows stay unavailable.
+    """
     if (
         type(graph) is not EvidenceGraph
         or graph.head_sha != catalogue.snapshot.head_sha
@@ -471,6 +479,9 @@ def build_product_auditor_tools(
     if any(path not in files for path in denied_source_paths):
         raise ValueError("Auditor denied source scope is invalid")
     restricted_paths.update(denied_source_paths)
+    masked = dict(masked_sources or {})
+    if any(path not in files for path in masked):
+        raise ValueError("Auditor masked source scope is invalid")
     paths = set()
     admitted_ids = set()
     for record in graph.evidence:
@@ -510,6 +521,8 @@ def build_product_auditor_tools(
             if record.location.path not in restricted_paths:
                 paths.add(record.location.path)
                 admitted_ids.add(record.evidence_id)
+            elif record.location.path in masked:
+                paths.add(record.location.path)
             continue
         if record.location is None:
             raise ValueError("Auditor source location is unavailable")
@@ -518,6 +531,8 @@ def build_product_auditor_tools(
         if record.location.path in restricted_paths:
             if record.evidence_id in children:
                 admitted_ids.add(record.evidence_id)
+            if record.location.path in masked:
+                paths.add(record.location.path)
             continue
         if record.evidence_id in children:
             admitted_ids.add(record.evidence_id)
@@ -540,6 +555,12 @@ def build_product_auditor_tools(
         backend = SealedRepositoryView(
             catalogue.indexes, evidence=(*native_aliases, *static_aliases, *aliases)
         )
+    readable_masked = {path: masked[path] for path in masked if path in paths}
+    view: RepositoryView = (
+        MaskedSourceView(backend, readable_masked, head_sha=graph.head_sha)
+        if readable_masked
+        else backend
+    )
     scope = RepositoryToolScope(
         graph.tenant_id,
         catalogue.indexes[0].repository_id if catalogue.indexes else "empty-repository",
@@ -548,5 +569,5 @@ def build_product_auditor_tools(
         tuple(sorted(admitted_ids)),
     )
     return RepositoryToolSession(
-        guard=RepositoryToolGuard(scope=scope, budget=budget), backend=backend
+        guard=RepositoryToolGuard(scope=scope, budget=budget), backend=view
     )

@@ -776,6 +776,17 @@ def _expr_nullability(
             "query_params.get",
             "params.get",
         }:
+            # get(key, default) returns the default for a missing key, so only a
+            # possibly-None default keeps the result nullable.
+            default = node.args[1] if len(node.args) >= 2 else None
+            for keyword in node.keywords:
+                if keyword.arg == "default":
+                    default = keyword.value
+            if default is not None:
+                return _join_nullability(
+                    _Nullability.NONNULL,
+                    _expr_nullability(default, flow, nullable_functions, limits, depth + 1, seen),
+                )
             return _Nullability.MAYBE_NULL
         if name is not None and name.endswith(".pop") and len(node.args) < 2:
             return _Nullability.MAYBE_NULL

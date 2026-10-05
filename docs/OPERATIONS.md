@@ -8,7 +8,7 @@ worker, интеграцию с GitHub и GitLab. Для локального а
 
 ```text
 securecode doctor
-securecode analyze TARGET [--provider deepseek|local] [--format markdown|html|json|sarif] [--output FILE] [--patch-dir DIR] [--no-fix]
+securecode analyze TARGET [--provider deepseek|local] [--format markdown|html|json|sarif] [--output FILE | --output-dir DIR] [--patch-dir DIR] [--no-fix]
 securecode scan TARGET [--config FILE] [--format json|sarif|markdown|html] [--output FILE]
 securecode scan TARGET --diagnostic [--format json|sarif|markdown|html] [--output FILE]
 securecode fix TARGET [--format json|sarif|markdown|html|diff] [--output FILE]

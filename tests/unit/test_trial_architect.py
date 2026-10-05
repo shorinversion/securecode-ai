@@ -219,3 +219,87 @@ def test_report_without_findings_or_sources_still_renders() -> None:
 
     assert "Подтверждённых уязвимостей не найдено" in markdown
     assert "## Находки" not in markdown
+
+
+_COMMAND = (
+    "import subprocess\n"
+    "\n"
+    "\n"
+    "def lookup(host):\n"
+    '    return subprocess.check_output("nslookup " + host, shell=True)\n'
+)
+
+
+def _command_fix(replacement: str) -> ProposedFix:
+    finding = FixFinding("finding-1", "CWE-78", "lookup.py", 5, 5, "deterministic")
+    return _fix(lambda _s, _u: _answer(5, 5, replacement), source=_COMMAND, finding=finding)
+
+
+def test_command_fix_that_lets_input_become_an_option_is_not_validated() -> None:
+    fix = _command_fix('    return subprocess.check_output(["nslookup", host])')
+
+    assert fix.status == "NOT_VALIDATED"
+    assert "options:unguarded" in fix.checks
+
+
+def test_command_fix_with_end_of_options_marker_or_dash_check_is_validated() -> None:
+    marker = _command_fix('    return subprocess.check_output(["nslookup", "--", host])')
+    checked = _command_fix(
+        '    if host.startswith("-"):\n'
+        '        raise ValueError("host")\n'
+        '    return subprocess.check_output(["nslookup", host])'
+    )
+
+    assert marker.status == checked.status == "VALIDATED"
+    assert "options:guarded" in marker.checks and "options:guarded" in checked.checks
+
+
+def test_scanner_and_discovery_findings_of_one_weakness_get_one_fix() -> None:
+    document = _document()
+    findings = document["findings"]
+    assert isinstance(findings, list)
+    duplicate = dict(findings[0], finding_id="finding-3", candidate_origin="deterministic")
+    findings.append(duplicate)
+
+    (finding,) = findings_from_report(document)
+
+    assert finding.finding_id == "finding-3" and finding.origin == "deterministic"
+
+
+def test_get_with_a_default_is_not_a_none_dereference() -> None:
+    from securecode_ai.adapters.trial_architect import _signals
+
+    def rules(call: str) -> set[str]:
+        source = (
+            "from flask import request\n"
+            "\n"
+            "\n"
+            "def lookup():\n"
+            f"    host = {call}\n"
+            '    return host.startswith("-")\n'
+        )
+        return {rule for rule, _ in _signals("lookup.py", source)}
+
+    assert "securecode-python-cwe476" in rules('request.args.get("host")')
+    assert "securecode-python-cwe476" in rules('request.args.get("host", None)')
+    assert "securecode-python-cwe476" not in rules('request.args.get("host", "")')
+    assert "securecode-python-cwe476" not in rules('request.args.get("host", default="")')
+
+
+def test_report_takes_the_scanner_location_and_explains_indeterminate() -> None:
+    document = _document()
+    findings = document["findings"]
+    assert isinstance(findings, list)
+    line_one = dict(findings[0]["locations"][0], start={"line": 1}, end={"line": 1})
+    model = dict(findings[0], locations=[line_one])
+    scanner = dict(findings[0], finding_id="finding-3", candidate_origin="deterministic")
+    document["findings"] = [model, scanner]
+    document["outcome"] = "INDETERMINATE"
+    context = TrialReportContext(Path("repo"), "c" * 40, "deepseek", "deepseek-flash", 0, {})
+
+    markdown = render_trial_report(document, context, [], html_format=False).decode()
+
+    assert "app.py:5" in markdown and "app.py:1 " not in markdown
+    assert "сканер + модель" in markdown
+    assert "не все этапы проверки завершены" in markdown
+    assert "Этапы проверки:** есть незавершённые" in markdown

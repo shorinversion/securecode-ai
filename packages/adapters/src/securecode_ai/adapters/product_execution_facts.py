@@ -39,13 +39,14 @@ from securecode_ai.core.tool_policy import (
     RepositoryToolWindow,
 )
 
+from .masked_sources import read_masked_range
 from .product_execution_orchestration import ProductChildFacts, child_fact_graph
 from .product_execution_stages import (
     ProductDeterministicExecution,
     ProductSecretStageResult,
 )
 from .product_scanner import scanner_facts_match_receipts
-from .secret_detection import SecretCandidate
+from .secret_detection import SecretCandidate, SecretScanResult
 
 
 def child_fact_catalogue(
@@ -332,14 +333,15 @@ def execution_fact_graph(
     )
 
 
-def restricted_product_source_paths(execution: ProductDeterministicExecution) -> tuple[str, ...]:
-    """Unverified secret coverage cannot grant any model raw-source capability."""
+def _verified_secret_results(
+    execution: ProductDeterministicExecution,
+) -> tuple[SecretScanResult, ...] | None:
+    """Secret-stage results bound to this exact snapshot, or None when unverified."""
     snapshot = execution.catalogue.snapshot
-    all_paths = tuple(file.path for file in snapshot.files)
     try:
         secrets = execution.secrets
         if type(secrets) is not ProductSecretStageResult or secrets.head_sha != snapshot.head_sha:
-            return all_paths
+            return None
         if tuple(
             (r.path, r.content_sha256, r.source_size_bytes, r.repository_id, r.revision)
             for r in secrets.results
@@ -347,7 +349,7 @@ def restricted_product_source_paths(execution: ProductDeterministicExecution) ->
             (f.path, f.content_sha256, len(f.content), execution.repository_id, snapshot.head_sha)
             for f in snapshot.files
         ):
-            return all_paths
+            return None
         for result in secrets.results:
             result.__post_init__()
         material = [
@@ -359,22 +361,68 @@ def restricted_product_source_paths(execution: ProductDeterministicExecution) ->
         ]
         digest = hashlib.sha256(json.dumps(material, separators=(",", ":")).encode()).hexdigest()
         if secrets.output_sha256 != digest:
-            return all_paths
-        return tuple(result.path for result in secrets.results if result.candidates)
+            return None
+        return secrets.results
     except Exception:
-        return all_paths
+        return None
+
+
+def restricted_product_source_paths(execution: ProductDeterministicExecution) -> tuple[str, ...]:
+    """Unverified secret coverage cannot grant any model raw-source capability."""
+    results = _verified_secret_results(execution)
+    if results is None:
+        return tuple(file.path for file in execution.catalogue.snapshot.files)
+    return tuple(result.path for result in results if result.candidates)
+
+
+def masked_product_sources(execution: ProductDeterministicExecution) -> dict[str, str]:
+    """Source of every file with a detected secret, each secret value replaced by its
+    redaction marker; newlines inside a value are kept so line numbers stay valid.
+
+    Masking is offered only for a verified secret stage: without exact value spans a
+    file stays fully restricted.
+    """
+    results = _verified_secret_results(execution)
+    if results is None:
+        return {}
+    files = {file.path: file.content for file in execution.catalogue.snapshot.files}
+    masked: dict[str, str] = {}
+    for result in results:
+        if not result.candidates:
+            continue
+        content = files[result.path]
+        spans = sorted(
+            (item.location.start_byte, item.location.end_byte, item.redaction)
+            for item in result.candidates
+        )
+        pieces: list[bytes] = []
+        cursor = 0
+        for start, end, redaction in spans:
+            if start < cursor or end > len(content):
+                return {}
+            pieces.append(content[cursor:start])
+            pieces.append(redaction.encode("ascii") + b"\n" * content[start:end].count(b"\n"))
+            cursor = end
+        pieces.append(content[cursor:])
+        try:
+            masked[result.path] = b"".join(pieces).decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            return {}
+    return masked
 
 
 class RestrictedProductDiscoveryView:
-    """Deny raw secret-file capabilities without altering discovery contracts."""
+    """Serve files with detected secrets masked; deny them only when spans are unknown."""
 
-    def __init__(self, execution: ProductDeterministicExecution):
+    def __init__(self, execution: ProductDeterministicExecution, *, masked: bool = True):
         self._backend = execution.catalogue.repository_view()
-        self._paths = set(restricted_product_source_paths(execution))
+        self._head = execution.catalogue.snapshot.head_sha
+        self._masked = masked_product_sources(execution) if masked else {}
+        self._paths = set(restricted_product_source_paths(execution)) - set(self._masked)
         self._evidence = {
             anchor.evidence_id
             for anchor in execution.catalogue.anchors
-            if anchor.location.path in self._paths
+            if anchor.location.path in self._paths or anchor.location.path in self._masked
         }
 
     def read_range(
@@ -382,6 +430,11 @@ class RestrictedProductDiscoveryView:
     ) -> RepositoryToolOutput:
         if arguments.path in self._paths:
             raise ValueError("PRODUCT_DISCOVERY_RESTRICTED_SOURCE")
+        masked = self._masked.get(arguments.path)
+        if masked is not None:
+            if arguments.head_sha != self._head:
+                raise ValueError("repository revision mismatch")
+            return read_masked_range(masked, arguments, window=window)
         return self._backend.read_range(arguments, window=window)
 
     def read_evidence(
@@ -394,13 +447,27 @@ class RestrictedProductDiscoveryView:
     def list_paths(
         self, arguments: ListPathsArguments, *, window: RepositoryToolWindow
     ) -> RepositoryToolOutput:
-        if self._paths:
-            raise ValueError("PRODUCT_DISCOVERY_RESTRICTED_SOURCE")
-        return self._backend.list_paths(arguments, window=window)
+        # Restricted files are hidden from the listing rather than failing it: one file
+        # with a detected secret must not block discovery of the rest of the snapshot.
+        listing = self._backend.list_paths(arguments, window=window)
+        if not self._paths:
+            return listing
+        paths = [path for path in json.loads(listing.content) if path not in self._paths]
+        content = json.dumps(paths, ensure_ascii=True)
+        return RepositoryToolOutput.build(
+            content, token_count=len(content.encode("utf-8")), item_count=len(paths)
+        )
 
     def lookup_symbol(
         self, arguments: LookupSymbolArguments, *, window: RepositoryToolWindow
     ) -> RepositoryToolOutput:
-        if arguments.path in self._paths or (arguments.path is None and self._paths):
+        if arguments.path in self._paths:
             raise ValueError("PRODUCT_DISCOVERY_RESTRICTED_SOURCE")
-        return self._backend.lookup_symbol(arguments, window=window)
+        found = self._backend.lookup_symbol(arguments, window=window)
+        if arguments.path is not None or not self._paths:
+            return found
+        matches = [item for item in json.loads(found.content) if item["path"] not in self._paths]
+        content = json.dumps(matches, ensure_ascii=True)
+        return RepositoryToolOutput.build(
+            content, token_count=len(content.encode("utf-8")), item_count=len(matches)
+        )

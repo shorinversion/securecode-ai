@@ -487,12 +487,20 @@ class AuditorPayloadValidator:
                 tenant_id=request.tenant_id,
                 payload=encoded,
             )
+            # A model may also cite ids it saw in candidate metadata but was not given as
+            # evidence. Such extra citations are dropped; a verdict must still cite at
+            # least one admitted evidence item, otherwise it stays invalid.
+            selected = {item.evidence_id for item in self._package.selected}
+            # Order carries no meaning; the verdict contract stores citations sorted.
+            admitted = sorted({value for value in citations if value in selected})
+            if not admitted:
+                raise ValueError("auditor wire payload cites no admitted evidence")
             return parse_auditor_verdict(
                 self._package,
                 {
                     "verdict_id": verdict_id,
                     "finding_verdict": payload["finding_verdict"],
-                    "cited_evidence_ids": citations,
+                    "cited_evidence_ids": admitted,
                     "rationale_sha256": hashlib.sha256(rationale.encode()).hexdigest(),
                 },
             )

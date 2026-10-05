@@ -24,12 +24,13 @@ from securecode_ai.adapters.trial_architect import (
     openai_compatible_complete,
     propose_fixes,
 )
+from securecode_ai.adapters.trial_fix_export import attach_fixes_to_json, attach_fixes_to_sarif
 from securecode_ai.adapters.trial_report import (
     TrialReportContext,
     render_trial_report,
     report_paths,
 )
-from securecode_ai.core.reports import ReportFormat
+from securecode_ai.core.reports import ReportFormat, render_report
 
 _FORMATS = {
     "markdown": ReportFormat.MARKDOWN,
@@ -49,6 +50,13 @@ def analyze_parser() -> argparse.ArgumentParser:
             "Auditor, Skeptic, finding gate and Architect fixes, with an OWASP Top 10 "
             "report. No host approval is required; results are not a CI-blocking verdict."
         ),
+        epilog=(
+            "exit codes: 0 PASS - no confirmed finding and every required stage completed; "
+            "2 FAIL - at least one confirmed finding (takes precedence over incomplete "
+            "stages); 3 INDETERMINATE - no confirmed finding, but a required stage or a "
+            "candidate is unresolved, or the run failed; 4 - invalid arguments, missing "
+            "key, unsupported Git or an existing output path"
+        ),
     )
     parser.add_argument("target", help="Git checkout to audit")
     parser.add_argument(
@@ -59,6 +67,13 @@ def analyze_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--format", choices=tuple(_FORMATS), default="markdown")
     parser.add_argument("--output", help="write the report to a new file instead of stdout")
+    parser.add_argument(
+        "--output-dir",
+        help=(
+            "write report.md, report.html, report.json and report.sarif of one run "
+            "into this new directory (--format and --output are then ignored)"
+        ),
+    )
     parser.add_argument(
         "--max-cost-usd",
         type=float,
@@ -87,6 +102,10 @@ def run_analyze_command(
     if output is not None and output.exists():
         stderr.write(f"output file already exists: {output}\n")
         return _EXIT_CONFIG
+    output_dir = Path(arguments.output_dir) if arguments.output_dir else None
+    if output_dir is not None and output_dir.exists():
+        stderr.write(f"output directory already exists: {output_dir}\n")
+        return _EXIT_CONFIG
     patch_dir = Path(arguments.patch_dir) if arguments.patch_dir else None
     if patch_dir is not None and patch_dir.exists():
         stderr.write(f"patch directory already exists: {patch_dir}\n")
@@ -109,7 +128,8 @@ def run_analyze_command(
     rendered = analysis.result.rendered
     cost = analysis.cost_microusd
     readable = arguments.format in {"markdown", "html"}
-    if readable or patch_dir is not None:
+    reports: dict[str, bytes] = {}
+    if readable or output_dir is not None or patch_dir is not None or not arguments.no_fix:
         document = json.loads(analysis.result.composition.json_report)
         revision = document.get("repository_revision", {})
         head_sha = str(revision.get("head_sha", "")) if isinstance(revision, dict) else ""
@@ -119,30 +139,49 @@ def run_analyze_command(
         findings = findings_from_report(document)
         if findings and not arguments.no_fix:
             usage: list[tuple[int, int]] = []
-            fixes = propose_fixes(
-                findings,
-                _architect(arguments.provider, values, usage),
-                read_source=read_source,
+            fixes = _unique_fixes(
+                propose_fixes(
+                    findings,
+                    _architect(arguments.provider, values, usage),
+                    read_source=read_source,
+                )
             )
             if arguments.provider == "deepseek":
                 cost += _deepseek_cost(usage)
-        if readable:
-            rendered = render_trial_report(
-                document,
-                TrialReportContext(
-                    repository,
-                    head_sha,
-                    analysis.provider,
-                    analysis.model_id,
-                    cost,
-                    _sources(read_source, report_paths(document)),
+        context = TrialReportContext(
+            repository,
+            head_sha,
+            analysis.provider,
+            analysis.model_id,
+            cost,
+            _sources(read_source, report_paths(document)) if readable or output_dir else {},
+        )
+        if output_dir is not None:
+            composition = analysis.result.composition
+            reports = {
+                "report.md": render_trial_report(document, context, fixes, html_format=False),
+                "report.html": render_trial_report(document, context, fixes, html_format=True),
+                "report.json": attach_fixes_to_json(composition.json_report, fixes, findings),
+                "report.sarif": attach_fixes_to_sarif(
+                    render_report(composition.report, ReportFormat.SARIF), fixes, findings
                 ),
-                fixes,
-                html_format=arguments.format == "html",
+            }
+        elif readable:
+            rendered = render_trial_report(
+                document, context, fixes, html_format=arguments.format == "html"
             )
+        elif arguments.format == "json":
+            rendered = attach_fixes_to_json(rendered, fixes, findings)
+        elif arguments.format == "sarif":
+            rendered = attach_fixes_to_sarif(rendered, fixes, findings)
         if patch_dir is not None:
             _write_patches(patch_dir, fixes)
-    if output is None:
+    if output_dir is not None:
+        output_dir.mkdir(parents=True)
+        for name, content in reports.items():
+            (output_dir / name).write_bytes(content)
+        stdout.write(f"reports written to {output_dir}\n")
+    elif output is None:
         stdout.write(rendered.decode("utf-8"))
         if not rendered.endswith(b"\n"):
             stdout.write("\n")
@@ -185,6 +224,19 @@ def _deepseek_cost(usage: Sequence[tuple[int, int]]) -> int:
         (prompt * input_price + completion * output_price) // 1_000_000
         for prompt, completion in usage
     )
+
+
+def _unique_fixes(fixes: Sequence[ProposedFix]) -> tuple[ProposedFix, ...]:
+    """Drop a validated fix whose diff repeats an earlier one."""
+    seen: set[tuple[str, str]] = set()
+    unique: list[ProposedFix] = []
+    for fix in fixes:
+        key = (fix.path, fix.diff)
+        if fix.status == "VALIDATED" and key in seen:
+            continue
+        seen.add(key)
+        unique.append(fix)
+    return tuple(unique)
 
 
 def _write_patches(directory: Path, fixes: Sequence[ProposedFix]) -> None:
