@@ -4,14 +4,14 @@ build-backend = "uv_build"
 
 [project]
 name = "securecode-ai-cli"
-version = "1.2.2"
+version = "1.2.3"
 description = "Offline SecureCode AI command-line composition boundary"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "securecode-ai-adapters==1.2.2",
-    "securecode-ai-contracts==1.2.2",
-    "securecode-ai-core==1.2.2",
+    "securecode-ai-adapters==1.2.3",
+    "securecode-ai-contracts==1.2.3",
+    "securecode-ai-core==1.2.3",
 ]
 classifiers = [
     "Private :: Do Not Upload",

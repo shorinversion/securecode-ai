@@ -303,3 +303,69 @@ def test_report_takes_the_scanner_location_and_explains_indeterminate() -> None:
     assert "сканер + модель" in markdown
     assert "не все этапы проверки завершены" in markdown
     assert "Этапы проверки:** есть незавершённые" in markdown
+
+
+def test_report_prefers_the_cited_line_with_the_dangerous_call() -> None:
+    source = (
+        "import subprocess\n"
+        "from flask import Flask, request\n"
+        "app = Flask(__name__)\n"
+        "\n"
+        "\n"
+        "@app.route('/ping')\n"
+        "def ping():\n"
+        "    host = request.args.get('host', '')\n"
+        "    return subprocess.check_output('ping ' + host, shell=True)\n"
+    )
+
+    def at(line: int) -> dict[str, object]:
+        return {
+            "path": "command.py",
+            "start": {"line": line, "column": 1},
+            "end": {"line": line, "column": 20},
+        }
+
+    document = {
+        "outcome": "FAIL",
+        "analysis_health": "HEALTHY",
+        "findings": [
+            {
+                "finding_id": "finding-1",
+                "cwe_id": "CWE-78",
+                "owasp_category": "A03:2021",
+                "severity": "HIGH",
+                "verdict": "CONFIRMED",
+                "candidate_origin": "model_native",
+                "locations": [at(3), at(9)],
+            }
+        ],
+    }
+    context = TrialReportContext(
+        Path("repo"), "d" * 40, "deepseek", "deepseek-flash", 0, {"command.py": source}
+    )
+
+    markdown = render_trial_report(document, context, [], html_format=False).decode()
+
+    assert "command.py:9" in markdown and "command.py:3" not in markdown
+
+
+def test_report_lists_candidates_without_a_final_decision() -> None:
+    document = {"outcome": "INDETERMINATE", "analysis_health": "HEALTHY", "findings": []}
+    context = TrialReportContext(
+        Path("repo"),
+        "e" * 40,
+        "deepseek",
+        "deepseek-flash",
+        0,
+        {},
+        (("CWE-798", "secret.py", 3, "сканер", "Скептик: нужно больше доказательств"),),
+    )
+
+    markdown = render_trial_report(document, context, [], html_format=False).decode()
+    page = render_trial_report(document, context, [], html_format=True).decode()
+
+    assert "Без окончательного решения:** 1" in markdown
+    assert "## Кандидаты без окончательного решения" in markdown
+    assert "| 1 | CWE-798 Hard-coded Credentials | secret.py:3 | сканер |" in markdown
+    assert "код возврата 3 не означает" in markdown
+    assert "Скептик: нужно больше доказательств" in page

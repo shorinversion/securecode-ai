@@ -306,14 +306,10 @@ class OpenAICompatibleRemoteHttpsConnector:
                     ),
                 )
                 lease = budget.reserve(
-                    RemoteProviderSpendRequest(
-                        run_id=call_budget.run_id,
-                        tenant_id=call_budget.tenant_id,
+                    spend_request(
+                        call_budget,
                         model_id=model_id,
-                        request_id=call_budget.request_id,
-                        attempt=call_budget.attempt,
-                        max_input_tokens=call_budget.max_input_tokens,
-                        max_output_tokens=call_budget.max_output_tokens,
+                        input_token_upper_bound=input_token_upper_bound,
                         slot_timeout_ms=slot_timeout_ms,
                     )
                 )
@@ -330,7 +326,7 @@ class OpenAICompatibleRemoteHttpsConnector:
                 or lease.model_id != model_id
                 or lease.request_id != call_budget.request_id
                 or lease.attempt != call_budget.attempt
-                or lease.max_input_tokens != call_budget.max_input_tokens
+                or lease.max_input_tokens != input_token_upper_bound
                 or lease.max_output_tokens != call_budget.max_output_tokens
             ):
                 if type(lease) is RemoteProviderSpendLease:
@@ -822,6 +818,31 @@ def _canonicalize_remote_envelope_with_usage(
         sort_keys=True,
     ).encode("ascii")
     return canonical, usage["prompt_tokens"], usage["completion_tokens"]
+
+
+def spend_request(
+    call_budget: RemoteProviderCallContext,
+    *,
+    model_id: str,
+    input_token_upper_bound: int,
+    slot_timeout_ms: int,
+) -> RemoteProviderSpendRequest:
+    """The spend reservation for one call.
+
+    The input side reserves what this prompt can actually carry (its UTF-8 byte bound
+    plus framing), not the whole input window: reserving ~983k tokens per call made a
+    small ``--max-cost-usd`` refuse calls after a cent of real spending.
+    """
+    return RemoteProviderSpendRequest(
+        run_id=call_budget.run_id,
+        tenant_id=call_budget.tenant_id,
+        model_id=model_id,
+        request_id=call_budget.request_id,
+        attempt=call_budget.attempt,
+        max_input_tokens=min(input_token_upper_bound, call_budget.max_input_tokens),
+        max_output_tokens=call_budget.max_output_tokens,
+        slot_timeout_ms=slot_timeout_ms,
+    )
 
 
 def _valid_budget_port(value: object) -> bool:

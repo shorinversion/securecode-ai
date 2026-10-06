@@ -29,12 +29,18 @@ from securecode_ai.adapters.trial_architect import (
     openai_compatible_complete,
     propose_fixes,
 )
-from securecode_ai.adapters.trial_fix_export import attach_fixes_to_json, attach_fixes_to_sarif
+from securecode_ai.adapters.trial_fix_export import (
+    attach_fixes_to_json,
+    attach_fixes_to_sarif,
+    attach_groups_to_json,
+    attach_groups_to_sarif,
+)
 from securecode_ai.adapters.trial_report import (
     TrialReportContext,
     render_trial_report,
     report_paths,
 )
+from securecode_ai.adapters.trial_unresolved import unresolved_candidates
 from securecode_ai.core.reports import ReportFormat, render_report
 
 _FORMATS = {
@@ -163,15 +169,23 @@ def run_analyze_command(
             analysis.model_id,
             cost,
             _sources(read_source, report_paths(document)) if readable or output_dir else {},
+            tuple(
+                (item.cwe_id, item.path, item.line, item.origin, item.reason)
+                for item in unresolved_candidates(analysis.result.composition)
+            ),
         )
         if output_dir is not None:
             composition = analysis.result.composition
             reports = {
                 "report.md": render_trial_report(document, context, fixes, html_format=False),
                 "report.html": render_trial_report(document, context, fixes, html_format=True),
-                "report.json": attach_fixes_to_json(composition.json_report, fixes, findings),
-                "report.sarif": attach_fixes_to_sarif(
-                    render_report(composition.report, ReportFormat.SARIF), fixes, findings
+                "report.json": attach_groups_to_json(
+                    attach_fixes_to_json(composition.json_report, fixes, findings)
+                ),
+                "report.sarif": attach_groups_to_sarif(
+                    attach_fixes_to_sarif(
+                        render_report(composition.report, ReportFormat.SARIF), fixes, findings
+                    )
                 ),
             }
         elif readable:
@@ -189,6 +203,10 @@ def run_analyze_command(
                     f"securecode analyze: the fix for {path} changes a line with a masked "
                     "secret; apply it by hand from the report and rotate the secret\n"
                 )
+    if arguments.format == "json" and output_dir is None:
+        rendered = attach_groups_to_json(rendered)
+    elif arguments.format == "sarif" and output_dir is None:
+        rendered = attach_groups_to_sarif(rendered)
     if output_dir is not None:
         output_dir.mkdir(parents=True)
         for name, content in reports.items():

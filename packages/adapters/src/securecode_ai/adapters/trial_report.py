@@ -10,6 +10,7 @@ Architect's validated fix.
 from __future__ import annotations
 
 import html
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,6 +92,24 @@ _ORIGINS: Final = {
     "deterministic": "сканер",
     "model_native": "модель",
 }
+_SINKS: Final = {
+    "CWE-78": re.compile(
+        r"subprocess|os\.(system|popen|exec|spawn)|\bexec\(|child_process|exec\.Command"
+    ),
+    "CWE-88": re.compile(r"subprocess|os\.(exec|spawn)|child_process|exec\.Command"),
+    "CWE-89": re.compile(
+        r"\.(execute|executemany|raw|query|exec)\s*\(|\bSELECT\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b",
+        re.I,
+    ),
+    "CWE-22": re.compile(r"\bopen\(|send_file|os\.path\.join|readFile|filepath\.Join"),
+    "CWE-79": re.compile(
+        r"render_template_string|Markup|innerHTML|dangerouslySetInnerHTML|\|\s*safe"
+    ),
+    "CWE-94": re.compile(r"\beval\(|\bexec\(|new Function"),
+    "CWE-502": re.compile(r"pickle\.loads?|yaml\.load|marshal\.loads?"),
+    "CWE-918": re.compile(r"requests\.(get|post)|urlopen|fetch\(|http\.Get"),
+    "CWE-798": re.compile(r"(key|secret|token|password|passwd)\s*[=:]", re.I),
+}
 _SEVERITY_ORDER: Final = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 _OUTCOMES: Final = {
     "FAIL": "Найдены подтверждённые уязвимости",
@@ -149,6 +168,8 @@ class TrialReportContext:
     model_id: str
     cost_microusd: int
     sources: Mapping[str, str]
+    # Candidates without a final decision: (CWE, path, line, origin, reason).
+    unresolved: tuple[tuple[str, str, int, str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +197,7 @@ class _Report:
     summary: tuple[tuple[str, str], ...]
     sections: tuple[_Section, ...]
     gaps: tuple[str, ...]
+    unresolved: tuple[tuple[str, str, int, str, str], ...] = ()
 
 
 def render_trial_report(
@@ -186,7 +208,7 @@ def render_trial_report(
     html_format: bool,
 ) -> bytes:
     fix_by_id = {fix.finding_id: fix for fix in fixes}
-    entries = _entries(document)
+    entries = _entries(document, context.sources)
     sections = tuple(
         _Section(
             number,
@@ -203,7 +225,7 @@ def render_trial_report(
         verdict += (
             ": не все этапы проверки завершены, см. раздел ниже"
             if gaps
-            else ": у части кандидатов нет окончательного решения, нужна ручная проверка"
+            else ": у части кандидатов нет окончательного решения, см. раздел ниже"
         )
     report = _Report(
         summary=(
@@ -213,6 +235,7 @@ def render_trial_report(
             ("Модель", f"{context.model_id} ({context.provider})"),
             ("Стоимость запросов к модели", f"${context.cost_microusd / 1_000_000:.4f}"),
             ("Находок", str(len(entries))),
+            ("Без окончательного решения", str(len(context.unresolved))),
             (
                 "Этапы проверки",
                 "все обязательные этапы выполнены" if not gaps else "есть незавершённые, см. ниже",
@@ -220,6 +243,7 @@ def render_trial_report(
         ),
         sections=sections,
         gaps=gaps,
+        unresolved=context.unresolved,
     )
     text = _html(report) if html_format else _markdown(report)
     return text.encode("utf-8")
@@ -235,7 +259,9 @@ def _line(location: Mapping[str, object], key: str) -> int:
     return line if isinstance(line, int) else 1
 
 
-def _entries(document: Mapping[str, object]) -> list[_Entry]:
+def _entries(
+    document: Mapping[str, object], sources: Mapping[str, str] | None = None
+) -> list[_Entry]:
     groups: dict[tuple[str, str], list[dict[str, object]]] = {}
     for item in _dicts(document.get("findings")):
         locations = _dicts(item.get("locations"))
@@ -251,11 +277,15 @@ def _entries(document: Mapping[str, object]) -> list[_Entry]:
             for location in _dicts(item.get("locations"))
             if location.get("path") == path
         ]
-        narrow = min(
-            locations,
-            key=lambda value: _line(value, "end") - _line(value, "start"),
-            default=None,
+        lines = (sources or {}).get(path, "").splitlines()
+        sink = _SINKS.get(cwe_id)
+        ranked = sorted(
+            (
+                (not _at_sink(value, lines, sink), _line(value, "end") - _line(value, "start"), i)
+                for i, value in enumerate(locations)
+            )
         )
+        narrow = locations[ranked[0][2]] if ranked else None
         start = _line(narrow, "start") if narrow is not None else 1
         end = max(start, _line(narrow, "end")) if narrow is not None else 1
         entries.append(
@@ -272,6 +302,17 @@ def _entries(document: Mapping[str, object]) -> list[_Entry]:
         )
     entries.sort(key=lambda entry: (_rank(entry.severity), entry.path, entry.start_line))
     return entries
+
+
+def _at_sink(
+    location: Mapping[str, object], lines: list[str], sink: re.Pattern[str] | None
+) -> bool:
+    """Whether a cited location is the dangerous operation for the weakness.
+
+    A model may cite several one-line calls; the report shows the one that is the sink.
+    """
+    first, last = _line(location, "start"), _line(location, "end")
+    return sink is not None and any(sink.search(line) for line in lines[first - 1 : last])
 
 
 def _rank(severity: str) -> int:
@@ -336,6 +377,10 @@ _HEADER: Final = (
     "Источник",
     "Исправление",
 )
+_UNRESOLVED_NOTE: Final = (
+    "Это не подтверждённые уязвимости и не безопасный код: модели не вынесли решение. "
+    "Проверьте эти места вручную; код возврата 3 не означает, что уязвимостей нет."
+)
 _GAPS_NOTE: Final = (
     "Кандидаты с незавершённой проверкой не считаются ни уязвимостями, ни безопасным "
     "кодом и требуют ручного анализа."
@@ -396,6 +441,14 @@ def _markdown(report: _Report) -> str:
             out += ["Проверки: " + _checks(fix) + ".", ""]
         elif fix is not None:
             out += ["Исправление не предложено: " + _checks(fix) + ".", ""]
+    if report.unresolved:
+        out += ["## Кандидаты без окончательного решения", ""]
+        out.append("| № | Уязвимость | Место | Источник | Причина |")
+        out.append("|---|---|---|---|---|")
+        for number, (cwe_id, path, line, origin, reason) in enumerate(report.unresolved, 1):
+            cells = (str(number), _cwe(cwe_id), f"{path}:{line}", origin, reason)
+            out.append("| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |")
+        out += ["", _UNRESOLVED_NOTE, ""]
     if report.gaps:
         out += ["## Неполная проверка", ""]
         out += [f"- {item}" for item in report.gaps]
@@ -485,6 +538,16 @@ def _html(report: _Report) -> str:
             out.append(f'<p class="muted">Проверки: {e(_checks(fix))}.</p>')
         elif fix is not None:
             out.append(f'<p class="muted">Исправление не предложено: {e(_checks(fix))}.</p>')
+    if report.unresolved:
+        out.append("<h2>Кандидаты без окончательного решения</h2><table><tr>")
+        out += [
+            f"<th>{e(cell)}</th>" for cell in ("№", "Уязвимость", "Место", "Источник", "Причина")
+        ]
+        out.append("</tr>")
+        for number, (cwe_id, path, line, origin, reason) in enumerate(report.unresolved, 1):
+            cells = (str(number), _cwe(cwe_id), f"{path}:{line}", origin, reason)
+            out.append("<tr>" + "".join(f"<td>{e(cell)}</td>" for cell in cells) + "</tr>")
+        out.append(f"</table><p>{e(_UNRESOLVED_NOTE)}</p>")
     if report.gaps:
         out.append("<h2>Неполная проверка</h2><ul>")
         out += [f"<li>{e(item)}</li>" for item in report.gaps]

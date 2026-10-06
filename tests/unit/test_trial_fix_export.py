@@ -81,3 +81,23 @@ def test_sarif_result_gets_a_standard_fix() -> None:
     assert replacement["deletedRegion"] == {"startLine": 5, "endLine": 5}
     assert "WHERE name = ?" in replacement["insertedContent"]["text"]
     assert "fixes" not in other
+
+
+def test_findings_of_one_weakness_share_a_group_in_json_and_sarif() -> None:
+    from securecode_ai.adapters.trial_fix_export import (
+        attach_groups_to_json,
+        attach_groups_to_sarif,
+        weakness_group,
+    )
+
+    document = json.loads(attach_groups_to_json(_report()))
+    first, second, other = document["findings"]
+    assert first["weakness_group"] == second["weakness_group"] == weakness_group("CWE-89", "app.py")
+    assert other["weakness_group"] != first["weakness_group"]
+
+    location = {"physicalLocation": {"artifactLocation": {"uri": "src/my%20app.py"}}}
+    sarif = {"runs": [{"results": [{"ruleId": "CWE-89", "locations": [location]}]}]}
+    (result,) = json.loads(attach_groups_to_sarif(json.dumps(sarif).encode()))["runs"][0]["results"]
+    assert result["partialFingerprints"] == {
+        "securecodeWeakness/v1": weakness_group("CWE-89", "src/my app.py")
+    }

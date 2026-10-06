@@ -93,6 +93,8 @@ Reports are written to `output/demo-report/`. All tools with saved outputs:
 
 Requirements: Git 2.44 or newer, CPython 3.12–3.14, [uv](https://docs.astral.sh/uv/) 0.12.0.
 Docker is needed only for the images, Ollama only for the local model.
+The local Qwen 2.5 Coder 7B Q4_K_M model takes about 4.7 GB on disk and needs 6–8 GB
+of free VRAM or, without a GPU, about 8 GB of RAM (slower); DeepSeek needs no GPU.
 
 ```bash
 git clone https://github.com/shorinversion/securecode-ai.git
@@ -120,14 +122,18 @@ every finding and Architect fixes.
 | `--output-dir DIR` | Save `report.md`, `report.html`, `report.json` and `report.sarif` from one run |
 | `--patch-dir DIR` | Save validated fixes as `.diff` files |
 | `--no-fix` | Do not request fixes |
-| `--max-cost-usd N` | API spend cap per run (default 1.0) |
+| `--max-cost-usd N` | API spend cap per run (default 1.0); each call reserves its maximum cost first, about $0.04, so a cap below $0.20 can stop the review |
 
 Exit codes: `0` — no confirmed vulnerability and every required stage completed;
 `2` — at least one confirmed vulnerability (takes precedence over incomplete stages);
 `3` — no confirmed vulnerability, but a stage or a candidate is unresolved; `4` — invalid
 arguments, missing key, Git older than 2.44 or an existing output path. Validated fixes
 appear in `patch_refs` and `validation_refs` of a JSON finding and in the standard SARIF
-`fixes` property. The Markdown and HTML reports are in Russian;
+`fixes` property. The scanner and the model may confirm the same weakness: such
+findings share a `weakness_group` in JSON and `partialFingerprints`
+(`securecodeWeakness/v1`) in SARIF, and are counted, fixed and alerted once. With exit
+code `3` the report lists the candidates without a final decision and the reason for
+each: they are places to check by hand, not a clean result. The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
 
 ### Fix as a pull request
@@ -216,7 +222,9 @@ OWASP Top 10 2021 mapping table.
 - Model output is untrusted data and is validated against a closed schema.
 - Detected secrets are masked before a model sees the file: every agent, the
   Architect included, reads the code with a redaction marker in place of the value.
-  Secret values never reach reports, diffs or logs.
+  Secret values never reach reports, diffs or logs. Only what the secret detector
+  recognizes is masked: a value assembled from parts (`"sk-" + "..."`) is not
+  recognized and reaches the model as written.
 - The local model is reachable only over loopback; an external API is used only with
   explicit owner consent.
 - Fixes are never applied to the source checkout without an explicit user decision.
