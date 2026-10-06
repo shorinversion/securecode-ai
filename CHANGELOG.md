@@ -22,6 +22,8 @@ Changelog отвечает на вопрос «что и когда измени
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-06
+
 ### Added
 
 - `securecode analyze --output-dir DIR`: Markdown, HTML, JSON и SARIF одного прогона
