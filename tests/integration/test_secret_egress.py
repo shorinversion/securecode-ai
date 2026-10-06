@@ -36,15 +36,16 @@ def test_no_model_request_carries_a_detected_secret(monkeypatch: pytest.MonkeyPa
     from tests.unit.test_native_sources import repository
 
     endpoints: list[object] = []
-    original_endpoint = test_product_audit._LocalEndpoint
+    from tests.unit.test_openai_compatible_local import _LocalEndpoint as original_endpoint
 
-    class RecordingEndpoint(original_endpoint):  # type: ignore[misc, valid-type]
+    class RecordingEndpoint(original_endpoint):
         def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
             endpoints.append(self)
             super().install(monkeypatch)
 
-    monkeypatch.setattr(test_product_audit, "_LocalEndpoint", RecordingEndpoint)
-    original = test_product_audit.run_product_candidate_flow
+    monkeypatch.setattr("tests.unit.test_product_audit._LocalEndpoint", RecordingEndpoint)
+    from securecode_ai.adapters.product_scan import run_product_candidate_flow as original
+
     captured: list[_FlowKwargs] = []
 
     class Prepared(Exception):
@@ -57,11 +58,11 @@ def test_no_model_request_carries_a_detected_secret(monkeypatch: pytest.MonkeyPa
         captured.append(kwargs)
         raise Prepared
 
-    monkeypatch.setattr(test_product_audit, "run_product_candidate_flow", run)
+    monkeypatch.setattr("tests.unit.test_product_audit.run_product_candidate_flow", run)
     _flow, _review, host, _endpoint, _ = test_product_audit._actual_flow(
         monkeypatch, count=0, source=SOURCE
     )
-    monkeypatch.setattr(test_product_audit, "run_product_candidate_flow", capture)
+    monkeypatch.setattr("tests.unit.test_product_audit.run_product_candidate_flow", capture)
     with pytest.raises(Prepared):
         test_product_audit._actual_flow(monkeypatch, count=0, source=SOURCE)
     kwargs = captured[-1]
