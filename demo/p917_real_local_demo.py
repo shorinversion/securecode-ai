@@ -296,6 +296,7 @@ def run_demo(
         raise DemoError("select one model runtime")
     destination = _checked_destination(output)
     snapshot = _snapshot_repository(repository)
+    _refuse_detected_secrets(snapshot)
     identity = (
         _observe_runtime_identity() if model_client is None and public_runtime is None else None
     )
@@ -436,6 +437,35 @@ def _snapshot_repository(repository: Path) -> dict[str, Any]:
         "snapshot_sha256": _sha256(canonical),
         "total_bytes": total,
     }
+
+
+def _refuse_detected_secrets(snapshot: dict[str, Any]) -> None:
+    """Stop before any model call when a file holds a detected secret.
+
+    The demo sends whole files to the model; ``securecode analyze`` masks secret
+    values instead (D-116) and is the route for such repositories.
+    """
+
+    from securecode_ai.adapters.secret_detection import SecretFingerprintKey, scan_secrets
+    from securecode_ai.core.repository import RepositoryFile
+
+    key = SecretFingerprintKey(
+        "p917-demo", hashlib.sha256(snapshot["snapshot_sha256"].encode()).digest()
+    )
+    for item in snapshot["files"]:
+        source = item["bytes"]
+        result = scan_secrets(
+            repository_id="p917-demo",
+            revision=snapshot["revision"],
+            file=RepositoryFile(item["path"], len(source), item["sha256"]),
+            source=source,
+            fingerprint_key=key,
+        )
+        if result.candidates:
+            raise DemoError(
+                "repository contains a detected secret; the demo sends whole files to the "
+                "model, use securecode analyze, which masks secret values"
+            )
 
 
 def _verify_snapshot(snapshot: dict[str, Any]) -> None:

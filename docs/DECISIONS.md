@@ -992,3 +992,11 @@ and the discovery seed skips the file. Masking applies only when the secret stag
 verified for the exact revision; otherwise the file stays `DC4` and withheld, as
 before. Masking is applied for every provider, local ones included: the value is
 not needed to judge the surrounding code, and one rule is easier to audit than two.
+
+6 October 2026, extension after the 1.2.1 E2E series. Masking now covers every
+model-facing input: discovery anchors and scanner evidence windows of such files are
+rebuilt over the masked text (same evidence ids and lines, hashes of the masked bytes),
+the secret finding itself carries the masked lines around the value, and the Architect
+and the readable report read the masked file. A fix that changes a masked line cannot
+apply to the original file; it is shown in the report and left for a manual change
+together with rotating the secret.

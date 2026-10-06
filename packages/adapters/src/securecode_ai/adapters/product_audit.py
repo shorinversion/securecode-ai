@@ -90,7 +90,7 @@ from .product_audit_validation import (
 from .product_execution import (
     child_fact_catalogue,
     execute_deterministic_children,
-    masked_product_sources,
+    model_facing_execution,
     restricted_product_source_paths,
 )
 from .product_review import ProductReviewResult
@@ -583,6 +583,9 @@ def execute_product_audit(
             fingerprint_key=fingerprint_key,
             scanner=dependency_scanner,
         )
+        # Every model-facing step reads files with detected secrets masked (D-116).
+        execution = model_facing_execution(execution, content_key=content_key)
+        model_catalogue = execution.catalogue
         bound = replace(
             host,
             source_catalogue=execution.catalogue,
@@ -599,20 +602,20 @@ def execute_product_audit(
 
         def tools_for(graph: EvidenceGraph) -> RepositoryToolSession:
             return build_product_auditor_tools(
-                execution.catalogue,
+                model_catalogue,
                 graph,
                 budget=tool_budget,
                 deterministic=execution.scan,
                 child_artifacts=retained,
                 denied_source_paths=restricted_product_source_paths(execution),
-                masked_sources=masked_product_sources(execution),
+                masked_sources=dict(model_catalogue.masked_sources),
             )
 
         def auditor_for(graph: EvidenceGraph) -> AuditorInvoker:
             return auditor_factory(graph, tools_for(graph))
 
         flow = run_product_candidate_flow(
-            catalogue=execution.catalogue,
+            catalogue=model_catalogue,
             model_plan=model_plan,
             model_backend=model_backend,
             deterministic_scanner=lambda catalogue: execution.scan,
