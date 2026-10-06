@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 
 from securecode_ai.contracts import (
     ArtifactRef,
@@ -40,12 +41,14 @@ from securecode_ai.core.tool_policy import (
 )
 
 from .masked_sources import read_masked_range
+from .native_sources import NativeSourceCatalogue
 from .product_execution_orchestration import ProductChildFacts, child_fact_graph
 from .product_execution_stages import (
     ProductDeterministicExecution,
     ProductSecretStageResult,
 )
-from .product_scanner import scanner_facts_match_receipts
+from .product_scanner import first_party_scanner_producer, scanner_facts_match_receipts
+from .product_scanner_evidence import _scanner_graph_from_signals
 from .secret_detection import SecretCandidate, SecretScanResult
 
 
@@ -60,11 +63,11 @@ def child_fact_catalogue(
     used for correlation.
 
     A ``SecretCandidate`` remains DC4_RESTRICTED and is never copied into this
-    projection.  Secret findings use a value-free INTERNAL_METADATA projection
-    containing only detector kind, redaction label, and source location.  The
-    restricted source path is still denied to model tools, so neither matched
-    bytes nor the detector fingerprint can enter model context or an ordinary
-    artifact.  Advisory metadata is independent of repository source and
+    projection.  A secret finding carries the detector kind, redaction label and
+    source location; when the secret stage is verified it also carries the
+    surrounding lines with every detected value masked (CONFIDENTIAL_SOURCE), so a
+    reviewer can judge the code around the credential.  Neither matched bytes nor
+    the detector fingerprint can enter model context or an ordinary artifact.  Advisory metadata is independent of repository source and
     retains its exact immutable manifest location.
     """
     if any(anchor.tenant_id != tenant_id for anchor in execution.catalogue.anchors):
@@ -76,6 +79,7 @@ def child_fact_catalogue(
         producer_sha256=_child_producer_sha256(),
     )
     facts: list[tuple[str, str, str, SourceRange, str, DataClass, dict[str, object]]] = []
+    masked = masked_product_sources(execution)
     if execution.secrets is not None:
         secret_ordinal = 0
         for result in execution.secrets.results:
@@ -84,6 +88,14 @@ def child_fact_catalogue(
                     execution, candidate, tenant_id=tenant_id, ordinal=secret_ordinal
                 )
                 secret_ordinal += 1
+                detail: dict[str, object] = {
+                    "kind": candidate.kind.value,
+                    "redaction": candidate.redaction,
+                    "producer": candidate.producer.value,
+                }
+                context = _masked_context(masked.get(candidate.path), candidate.location)
+                if context is not None:
+                    detail["masked_context"] = context
                 facts.append(
                     (
                         "secret-" + candidate.kind.value,
@@ -91,12 +103,10 @@ def child_fact_catalogue(
                         candidate.content_sha256,
                         candidate.location,
                         fact_id,
-                        DataClass.INTERNAL_METADATA,
-                        {
-                            "kind": candidate.kind.value,
-                            "redaction": candidate.redaction,
-                            "producer": candidate.producer.value,
-                        },
+                        DataClass.INTERNAL_METADATA
+                        if context is None
+                        else DataClass.CONFIDENTIAL_SOURCE,
+                        detail,
                     )
                 )
     if execution.dependencies is not None:
@@ -333,6 +343,23 @@ def execution_fact_graph(
     )
 
 
+_SECRET_CONTEXT_LINES = 3
+
+
+def _masked_context(source: str | None, location: SourceRange) -> dict[str, object] | None:
+    """Lines around a detected secret, with every detected value already masked."""
+    if source is None:
+        return None
+    lines = source.split("\n")
+    first = max(1, location.start_point.row + 1 - _SECRET_CONTEXT_LINES)
+    last = min(len(lines), location.end_point.row + 1 + _SECRET_CONTEXT_LINES)
+    return {
+        "first_line": first,
+        "lines": "\n".join(lines[first - 1 : last]),
+        "note": "detected secret values are replaced by their redaction marker",
+    }
+
+
 def _verified_secret_results(
     execution: ProductDeterministicExecution,
 ) -> tuple[SecretScanResult, ...] | None:
@@ -375,6 +402,48 @@ def restricted_product_source_paths(execution: ProductDeterministicExecution) ->
     return tuple(result.path for result in results if result.candidates)
 
 
+def model_facing_execution(
+    execution: ProductDeterministicExecution, *, content_key: bytes
+) -> ProductDeterministicExecution:
+    """The execution every model-facing step uses: secret values masked (D-116).
+
+    Anchors of files with detected secrets are bound to masked windows, and scanner
+    evidence is rebuilt from the same receipts over that catalogue, so source windows
+    of such files carry masked text and every integrity check still holds. Without a
+    verified secret stage, or if the masked view does not verify, the original
+    execution is returned and those files stay withheld.
+    """
+    masked = masked_product_sources(execution)
+    if not masked or not execution.is_complete:
+        return execution
+    try:
+        catalogue = execution.catalogue.with_masked_sources(masked, content_key=content_key)
+        scan = execution.scan
+        graph, aliases = _scanner_graph_from_signals(
+            catalogue,
+            tuple(signal for receipt in scan.receipts for signal in receipt.signals),
+            scan.graph.tenant_id,
+            first_party_scanner_producer(),
+            program_graph=scan.program_graph,
+        )
+        masked_scan = replace(scan, graph=graph, source_aliases=aliases)
+        outputs = tuple(
+            (
+                stage,
+                (graph.graph_sha256, *hashes[1:])
+                if stage == "cwe89_scan" and hashes and hashes[0] == scan.graph.graph_sha256
+                else hashes,
+            )
+            for stage, hashes in execution.child_output_hashes
+        )
+        model = replace(
+            execution, catalogue=catalogue, scan=masked_scan, child_output_hashes=outputs
+        )
+    except (TypeError, ValueError):
+        return execution
+    return model if model.is_complete else execution
+
+
 def masked_product_sources(execution: ProductDeterministicExecution) -> dict[str, str]:
     """Source of every file with a detected secret, each secret value replaced by its
     redaction marker; newlines inside a value are kept so line numbers stay valid.
@@ -414,15 +483,25 @@ def masked_product_sources(execution: ProductDeterministicExecution) -> dict[str
 class RestrictedProductDiscoveryView:
     """Serve files with detected secrets masked; deny them only when spans are unknown."""
 
-    def __init__(self, execution: ProductDeterministicExecution, *, masked: bool = True):
-        self._backend = execution.catalogue.repository_view()
-        self._head = execution.catalogue.snapshot.head_sha
-        self._masked = masked_product_sources(execution) if masked else {}
+    def __init__(
+        self,
+        execution: ProductDeterministicExecution,
+        *,
+        catalogue: NativeSourceCatalogue | None = None,
+    ):
+        # ``catalogue`` is the model-facing catalogue: anchors of files listed in its
+        # masked sources are bound to masked windows, so their evidence stays readable.
+        model_catalogue = execution.catalogue if catalogue is None else catalogue
+        if model_catalogue.snapshot != execution.catalogue.snapshot:
+            raise ValueError("PRODUCT_DISCOVERY_CATALOGUE_INVALID")
+        self._backend = model_catalogue.repository_view()
+        self._head = model_catalogue.snapshot.head_sha
+        self._masked = dict(model_catalogue.masked_sources)
         self._paths = set(restricted_product_source_paths(execution)) - set(self._masked)
         self._evidence = {
             anchor.evidence_id
-            for anchor in execution.catalogue.anchors
-            if anchor.location.path in self._paths or anchor.location.path in self._masked
+            for anchor in model_catalogue.anchors
+            if anchor.location.path in self._paths
         }
 
     def read_range(

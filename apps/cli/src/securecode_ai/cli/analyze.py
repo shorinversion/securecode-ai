@@ -16,10 +16,15 @@ from securecode_ai.adapters.local_product_trial import (
     TrialAnalysisError,
     run_trial_analysis,
 )
+from securecode_ai.adapters.product_execution import (
+    masked_product_sources,
+    restricted_product_source_paths,
+)
 from securecode_ai.adapters.trial_architect import (
     Complete,
     ProposedFix,
     findings_from_report,
+    git_apply_check,
     git_revision_reader,
     openai_compatible_complete,
     propose_fixes,
@@ -134,7 +139,10 @@ def run_analyze_command(
         revision = document.get("repository_revision", {})
         head_sha = str(revision.get("head_sha", "")) if isinstance(revision, dict) else ""
         repository = Path(arguments.target).resolve()
-        read_source = git_revision_reader(repository, head_sha)
+        raw_source = git_revision_reader(repository, head_sha)
+        # The Architect prompt and the report fragments use masked source: a detected
+        # secret value never reaches the model or a report (D-116).
+        read_source = _secret_safe_reader(raw_source, analysis)
         fixes: tuple[ProposedFix, ...] = ()
         findings = findings_from_report(document)
         if findings and not arguments.no_fix:
@@ -175,7 +183,12 @@ def run_analyze_command(
         elif arguments.format == "sarif":
             rendered = attach_fixes_to_sarif(rendered, fixes, findings)
         if patch_dir is not None:
-            _write_patches(patch_dir, fixes)
+            skipped = _write_patches(patch_dir, fixes, raw_source)
+            for path in skipped:
+                stderr.write(
+                    f"securecode analyze: the fix for {path} changes a line with a masked "
+                    "secret; apply it by hand from the report and rotate the secret\n"
+                )
     if output_dir is not None:
         output_dir.mkdir(parents=True)
         for name, content in reports.items():
@@ -239,12 +252,55 @@ def _unique_fixes(fixes: Sequence[ProposedFix]) -> tuple[ProposedFix, ...]:
     return tuple(unique)
 
 
-def _write_patches(directory: Path, fixes: Sequence[ProposedFix]) -> None:
+def _write_patches(
+    directory: Path, fixes: Sequence[ProposedFix], read_original: Callable[[str], str]
+) -> tuple[str, ...]:
+    """Write validated fixes that apply to the original files; return the skipped paths.
+
+    A fix is built on masked source, so one that touches a masked secret line does not
+    apply to the original file and is left for a manual change.
+    """
     directory.mkdir(parents=True)
+    skipped: list[str] = []
     for index, fix in enumerate(fixes, start=1):
-        if fix.status == "VALIDATED":
-            name = f"{index:02d}-" + fix.path.replace("/", "_") + ".diff"
-            (directory / name).write_text(fix.diff, encoding="utf-8", newline="\n")
+        if fix.status != "VALIDATED":
+            continue
+        try:
+            applies = git_apply_check(fix.path, read_original(fix.path), fix.diff)
+        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+            applies = False
+        if not applies:
+            skipped.append(fix.path)
+            continue
+        name = f"{index:02d}-" + fix.path.replace("/", "_") + ".diff"
+        (directory / name).write_text(fix.diff, encoding="utf-8", newline="\n")
+    return tuple(skipped)
+
+
+def _secret_safe_reader(
+    read: Callable[[str], str], analysis: TrialAnalysis
+) -> Callable[[str], str]:
+    """Serve files with detected secrets masked; withhold them when spans are unknown."""
+
+    host = analysis.result.composition.host_inputs
+    execution = None if host is None else host.deterministic_execution
+    if execution is None:
+
+        def withheld(_path: str) -> str:
+            raise ValueError("source withheld: secret scan result is unavailable")
+
+        return withheld
+    masked = masked_product_sources(execution)
+    restricted = frozenset(restricted_product_source_paths(execution))
+
+    def masked_read(path: str) -> str:
+        if path in masked:
+            return masked[path]
+        if path in restricted:
+            raise ValueError("source withheld: secret positions are not verified")
+        return read(path)
+
+    return masked_read
 
 
 def _summary(analysis: TrialAnalysis, cost_microusd: int) -> str:

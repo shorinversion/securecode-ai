@@ -4,7 +4,7 @@ param(
     [string]$Namespace = 'securecode-ai',
 
     [ValidateNotNullOrEmpty()]
-    [string]$Version = '1.2.1',
+    [string]$Version = '1.2.2',
 
     [ValidateSet('linux/amd64', 'linux/arm64')]
     [string]$Platform = 'linux/amd64'

@@ -451,7 +451,12 @@ def build_product_auditor_tools(
             or record.tenant_id != graph.tenant_id
             or record.head_sha != graph.head_sha
             or record.evidence_kind is not EvidenceKind.SCANNER_SIGNAL
-            or record.data_class not in {DataClass.INTERNAL_METADATA, DataClass.RESTRICTED}
+            or record.data_class
+            not in {
+                DataClass.INTERNAL_METADATA,
+                DataClass.CONFIDENTIAL_SOURCE,
+                DataClass.RESTRICTED,
+            }
             or artifact is None
             or artifact.tenant_id != graph.tenant_id
             or artifact.data_class is not record.data_class
@@ -473,7 +478,7 @@ def build_product_auditor_tools(
         for record in graph.evidence
         if record.data_class is DataClass.RESTRICTED and record.location is not None
     }
-    # A value-free secret projection is INTERNAL_METADATA, but the file it
+    # A secret projection holds no secret value (at most masked lines), but the file it
     # points at still holds the secret: never let model tools read it raw.
     restricted_paths.update(secret_paths)
     if any(path not in files for path in denied_source_paths):
@@ -482,6 +487,11 @@ def build_product_auditor_tools(
     masked = dict(masked_sources or {})
     if any(path not in files for path in masked):
         raise ValueError("Auditor masked source scope is invalid")
+    masked_windows = [
+        anchor.read_artifact
+        for anchor in catalogue.anchors
+        if anchor.location.path in catalogue.masked_paths
+    ]
     paths = set()
     admitted_ids = set()
     for record in graph.evidence:
@@ -529,7 +539,22 @@ def build_product_auditor_tools(
         if record.data_class is DataClass.RESTRICTED:
             continue
         if record.location.path in restricted_paths:
-            if record.evidence_id in children:
+            # Native windows of a masked file are bound to the masked text; scanner
+            # windows of the same file still hold raw bytes and stay unavailable.
+            # In a masked file, scanner windows are bound to masked text and scanner
+            # location metadata holds positions only; both are safe to read.
+            if record.evidence_id in children or (
+                record.location.path in catalogue.masked_paths
+                and record.artifact_ref is not None
+                and (
+                    record.artifact_ref in masked_windows
+                    or (
+                        record.evidence_id in static
+                        and record.data_class is DataClass.INTERNAL_METADATA
+                        and record.artifact_ref.data_class is DataClass.INTERNAL_METADATA
+                    )
+                )
+            ):
                 admitted_ids.add(record.evidence_id)
             if record.location.path in masked:
                 paths.add(record.location.path)

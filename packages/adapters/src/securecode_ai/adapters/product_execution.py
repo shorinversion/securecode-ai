@@ -13,6 +13,7 @@ from .product_execution_facts import (
     child_fact_catalogue,
     execution_fact_graph,
     masked_product_sources,
+    model_facing_execution,
     restricted_product_source_paths,
 )
 from .product_execution_orchestration import (
@@ -69,6 +70,7 @@ __all__ = [
     "execute_secret_stage",
     "execution_fact_graph",
     "masked_product_sources",
+    "model_facing_execution",
     "restricted_product_source_paths",
 ]
 

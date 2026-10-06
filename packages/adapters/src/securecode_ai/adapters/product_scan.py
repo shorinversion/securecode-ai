@@ -40,7 +40,6 @@ from .product_execution import (
     ProductDeterministicExecution,
     RestrictedProductDiscoveryView,
     execution_fact_graph,
-    restricted_product_source_paths,
 )
 from .product_scanner import ProductDeterministicScanResult, scanner_facts_match_receipts
 
@@ -256,16 +255,15 @@ def run_product_candidate_flow(
     if deterministic_execution is None:
         discovery_view = catalogue.repository_view()
     else:
-        # Files with detected secrets are served masked, and the discovery seed skips
-        # them. When the seed cannot avoid them (every anchor sits in such a file) the
-        # files stay fully withheld, so the lane ends as a guardrail block.
-        restricted = frozenset(restricted_product_source_paths(deterministic_execution))
-        excluding = getattr(model_backend, "excluding_paths", None)
-        narrowed = excluding(restricted) if restricted and callable(excluding) else model_backend
+        # A catalogue with masked sources binds anchors of files with detected secrets
+        # to masked windows; the discovery seed reads those windows. Without masking
+        # such files stay withheld and the lane ends as a guardrail block.
         discovery_view = RestrictedProductDiscoveryView(
-            deterministic_execution, masked=not restricted or narrowed is not model_backend
+            deterministic_execution, catalogue=catalogue
         )
-        model_backend = narrowed
+        with_anchors = getattr(model_backend, "with_anchors", None)
+        if catalogue.masked_sources and callable(with_anchors):
+            model_backend = with_anchors(catalogue.anchors)
     discovery = run_model_native_discovery(
         model_plan,
         repository=discovery_view,

@@ -173,9 +173,9 @@ class _ProductDiscoveryNativeCycle:
         tool_refs: dict[str, EgressContentRef] = {}
         seen_call_ids: set[str] = set()
         successful_native_inspections = 0
-        # One malformed final answer (for example a tool call written as text with an
-        # unknown tool name) is answered by repeating the same turn once.
-        regenerations_left = 1
+        # A malformed final answer (for example a tool call written as text with an
+        # unknown tool name) is answered by repeating the same turn, at most twice.
+        regenerations_left = 2
         by_id = {item.evidence_id: item for item in self._catalogue}
         guided_first_request = self._catalogue[0].request
         validator = ModelNativeDiscoveryPayloadValidator(

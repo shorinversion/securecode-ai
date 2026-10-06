@@ -99,6 +99,7 @@ def run_trial_analysis(
         host = _host(_local_profile(DEFAULT_LOCAL_MODEL, "0" * 64), runtime.policy)
         try:
             _require_git_version(git_path)
+            _require_git_checkout(git_path, target)
             result = _run_local_product_scan(
                 host,
                 target,
@@ -117,6 +118,7 @@ def run_trial_analysis(
         if _MODEL_ID.fullmatch(model_id) is None:
             raise TrialAnalysisError("SECURECODE_LOCAL_MODEL is invalid")
         _require_git_version(git_path)
+        _require_git_checkout(git_path, target)
         version, digest = _ollama_identity(model_id)
         profile = _local_profile(model_id, digest)
         host = _host(profile, _policy(profile, "private_model_zdr", approval=False))
@@ -132,6 +134,22 @@ def run_trial_analysis(
             )
         return TrialAnalysis(provider, model_id, result, 0)
     raise TrialAnalysisError("provider must be deepseek or local")
+
+
+def _require_git_checkout(git: Path, target: str) -> None:
+    if not Path(target).is_dir():
+        raise TrialAnalysisError(f"target is not a directory: {target}")
+    try:
+        inside = subprocess.run(
+            [str(git), "-C", target, "rev-parse", "--is-inside-work-tree", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise TrialAnalysisError("git rev-parse failed") from error
+    if inside.returncode != 0 or not inside.stdout.startswith("true"):
+        raise TrialAnalysisError(f"target is not a Git checkout with at least one commit: {target}")
 
 
 def _require_git_version(git: Path) -> None:

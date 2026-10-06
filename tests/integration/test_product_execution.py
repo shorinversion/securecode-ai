@@ -179,7 +179,7 @@ def test_substituted_execution_cannot_claim_complete(mutation: str) -> None:
 
 
 def test_secret_child_fact_is_retained_and_dc4_cannot_reach_model() -> None:
-    from securecode_ai.adapters.product_execution import child_fact_graph
+    from securecode_ai.adapters.product_execution import child_fact_catalogue, child_fact_graph
     from securecode_ai.contracts import DataClass
     from securecode_ai.core.evidence_package import build_evidence_package
 
@@ -190,10 +190,15 @@ def test_secret_child_fact_is_retained_and_dc4_cannot_reach_model() -> None:
     assert graph.candidates
     expected_candidates = sum((len(result.candidates) for result in execution.secrets.results), 0)
     assert len(graph.candidates) == expected_candidates
-    # Secret facts are value-free metadata (D-114 review of de6eabe): the model
-    # may learn that a credential exists at a location, never its value.
-    assert all(r.data_class is DataClass.INTERNAL_METADATA for r in graph.evidence)
+    # A verified secret fact carries the surrounding lines with the value masked
+    # (D-116): the model sees the code around the credential, never the value.
+    assert all(r.data_class is DataClass.CONFIDENTIAL_SOURCE for r in graph.evidence)
     assert canary.decode() not in repr(graph)
+    children = child_fact_catalogue(execution, tenant_id="tenant-public")
+    payloads = [payload.decode() for _, payload in children.artifacts]
+    assert payloads and all('"masked_context"' in payload for payload in payloads)
+    assert all("password = " in payload for payload in payloads)
+    assert not any(canary.decode() in payload for payload in payloads)
     package = build_evidence_package(graph, graph.candidates[0].candidate_id)
     assert canary.decode() not in repr(package)
 
@@ -1209,14 +1214,29 @@ def test_verified_secret_file_is_served_masked_to_discovery_auditor_and_skeptic(
     window = RepositoryToolWindow(65536, 65536)
     arguments = ReadRangeArguments("0.1.0", head, "a.py", 1, 4)
 
-    view = RestrictedProductDiscoveryView(execution)
+    catalogue = execution.catalogue.with_masked_sources(masked, content_key=b"p" * 32)
+    assert catalogue.masked_paths == {"a.py"}
+    view = RestrictedProductDiscoveryView(execution, catalogue=catalogue)
     discovered = view.read_range(arguments, window=window).content
     assert canary.decode() not in discovered and "SELECT * FROM users" in discovered
     listing = view.list_paths(ListPathsArguments("0.1.0", head, "", 100), window=window).content
     assert "a.py" in listing and "b.py" in listing
+    masked_anchors = [a for a in catalogue.anchors if a.location.path == "a.py"]
+    assert masked_anchors
+    for anchor in masked_anchors:
+        window_text = view.read_evidence(
+            ReadEvidenceArguments("0.1.0", head, anchor.evidence_id), window=window
+        ).content
+        assert canary.decode() not in window_text
+        assert (
+            anchor.read_artifact.content_sha256 == hashlib.sha256(window_text.encode()).hexdigest()
+        )
+    strict = RestrictedProductDiscoveryView(execution)
+    with pytest.raises(ValueError, match="PRODUCT_DISCOVERY_RESTRICTED_SOURCE"):
+        strict.read_range(arguments, window=window)
 
     tools = build_product_auditor_tools(
-        execution.catalogue,
+        catalogue,
         execution.scan.graph,
         budget=RepositoryToolBudget(16, 65536, 65536),
         deterministic=execution.scan,

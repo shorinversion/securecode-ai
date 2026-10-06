@@ -380,7 +380,8 @@ def test_mandatory_faults_never_become_clean_stage(
         factory_fault=fault == "factory_fault",
     )
     result = _require_flow(result)
-    assert len(endpoint.requests) == 1
+    # A malformed discovery answer is asked again twice before the lane fails.
+    assert len(endpoint.requests) == (3 if fault == "native_fault" else 1)
     assert observed["scanner_calls"] == 1
     assert result.required_terminal_outcome is AuditRunOutcome.INDETERMINATE
     assert len(result.investigations) == len(result.graph.candidates)

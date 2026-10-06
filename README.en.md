@@ -214,9 +214,9 @@ OWASP Top 10 2021 mapping table.
 - Analysis is bound to the exact commit; a changed revision cancels publication.
 - An incomplete check yields `INDETERMINATE`, never "no vulnerabilities".
 - Model output is untrusted data and is validated against a closed schema.
-- Detected secrets are masked before a model sees the file: it reads the code with a
-  redaction marker in place of the value. Secret values are never stored in reports
-  or logs.
+- Detected secrets are masked before a model sees the file: every agent, the
+  Architect included, reads the code with a redaction marker in place of the value.
+  Secret values never reach reports, diffs or logs.
 - The local model is reachable only over loopback; an external API is used only with
   explicit owner consent.
 - Fixes are never applied to the source checkout without an explicit user decision.

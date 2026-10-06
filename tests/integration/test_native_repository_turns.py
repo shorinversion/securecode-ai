@@ -769,24 +769,79 @@ def test_product_native_cycle_repeats_one_malformed_final_answer(
     assert tools.calls_used == 1
 
 
-def test_discovery_seed_exclusion_keeps_the_lane_fail_closed(
+def test_discovery_seed_reads_masked_anchors_with_the_same_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from types import SimpleNamespace
+    from dataclasses import replace
 
     from tests.integration.test_product_runtime_harness import _composition
 
     base, _, _, _, _ = _composition(monkeypatch)
     anchor = base._catalogue[0]
-    other = SimpleNamespace(location=SimpleNamespace(path="other.py"))
-    object.__setattr__(base, "_catalogue", (anchor, other))
+    masked_artifact = anchor.read_artifact.model_copy(update={"content_sha256": "e" * 64})
+    masked = replace(anchor, read_artifact=masked_artifact)
 
-    assert base.excluding_paths(frozenset()) is base
-    assert base.excluding_paths(frozenset({anchor.location.path, "other.py"})) is base
-    narrowed = base.excluding_paths(frozenset({"other.py"}))
+    assert base.with_anchors(()) is base
+    assert base.with_anchors((anchor,)) is base
+    narrowed = base.with_anchors((masked,))
     assert narrowed is not base
-    assert narrowed._catalogue == (anchor,)
-    assert len(base._catalogue) == 2
-    invalid: object = {"other.py"}
-    with pytest.raises(ValueError, match="exclusion"):
-        base.excluding_paths(invalid)  # type: ignore[arg-type]
+    assert narrowed._catalogue[0].read_artifact.content_sha256 == "e" * 64
+    assert base._catalogue[0] is anchor
+    end = masked.location.end.model_copy(update={"column": masked.location.end.column + 1})
+    moved = replace(masked, location=masked.location.model_copy(update={"end": end}))
+    with pytest.raises(ValueError, match="replacement"):
+        base.with_anchors((moved,))
+
+
+@pytest.mark.parametrize("valid_at", [1, 2, None])
+def test_single_call_discovery_repeats_malformed_answers_twice(
+    monkeypatch: pytest.MonkeyPatch, valid_at: int | None
+) -> None:
+    from securecode_ai.adapters.product_runtime import ProductDiscoveryBackend
+    from securecode_ai.contracts import ModelCallStatus
+
+    from tests.integration.test_product_runtime_harness import _composition
+    from tests.unit.test_openai_compatible_local import _success_body
+
+    base, tools, request, _, _ = _composition(monkeypatch)
+    anchor = base._catalogue[0]
+    malformed = json.loads(_success_body())
+    malformed["choices"][0]["message"]["content"] = json.dumps(
+        {"tool": "repository.evidence.list", "arguments": {"paths": ["a.py"]}}
+    )
+    valid = json.loads(_success_body())
+    valid["choices"][0]["message"]["content"] = json.dumps(
+        {
+            "candidates": [
+                {
+                    "rule_id": "rule-sqli",
+                    "root_evidence_id": anchor.evidence_id,
+                    "evidence_ids": [anchor.evidence_id],
+                }
+            ]
+        }
+    )
+    bodies = [malformed, malformed, malformed]
+    if valid_at is not None:
+        bodies = [*bodies[:valid_at], valid]
+    sequence = _NativeSequenceEndpoint(monkeypatch, [json.dumps(body).encode() for body in bodies])
+    backend = ProductDiscoveryBackend(
+        executor=base._executor,
+        catalogue=base._catalogue,
+        rule_ids=base._rule_ids,
+        content_key=base._key,
+    )
+
+    outcome = backend.discover(request=request, tools=tools)
+
+    assert sequence.connections == len(bodies)
+    assert outcome.model_result.request_id == request.request_id
+    assert outcome.model_result.attempt == request.attempt
+    if valid_at is not None:
+        assert outcome.model_result.status is ModelCallStatus.SUCCEEDED
+        assert len(outcome.candidates) == 1
+        first_usage = json.loads(_success_body())["usage"]
+        assert outcome.model_result.usage.input_tokens == len(bodies) * first_usage["prompt_tokens"]
+    else:
+        assert outcome.model_result.status is ModelCallStatus.INVALID_SCHEMA
+        assert outcome.candidates == ()

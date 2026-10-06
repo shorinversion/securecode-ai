@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
 import tree_sitter_python
@@ -49,12 +50,78 @@ from .product_runtime import DiscoveryEvidence
 from .repository_view import SealedRepositoryView
 
 
+def _window_text(source: str, arguments: object) -> str:
+    if type(arguments) is not ReadRangeArguments:
+        raise ValueError("native evidence window binding is invalid")
+    lines = source.split("\n")
+    if arguments.end_line > len(lines):
+        raise ValueError("native evidence window is outside source")
+    text = "\n".join(lines[arguments.start_line - 1 : arguments.end_line])
+    if arguments.end_line < len(lines):
+        text += "\n"
+    return text
+
+
 @dataclass(frozen=True, slots=True)
 class NativeSourceCatalogue:
     snapshot: GitRevisionSnapshot
     indexes: tuple[SymbolIndex, ...]
     anchors: tuple[DiscoveryEvidence, ...]
     data_class: DataClass = DataClass.CONFIDENTIAL_SOURCE
+    # (path, source) pairs whose detected secret values are replaced by redaction
+    # markers; anchors of these files are bound to the masked windows.
+    masked_sources: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def masked_paths(self) -> frozenset[str]:
+        return frozenset(path for path, _ in self.masked_sources)
+
+    def with_masked_sources(
+        self, masked: Mapping[str, str], *, content_key: bytes
+    ) -> NativeSourceCatalogue:
+        """Return a model-facing catalogue whose anchors in ``masked`` files read masked text.
+
+        Evidence ids, locations and read requests stay the same; only the window bytes,
+        and therefore the read artifacts, change. A model can then cite and read such a
+        file like any other, without ever receiving the masked values.
+        """
+        if not masked:
+            return self
+        files = {file.path: file for file in self.snapshot.files}
+        for path, text in masked.items():
+            file = files.get(path)
+            if (
+                file is None
+                or type(text) is not str
+                or text.count("\n") != file.content.count(b"\n")
+                or path in self.masked_paths
+            ):
+                raise ValueError("native masked source binding is invalid")
+        identifier = HmacContentIdentifier(content_key)
+        try:
+            anchors = []
+            for anchor in self.anchors:
+                masked_text = masked.get(anchor.location.path)
+                if masked_text is None:
+                    anchors.append(anchor)
+                    continue
+                content = _window_text(masked_text, anchor.request.arguments).encode()
+                artifact = ArtifactRef(
+                    schema_version="0.2.0",
+                    tenant_id=anchor.tenant_id,
+                    content_id=identifier.identify(tenant_id=anchor.tenant_id, payload=content),
+                    content_sha256=hashlib.sha256(content).hexdigest(),
+                    size_bytes=len(content),
+                    data_class=anchor.read_artifact.data_class,
+                )
+                anchors.append(replace(anchor, read_artifact=artifact))
+        finally:
+            identifier.close()
+        return replace(
+            self,
+            anchors=tuple(anchors),
+            masked_sources=(*self.masked_sources, *sorted(masked.items())),
+        )
 
     def _window_bytes(self, anchor: DiscoveryEvidence) -> bytes:
         files = {file.path: file for file in self.snapshot.files}
@@ -73,13 +140,10 @@ class NativeSourceCatalogue:
         arguments.__post_init__()
         if arguments.head_sha != self.snapshot.head_sha or arguments.path != file.path:
             raise ValueError("native evidence window binding is invalid")
-        lines = file.content.decode("utf-8").split("\n")
-        if arguments.end_line > len(lines):
-            raise ValueError("native evidence window is outside source")
-        text = "\n".join(lines[arguments.start_line - 1 : arguments.end_line])
-        if arguments.end_line < len(lines):
-            text += "\n"
-        content = text.encode()
+        masked = dict(self.masked_sources).get(file.path)
+        content = _window_text(
+            file.content.decode("utf-8") if masked is None else masked, arguments
+        ).encode()
         if (
             hashlib.sha256(content).hexdigest() != anchor.read_artifact.content_sha256
             or len(content) != anchor.read_artifact.size_bytes

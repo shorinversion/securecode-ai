@@ -241,3 +241,22 @@ def test_final_answers_and_unknown_tools_stay_text(content: str) -> None:
     choice = json.loads(canonical)["choices"][0]
     assert choice["finish_reason"] == "stop"
     assert choice["message"]["content"] == content
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "accepted"),
+    [(0, "true\nabc\n", True), (128, "", False), (0, "false\n", False)],
+)
+def test_target_must_be_a_git_checkout_with_a_commit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, returncode: int, stdout: str, accepted: bool
+) -> None:
+    completed = subprocess.CompletedProcess(("git",), returncode, stdout, "")
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    if accepted:
+        trial._require_git_checkout(Path("git"), str(tmp_path))
+    else:
+        with pytest.raises(trial.TrialAnalysisError, match="not a Git checkout"):
+            trial._require_git_checkout(Path("git"), str(tmp_path))
+    with pytest.raises(trial.TrialAnalysisError, match="not a directory"):
+        trial._require_git_checkout(Path("git"), str(tmp_path / "missing"))
