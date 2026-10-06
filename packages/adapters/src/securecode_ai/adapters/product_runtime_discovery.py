@@ -54,13 +54,16 @@ from .product_runtime_execution import (
 )
 from .product_runtime_support import _draft
 
+_MAX_REGENERATIONS = 2
 _REGENERATE_ON = frozenset(
     {ModelCallStatus.SUCCEEDED, ModelCallStatus.INVALID_SCHEMA, ModelCallStatus.EMPTY_OUTPUT}
 )
 
 
-def regeneration_request(original: ModelRequest, *, content_key: bytes) -> ModelRequest:
-    """A second call for the same discovery request under its own keyed identity.
+def regeneration_request(
+    original: ModelRequest, *, content_key: bytes, ordinal: int = 1
+) -> ModelRequest:
+    """A repeated call for the same discovery request under its own keyed identity.
 
     Budget leases and egress authorizations are keyed by request id, so a repeated
     call needs a fresh one; the result is then bound back to ``original``.
@@ -69,10 +72,16 @@ def regeneration_request(original: ModelRequest, *, content_key: bytes) -> Model
         type(original) is not ModelRequest
         or type(content_key) is not bytes
         or len(content_key) < 32
+        or type(ordinal) is not int
+        or not 1 <= ordinal <= _MAX_REGENERATIONS
     ):
         raise ValueError("regeneration bindings are invalid")
     material = json.dumps(
-        {"domain": "securecode-regeneration-v1", "original": original.model_dump(mode="json")},
+        {
+            "domain": "securecode-regeneration-v1",
+            "ordinal": ordinal,
+            "original": original.model_dump(mode="json"),
+        },
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
@@ -323,20 +332,24 @@ class ProductDiscoveryBackend(_ProductDiscoveryNativeCycle):
             return execution.result, execution.preflight, drafts
 
         result, preflight, drafts = attempt(request)
-        if (
-            drafts is None
-            and not ceiling_hit
-            and result is not None
-            and result.model_call_status in _REGENERATE_ON
-        ):
-            # A malformed answer says nothing about the code: ask once more with the
-            # same context under a fresh request identity, then report one call.
-            first = result
-            retry, preflight, drafts = attempt(regeneration_request(request, content_key=self._key))
+        for ordinal in range(1, _MAX_REGENERATIONS + 1):
+            if (
+                drafts is not None
+                or ceiling_hit
+                or result is None
+                or result.model_call_status not in _REGENERATE_ON
+            ):
+                break
+            # A malformed answer says nothing about the code: ask again with the same
+            # context under a fresh request identity, then report one call.
+            earlier = result
+            retry, preflight, drafts = attempt(
+                regeneration_request(request, content_key=self._key, ordinal=ordinal)
+            )
             result = (
                 None
                 if retry is None
-                else _rebind_result(retry, request=request, earlier=first.usage)
+                else _rebind_result(retry, request=request, earlier=earlier.usage)
             )
         failed = (
             drafts is None

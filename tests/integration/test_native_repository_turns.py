@@ -793,9 +793,9 @@ def test_discovery_seed_reads_masked_anchors_with_the_same_ids(
         base.with_anchors((moved,))
 
 
-@pytest.mark.parametrize("second_valid", [True, False])
-def test_single_call_discovery_repeats_one_malformed_answer(
-    monkeypatch: pytest.MonkeyPatch, second_valid: bool
+@pytest.mark.parametrize("valid_at", [1, 2, None])
+def test_single_call_discovery_repeats_malformed_answers_twice(
+    monkeypatch: pytest.MonkeyPatch, valid_at: int | None
 ) -> None:
     from securecode_ai.adapters.product_runtime import ProductDiscoveryBackend
     from securecode_ai.contracts import ModelCallStatus
@@ -821,10 +821,10 @@ def test_single_call_discovery_repeats_one_malformed_answer(
             ]
         }
     )
-    second = valid if second_valid else malformed
-    sequence = _NativeSequenceEndpoint(
-        monkeypatch, [json.dumps(body).encode() for body in (malformed, second)]
-    )
+    bodies = [malformed, malformed, malformed]
+    if valid_at is not None:
+        bodies = [*bodies[:valid_at], valid]
+    sequence = _NativeSequenceEndpoint(monkeypatch, [json.dumps(body).encode() for body in bodies])
     backend = ProductDiscoveryBackend(
         executor=base._executor,
         catalogue=base._catalogue,
@@ -834,14 +834,14 @@ def test_single_call_discovery_repeats_one_malformed_answer(
 
     outcome = backend.discover(request=request, tools=tools)
 
-    assert sequence.connections == 2
+    assert sequence.connections == len(bodies)
     assert outcome.model_result.request_id == request.request_id
     assert outcome.model_result.attempt == request.attempt
-    if second_valid:
+    if valid_at is not None:
         assert outcome.model_result.status is ModelCallStatus.SUCCEEDED
         assert len(outcome.candidates) == 1
         first_usage = json.loads(_success_body())["usage"]
-        assert outcome.model_result.usage.input_tokens == 2 * first_usage["prompt_tokens"]
+        assert outcome.model_result.usage.input_tokens == len(bodies) * first_usage["prompt_tokens"]
     else:
         assert outcome.model_result.status is ModelCallStatus.INVALID_SCHEMA
         assert outcome.candidates == ()
