@@ -45,11 +45,22 @@ _LANGUAGES: Final = {
     ".go": "go",
 }
 
+_COMMAND_CWES: Final = frozenset({"CWE-78", "CWE-88"})
+_PROCESS_CALLS: Final = frozenset(
+    {
+        prefix + name
+        for prefix in ("subprocess.", "")
+        for name in ("run", "call", "check_call", "check_output", "Popen")
+    }
+)
+
 ARCHITECT_INSTRUCTIONS: Final = (
     "You are the Architect of a code security audit. A confirmed finding names a weakness "
     "(CWE) at given lines of one source file. Write the smallest safe refactoring that "
     "removes the weakness and keeps behaviour: parameterized queries instead of string "
-    "concatenation, argument lists instead of a shell, allow-lists and path containment "
+    "concatenation, argument lists instead of a shell (with untrusted values after a '--' "
+    "end-of-options marker, or rejected when they start with '-'), allow-lists and path "
+    "containment "
     "for user-controlled paths, verified signatures, secrets from the environment. Do not "
     "reformat unrelated code and do not add dependencies. Return one JSON object: "
     '{"explanation": "<two sentences: why the code is vulnerable and what the fix does>", '
@@ -301,7 +312,89 @@ def _validate(
         after_count = sum(1 for rule, _ in after if rule.endswith(same_weakness))
         removed = after_count < before_count
         checks.append("original:" + ("gone" if removed else "remains"))
-    return tuple(checks), applies and parses and not new_rules and removed
+    guarded = True
+    if (
+        parses
+        and finding.cwe_id in _COMMAND_CWES
+        and _LANGUAGES.get(PurePosixPath(finding.path).suffix.lower()) == "python"
+    ):
+        guarded = _options_guarded(patched, finding)
+        checks.append("options:" + ("guarded" if guarded else "unguarded"))
+    return tuple(checks), applies and parses and not new_rules and removed and guarded
+
+
+def _options_guarded(source: str, finding: FixFinding) -> bool:
+    """Reject an argv near the finding that passes a computed value as a possible option.
+
+    An argument list removes the shell, but a value such as ``-oProxyCommand=...`` is
+    still read as an option by the program (CWE-88). A computed argument is accepted
+    after a literal ``--`` or when the enclosing function checks for a leading ``-``.
+    """
+
+    tree = ast.parse(source)
+    low = finding.start_line - _EDIT_WINDOW_LINES
+    high = finding.end_line + _EDIT_WINDOW_LINES
+    functions = [
+        node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    for call in ast.walk(tree):
+        if not (
+            isinstance(call, ast.Call)
+            and low <= call.lineno <= high
+            and _call_name(call.func) in _PROCESS_CALLS
+            and call.args
+            and isinstance(call.args[0], ast.List | ast.Tuple)
+        ):
+            continue
+        items = call.args[0].elts
+        marker = next(
+            (
+                index
+                for index, item in enumerate(items)
+                if isinstance(item, ast.Constant) and item.value == "--"
+            ),
+            len(items),
+        )
+        computed = [
+            index
+            for index, item in enumerate(items[1:], start=1)
+            if not isinstance(item, ast.Constant) and index < marker
+        ]
+        if not computed:
+            continue
+        scope = next(
+            (
+                function
+                for function in functions
+                if function.lineno <= call.lineno <= (function.end_lineno or function.lineno)
+            ),
+            tree,
+        )
+        if not _checks_leading_dash(scope):
+            return False
+    return True
+
+
+def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Attribute):
+        return _call_name(node.value) + "." + node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return ""
+
+
+def _checks_leading_dash(scope: ast.AST) -> bool:
+    for node in ast.walk(scope):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "startswith"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "-"
+        ):
+            return True
+    return False
 
 
 def git_apply_check(path: str, source: str, diff: str) -> bool:
@@ -377,7 +470,11 @@ def _signals(path: str, source: str) -> frozenset[tuple[str, int]]:
 
 
 def findings_from_report(document: Mapping[str, object]) -> tuple[FixFinding, ...]:
-    """Confirmed findings of a canonical JSON report, one per finding."""
+    """Confirmed findings of a canonical JSON report, one per weakness.
+
+    The scanner lane and model Discovery may both confirm the same weakness; findings
+    with the same CWE in the same file get a single fix.
+    """
 
     result: list[FixFinding] = []
     findings = document.get("findings")
@@ -400,4 +497,8 @@ def findings_from_report(document: Mapping[str, object]) -> tuple[FixFinding, ..
                 str(item.get("candidate_origin", "")),
             )
         )
-    return tuple(result)
+    # One fix per weakness in a file; the scanner lane carries the precise lines.
+    merged: dict[tuple[str, str], FixFinding] = {}
+    for finding in sorted(result, key=lambda item: item.origin != "deterministic"):
+        merged.setdefault((finding.cwe_id, finding.path), finding)
+    return tuple(merged.values())

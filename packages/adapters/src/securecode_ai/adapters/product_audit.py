@@ -90,6 +90,7 @@ from .product_audit_validation import (
 from .product_execution import (
     child_fact_catalogue,
     execute_deterministic_children,
+    masked_product_sources,
     restricted_product_source_paths,
 )
 from .product_review import ProductReviewResult
@@ -604,6 +605,7 @@ def execute_product_audit(
                 deterministic=execution.scan,
                 child_artifacts=retained,
                 denied_source_paths=restricted_product_source_paths(execution),
+                masked_sources=masked_product_sources(execution),
             )
 
         def auditor_for(graph: EvidenceGraph) -> AuditorInvoker:

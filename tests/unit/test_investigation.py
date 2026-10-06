@@ -252,3 +252,41 @@ def test_context_rounds_are_hard_capped_at_two() -> None:
     assert receipt.stop_reason is InvestigationStopReason.CONTEXT_ROUNDS_EXHAUSTED
     assert auditor.calls == 2
     assert context.calls == 1
+
+
+def _malformed() -> AuditorInvocation:
+    return AuditorInvocation(
+        response=AuditorResponse(ModelCallStatus.INVALID_SCHEMA, False, None),
+        tokens_used=1,
+        tool_calls=1,
+        elapsed_ms=2,
+    )
+
+
+def test_malformed_answer_is_regenerated_within_the_attempt_budget() -> None:
+    auditor = _Auditor((_malformed(), _invocation(FindingVerdict.CONFIRMED)))
+
+    receipt = run_auditor_investigation(
+        _package(),
+        budget=InvestigationBudget(2, 10, 10, 10),
+        auditor=auditor,
+        context=_Context(None),
+    )
+
+    assert auditor.calls == 2
+    assert receipt.finding_verdict is FindingVerdict.CONFIRMED
+
+
+def test_malformed_answers_beyond_the_attempt_budget_stay_indeterminate() -> None:
+    auditor = _Auditor((_malformed(), _malformed()))
+
+    receipt = run_auditor_investigation(
+        _package(),
+        budget=InvestigationBudget(2, 10, 10, 10),
+        auditor=auditor,
+        context=_Context(None),
+    )
+
+    assert auditor.calls == 2
+    assert receipt.is_indeterminate
+    assert receipt.final_model_call_status is ModelCallStatus.INVALID_SCHEMA

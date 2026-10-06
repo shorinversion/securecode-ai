@@ -934,7 +934,7 @@ def test_offline_runtime_reports_the_deterministic_finding_without_a_model(
 
 
 def test_open_pr_commits_the_validated_fix_on_a_new_branch(
-    demo_module: ModuleType, tmp_path: Path
+    demo_module: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import subprocess
 
@@ -946,6 +946,7 @@ def test_open_pr_commits_the_validated_fix_on_a_new_branch(
         ("init", "-q"),
         ("add", "."),
         ("-c", "user.name=t", "-c", "user.email=t@e.invalid", "commit", "-qm", "init"),
+        ("remote", "add", "origin", "https://gitlab.example.invalid/group/app.git"),
     ):
         subprocess.run(["git", "-C", str(repository), *arguments], check=True, capture_output=True)
     model = FakeModel(
@@ -967,11 +968,13 @@ def test_open_pr_commits_the_validated_fix_on_a_new_branch(
     manifest = _run(demo_module, repository, tmp_path / "out", model)
     assert manifest["outcome"] == "COMPLETED"
 
+    monkeypatch.setattr("shutil.which", lambda _name: None)
     result = demo_module.open_fix_pull_request(
         repository, tmp_path / "out" / "model-proposed.patch", manifest
     )
 
     assert result["status"] == "COMMITTED"
+    assert result["forge"] == "gitlab" and "glab mr create" in result["next"]
     assert result["branch"].startswith("securecode/fix-cwe-89-")
     committed = subprocess.run(
         ["git", "-C", str(repository), "show", "HEAD:app.py"],

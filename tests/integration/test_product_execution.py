@@ -1173,6 +1173,69 @@ def test_unverified_secret_stage_denies_discovery_auditor_and_skeptic_source(
     assert graph.candidates  # Failed coverage never erases retained vulnerability facts.
 
 
+def test_verified_secret_file_is_served_masked_to_discovery_auditor_and_skeptic() -> None:
+    from securecode_ai.adapters.product_execution import (
+        RestrictedProductDiscoveryView,
+        masked_product_sources,
+        restricted_product_source_paths,
+    )
+    from securecode_ai.adapters.product_scanner import build_product_auditor_tools
+    from securecode_ai.core.tool_policy import (
+        ListPathsArguments,
+        ReadEvidenceArguments,
+        ReadRangeArguments,
+        RepositoryTool,
+        RepositoryToolBudget,
+        RepositoryToolRequest,
+        RepositoryToolWindow,
+        ToolOutcome,
+    )
+
+    canary = b"development-" + b"credential-example"
+    source = (
+        b'password = "'
+        + canary
+        + b'"\n'
+        + b'def lookup(request, db):\n id = request.args.get("id")\n db.execute(f"SELECT * FROM users WHERE id = {id}")\n'
+    )
+    execution = execute(source=source, extra={"b.py": b"answer = 42\n"})
+    assert execution.is_complete
+    assert restricted_product_source_paths(execution) == ("a.py",)
+    masked = masked_product_sources(execution)
+    assert set(masked) == {"a.py"}
+    assert canary.decode() not in masked["a.py"]
+    assert masked["a.py"].count("\n") == source.count(b"\n")
+    head = execution.catalogue.snapshot.head_sha
+    window = RepositoryToolWindow(65536, 65536)
+    arguments = ReadRangeArguments("0.1.0", head, "a.py", 1, 4)
+
+    view = RestrictedProductDiscoveryView(execution)
+    discovered = view.read_range(arguments, window=window).content
+    assert canary.decode() not in discovered and "SELECT * FROM users" in discovered
+    listing = view.list_paths(ListPathsArguments("0.1.0", head, "", 100), window=window).content
+    assert "a.py" in listing and "b.py" in listing
+
+    tools = build_product_auditor_tools(
+        execution.catalogue,
+        execution.scan.graph,
+        budget=RepositoryToolBudget(16, 65536, 65536),
+        deterministic=execution.scan,
+        denied_source_paths=restricted_product_source_paths(execution),
+        masked_sources=masked,
+    )
+    read = tools.dispatch(RepositoryToolRequest(RepositoryTool.READ_RANGE, arguments))
+    assert read.receipt.outcome is ToolOutcome.SUCCEEDED and read.output is not None
+    assert canary.decode() not in read.output.content
+    assert "SELECT * FROM users" in read.output.content
+    evidence = tools.dispatch(
+        RepositoryToolRequest(
+            RepositoryTool.READ_EVIDENCE,
+            ReadEvidenceArguments("0.1.0", head, execution.scan.graph.evidence[0].evidence_id),
+        )
+    )
+    assert evidence.output is None or canary.decode() not in evidence.output.content
+
+
 def test_scanner_graph_cannot_drop_retained_receipt_signals() -> None:
     from dataclasses import replace
 

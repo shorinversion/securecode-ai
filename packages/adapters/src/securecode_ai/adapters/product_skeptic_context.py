@@ -15,6 +15,7 @@ from securecode_ai.core.evidence_package import EvidencePackage
 from securecode_ai.core.skeptic import AuditorSnapshot
 
 from .model import HmacContentIdentifier, PreparedModelContext
+from .model_egress import egress_data_class, keyed_entries
 from .product_skeptic_contracts import (
     _SKEPTIC_INSTRUCTIONS,
     SKEPTIC_WIRE_SCHEMA_JSON,
@@ -59,6 +60,7 @@ def _skeptic_context(
         package, snapshot, expected_tenant_id=request.tenant_id
     ):
         raise ValueError("Skeptic context is invalid")
+    entries = keyed_entries(entries, key)
     unique: dict[str, tuple[ArtifactRef, bytes, list[str]]] = {}
     for evidence_id, artifact, content in entries:
         if artifact.tenant_id != request.tenant_id:
@@ -103,17 +105,14 @@ def _skeptic_context(
     payload = json.dumps(
         material, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True
     ).encode()
-    egress_data_class = max(
-        (artifact.data_class for artifact, _, _ in unique.values()),
-        key=_DATA_CLASS_RANK.__getitem__,
-    )
+    context_class = egress_data_class(artifact.data_class for artifact, _, _ in unique.values())
     return PreparedModelContext(
         payload=payload,
         content=tuple(
             EgressContentRef(
                 schema_version=CONTRACT_SCHEMA_VERSION,
                 content_id=artifact.content_id,
-                data_class=egress_data_class,
+                data_class=context_class,
             )
             for artifact, _, _ in unique.values()
         ),

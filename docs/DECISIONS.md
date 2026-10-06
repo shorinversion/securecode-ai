@@ -979,3 +979,16 @@ GitHub check conclusion is `neutral` with the title "SecureCode AI (advisory):
 findings reported" instead of a green `success`. A clean advisory run remains
 `success`. Blocking policies and the `new_code` allowance for legacy findings are
 unchanged, and GitLab external statuses keep their existing mapping.
+
+## D-116: Mask secret values instead of withholding the whole file
+
+5 October 2026, owner request after independent E2E testing of 1.2.0. A file with a
+detected secret was withheld from every model, and the discovery seed read it anyway,
+so one credential turned the whole run `INDETERMINATE`. Now such a file is served to
+Discovery and the Auditor with every detected secret value replaced by the detector's
+redaction marker (`secret-mask@1`, the named downgrade rule that `SC-DATA-002`
+requires): line breaks are kept, raw evidence windows of the file stay unavailable,
+and the discovery seed skips the file. Masking applies only when the secret stage is
+verified for the exact revision; otherwise the file stays `DC4` and withheld, as
+before. Masking is applied for every provider, local ones included: the value is
+not needed to judge the surrounding code, and one rule is easier to audit than two.

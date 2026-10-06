@@ -95,7 +95,7 @@ _SEVERITY_ORDER: Final = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
 _OUTCOMES: Final = {
     "FAIL": "Найдены подтверждённые уязвимости",
     "PASS": "Подтверждённых уязвимостей не найдено",
-    "INDETERMINATE": "Анализ не завершён: часть кандидатов требует ручной проверки",
+    "INDETERMINATE": "Результат не определён",
 }
 _FIX_STATUS: Final = {
     "VALIDATED": "исправление проверено",
@@ -120,6 +120,8 @@ _CHECKS: Final = {
     "rescan:clean": "повторное сканирование не нашло новых проблем",
     "original:gone": "исходная находка устранена",
     "original:remains": "исходная находка осталась",
+    "options:guarded": "пользовательский ввод не может стать опцией команды",
+    "options:unguarded": "пользовательский ввод может стать опцией команды (CWE-88)",
 }
 
 
@@ -195,19 +197,29 @@ def render_trial_report(
         for number, entry in enumerate(entries, start=1)
     )
     outcome = str(document.get("outcome"))
-    health = str(document.get("analysis_health"))
+    gaps = _coverage_gaps(document)
+    verdict = _OUTCOMES.get(outcome, outcome)
+    if outcome == "INDETERMINATE":
+        verdict += (
+            ": не все этапы проверки завершены, см. раздел ниже"
+            if gaps
+            else ": у части кандидатов нет окончательного решения, нужна ручная проверка"
+        )
     report = _Report(
         summary=(
-            ("Итог", _OUTCOMES.get(outcome, outcome)),
+            ("Итог", verdict),
             ("Репозиторий", str(context.repository)),
             ("Ревизия", context.head_sha[:12]),
             ("Модель", f"{context.model_id} ({context.provider})"),
             ("Стоимость запросов к модели", f"${context.cost_microusd / 1_000_000:.4f}"),
             ("Находок", str(len(entries))),
-            ("Полнота анализа", "полная" if health == "HEALTHY" else "неполная, см. ниже"),
+            (
+                "Этапы проверки",
+                "все обязательные этапы выполнены" if not gaps else "есть незавершённые, см. ниже",
+            ),
         ),
         sections=sections,
-        gaps=_coverage_gaps(document),
+        gaps=gaps,
     )
     text = _html(report) if html_format else _markdown(report)
     return text.encode("utf-8")
@@ -231,9 +243,11 @@ def _entries(document: Mapping[str, object]) -> list[_Entry]:
         groups.setdefault((str(item.get("cwe_id")), path), []).append(item)
     entries: list[_Entry] = []
     for (cwe_id, path), items in groups.items():
+        # The scanner lane carries exact sink lines; model locations are a fallback.
+        scanner = [item for item in items if item.get("candidate_origin") == "deterministic"]
         locations = [
             location
-            for item in items
+            for item in scanner or items
             for location in _dicts(item.get("locations"))
             if location.get("path") == path
         ]
@@ -328,7 +342,7 @@ _GAPS_NOTE: Final = (
 )
 _MACHINE_NOTE: Final = (
     "Машиночитаемый отчёт с полной трассировкой формируется с флагом --format json "
-    "или --format sarif."
+    "или --format sarif; флаг --output-dir за один прогон сохраняет все четыре формата."
 )
 
 

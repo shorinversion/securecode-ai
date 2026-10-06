@@ -91,7 +91,7 @@ Reports are written to `output/demo-report/`. All tools with saved outputs:
 
 ## Installation
 
-Requirements: Git, CPython 3.12–3.14, [uv](https://docs.astral.sh/uv/) 0.12.0.
+Requirements: Git 2.44 or newer, CPython 3.12–3.14, [uv](https://docs.astral.sh/uv/) 0.12.0.
 Docker is needed only for the images, Ollama only for the local model.
 
 ```bash
@@ -117,12 +117,17 @@ every finding and Architect fixes.
 | `--provider deepseek\|local` | Model: DeepSeek (`DEEPSEEK_API_KEY` in the environment or `.env`) or local via Ollama |
 | `--format markdown\|html\|json\|sarif` | Report format |
 | `--output FILE` | Write the report to a file |
+| `--output-dir DIR` | Save `report.md`, `report.html`, `report.json` and `report.sarif` from one run |
 | `--patch-dir DIR` | Save validated fixes as `.diff` files |
 | `--no-fix` | Do not request fixes |
 | `--max-cost-usd N` | API spend cap per run (default 1.0) |
 
-Exit codes: `0` — no vulnerabilities, `2` — vulnerabilities found, `3` — analysis
-incomplete, `4` — configuration error. The Markdown and HTML reports are in Russian;
+Exit codes: `0` — no confirmed vulnerability and every required stage completed;
+`2` — at least one confirmed vulnerability (takes precedence over incomplete stages);
+`3` — no confirmed vulnerability, but a stage or a candidate is unresolved; `4` — invalid
+arguments, missing key, Git older than 2.44 or an existing output path. Validated fixes
+appear in `patch_refs` and `validation_refs` of a JSON finding and in the standard SARIF
+`fixes` property. The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
 
 ### Fix as a pull request
@@ -132,7 +137,10 @@ uv run python -I demo/p917_real_local_demo.py --repository path/to/repo --output
 ```
 
 The Architect commits the validated fix to a `securecode/fix-…` branch and opens a pull
-request with the GitHub CLI. Example:
+request with the GitHub CLI (`gh`). For GitLab the same flag opens a merge request with
+`glab`: the forge is taken from the `origin` URL, `--forge gitlab` sets it explicitly.
+Fixes saved by `securecode analyze --patch-dir DIR` are applied by hand:
+`git apply DIR/01-….diff`, then `glab mr create` or `gh pr create`. Example:
 [shorinversion/securecode-demo-app#1](https://github.com/shorinversion/securecode-demo-app/pull/1).
 
 ### CI and server mode
@@ -206,7 +214,9 @@ OWASP Top 10 2021 mapping table.
 - Analysis is bound to the exact commit; a changed revision cancels publication.
 - An incomplete check yields `INDETERMINATE`, never "no vulnerabilities".
 - Model output is untrusted data and is validated against a closed schema.
-- Files with secrets are not sent to the model; secret values are never stored.
+- Detected secrets are masked before a model sees the file: it reads the code with a
+  redaction marker in place of the value. Secret values are never stored in reports
+  or logs.
 - The local model is reachable only over loopback; an external API is used only with
   explicit owner consent.
 - Fixes are never applied to the source checkout without an explicit user decision.

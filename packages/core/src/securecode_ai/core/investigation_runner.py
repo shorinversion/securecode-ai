@@ -34,6 +34,8 @@ from .investigation_models import (
     ReadOnlyEvidenceContext,
 )
 
+_REGENERATE_ON = frozenset({ModelCallStatus.INVALID_SCHEMA, ModelCallStatus.EMPTY_OUTPUT})
+
 
 def run_auditor_investigation(
     package: EvidencePackage,
@@ -109,6 +111,10 @@ def run_auditor_investigation(
                 stop_reason=InvestigationStopReason.BUDGET_EXHAUSTED,
             )
         response = invocation.response
+        if response.model_call_status in _REGENERATE_ON and len(attempts) < budget.max_attempts:
+            # A malformed or empty answer says nothing about the candidate; ask again
+            # with the same evidence while the attempt and resource budgets allow.
+            continue
         if response.model_call_status is not ModelCallStatus.SUCCEEDED or response.verdict is None:
             return _indeterminate_receipt(
                 current,

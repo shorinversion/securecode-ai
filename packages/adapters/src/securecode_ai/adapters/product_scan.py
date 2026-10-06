@@ -33,12 +33,14 @@ from securecode_ai.core.model_discovery import (
     run_model_native_discovery,
 )
 from securecode_ai.core.normalization import normalize_signals
+from securecode_ai.core.tool_policy import RepositoryView
 
 from .native_sources import NativeSourceCatalogue
 from .product_execution import (
     ProductDeterministicExecution,
     RestrictedProductDiscoveryView,
     execution_fact_graph,
+    restricted_product_source_paths,
 )
 from .product_scanner import ProductDeterministicScanResult, scanner_facts_match_receipts
 
@@ -250,11 +252,23 @@ def run_product_candidate_flow(
         or deterministic_execution.repository_id != expected_repository_id
     ):
         raise ValueError("product discovery execution binding is invalid")
+    discovery_view: RepositoryView
+    if deterministic_execution is None:
+        discovery_view = catalogue.repository_view()
+    else:
+        # Files with detected secrets are served masked, and the discovery seed skips
+        # them. When the seed cannot avoid them (every anchor sits in such a file) the
+        # files stay fully withheld, so the lane ends as a guardrail block.
+        restricted = frozenset(restricted_product_source_paths(deterministic_execution))
+        excluding = getattr(model_backend, "excluding_paths", None)
+        narrowed = excluding(restricted) if restricted and callable(excluding) else model_backend
+        discovery_view = RestrictedProductDiscoveryView(
+            deterministic_execution, masked=not restricted or narrowed is not model_backend
+        )
+        model_backend = narrowed
     discovery = run_model_native_discovery(
         model_plan,
-        repository=RestrictedProductDiscoveryView(deterministic_execution)
-        if deterministic_execution is not None
-        else catalogue.repository_view(),
+        repository=discovery_view,
         backend=model_backend,
     )
     native = catalogue.evidence_graph(

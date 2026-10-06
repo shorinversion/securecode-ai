@@ -285,10 +285,13 @@ def test_native_discovery_observer_propagates_only_post_validator_schema_categor
     terminal = json.loads(sequence.bodies[2])
     terminal["choices"][0]["message"]["content"] = final_content
     sequence.bodies[2] = json.dumps(terminal).encode()
+    # A malformed final answer is repeated once; the second one ends the lane.
+    sequence.bodies.append(sequence.bodies[2])
     backend._observer = captured.append
 
     outcome = backend.discover(request=request, tools=tools)
 
+    assert len(sequence.endpoint.requests) == 4
     assert outcome.model_result.status is ModelCallStatus.INVALID_SCHEMA
     assert outcome.candidates == () and tools.calls_used == 1
     assert len(captured) == 1
