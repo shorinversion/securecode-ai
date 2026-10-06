@@ -4,11 +4,11 @@ build-backend = "uv_build"
 
 [project]
 name = "securecode-ai-core"
-version = "1.2.0"
+version = "1.2.1"
 description = "Framework-independent domain core for SecureCode AI"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
-dependencies = ["securecode-ai-contracts==1.2.0"]
+dependencies = ["securecode-ai-contracts==1.2.1"]
 classifiers = [
     "Private :: Do Not Upload",
     "Programming Language :: Python :: 3.12",
