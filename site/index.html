@@ -38,7 +38,7 @@ video{width:100%;border-radius:24px;background:#000}
 footer{color:var(--muted);font-size:14px;margin-top:28px}
 </style>
 <main>
-<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.2</span></div>
+<div class="pills"><span class="pill">МТС True Tech</span><span class="pill dark">Итоговый проект · задача № 2</span><span class="pill light">Версия 1.2.3</span></div>
 <h1>SecureCode AI</h1>
 <p class="lead">Локальный AI-ассистент разработчика для аудита безопасности кода: находит уязвимости, предлагает исправления и проверяет их, не отправляя код в облако.</p>
 <a class="btn red" href="https://github.com/shorinversion/securecode-ai">Репозиторий</a><a class="btn" href="final-submission.html">Итоговый отчёт</a><a class="btn outline" href="benchmark.html">Эксперименты</a><a class="btn outline" href="https://github.com/shorinversion/securecode-ai/blob/main/notebooks/securecode_demo.ipynb">Notebook</a><a class="btn outline" href="https://github.com/shorinversion/securecode-ai/releases">Релизы</a>
@@ -46,7 +46,7 @@ footer{color:var(--muted);font-size:14px;margin-top:28px}
 <div class="card" style="margin-top:32px"><h2>Задача</h2><p>Статические анализаторы работают по жёстким правилам и дают много ложных срабатываний, а отправлять приватный код во внешние облачные сервисы нельзя. SecureCode AI анализирует локальный репозиторий на Python, JavaScript, TypeScript и Go с помощью квантованной языковой модели, находит уязвимости и предлагает проверенные исправления.</p></div>
 
 <div class="grid">
-<div class="card"><h3>Инструменты</h3><p class="muted">Синтаксические деревья (ast, tree-sitter), поиск захардкоженных секретов, уязвимые версии библиотек по базе OSV, детерминированные правила для 35 типов CWE.</p></div>
+<div class="card"><h3>Инструменты</h3><p class="muted">Синтаксические деревья (ast, tree-sitter), поиск захардкоженных секретов (их значения маскируются до отправки модели), уязвимые версии библиотек по базе OSV, детерминированные правила для 35 типов CWE.</p></div>
 <div class="card"><h3>Поиск</h3><p class="muted">Языковая модель сама ищет уязвимости по всему коду, независимо от сканеров; может сообщить о любой из 139 CWE.</p></div>
 <div class="card"><h3>Аудитор</h3><p class="muted">Проверяет каждого кандидата: доходят ли недоверенные данные до уязвимой операции и есть ли реальный ущерб.</p></div>
 <div class="card"><h3>Скептик</h3><p class="muted">Пытается опровергнуть вывод Аудитора; в отчёт попадают только находки, выдержавшие проверку.</p></div>
@@ -64,7 +64,7 @@ footer{color:var(--muted);font-size:14px;margin-top:28px}
 <div class="grid">
 <div class="card"><span class="muted">OWASP Benchmark for Python</span><div class="num">0,84</div><span class="muted">SecureCode (согласие трёх проверок, gpt-oss-120b) против 0,80 у модели без сканеров и 0,16 у Semgrep и Bandit</span></div>
 <div class="card"><span class="muted">CVEfixes, 3000 файлов</span><div class="num">+16,2 п. п.</div><span class="muted">recall SecureCode с моделью против Semgrep на CVEfixes (50,5% и 34,3%)</span></div>
-<div class="card"><span class="muted">Автотестов</span><div class="num">3300+</div><span class="muted">линтеры, типы и тесты в CI</span></div>
+<div class="card"><span class="muted">Автотестов</span><div class="num">3800+</div><span class="muted">линтеры, типы и тесты в CI</span></div>
 </div>
 
 <div class="card"><h2>Эксперименты</h2><p class="muted">OWASP Benchmark for Python: 1230 кейсов, 14 категорий; оценка TPR − FPR, 1 — идеально. В конфигурации SecureCode решение принимается согласием трёх проверок: Поиск (модель без подсказок), Аудитор (модель проверяет находки сканеров) и вторая модель; уязвимость попадает в отчёт, если её назвали минимум две из трёх (сравнение по семействам CWE), а слабое хеширование решает детерминированное правило. «Только модель» — та же модель без сканеров, для сравнения.</p><table class="nums"><tr><th>Конфигурация</th><th>Оценка</th><th>Precision</th></tr><tr class="hi"><td>SecureCode: согласие трёх проверок (gpt-oss-120b, Luna)</td><td>0,84</td><td>89,2%</td></tr><tr><td>SecureCode: согласие трёх проверок (gpt-oss-120b, DeepSeek Flash)</td><td>0,82</td><td>85,9%</td></tr><tr><td>SecureCode: сканеры + проверка gpt-oss-120b</td><td>0,78</td><td>89,0%</td></tr><tr><td>SecureCode: сканеры + проверка DeepSeek Flash</td><td>0,50</td><td>59,7%</td></tr><tr><td>SecureCode: только сканеры</td><td>0,21</td><td>70,4%</td></tr><tr><td>Только модель: gpt-oss-120b</td><td>0,80</td><td>85,6%</td></tr><tr><td>Только модель: DeepSeek Flash</td><td>0,39</td><td>53,8%</td></tr><tr><td>Bandit 1.9.4</td><td>0,16</td><td>87,8%</td></tr><tr><td>Semgrep 1.177.0</td><td>0,16</td><td>57,8%</td></tr></table><p class="muted">CVEfixes: 3000 файлов, пары «до и после исправления CVE», отложенная выборка 1200 файлов.</p><table class="nums"><tr><th>Конфигурация</th><th>Recall</th><th>Разница с Semgrep, п. п.</th></tr><tr class="hi"><td>SecureCode: сканеры ∪ GPT-5.6 Luna</td><td>50,5%</td><td>+16,2 [+11,3; +21,0]</td></tr><tr><td>Сканеры SecureCode ∪ Semgrep</td><td>43,8%</td><td>+9,5 [+7,2; +11,8]</td></tr><tr><td>Semgrep 1.177.0</td><td>34,3%</td><td>—</td></tr><tr><td>SecureCode: только сканеры</td><td>25,2%</td><td>−9,2 [−13,3; −5,0]</td></tr></table><p class="muted">Precision около 50% у всех инструментов на CVEfixes — свойство парного корпуса: уязвимая и исправленная версии файла почти совпадают. Датасеты: <a href="https://zenodo.org/records/13118970">CVEfixes</a>, <a href="https://github.com/OWASP-Benchmark/BenchmarkPython">OWASP Benchmark for Python</a>.</p><a class="btn outline" href="benchmark.html">Подробнее об экспериментах</a></div>
@@ -76,5 +76,5 @@ cd securecode-ai
 python deploy/docker/quickstart.py --demo                   # нужен только Docker
 python deploy/docker/quickstart.py --demo --provider local  # uv и Ollama, модель скачается</pre></div>
 
-<footer>SecureCode AI 1.2 · Итоговый проект, задача № 2 · МТС True Tech</footer>
+<footer>SecureCode AI 1.2.3 · Итоговый проект, задача № 2 · МТС True Tech</footer>
 </main></html>
