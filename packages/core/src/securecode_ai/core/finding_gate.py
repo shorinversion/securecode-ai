@@ -84,6 +84,20 @@ class FindingGateReason(StrEnum):
     INVESTIGATION_CONTEXT_EXHAUSTED = "INVESTIGATION_CONTEXT_EXHAUSTED"
     INVESTIGATION_CANCELLED = "INVESTIGATION_CANCELLED"
     INVESTIGATION_INVALID_RECEIPT = "INVESTIGATION_INVALID_RECEIPT"
+    DETECTOR_CONFIRMED = "DETECTOR_CONFIRMED"
+
+
+class FindingAuthority(StrEnum):
+    """Who may confirm a candidate.
+
+    ``MODEL_REVIEW`` needs the Auditor and the Skeptic to agree. ``DETERMINISTIC_DETECTOR`` is
+    for a verified secret-detector fact: the detector saw the literal value, which no
+    model is shown, so a successful Auditor investigation is enough and the model
+    verdicts are retained as review notes (D-117).
+    """
+
+    MODEL_REVIEW = "MODEL_REVIEW"
+    DETERMINISTIC_DETECTOR = "DETERMINISTIC_DETECTOR"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +129,7 @@ class FindingGateInput:
     skeptic_objections: tuple[SkepticObjection, ...]
     skeptic_cited_evidence_ids: tuple[str, ...]
     investigation_terminal_status: InvestigationTerminalStatus
+    authority: FindingAuthority = FindingAuthority.MODEL_REVIEW
 
     def __post_init__(self) -> None:
         _validate_input_shape(self)
@@ -151,6 +166,7 @@ class FindingGateInput:
         auditor_cited_evidence_ids: tuple[str, ...],
         skeptic_receipt_sha256: str | None,
         investigation_terminal_status: InvestigationTerminalStatus,
+        authority: FindingAuthority = FindingAuthority.MODEL_REVIEW,
     ) -> FindingGateInput:
         """Adapt P3.4 metadata without granting P3.5 any loop authority."""
 
@@ -175,6 +191,7 @@ class FindingGateInput:
             skeptic_objections=review.objections,
             skeptic_cited_evidence_ids=review.cited_evidence_ids,
             investigation_terminal_status=investigation_terminal_status,
+            authority=authority,
         )
 
 
@@ -203,6 +220,7 @@ class FindingGateDecision:
     skeptic_objections: tuple[SkepticObjection, ...]
     skeptic_cited_evidence_ids: tuple[str, ...]
     investigation_terminal_status: InvestigationTerminalStatus
+    authority: FindingAuthority = FindingAuthority.MODEL_REVIEW
 
     def __post_init__(self) -> None:
         _validate_decision_shape(self)
@@ -273,6 +291,7 @@ def _revalidated_input(value: FindingGateInput) -> FindingGateInput:
             skeptic_objections=value.skeptic_objections,
             skeptic_cited_evidence_ids=value.skeptic_cited_evidence_ids,
             investigation_terminal_status=value.investigation_terminal_status,
+            authority=value.authority,
         )
     except (TypeError, ValueError, AttributeError) as error:
         raise FindingGateContractError(FindingGateErrorCode.INTEGRITY_FAILURE) from error
@@ -307,6 +326,7 @@ def _validate_input_shape(value: FindingGateInput) -> None:
         or any(type(item) is not SkepticObjection for item in value.skeptic_objections)
         or not _valid_ids(value.skeptic_cited_evidence_ids)
         or type(value.investigation_terminal_status) is not InvestigationTerminalStatus
+        or type(value.authority) is not FindingAuthority
     ):
         raise FindingGateContractError(FindingGateErrorCode.INVALID_INPUT)
 
@@ -338,6 +358,7 @@ def _validate_decision_shape(value: FindingGateDecision) -> None:
         skeptic_objections=value.skeptic_objections,
         skeptic_cited_evidence_ids=value.skeptic_cited_evidence_ids,
         investigation_terminal_status=value.investigation_terminal_status,
+        authority=value.authority,
     )
     if not _citations_are_bound(input_value):
         raise FindingGateContractError(FindingGateErrorCode.INTEGRITY_FAILURE)
@@ -363,6 +384,12 @@ def _policy_decision(value: FindingGateInput) -> tuple[FindingRoute, FindingGate
         )
     if value.auditor_model_call_status is not ModelCallStatus.SUCCEEDED:
         return FindingRoute.INDETERMINATE, FindingGateReason.AUDITOR_NON_SUCCESS
+    if value.authority is FindingAuthority.DETERMINISTIC_DETECTOR:
+        # The detector verified the literal; models see only a redaction marker and may
+        # disagree about it. A bound, successful Auditor receipt keeps the trail.
+        if value.auditor_receipt_sha256 is None or not value.known_evidence_ids:
+            return FindingRoute.INDETERMINATE, FindingGateReason.EVIDENCE_INTEGRITY_FAILURE
+        return FindingRoute.CONFIRMED, FindingGateReason.DETECTOR_CONFIRMED
     if value.skeptic_model_call_status is not ModelCallStatus.SUCCEEDED:
         return FindingRoute.INDETERMINATE, FindingGateReason.SKEPTIC_NON_SUCCESS
     if not _has_valid_evidence(value):
@@ -459,6 +486,7 @@ def _integrity_failure_decision(value: FindingGateInput) -> FindingGateDecision:
         skeptic_objections=objections,
         skeptic_cited_evidence_ids=skeptic_citations,
         investigation_terminal_status=value.investigation_terminal_status,
+        authority=value.authority,
     )
     return _decision(
         sanitized,
@@ -520,6 +548,7 @@ def _decision(
         skeptic_objections=value.skeptic_objections,
         skeptic_cited_evidence_ids=value.skeptic_cited_evidence_ids,
         investigation_terminal_status=value.investigation_terminal_status,
+        authority=value.authority,
     )
 
 

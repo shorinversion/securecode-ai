@@ -28,6 +28,7 @@ from .product_runtime import (
     _result_with_calls,
     _snapshot_evidence_catalogue,
 )
+from .product_runtime_discovery import regeneration_request
 from .product_skeptic_context import _package_matches_snapshot, _skeptic_context
 from .product_skeptic_contracts import (
     _ID,
@@ -36,6 +37,9 @@ from .product_skeptic_contracts import (
     _copy_snapshot,
 )
 from .product_skeptic_validator import SkepticPayloadValidator
+
+_MAX_REGENERATIONS = 2
+_REGENERATE_ON = frozenset({ModelCallStatus.INVALID_SCHEMA, ModelCallStatus.EMPTY_OUTPUT})
 
 
 class ProductSkepticReviewPort:
@@ -134,63 +138,100 @@ class ProductSkepticReviewPort:
             if type(before_calls) is not int or before_calls < 0:
                 return self._non_success(ModelCallStatus.INVALID_SCHEMA)
             ceiling_hit = False
+            # Evidence is read once; a repeated call reuses the verified entries.
+            verified: list[tuple[tuple[str, ArtifactRef, bytes], ...]] = []
 
-            def build() -> PreparedModelContext:
-                nonlocal ceiling_hit
-                try:
-                    resolved = self._resolver.resolve(
-                        package, max_calls=request.budget.max_repository_calls
+            def build_for(active: ModelRequest) -> Callable[[], PreparedModelContext]:
+                def build() -> PreparedModelContext:
+                    nonlocal ceiling_hit
+                    if not verified:
+                        try:
+                            resolved = self._resolver.resolve(
+                                package, max_calls=request.budget.max_repository_calls
+                            )
+                        except RepositoryContextBudgetExhausted:
+                            ceiling_hit = True
+                            raise
+                        if (
+                            self._resolver.calls_used - before_calls
+                            > request.budget.max_repository_calls
+                        ):
+                            ceiling_hit = True
+                            raise RepositoryContextBudgetExhausted(
+                                "Skeptic context tool ceiling exhausted"
+                            )
+                        verified.append(self._verified_entries(package, resolved))
+                    return _skeptic_context(
+                        request=active,
+                        snapshot=snapshot,
+                        package=package,
+                        entries=verified[0],
+                        key=self._key,
+                        rule_ids=() if self._claim_for is None else self._claim_for(snapshot),
                     )
-                except RepositoryContextBudgetExhausted:
-                    ceiling_hit = True
-                    raise
-                if self._resolver.calls_used - before_calls > request.budget.max_repository_calls:
-                    ceiling_hit = True
-                    raise RepositoryContextBudgetExhausted("Skeptic context tool ceiling exhausted")
-                entries = self._verified_entries(package, resolved)
-                return _skeptic_context(
-                    request=request,
-                    snapshot=snapshot,
-                    package=package,
-                    entries=entries,
-                    key=self._key,
-                    rule_ids=() if self._claim_for is None else self._claim_for(snapshot),
-                )
 
-            execution = self._executor.execute(
-                request=request, validator=validator, context_builder=build, started_at=started
+                return build
+
+            invocation = self._attempt(
+                request, validator, build_for(request), before_calls, started, ceiling_hit
             )
+            for ordinal in range(1, _MAX_REGENERATIONS + 1):
+                if invocation.model_call_status not in _REGENERATE_ON:
+                    break
+                # A malformed or empty answer says nothing about the finding: ask again
+                # under a fresh request identity, at most twice.
+                retry = regeneration_request(request, content_key=self._key, ordinal=ordinal)
+                invocation = self._attempt(
+                    retry, validator, build_for(retry), before_calls, started, ceiling_hit
+                )
+            return invocation
+        except Exception:
+            return self._non_success(ModelCallStatus.PROVIDER_ERROR)
+
+    def _attempt(
+        self,
+        request: ModelRequest,
+        validator: SkepticPayloadValidator,
+        build: Callable[[], PreparedModelContext],
+        before_calls: int,
+        started: float,
+        ceiling_hit: bool,
+    ) -> SkepticInvocation:
+        execution = self._executor.execute(
+            request=request, validator=validator, context_builder=build, started_at=started
+        )
+        try:
             try:
+                # Host accounting faults are not a model answer: never asked again.
                 after_calls = self._resolver.calls_used
                 if type(after_calls) is not int or after_calls < before_calls:
-                    return self._non_success(ModelCallStatus.INVALID_SCHEMA)
-                calls = after_calls - before_calls
+                    return self._non_success(ModelCallStatus.PROVIDER_ERROR)
                 result = _result_with_calls(
                     execution.result,
-                    calls,
+                    after_calls - before_calls,
                     request=request,
                     preflight=execution.preflight,
                     elapsed_ms=self._executor.elapsed_since(started),
                     budget_exhausted=ceiling_hit,
                 )
-                if (
-                    result.model_call_status is not ModelCallStatus.SUCCEEDED
-                    or execution.payload is None
-                ):
-                    return self._non_success(result.model_call_status)
-                output = validator.parse(
-                    execution.payload.reveal_for(request.request_id), request=request
-                )
-                if self._executor.elapsed_since(started) >= request.budget.timeout_ms:
-                    return self._non_success(ModelCallStatus.BUDGET_EXHAUSTED)
-                return SkepticInvocation(self._skeptic_identity, ModelCallStatus.SUCCEEDED, output)
             except Exception:
-                return self._non_success(ModelCallStatus.INVALID_SCHEMA)
-            finally:
-                if execution.payload is not None:
-                    execution.payload.close()
+                return self._non_success(ModelCallStatus.PROVIDER_ERROR)
+            if (
+                result.model_call_status is not ModelCallStatus.SUCCEEDED
+                or execution.payload is None
+            ):
+                return self._non_success(result.model_call_status)
+            output = validator.parse(
+                execution.payload.reveal_for(request.request_id), request=request
+            )
+            if self._executor.elapsed_since(started) >= request.budget.timeout_ms:
+                return self._non_success(ModelCallStatus.BUDGET_EXHAUSTED)
+            return SkepticInvocation(self._skeptic_identity, ModelCallStatus.SUCCEEDED, output)
         except Exception:
-            return self._non_success(ModelCallStatus.PROVIDER_ERROR)
+            return self._non_success(ModelCallStatus.INVALID_SCHEMA)
+        finally:
+            if execution.payload is not None:
+                execution.payload.close()
 
     def _verified_entries(
         self,

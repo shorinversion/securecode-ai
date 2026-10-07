@@ -4,13 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from securecode_ai.contracts import CoverageStatus, DiscoveryCandidate, ModelCallStatus
+from securecode_ai.contracts import (
+    CandidateOrigin,
+    CoverageStatus,
+    DiscoveryCandidate,
+    ModelCallStatus,
+)
 from securecode_ai.core.classification import (
     ClassificationError,
     ClassificationErrorCode,
     FindingSeverity,
 )
 from securecode_ai.core.finding_gate import (
+    FindingAuthority,
     FindingGateDecision,
     FindingGateInput,
     InvestigationTerminalStatus,
@@ -23,6 +29,7 @@ from securecode_ai.core.investigation import (
 )
 from securecode_ai.core.skeptic import AuditorSnapshot, SkepticReview, review_auditor_snapshot
 
+from .local_product_runner_execution_family import _candidate_family
 from .product_review_contracts import (
     ProductCandidateReviewOutcome,
     ProductReviewFailureCode,
@@ -186,6 +193,7 @@ def _review_candidate(
             auditor_cited_evidence_ids=final_attempt.cited_evidence_ids,
             skeptic_receipt_sha256=skeptic_receipt_sha256,
             investigation_terminal_status=InvestigationTerminalStatus.COMPLETED,
+            authority=_authority(candidate, flow),
         )
         decision = route_finding(gate_input)
     except ProductRuleMappingError:
@@ -214,6 +222,26 @@ def _review_candidate(
         failure=None,
         auditor_receipt_sha256=auditor_receipt_sha256,
         skeptic_receipt_sha256=skeptic_receipt_sha256,
+    )
+
+
+def _authority(candidate: DiscoveryCandidate, flow: ProductCandidateFlow) -> FindingAuthority:
+    """A verified secret-detector fact is confirmed by the detector (D-117).
+
+    The detector matched the literal value; models review the masked line only and may
+    disagree about it. Every other candidate needs the Auditor and the Skeptic.
+    """
+
+    if candidate.candidate_origin is not CandidateOrigin.DETERMINISTIC:
+        return FindingAuthority.MODEL_REVIEW
+    try:
+        rule = _candidate_family(candidate, flow.graph)[0]
+    except Exception:
+        return FindingAuthority.MODEL_REVIEW
+    return (
+        FindingAuthority.DETERMINISTIC_DETECTOR
+        if rule.startswith("secret-")
+        else FindingAuthority.MODEL_REVIEW
     )
 
 

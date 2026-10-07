@@ -1000,3 +1000,17 @@ the secret finding itself carries the masked lines around the value, and the Arc
 and the readable report read the masked file. A fix that changes a masked line cannot
 apply to the original file; it is shown in the report and left for a manual change
 together with rotating the secret.
+
+## D-117: A verified secret-detector finding is confirmed by the detector
+
+7 October 2026, owner decision after the 1.2.3 E2E series. Models review a secret
+finding with the value masked (D-116); they cannot see whether the literal is a real
+credential and often disagree (Auditor CONFIRMED, Skeptic NEEDS_MORE_EVIDENCE), which
+left an obvious hard-coded key without a decision. The finding gate gains an authority:
+`MODEL_REVIEW` (default, Auditor and Skeptic must agree) and `DETERMINISTIC_DETECTOR`, used only
+for deterministic candidates of the `secret-*` rules. With `DETERMINISTIC_DETECTOR` a bound,
+successful Auditor receipt is enough and the route is `CONFIRMED` with reason
+`DETECTOR_CONFIRMED`; the Auditor and Skeptic verdicts stay on the decision as review
+notes. Every other weakness still needs both reviews, and a failed Auditor investigation
+still leaves the secret without a decision. The report says "подтверждено детектором
+секретов" for such findings.
