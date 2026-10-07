@@ -98,6 +98,24 @@ def test_skeptic_objection_note_is_accepted_and_dropped() -> None:
     assert "parameterized" not in repr(output)
 
 
+def test_skeptic_repeated_objection_is_collapsed_not_rejected() -> None:
+    # DeepSeek repeated one objection with two different notes (E2E of 1.2.5); the
+    # notes are dropped, so both say the same thing and one is kept.
+    validator = _validator()
+    payload = _payload()
+    objections = payload["objections"]
+    assert isinstance(objections, list)
+    objections.append(dict(objections[0], note="Another wording of the same objection."))
+    objections[0]["note"] = "The value is a placeholder."
+    request = _request(validator)
+
+    output = validator.parse(payload, request=request)
+
+    assert validator.validate(payload, request=request).accepted
+    assert len(output.objections) == 1
+    assert output.objections[0].kind is SkepticObjectionKind.CONTRADICTORY_EVIDENCE
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -111,19 +129,12 @@ def test_skeptic_objection_note_is_accepted_and_dropped() -> None:
         {
             "finding_verdict": "CONFIRMED",
             "objections": [
-                {"kind": "CONTRADICTORY_EVIDENCE", "evidence_ids": ["evidence-a"]},
-                {"kind": "CONTRADICTORY_EVIDENCE", "evidence_ids": ["evidence-a"]},
-            ],
-        },
-        {
-            "finding_verdict": "CONFIRMED",
-            "objections": [
                 {"kind": "CONTRADICTORY_EVIDENCE", "evidence_ids": ["foreign-evidence"]}
             ],
         },
     ],
 )
-def test_skeptic_wire_rejects_extra_duplicate_and_foreign_output(payload: object) -> None:
+def test_skeptic_wire_rejects_extra_and_foreign_output(payload: object) -> None:
     validator = _validator()
     result = validator.validate(payload, request=_request(validator))
 

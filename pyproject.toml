@@ -1,16 +1,16 @@
 [project]
 name = "securecode-ai-workspace"
-version = "1.2.5"
+version = "1.2.6"
 description = "Reproducible workspace authority for SecureCode AI"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "securecode-ai-adapters==1.2.5",
-    "securecode-ai-cli==1.2.5",
-    "securecode-ai-contracts==1.2.5",
-    "securecode-ai-core==1.2.5",
-    "securecode-ai-server==1.2.5",
-    "securecode-ai-worker==1.2.5",
+    "securecode-ai-adapters==1.2.6",
+    "securecode-ai-cli==1.2.6",
+    "securecode-ai-contracts==1.2.6",
+    "securecode-ai-core==1.2.6",
+    "securecode-ai-server==1.2.6",
+    "securecode-ai-worker==1.2.6",
 ]
 classifiers = ["Private :: Do Not Upload"]
 

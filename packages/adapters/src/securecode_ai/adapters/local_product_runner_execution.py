@@ -18,6 +18,7 @@ from securecode_ai.contracts import (
     DataClass,
     EvidenceInputRef,
     ModelCallBudget,
+    ModelCallStatus,
     ModelPreflightRequest,
     ModelPurpose,
     ModelRequest,
@@ -621,6 +622,7 @@ def _run_local_product_scan(
                 PRODUCT_SKEPTIC_PROMPT_PIN,
             ),
             claim_for=lambda snapshot: _candidate_claim(flow.graph, snapshot.candidate_id),
+            observer=lambda candidate_id, status: skeptic_attempts.append((candidate_id, status)),
         )
         return run_product_candidate_review(
             flow,
@@ -632,6 +634,7 @@ def _run_local_product_scan(
         )
 
     retained_graph: list[bytes] = []
+    skeptic_attempts: list[tuple[str, ModelCallStatus]] = []
 
     def finalize_host(
         flow: ProductCandidateFlow, review: ProductReviewResult, bound: ProductAuditHostInputs
@@ -663,6 +666,7 @@ def _run_local_product_scan(
             bound,
             auditor_observations=tuple(observations),
             finding_metadata=tuple(metadata),
+            skeptic_attempts=tuple(skeptic_attempts),
             completed_at=datetime.now(UTC),
         )
 

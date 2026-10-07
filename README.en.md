@@ -133,10 +133,11 @@ appear in `patch_refs` and `validation_refs` of a JSON finding and in the standa
 findings share a `weakness_group` in JSON and `partialFingerprints`
 (`securecodeWeakness/v1`) in SARIF, and are counted, fixed and alerted once. The `decision`
 block of a finding says who confirmed it: `authority` `MODEL_REVIEW` (Auditor and Skeptic
-agree) or `DETERMINISTIC_DETECTOR` (secret detector, D-117), the `reason` and both model
-verdicts. With exit
+agree) or `DETERMINISTIC_DETECTOR` (secret detector, D-117), the `reason`, both model
+verdicts and how many calls they took (`auditor_calls`, `skeptic_attempts`). With exit
 code `3` the report lists the candidates without a final decision and the reason for
-each: they are places to check by hand, not a clean result. The Markdown and HTML reports are in Russian;
+each: they are places to check by hand, not a clean result. JSON has them in
+`undecided_candidates` with the same counters and `retries_exhausted`. The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
 
 ### Fix as a pull request

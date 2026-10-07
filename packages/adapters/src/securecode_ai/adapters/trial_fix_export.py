@@ -184,7 +184,9 @@ def attach_groups_to_sarif(rendered: bytes) -> bytes:
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
-def attach_decisions_to_json(rendered: bytes, decisions: Mapping[str, Mapping[str, str]]) -> bytes:
+def attach_decisions_to_json(
+    rendered: bytes, decisions: Mapping[str, Mapping[str, object]]
+) -> bytes:
     """Add the finding gate ``decision`` to every finding that has one (by candidate id).
 
     ``verdict`` is the gate result; ``decision`` says who confirmed it and keeps the
@@ -199,7 +201,7 @@ def attach_decisions_to_json(rendered: bytes, decisions: Mapping[str, Mapping[st
 
 
 def attach_decisions_to_sarif(
-    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, str]]
+    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, object]]
 ) -> bytes:
     """Add the gate decision to SARIF result ``properties``.
 

@@ -218,6 +218,9 @@ class ProductAuditHostInputs:
     operation: str = "scan"
     repair_requested_candidate_ids: tuple[str, ...] = ()
     repair_coverage_units: tuple[CoverageUnit, ...] = ()
+    # (candidate id, model call status) of every Skeptic attempt, retries included;
+    # report metadata only, never an input of a decision.
+    skeptic_attempts: tuple[tuple[str, ModelCallStatus], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
