@@ -17,12 +17,13 @@ from securecode_ai.contracts import (
     EvidenceKind,
     FindingCase,
     FindingGateState,
+    FindingVerdict,
 )
 from securecode_ai.core.classification import (
     classify_product_cwe,
 )
 from securecode_ai.core.evidence_graph import EvidenceEdgeKind, EvidenceGraph, EvidenceNodeKind
-from securecode_ai.core.finding_gate import FindingGateDecision
+from securecode_ai.core.finding_gate import FindingGateDecision, FindingGateReason
 from securecode_ai.core.normalization import root_cause_location_fingerprint
 from securecode_ai.core.reports import (
     ReportFinding,
@@ -102,7 +103,11 @@ def _findings(
             evidence_graph_ref=metadata_item.evidence_graph_ref,
             evidence_ids=candidate.evidence_ids,
             interpretation_receipt_id=receipt.receipt_id,
-            finding_verdict=decision.auditor_verdict,
+            # A detector-confirmed secret is CONFIRMED by the gate (D-117); the model
+            # verdicts stay on the gate decision, not on the finding.
+            finding_verdict=FindingVerdict.CONFIRMED
+            if decision.reason is FindingGateReason.DETECTOR_CONFIRMED
+            else decision.auditor_verdict,
             verdict_evidence_ids=decision.auditor_cited_evidence_ids,
             blocking=True,
             command_operation_evidence=command_evidence,

@@ -369,3 +369,13 @@ def test_report_lists_candidates_without_a_final_decision() -> None:
     assert "| 1 | CWE-798 Hard-coded Credentials | secret.py:3 | сканер |" in markdown
     assert "код возврата 3 не означает" in markdown
     assert "Скептик: нужно больше доказательств" in page
+
+
+def test_report_counts_undecided_duplicates_of_confirmed_weaknesses() -> None:
+    document = {"outcome": "FAIL", "analysis_health": "HEALTHY", "findings": []}
+    context = TrialReportContext(Path("repo"), "f" * 40, "deepseek", "deepseek-flash", 0, {}, (), 2)
+
+    markdown = render_trial_report(document, context, [], html_format=False).decode()
+
+    assert "Без окончательного решения:** 0 (ещё 2 — повторные кандидаты" in markdown
+    assert "## Кандидаты без окончательного решения" not in markdown

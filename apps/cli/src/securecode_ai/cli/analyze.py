@@ -30,6 +30,8 @@ from securecode_ai.adapters.trial_architect import (
     propose_fixes,
 )
 from securecode_ai.adapters.trial_fix_export import (
+    attach_decisions_to_json,
+    attach_decisions_to_sarif,
     attach_fixes_to_json,
     attach_fixes_to_sarif,
     attach_groups_to_json,
@@ -40,7 +42,7 @@ from securecode_ai.adapters.trial_report import (
     render_trial_report,
     report_paths,
 )
-from securecode_ai.adapters.trial_unresolved import unresolved_candidates
+from securecode_ai.adapters.trial_unresolved import finding_decisions, unresolved_report
 from securecode_ai.core.reports import ReportFormat, render_report
 
 _FORMATS = {
@@ -162,6 +164,7 @@ def run_analyze_command(
             )
             if arguments.provider == "deepseek":
                 cost += _deepseek_cost(usage)
+        unresolved, covered = unresolved_report(analysis.result.composition)
         context = TrialReportContext(
             repository,
             head_sha,
@@ -170,22 +173,25 @@ def run_analyze_command(
             cost,
             _sources(read_source, report_paths(document)) if readable or output_dir else {},
             tuple(
-                (item.cwe_id, item.path, item.line, item.origin, item.reason)
-                for item in unresolved_candidates(analysis.result.composition)
+                (item.cwe_id, item.path, item.line, item.origin, item.reason) for item in unresolved
             ),
+            covered,
         )
         if output_dir is not None:
             composition = analysis.result.composition
+            decisions = finding_decisions(composition)
             reports = {
                 "report.md": render_trial_report(document, context, fixes, html_format=False),
                 "report.html": render_trial_report(document, context, fixes, html_format=True),
-                "report.json": attach_groups_to_json(
-                    attach_fixes_to_json(composition.json_report, fixes, findings)
+                "report.json": _machine_json(
+                    attach_fixes_to_json(composition.json_report, fixes, findings), decisions
                 ),
-                "report.sarif": attach_groups_to_sarif(
+                "report.sarif": _machine_sarif(
                     attach_fixes_to_sarif(
                         render_report(composition.report, ReportFormat.SARIF), fixes, findings
-                    )
+                    ),
+                    composition.json_report,
+                    decisions,
                 ),
             }
         elif readable:
@@ -204,9 +210,13 @@ def run_analyze_command(
                     "secret; apply it by hand from the report and rotate the secret\n"
                 )
     if arguments.format == "json" and output_dir is None:
-        rendered = attach_groups_to_json(rendered)
+        rendered = _machine_json(rendered, finding_decisions(analysis.result.composition))
     elif arguments.format == "sarif" and output_dir is None:
-        rendered = attach_groups_to_sarif(rendered)
+        rendered = _machine_sarif(
+            rendered,
+            analysis.result.composition.json_report,
+            finding_decisions(analysis.result.composition),
+        )
     if output_dir is not None:
         output_dir.mkdir(parents=True)
         for name, content in reports.items():
@@ -268,6 +278,16 @@ def _unique_fixes(fixes: Sequence[ProposedFix]) -> tuple[ProposedFix, ...]:
         seen.add(key)
         unique.append(fix)
     return tuple(unique)
+
+
+def _machine_json(rendered: bytes, decisions: Mapping[str, Mapping[str, str]]) -> bytes:
+    return attach_decisions_to_json(attach_groups_to_json(rendered), decisions)
+
+
+def _machine_sarif(
+    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, str]]
+) -> bytes:
+    return attach_decisions_to_sarif(attach_groups_to_sarif(rendered), json_report, decisions)
 
 
 def _write_patches(
