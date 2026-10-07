@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from .trial_architect import FixFinding, ProposedFix
 
@@ -134,5 +134,51 @@ def attach_fixes_to_sarif(
                             {"artifactLocation": {"uri": uri}, "replacements": replacements}
                         ],
                     }
+                )
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def weakness_group(cwe_id: str, path: str) -> str:
+    """One weakness in one file, as the readable report and the Architect group it."""
+
+    digest = hashlib.sha256(f"{cwe_id}\x00{path}".encode()).hexdigest()
+    return "weakness-" + digest[:32]
+
+
+def attach_groups_to_json(rendered: bytes) -> bytes:
+    """Mark findings that describe the same weakness with one ``weakness_group``.
+
+    The scanner lane and model Discovery may both confirm a weakness; both findings stay
+    for traceability, and a consumer counts, fixes and alerts once per group.
+    """
+
+    document = json.loads(rendered)
+    for item in document.get("findings", []):
+        if not isinstance(item, dict):
+            continue
+        paths = [
+            str(location["path"])
+            for location in item.get("locations", [])
+            if isinstance(location, Mapping) and isinstance(location.get("path"), str)
+        ]
+        if paths and isinstance(item.get("cwe_id"), str):
+            item["weakness_group"] = weakness_group(item["cwe_id"], paths[0])
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def attach_groups_to_sarif(rendered: bytes) -> bytes:
+    """Add the weakness group as a standard SARIF ``partialFingerprints`` entry."""
+
+    document = json.loads(rendered)
+    for run in document.get("runs", []):
+        for result in run.get("results", []):
+            uris = [
+                location.get("physicalLocation", {}).get("artifactLocation", {}).get("uri")
+                for location in result.get("locations", [])
+            ]
+            rule = result.get("ruleId")
+            if uris and isinstance(uris[0], str) and isinstance(rule, str):
+                result.setdefault("partialFingerprints", {})["securecodeWeakness/v1"] = (
+                    weakness_group(rule, unquote(uris[0]))
                 )
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")

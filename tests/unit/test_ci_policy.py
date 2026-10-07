@@ -102,7 +102,7 @@ def _release_candidate_workspace_inputs() -> dict[str, dict[str, Any]]:
         else:
             project = {
                 "name": name,
-                "version": "1.2.2",
+                "version": "1.2.3",
                 "description": "reviewed release-candidate package",
                 "readme": "README.md",
                 "requires-python": ">=3.12,<3.15",
@@ -128,7 +128,7 @@ def _release_candidate_workspace_inputs() -> dict[str, dict[str, Any]]:
 
 def _release_candidate_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     pyproject, lock = _lock_inputs()
-    pyproject["project"]["version"] = "1.2.2"
+    pyproject["project"]["version"] = "1.2.3"
     pyproject["project"]["dependencies"] = copy.deepcopy(POLICY.EXPECTED_ROOT_DEPENDENCIES)
     pyproject["tool"]["uv"]["sources"] = copy.deepcopy(POLICY.RC_WORKSPACE_SOURCES)
     pyproject["tool"]["uv"]["workspace"]["members"] = copy.deepcopy(POLICY.RC_WORKSPACE_MEMBERS)
@@ -145,12 +145,12 @@ def _release_candidate_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     workspace_names = set(lock["manifest"]["members"])
     for package in lock["package"]:
         if package.get("name") in workspace_names:
-            package["version"] = "1.2.2"
+            package["version"] = "1.2.3"
     if not any(package.get("name") == "securecode-ai-server" for package in lock["package"]):
         lock["package"].append(
             {
                 "name": "securecode-ai-server",
-                "version": "1.2.2",
+                "version": "1.2.3",
                 "source": {"editable": "apps/server"},
             }
         )
@@ -158,7 +158,7 @@ def _release_candidate_lock_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
         lock["package"].append(
             {
                 "name": "securecode-ai-worker",
-                "version": "1.2.2",
+                "version": "1.2.3",
                 "source": {"editable": "apps/worker"},
             }
         )
@@ -423,11 +423,11 @@ def test_workspace_metadata_rejects_a_malicious_build_backend() -> None:
 def test_workspace_metadata_accepts_only_reviewed_tree_sitter_dependencies() -> None:
     documents = _release_candidate_workspace_inputs()
     adapter_dependencies = documents["packages/adapters/pyproject.toml"]["project"]["dependencies"]
-    adapter_dependencies[:] = ["securecode-ai-core==1.2.2"]
+    adapter_dependencies[:] = ["securecode-ai-core==1.2.3"]
     assert POLICY.workspace_metadata_errors(documents)
 
     pre_grammar = [
-        "securecode-ai-core==1.2.2",
+        "securecode-ai-core==1.2.3",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-python>=0.25,<0.26",
     ]
@@ -436,8 +436,8 @@ def test_workspace_metadata_accepts_only_reviewed_tree_sitter_dependencies() -> 
 
     reviewed = [
         "pydantic>=2.12,<3",
-        "securecode-ai-contracts==1.2.2",
-        "securecode-ai-core==1.2.2",
+        "securecode-ai-contracts==1.2.3",
+        "securecode-ai-core==1.2.3",
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-go==0.25.0",
         "tree-sitter-javascript==0.25.0",
