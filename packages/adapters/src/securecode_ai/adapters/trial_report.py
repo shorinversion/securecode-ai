@@ -333,6 +333,14 @@ def _origins(entry: _Entry) -> str:
     return " + ".join(_ORIGINS.get(origin, origin) for origin in entry.origins)
 
 
+def _confirmed_by(entry: _Entry) -> str:
+    # A detector-verified secret is confirmed by the detector; models review only the
+    # masked line (D-117).
+    if entry.cwe_id == "CWE-798" and "deterministic" in entry.origins:
+        return "подтверждено детектором секретов, модели проверили замаскированный контекст"
+    return "подтверждено Аудитором и Скептиком"
+
+
 def _fix_status(fix: ProposedFix | None) -> str:
     return _FIX_STATUS.get(fix.status, fix.status) if fix is not None else "—"
 
@@ -422,7 +430,7 @@ def _markdown(report: _Report) -> str:
             f"- **OWASP Top 10:** {_owasp(entry.owasp)}",
             f"- **Критичность:** {entry.severity}",
             f"- **Место:** `{entry.path}`, {_lines(entry)}",
-            f"- **Источник:** {_origins(entry)}; подтверждено Аудитором и Скептиком",
+            f"- **Источник:** {_origins(entry)}; {_confirmed_by(entry)}",
             "",
         ]
         if section.fragment:
@@ -514,8 +522,7 @@ def _html(report: _Report) -> str:
         )
         out.append(f"<li><b>Место:</b> <code>{e(entry.path)}</code>, {e(_lines(entry))}</li>")
         out.append(
-            f"<li><b>Источник:</b> {e(_origins(entry))}; подтверждено Аудитором и Скептиком</li>"
-            "</ul>"
+            f"<li><b>Источник:</b> {e(_origins(entry))}; {e(_confirmed_by(entry))}</li></ul>"
         )
         if section.fragment:
             width = len(str(section.fragment[-1][0]))

@@ -231,3 +231,55 @@ def test_decision_constructor_and_tamper_reject_citations_outside_retained_evide
     object.__setattr__(decision, "known_evidence_ids", ())
     with pytest.raises(FindingGateContractError):
         replace(decision)
+
+
+@pytest.mark.parametrize(
+    ("auditor_verdict", "skeptic_verdict", "skeptic_status"),
+    [
+        (FindingVerdict.CONFIRMED, FindingVerdict.NEEDS_MORE_EVIDENCE, ModelCallStatus.SUCCEEDED),
+        (FindingVerdict.NEEDS_MORE_EVIDENCE, FindingVerdict.CONFIRMED, ModelCallStatus.SUCCEEDED),
+        (FindingVerdict.CONFIRMED, FindingVerdict.NOT_EVALUATED, ModelCallStatus.INVALID_SCHEMA),
+    ],
+)
+def test_secret_detector_authority_confirms_despite_model_disagreement(
+    auditor_verdict: FindingVerdict,
+    skeptic_verdict: FindingVerdict,
+    skeptic_status: ModelCallStatus,
+) -> None:
+    from securecode_ai.core.finding_gate import FindingAuthority
+
+    value = replace(
+        _input(
+            auditor_verdict=auditor_verdict,
+            skeptic_verdict=skeptic_verdict,
+            effective_verdict=FindingVerdict.CONFLICTING,
+            skeptic_status=skeptic_status,
+        ),
+        authority=FindingAuthority.DETERMINISTIC_DETECTOR,
+    )
+
+    result = route_finding(value)
+
+    assert result.route is FindingRoute.CONFIRMED
+    assert result.finding_gate_state is FindingGateState.BLOCKING
+    assert result.reason is FindingGateReason.DETECTOR_CONFIRMED
+    assert result.authority is FindingAuthority.DETERMINISTIC_DETECTOR
+    # The model verdicts stay on the record as review notes.
+    assert result.auditor_verdict is auditor_verdict
+    assert result.skeptic_verdict is skeptic_verdict
+
+
+def test_secret_detector_authority_still_needs_a_successful_auditor_receipt() -> None:
+    from securecode_ai.core.finding_gate import FindingAuthority
+
+    failed = replace(
+        _input(auditor_status=ModelCallStatus.TIMEOUT),
+        authority=FindingAuthority.DETERMINISTIC_DETECTOR,
+    )
+    model_review = _input(
+        skeptic_verdict=FindingVerdict.NEEDS_MORE_EVIDENCE,
+        effective_verdict=FindingVerdict.CONFLICTING,
+    )
+
+    assert route_finding(failed).reason is FindingGateReason.AUDITOR_NON_SUCCESS
+    assert route_finding(model_review).route is FindingRoute.HUMAN_ESCALATION

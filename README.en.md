@@ -224,7 +224,8 @@ OWASP Top 10 2021 mapping table.
   Architect included, reads the code with a redaction marker in place of the value.
   Secret values never reach reports, diffs or logs. Only what the secret detector
   recognizes is masked: a value assembled from parts (`"sk-" + "..."`) is not
-  recognized and reaches the model as written.
+  recognized and reaches the model as written. A detector-found secret (CWE-798) is
+  confirmed by the detector itself: models see only the marker and cannot judge the key.
 - The local model is reachable only over loopback; an external API is used only with
   explicit owner consent.
 - Fixes are never applied to the source checkout without an explicit user decision.

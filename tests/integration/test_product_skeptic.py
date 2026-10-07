@@ -196,9 +196,10 @@ def test_real_harness_malformed_or_foreign_output_is_non_success(
 
     result = port.review(_snapshot(package))
 
+    # A malformed answer is asked again twice; evidence is read only once.
     assert result.model_call_status is ModelCallStatus.INVALID_SCHEMA
     assert result.output is None
-    assert tools.calls_used == 1 and len(endpoint.requests) == 1
+    assert tools.calls_used == 1 and len(endpoint.requests) == 3
 
 
 def test_same_identity_or_wrong_tenant_never_reaches_source_or_provider(
@@ -376,3 +377,28 @@ def test_payload_is_closed_when_post_provider_call_accounting_faults(
     assert result.model_call_status is not ModelCallStatus.SUCCEEDED
     assert result.output is None
     assert closed and tools.calls_used == 1 and len(endpoint.requests) == 1
+
+
+def test_malformed_skeptic_answer_is_asked_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    port, package, endpoint, tools, _ = _composition(
+        monkeypatch, payload={"finding_verdict": "CONFIRMED", "objections": [], "prose": "no"}
+    )
+    malformed = endpoint.response
+    valid_port, _, valid_endpoint, _, _ = _composition(monkeypatch)
+    del valid_port
+    valid = valid_endpoint.response
+    factory = endpoint._socket_factory
+
+    def scripted(family: int, kind: int, proto: int = 0, fileno: int | None = None) -> object:
+        endpoint.response = malformed if not endpoint.sockets else valid
+        return factory(family, kind, proto, fileno)
+
+    monkeypatch.setattr(socket, "socket", scripted)
+
+    result = port.review(_snapshot(package))
+
+    assert result.model_call_status is ModelCallStatus.SUCCEEDED
+    assert result.output is not None
+    assert tools.calls_used == 1 and len(endpoint.requests) == 2
