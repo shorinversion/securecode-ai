@@ -18,7 +18,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass
 from email.message import Message
-from typing import Final
+from typing import Any, Final
 from urllib.parse import urlsplit
 
 from securecode_ai.core import ApiDialect, ProviderKind, ProviderProfile
@@ -79,6 +79,7 @@ class OpenAICompatibleRemoteHttpsConnector:
     """A single-request HTTPS connector for an approved remote profile."""
 
     __slots__ = (
+        "_dialect",
         "_endpoint_path",
         "_max_output_tokens",
         "_port",
@@ -94,6 +95,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         max_output_tokens: int | None = None,
         spend_budget: RemoteProviderBudgetPort | None = None,
         reasoning_effort: str = "none",
+        dialect: str = "deepseek",
     ) -> None:
         parsed = urlsplit(profile.endpoint.base_url)
         if (
@@ -115,7 +117,7 @@ class OpenAICompatibleRemoteHttpsConnector:
             or not 1 <= max_output_tokens <= profile.capabilities.max_output_tokens
         ):
             raise ValueError("REMOTE_CONNECTOR_OUTPUT_LIMIT_REJECTED")
-        if reasoning_effort not in REASONING_EFFORTS:
+        if dialect not in _DIALECT_EFFORTS or reasoning_effort not in _DIALECT_EFFORTS[dialect]:
             raise ValueError("REMOTE_CONNECTOR_REASONING_REJECTED")
         self._endpoint_path = (parsed.path.rstrip("/") + "/chat/completions") or "/chat/completions"
         self._max_output_tokens = (
@@ -127,6 +129,7 @@ class OpenAICompatibleRemoteHttpsConnector:
         self._profile = profile
         self._spend_budget = spend_budget
         self._reasoning_effort = reasoning_effort
+        self._dialect = dialect
 
     def __repr__(self) -> str:
         return "OpenAICompatibleRemoteHttpsConnector(<redacted>)"
@@ -280,6 +283,8 @@ class OpenAICompatibleRemoteHttpsConnector:
                     native_frame=native_frame,
                     max_tokens=min(self._max_output_tokens, call_budget.max_output_tokens),
                     reasoning_effort=self._reasoning_effort,
+                    dialect=self._dialect,
+                    token_field=token_limit_field(self._profile.endpoint.authority),
                 ),
                 ensure_ascii=True,
                 allow_nan=False,
@@ -487,6 +492,17 @@ class OpenAICompatibleRemoteHttpsConnector:
 
 # DeepSeek reasoning effort levels; "none" disables thinking mode.
 REASONING_EFFORTS: Final = frozenset({"none", "low", "high", "max"})
+# Any other OpenAI-compatible endpoint gets only standard Chat Completions fields: no DeepSeek
+# ``thinking`` object, and ``reasoning_effort`` only when the operator asked for one
+# ("default" sends nothing and leaves the provider's own setting).
+OPENAI_REASONING_EFFORTS: Final = frozenset({"default", "minimal", "low", "medium", "high"})
+_DIALECT_EFFORTS: Final = {"deepseek": REASONING_EFFORTS, "openai": OPENAI_REASONING_EFFORTS}
+
+
+def token_limit_field(authority: str) -> str:
+    """The output limit field: OpenAI's reasoning models refuse the older ``max_tokens``."""
+
+    return "max_completion_tokens" if authority == "api.openai.com" else "max_tokens"
 
 
 def _request_payload(
@@ -496,9 +512,14 @@ def _request_payload(
     native_frame: tuple[dict[str, object], list[object], str] | None,
     max_tokens: int,
     reasoning_effort: str = "none",
+    dialect: str = "deepseek",
+    token_field: str = "max_tokens",
 ) -> dict[str, object]:
-    payload: dict[str, object] = {"model": model_id, "max_tokens": max_tokens}
-    if reasoning_effort == "none":
+    payload: dict[str, object] = {"model": model_id, token_field: max_tokens}
+    if dialect == "openai":
+        if reasoning_effort not in {"default", "none"}:
+            payload["reasoning_effort"] = reasoning_effort
+    elif reasoning_effort == "none":
         payload.update(temperature=0, thinking={"type": "disabled"}, reasoning_effort="none")
     else:
         # Thinking mode ignores sampling parameters, so none are sent.
@@ -684,7 +705,59 @@ _USAGE_DETAIL_KEYS: Final = frozenset(
 )
 
 
+# Fields OpenAI and gateways such as OpenRouter add to a choice or a message. Empty values
+# are dropped; a non-empty value (an annotation, audio, a legacy function call) is not
+# something the pipeline can use and keeps the response invalid.
+_CHOICE_EXTRAS: Final = frozenset({"native_finish_reason"})
+_MESSAGE_EXTRAS: Final = frozenset(
+    {"annotations", "audio", "function_call", "reasoning", "reasoning_details"}
+)
+# ``reasoning`` is a gateway's name for ``reasoning_content``: text the pipeline never reads.
+_REASONING_EXTRAS: Final = frozenset({"reasoning", "reasoning_details"})
+
+
+def _without_empty_extras(message: dict[str, Any]) -> dict[str, Any]:
+    kept: dict[str, Any] = {}
+    for key, value in message.items():
+        if key not in _MESSAGE_EXTRAS:
+            kept[key] = value
+        elif key in _REASONING_EXTRAS and isinstance(value, (str, list)):
+            continue
+        elif value not in (None, [], "", {}):
+            raise ValueError("remote response envelope is invalid")
+    return kept
+
+
+def _same_model(returned: object, expected: str) -> bool:
+    # OpenAI answers an alias with its dated snapshot ("gpt-4o-mini-2024-07-18").
+    # Only a date suffix is accepted, so "gpt-4o" never matches "gpt-4o-mini-...".
+    return isinstance(returned, str) and (
+        returned == expected
+        or (
+            returned.startswith(expected + "-")
+            and _SNAPSHOT_SUFFIX.fullmatch(returned[len(expected) + 1 :]) is not None
+        )
+    )
+
+
+_SNAPSHOT_SUFFIX: Final = re.compile(r"\d{4}-\d{2}-\d{2}|\d{4}")
+
+
 def _valid_usage_details(usage: dict[str, object]) -> bool:
+    # Unknown accounting fields (a gateway's ``cost`` or ``is_byok``) are dropped; only
+    # numbers, flags and flat number maps are accepted, so no text rides along.
+    for key, value in usage.items():
+        if key in {"prompt_tokens", "completion_tokens", "total_tokens"} | _USAGE_DETAIL_KEYS:
+            continue
+        if not (
+            value is None
+            or type(value) in (int, float, bool)
+            or (
+                isinstance(value, dict)
+                and all(type(item) in (int, float, bool) or item is None for item in value.values())
+            )
+        ):
+            return False
     for key in ("prompt_tokens_details", "completion_tokens_details"):
         details = usage.get(key)
         if details is not None and (
@@ -715,7 +788,7 @@ def _canonicalize_remote_envelope_with_usage(
     document = json.loads(
         response, object_pairs_hook=_closed_json_object, parse_constant=_reject_json_constant
     )
-    if not isinstance(document, dict) or document.get("model") != expected_model_id:
+    if not isinstance(document, dict) or not _same_model(document.get("model"), expected_model_id):
         raise ValueError("remote response metadata is invalid")
     choices = document.get("choices")
     usage = document.get("usage")
@@ -725,13 +798,12 @@ def _canonicalize_remote_envelope_with_usage(
         or not isinstance(choices, list)
         or len(choices) != 1
         or not isinstance(choices[0], dict)
-        or set(choices[0]) - {"index", "message", "finish_reason", "logprobs"}
+        or set(choices[0]) - {"index", "message", "finish_reason", "logprobs"} - _CHOICE_EXTRAS
         or ("index" in choices[0] and choices[0]["index"] != 0)
         or choices[0].get("logprobs") is not None
         or not isinstance(choices[0].get("message"), dict)
         or choices[0]["message"].get("role") != "assistant"
         or not isinstance(usage, dict)
-        or set(usage) - {"prompt_tokens", "completion_tokens", "total_tokens"} - _USAGE_DETAIL_KEYS
         or not _valid_usage_details(usage)
         or type(usage.get("prompt_tokens")) is not int
         or type(usage.get("completion_tokens")) is not int
@@ -747,7 +819,7 @@ def _canonicalize_remote_envelope_with_usage(
     ):
         raise ValueError("remote response envelope is invalid")
     choice = choices[0]
-    message = choice["message"]
+    message = _without_empty_extras(choice["message"])
     tool_calls: list[object] | None = None
     if native and "tool_calls" in message:
         if (

@@ -117,9 +117,27 @@ uv run securecode analyze path/to/repo --output report.md
 Команда выполняет полный конвейер: сканеры, Поиск, Аудитор, Скептик, решение по каждой
 находке и исправления Архитектора.
 
+Для `--provider openai-compatible` адрес, модель и ключ задаются в окружении или `.env`:
+
+```bash
+SECURECODE_MODEL_BASE_URL=https://api.openai.com/v1
+SECURECODE_MODEL=gpt-4o-mini
+SECURECODE_MODEL_API_KEY=...
+```
+
+Подходит любой сервис с этим API по публичному HTTPS-адресу: OpenAI, OpenRouter, Groq,
+Together, корпоративный шлюз. Необязательные настройки: `SECURECODE_MODEL_PRICE_INPUT` и
+`SECURECODE_MODEL_PRICE_OUTPUT` (USD за миллион токенов; без них стоимость в отчёте «не
+известна», а `--max-cost-usd` не действует, прогон ограничен 20 млн токенов),
+`SECURECODE_MODEL_CONTEXT_TOKENS` и `SECURECODE_MODEL_MAX_OUTPUT_TOKENS` (по умолчанию 128000
+и 16384), `SECURECODE_MODEL_REASONING_EFFORT`. Все роли, включая Архитектора, обращаются к
+этому адресу; секреты маскируются так же, как для DeepSeek. Условия хранения данных у
+выбранного сервиса SecureCode не проверяет: выбирая его, вы соглашаетесь отправить туда
+код проверяемого репозитория (решение D-118).
+
 | Параметр | Назначение |
 | --- | --- |
-| `--provider deepseek\|local` | Модель: DeepSeek (`DEEPSEEK_API_KEY` в окружении или `.env`) или локальная через Ollama |
+| `--provider deepseek\|openai-compatible\|local` | Модель: DeepSeek (`DEEPSEEK_API_KEY` в окружении или `.env`), любой HTTPS-сервис с API OpenAI Chat Completions (см. ниже) или локальная через Ollama |
 | `--format markdown\|html\|json\|sarif` | Формат отчёта |
 | `--output FILE` | Записать отчёт в файл |
 | `--output-dir DIR` | Сохранить за один прогон `report.md`, `report.html`, `report.json` и `report.sarif` |

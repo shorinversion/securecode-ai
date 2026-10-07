@@ -24,10 +24,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final
+from urllib.parse import urlsplit
 
 from securecode_ai.core.repository import RepositoryFile
 from securecode_ai.core.scanning import ScannerRequest
 
+from .openai_compatible_remote import token_limit_field
 from .product_scanner import FirstPartyStaticWorker
 
 _MAX_FILE_BYTES: Final = 262_144
@@ -161,7 +163,7 @@ def openai_compatible_complete(
     usage: list[tuple[int, int]] | None = None,
     timeout: float = 300.0,
 ) -> Complete:
-    """Return a JSON-mode chat completion function for DeepSeek or a local Ollama.
+    """Return a JSON-mode chat completion function for an OpenAI-compatible endpoint.
 
     Prompt and completion token counts of every call are appended to ``usage``.
     """
@@ -171,7 +173,7 @@ def openai_compatible_complete(
             "model": model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_object"},
-            "max_tokens": 16384,
+            token_limit_field(urlsplit(base_url).hostname or ""): 16384,
         }
         headers = {"Content-Type": "application/json"}
         if api_key:

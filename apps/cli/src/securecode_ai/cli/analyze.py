@@ -14,6 +14,7 @@ from securecode_ai.adapters.local_product_trial import (
     DEFAULT_LOCAL_MODEL,
     TrialAnalysis,
     TrialAnalysisError,
+    operator_endpoint,
     run_trial_analysis,
 )
 from securecode_ai.adapters.product_audit_types import ProductAuditComposition
@@ -79,9 +80,13 @@ def analyze_parser() -> argparse.ArgumentParser:
     parser.add_argument("target", help="Git checkout to audit")
     parser.add_argument(
         "--provider",
-        choices=("deepseek", "local"),
+        choices=("deepseek", "openai-compatible", "local"),
         default="deepseek",
-        help="deepseek (DEEPSEEK_API_KEY) or local Ollama on 127.0.0.1:11434",
+        help=(
+            "deepseek (DEEPSEEK_API_KEY); openai-compatible: any HTTPS endpoint with the "
+            "OpenAI Chat Completions API (SECURECODE_MODEL_BASE_URL, SECURECODE_MODEL, "
+            "SECURECODE_MODEL_API_KEY); local: Ollama on 127.0.0.1:11434"
+        ),
     )
     parser.add_argument("--format", choices=tuple(_FORMATS), default="markdown")
     parser.add_argument("--output", help="write the report to a new file instead of stdout")
@@ -96,7 +101,10 @@ def analyze_parser() -> argparse.ArgumentParser:
         "--max-cost-usd",
         type=float,
         default=1.0,
-        help="spend cap for one DeepSeek run (default 1.0)",
+        help=(
+            "spend cap for one run (default 1.0); for openai-compatible it applies only "
+            "with SECURECODE_MODEL_PRICE_INPUT and SECURECODE_MODEL_PRICE_OUTPUT"
+        ),
     )
     parser.add_argument("--no-fix", action="store_true", help="do not ask the Architect for fixes")
     parser.add_argument(
@@ -167,8 +175,11 @@ def run_analyze_command(
                     read_source=read_source,
                 )
             )
-            if arguments.provider == "deepseek":
-                cost += _deepseek_cost(usage)
+            if arguments.provider == "deepseek" and cost is not None:
+                cost += _usage_cost(usage, DEEPSEEK_PRICES_PER_MILLION)
+            elif arguments.provider == "openai-compatible" and cost is not None:
+                prices = operator_endpoint(values).prices
+                cost = None if prices is None else cost + _usage_cost(usage, prices)
         unresolved, covered = unresolved_report(analysis.result.composition)
         context = TrialReportContext(
             repository,
@@ -239,12 +250,19 @@ def run_analyze_command(
 
 
 def _architect(provider: str, values: Mapping[str, str], usage: list[tuple[int, int]]) -> Complete:
+    # The Architect calls the same endpoint as the rest of the run: a source file never goes
+    # to a host the egress policy did not admit.
     if provider == "deepseek":
         return openai_compatible_complete(
-            values.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com",
+            "https://api.deepseek.com",
             values.get("DEEPSEEK_API_KEY"),
             values.get("DEEPSEEK_MODEL") or "deepseek-flash",
             usage=usage,
+        )
+    if provider == "openai-compatible":
+        endpoint = operator_endpoint(values)
+        return openai_compatible_complete(
+            endpoint.base_url, endpoint.api_key, endpoint.model_id, usage=usage
         )
     return openai_compatible_complete(
         "http://127.0.0.1:11434/v1",
@@ -264,8 +282,8 @@ def _sources(read_source: Callable[[str], str], paths: Sequence[str]) -> dict[st
     return sources
 
 
-def _deepseek_cost(usage: Sequence[tuple[int, int]]) -> int:
-    input_price, output_price = DEEPSEEK_PRICES_PER_MILLION
+def _usage_cost(usage: Sequence[tuple[int, int]], prices: tuple[int, int]) -> int:
+    input_price, output_price = prices
     return sum(
         (prompt * input_price + completion * output_price) // 1_000_000
         for prompt, completion in usage
@@ -349,7 +367,7 @@ def _secret_safe_reader(
     return masked_read
 
 
-def _summary(analysis: TrialAnalysis, cost_microusd: int) -> str:
+def _summary(analysis: TrialAnalysis, cost_microusd: int | None) -> str:
     findings = "?"
     try:
         document = json.loads(analysis.result.sarif_rendered)
@@ -360,19 +378,23 @@ def _summary(analysis: TrialAnalysis, cost_microusd: int) -> str:
     return (
         f"trial analysis: outcome={outcome} findings={findings} "
         f"provider={analysis.provider} model={analysis.model_id} "
-        f"cost=${cost_microusd / 1_000_000:.4f}\n"
+        + (
+            "cost=unknown\n"
+            if cost_microusd is None
+            else f"cost=${cost_microusd / 1_000_000:.4f}\n"
+        )
     )
 
 
 def _with_dotenv(environment: Mapping[str, str]) -> dict[str, str]:
-    """Add DEEPSEEK_* / SECURECODE_LOCAL_MODEL from ./.env without overriding the environment."""
+    """Add DEEPSEEK_* / SECURECODE_* from ./.env without overriding the environment."""
 
     values = dict(environment)
     dotenv = Path.cwd() / ".env"
     if dotenv.is_file():
         for line in dotenv.read_text(encoding="utf-8").splitlines():
             key, separator, value = line.strip().partition("=")
-            if separator and (key.startswith("DEEPSEEK_") or key == "SECURECODE_LOCAL_MODEL"):
+            if separator and key.startswith(("DEEPSEEK_", "SECURECODE_")):
                 values.setdefault(key, value.strip().strip("'\""))
     return values
 

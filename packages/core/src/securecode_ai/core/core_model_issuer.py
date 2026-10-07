@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import secrets
-from typing import Any
+from typing import Any, Final
+from urllib.parse import urlsplit
 
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
@@ -34,6 +35,18 @@ from .core_model_protocols import (
     _canonical_hash,
     _component_pin,
 )
+
+# A trial run against an operator-named OpenAI-compatible endpoint (D-118).
+OPERATOR_PROFILE_ID: Final = "openai-compatible-operator"
+OPERATOR_CONSENT_PREFIX: Final = "consent://operator/openai-compatible/"
+
+
+def _https_at(base_url: str, authority: str) -> bool:
+    try:
+        parsed = urlsplit(base_url)
+        return parsed.scheme == "https" and parsed.hostname == authority
+    except ValueError:
+        return False
 
 
 class ModelAuthorizationIssuer:
@@ -220,6 +233,23 @@ class ModelAuthorizationIssuer:
             and bool(matching_allow)
             and all(rule.tenant_admin_approval for rule in matching_allow)
         )
+        # The operator of a trial run names an OpenAI-compatible endpoint and supplies its
+        # key (D-118). Their explicit choice is the consent; the terms stay unverified and
+        # the egress policy, masking and data-class limits apply as to DeepSeek.
+        operator_authorized_terms = (
+            policy.profile.value == "managed_scan_opt_in"
+            and profile.profile_id == OPERATOR_PROFILE_ID
+            and profile.provider_kind is ProviderKind.OPENAI_COMPATIBLE_REMOTE
+            and profile.execution_boundary is ExecutionBoundary.PUBLIC_EXTERNAL
+            and _https_at(profile.endpoint.base_url, profile.endpoint.authority)
+            and terms.evidence_status is ProviderEvidenceStatus.UNVERIFIED
+            and terms.training_use is ProviderTrainingUse.UNKNOWN
+            and terms.retention_seconds is None
+            and terms.zero_data_retention is None
+            and terms.evidence_ref == OPERATOR_CONSENT_PREFIX + profile.endpoint.authority
+            and bool(matching_allow)
+            and all(rule.tenant_admin_approval for rule in matching_allow)
+        )
         eligible = all(
             (
                 model_request.provider_profile == provider_pin,
@@ -243,7 +273,10 @@ class ModelAuthorizationIssuer:
                 _CLASS_RANK[terms.maximum_input_data_class]
                 >= _CLASS_RANK[request.required_data_class],
                 request.required_purpose in terms.allowed_purposes,
-                local_terms or verified_terms or owner_authorized_terms,
+                local_terms
+                or verified_terms
+                or owner_authorized_terms
+                or operator_authorized_terms,
                 profile.execution_boundary is request.required_execution_boundary,
                 policy.profile in profile.egress_profiles,
                 policy.tenant_scope == model_request.tenant_id,
