@@ -101,3 +101,41 @@ def test_findings_of_one_weakness_share_a_group_in_json_and_sarif() -> None:
     assert result["partialFingerprints"] == {
         "securecodeWeakness/v1": weakness_group("CWE-89", "src/my app.py")
     }
+
+
+def test_gate_decision_is_exported_to_json_and_matching_sarif_results() -> None:
+    from securecode_ai.adapters.trial_fix_export import (
+        attach_decisions_to_json,
+        attach_decisions_to_sarif,
+    )
+
+    report = json.loads(_report())
+    for index, item in enumerate(report["findings"]):
+        item["candidate_id"] = f"candidate-{index}"
+    report_bytes = json.dumps(report).encode()
+    decision = {
+        "authority": "DETERMINISTIC_DETECTOR",
+        "route": "CONFIRMED",
+        "reason": "DETECTOR_CONFIRMED",
+        "auditor_verdict": "REJECTED_WITH_EVIDENCE",
+        "skeptic_verdict": "NEEDS_MORE_EVIDENCE",
+        "skeptic_effective_verdict": "CONFLICTING",
+    }
+    decisions = {"candidate-0": decision}
+
+    document = json.loads(attach_decisions_to_json(report_bytes, decisions))
+    assert document["findings"][0]["decision"] == decision
+    assert "decision" not in document["findings"][1]
+
+    location = {"physicalLocation": {"artifactLocation": {"uri": "app.py"}}}
+    results = [
+        {"ruleId": "CWE-89", "locations": [location]},
+        {"ruleId": "CWE-89", "locations": [location]},
+        {"ruleId": "CWE-78", "locations": [location]},
+    ]
+    sarif = json.dumps({"runs": [{"results": results}]}).encode()
+    first, second, _ = json.loads(attach_decisions_to_sarif(sarif, report_bytes, decisions))[
+        "runs"
+    ][0]["results"]
+    assert first["properties"]["decision"] == decision
+    assert "properties" not in second

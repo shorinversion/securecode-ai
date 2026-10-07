@@ -170,6 +170,8 @@ class TrialReportContext:
     sources: Mapping[str, str]
     # Candidates without a final decision: (CWE, path, line, origin, reason).
     unresolved: tuple[tuple[str, str, int, str, str], ...] = ()
+    # Undecided candidates of a weakness that another finding already confirmed.
+    covered_unresolved: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,7 +237,7 @@ def render_trial_report(
             ("Модель", f"{context.model_id} ({context.provider})"),
             ("Стоимость запросов к модели", f"${context.cost_microusd / 1_000_000:.4f}"),
             ("Находок", str(len(entries))),
-            ("Без окончательного решения", str(len(context.unresolved))),
+            ("Без окончательного решения", _undecided(context)),
             (
                 "Этапы проверки",
                 "все обязательные этапы выполнены" if not gaps else "есть незавершённые, см. ниже",
@@ -331,6 +333,16 @@ def _owasp(category: str) -> str:
 
 def _origins(entry: _Entry) -> str:
     return " + ".join(_ORIGINS.get(origin, origin) for origin in entry.origins)
+
+
+def _undecided(context: TrialReportContext) -> str:
+    text = str(len(context.unresolved))
+    if context.covered_unresolved:
+        text += (
+            f" (ещё {context.covered_unresolved} — повторные кандидаты уже подтверждённых "
+            "уязвимостей, отдельной проверки не требуют)"
+        )
+    return text
 
 
 def _confirmed_by(entry: _Entry) -> str:

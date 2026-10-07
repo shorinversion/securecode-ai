@@ -182,3 +182,52 @@ def attach_groups_to_sarif(rendered: bytes) -> bytes:
                     weakness_group(rule, unquote(uris[0]))
                 )
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def attach_decisions_to_json(rendered: bytes, decisions: Mapping[str, Mapping[str, str]]) -> bytes:
+    """Add the finding gate ``decision`` to every finding that has one (by candidate id).
+
+    ``verdict`` is the gate result; ``decision`` says who confirmed it and keeps the
+    Auditor and Skeptic verdicts, so a detector decision (D-117) is explicit.
+    """
+
+    document = json.loads(rendered)
+    for item in document.get("findings", []):
+        if isinstance(item, dict) and item.get("candidate_id") in decisions:
+            item["decision"] = dict(decisions[str(item["candidate_id"])])
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def attach_decisions_to_sarif(
+    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, str]]
+) -> bytes:
+    """Add the gate decision to SARIF result ``properties``.
+
+    SARIF results are rendered from the same findings in the same order; a result is
+    matched to its finding only when the rule and the file also agree.
+    """
+
+    findings = [
+        item for item in json.loads(json_report).get("findings", []) if isinstance(item, dict)
+    ]
+    document = json.loads(rendered)
+    for run in document.get("runs", []):
+        results = run.get("results", [])
+        if len(results) != len(findings):
+            continue
+        for result, finding in zip(results, findings, strict=True):
+            uris = [
+                location.get("physicalLocation", {}).get("artifactLocation", {}).get("uri")
+                for location in result.get("locations", [])
+            ]
+            paths = [location.get("path") for location in finding.get("locations", [])]
+            decision = decisions.get(str(finding.get("candidate_id")))
+            if (
+                decision is not None
+                and result.get("ruleId") == finding.get("cwe_id")
+                and uris
+                and paths
+                and unquote(str(uris[0])) == paths[0]
+            ):
+                result.setdefault("properties", {})["decision"] = dict(decision)
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")

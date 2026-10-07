@@ -131,7 +131,10 @@ arguments, missing key, Git older than 2.44 or an existing output path. Validate
 appear in `patch_refs` and `validation_refs` of a JSON finding and in the standard SARIF
 `fixes` property. The scanner and the model may confirm the same weakness: such
 findings share a `weakness_group` in JSON and `partialFingerprints`
-(`securecodeWeakness/v1`) in SARIF, and are counted, fixed and alerted once. With exit
+(`securecodeWeakness/v1`) in SARIF, and are counted, fixed and alerted once. The `decision`
+block of a finding says who confirmed it: `authority` `MODEL_REVIEW` (Auditor and Skeptic
+agree) or `DETERMINISTIC_DETECTOR` (secret detector, D-117), the `reason` and both model
+verdicts. With exit
 code `3` the report lists the candidates without a final decision and the reason for
 each: they are places to check by hand, not a clean result. The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
