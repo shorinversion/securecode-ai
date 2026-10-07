@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import hashlib
 from collections.abc import Callable
@@ -50,6 +51,7 @@ class ProductSkepticReviewPort:
         "_claim_for",
         "_executor",
         "_key",
+        "_observer",
         "_package_for",
         "_request_factory",
         "_resolver",
@@ -71,6 +73,7 @@ class ProductSkepticReviewPort:
             [AuditorSnapshot, EvidencePackage, int, ComponentPin], ModelRequest
         ],
         claim_for: Callable[[AuditorSnapshot], tuple[str, ...]] | None = None,
+        observer: Callable[[str, ModelCallStatus], None] | None = None,
     ) -> None:
         if (
             type(executor) is not AuthorizedLocalModelExecutor
@@ -83,6 +86,7 @@ class ProductSkepticReviewPort:
             or _ID.fullmatch(tenant_id) is None
             or not callable(package_for)
             or not callable(request_factory)
+            or (observer is not None and not callable(observer))
         ):
             raise ValueError("Skeptic review port is invalid")
         catalogue = _snapshot_evidence_catalogue(evidence_catalogue)
@@ -97,6 +101,7 @@ class ProductSkepticReviewPort:
         self._package_for = package_for
         self._request_factory = request_factory
         self._claim_for = claim_for
+        self._observer = observer
 
     def review(self, snapshot: AuditorSnapshot) -> SkepticInvocation:
         try:
@@ -175,6 +180,7 @@ class ProductSkepticReviewPort:
             invocation = self._attempt(
                 request, validator, build_for(request), before_calls, started, ceiling_hit
             )
+            self._observe(snapshot.candidate_id, invocation)
             for ordinal in range(1, _MAX_REGENERATIONS + 1):
                 if invocation.model_call_status not in _REGENERATE_ON:
                     break
@@ -184,6 +190,7 @@ class ProductSkepticReviewPort:
                 invocation = self._attempt(
                     retry, validator, build_for(retry), before_calls, started, ceiling_hit
                 )
+                self._observe(snapshot.candidate_id, invocation)
             return invocation
         except Exception:
             return self._non_success(ModelCallStatus.PROVIDER_ERROR)
@@ -269,6 +276,12 @@ class ProductSkepticReviewPort:
                 raise ValueError("Skeptic evidence identity mismatch")
             entries.append((item.evidence_id, item.artifact, item.content))
         return tuple(entries)
+
+    def _observe(self, candidate_id: str, invocation: SkepticInvocation) -> None:
+        # Attempt counts are report metadata only; they never change the review.
+        if self._observer is not None:
+            with contextlib.suppress(Exception):
+                self._observer(candidate_id, invocation.model_call_status)
 
     def _non_success(self, status: ModelCallStatus) -> SkepticInvocation:
         return SkepticInvocation(self._skeptic_identity, status, None)

@@ -16,6 +16,7 @@ from securecode_ai.adapters.local_product_trial import (
     TrialAnalysisError,
     run_trial_analysis,
 )
+from securecode_ai.adapters.product_audit_types import ProductAuditComposition
 from securecode_ai.adapters.product_execution import (
     masked_product_sources,
     restricted_product_source_paths,
@@ -42,7 +43,11 @@ from securecode_ai.adapters.trial_report import (
     render_trial_report,
     report_paths,
 )
-from securecode_ai.adapters.trial_unresolved import finding_decisions, unresolved_report
+from securecode_ai.adapters.trial_unresolved import (
+    attach_undecided_to_json,
+    finding_decisions,
+    unresolved_report,
+)
 from securecode_ai.core.reports import ReportFormat, render_report
 
 _FORMATS = {
@@ -184,7 +189,7 @@ def run_analyze_command(
                 "report.md": render_trial_report(document, context, fixes, html_format=False),
                 "report.html": render_trial_report(document, context, fixes, html_format=True),
                 "report.json": _machine_json(
-                    attach_fixes_to_json(composition.json_report, fixes, findings), decisions
+                    attach_fixes_to_json(composition.json_report, fixes, findings), composition
                 ),
                 "report.sarif": _machine_sarif(
                     attach_fixes_to_sarif(
@@ -210,7 +215,7 @@ def run_analyze_command(
                     "secret; apply it by hand from the report and rotate the secret\n"
                 )
     if arguments.format == "json" and output_dir is None:
-        rendered = _machine_json(rendered, finding_decisions(analysis.result.composition))
+        rendered = _machine_json(rendered, analysis.result.composition)
     elif arguments.format == "sarif" and output_dir is None:
         rendered = _machine_sarif(
             rendered,
@@ -280,12 +285,15 @@ def _unique_fixes(fixes: Sequence[ProposedFix]) -> tuple[ProposedFix, ...]:
     return tuple(unique)
 
 
-def _machine_json(rendered: bytes, decisions: Mapping[str, Mapping[str, str]]) -> bytes:
-    return attach_decisions_to_json(attach_groups_to_json(rendered), decisions)
+def _machine_json(rendered: bytes, composition: ProductAuditComposition) -> bytes:
+    return attach_undecided_to_json(
+        attach_decisions_to_json(attach_groups_to_json(rendered), finding_decisions(composition)),
+        composition,
+    )
 
 
 def _machine_sarif(
-    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, str]]
+    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, object]]
 ) -> bytes:
     return attach_decisions_to_sarif(attach_groups_to_sarif(rendered), json_report, decisions)
 

@@ -396,9 +396,15 @@ def test_malformed_skeptic_answer_is_asked_again(monkeypatch: pytest.MonkeyPatch
         return factory(family, kind, proto, fileno)
 
     monkeypatch.setattr(socket, "socket", scripted)
+    attempts: list[tuple[str, ModelCallStatus]] = []
+    port._observer = lambda candidate_id, status: attempts.append((candidate_id, status))
 
     result = port.review(_snapshot(package))
 
     assert result.model_call_status is ModelCallStatus.SUCCEEDED
     assert result.output is not None
     assert tools.calls_used == 1 and len(endpoint.requests) == 2
+    assert attempts == [
+        (package.candidate_id, ModelCallStatus.INVALID_SCHEMA),
+        (package.candidate_id, ModelCallStatus.SUCCEEDED),
+    ]

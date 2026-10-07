@@ -123,6 +123,10 @@ class SkepticPayloadValidator:
                 )
                 if not set(objection.evidence_ids).issubset(selected_ids):
                     raise ValueError
+                if objection in objections:
+                    # Two objections that differ only in their dropped notes say the
+                    # same thing; one is kept instead of rejecting the whole review.
+                    continue
                 total_evidence_ids += len(objection.evidence_ids)
                 if total_evidence_ids > _MAX_EVIDENCE_IDS:
                     raise ValueError
