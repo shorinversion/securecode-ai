@@ -116,13 +116,25 @@ every finding and Architect fixes.
 
 | Option | Purpose |
 | --- | --- |
-| `--provider deepseek\|local` | Model: DeepSeek (`DEEPSEEK_API_KEY` in the environment or `.env`) or local via Ollama |
+| `--provider deepseek\|openai-compatible\|local` | Model: DeepSeek (`DEEPSEEK_API_KEY` in the environment or `.env`), any HTTPS service with the OpenAI Chat Completions API (see below) or local via Ollama |
 | `--format markdown\|html\|json\|sarif` | Report format |
 | `--output FILE` | Write the report to a file |
 | `--output-dir DIR` | Save `report.md`, `report.html`, `report.json` and `report.sarif` from one run |
 | `--patch-dir DIR` | Save validated fixes as `.diff` files |
 | `--no-fix` | Do not request fixes |
 | `--max-cost-usd N` | API spend cap per run (default 1.0); each call reserves its maximum cost first, about $0.04, so a cap below $0.20 can stop the review |
+
+With `--provider openai-compatible` the endpoint, model and key come from the environment
+or `.env`: `SECURECODE_MODEL_BASE_URL` (for example `https://api.openai.com/v1`),
+`SECURECODE_MODEL` and `SECURECODE_MODEL_API_KEY`. Any public HTTPS service with this API
+works (OpenAI, OpenRouter, Groq, Together, a company gateway). Optional:
+`SECURECODE_MODEL_PRICE_INPUT` and `SECURECODE_MODEL_PRICE_OUTPUT` (USD per million tokens;
+without them the cost is reported as unknown, `--max-cost-usd` does not apply and a run is
+bounded by 20M tokens), `SECURECODE_MODEL_CONTEXT_TOKENS` and
+`SECURECODE_MODEL_MAX_OUTPUT_TOKENS` (default 128000 and 16384),
+`SECURECODE_MODEL_REASONING_EFFORT`. Every role, the Architect included, calls this endpoint
+and secrets are masked as for DeepSeek. SecureCode does not verify the service's data terms:
+choosing it is consent to send the audited code there (D-118).
 
 Exit codes: `0` — no confirmed vulnerability and every required stage completed;
 `2` — at least one confirmed vulnerability (takes precedence over incomplete stages);

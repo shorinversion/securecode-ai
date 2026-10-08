@@ -23,7 +23,7 @@ members = ["demo-app"]
 
 [[package]]
 name = "demo-app"
-version = "1.2.6"
+version = "1.2.7"
 source = { editable = "." }
 
 [[package]]
@@ -40,7 +40,7 @@ wheels = [
 PYPROJECT = """\
 [project]
 name = "securecode-ai-workspace"
-version = "1.2.6"
+version = "1.2.7"
 """
 
 
@@ -106,7 +106,7 @@ def test_sbom_document_shape(tmp_path: Path) -> None:
     assert document["version"] == 1
     assert document["serialNumber"].startswith("urn:uuid:")
     assert document["metadata"]["component"]["name"] == "securecode-ai-workspace"
-    assert document["metadata"]["component"]["version"] == "1.2.6"
+    assert document["metadata"]["component"]["version"] == "1.2.7"
 
 
 def test_sbom_components_are_sorted_and_typed(tmp_path: Path) -> None:

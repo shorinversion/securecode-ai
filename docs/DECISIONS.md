@@ -1014,3 +1014,25 @@ successful Auditor receipt is enough and the route is `CONFIRMED` with reason
 notes. Every other weakness still needs both reviews, and a failed Auditor investigation
 still leaves the secret without a decision. The report says "подтверждено детектором
 секретов" for such findings.
+
+## D-118: The operator of a trial run may name any OpenAI-compatible endpoint
+
+7 October 2026, owner request. `securecode analyze` reached only DeepSeek (host pinned in
+the core admission rule) or a loopback Ollama; base URL, model and key of another service
+could not be set. `--provider openai-compatible` reads `SECURECODE_MODEL_BASE_URL`,
+`SECURECODE_MODEL` and `SECURECODE_MODEL_API_KEY`. The core admits the profile
+`openai-compatible-operator` only under `managed_scan_opt_in` with tenant approval, an
+HTTPS base URL whose host equals the endpoint authority, unverified terms and the consent
+reference `consent://operator/openai-compatible/<host>`: the operator who names the host
+and supplies its key consents to send the masked source there. Everything else is
+unchanged: the contract refuses private addresses, plain HTTP and consumer chat sites, the
+resolver connects only to globally routable addresses of that host, secrets are masked
+(D-116) and data-class limits apply. The request carries only standard Chat Completions
+fields (no DeepSeek `thinking`); `max_completion_tokens` is used for `api.openai.com`. The
+response check accepts the standard extras other providers add (empty `annotations`,
+`refusal: null`, a dated model snapshot, gateway accounting numbers) and still rejects
+anything the pipeline cannot use. Without operator prices the spend cap cannot be applied:
+the cost is reported as unknown and the 20M-token window bounds the run. The Architect now
+calls the same endpoint as the rest of the run; `DEEPSEEK_BASE_URL` no longer redirects it
+alone. Loopback servers other than Ollama (vLLM, LM Studio) are not covered yet. The
+protected `securecode scan` path is unchanged: it still needs a reviewed provider bundle.

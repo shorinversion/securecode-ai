@@ -166,7 +166,7 @@ class TrialReportContext:
     head_sha: str
     provider: str
     model_id: str
-    cost_microusd: int
+    cost_microusd: int | None
     sources: Mapping[str, str]
     # Candidates without a final decision: (CWE, path, line, origin, reason).
     unresolved: tuple[tuple[str, str, int, str, str], ...] = ()
@@ -235,7 +235,12 @@ def render_trial_report(
             ("Репозиторий", str(context.repository)),
             ("Ревизия", context.head_sha[:12]),
             ("Модель", f"{context.model_id} ({context.provider})"),
-            ("Стоимость запросов к модели", f"${context.cost_microusd / 1_000_000:.4f}"),
+            (
+                "Стоимость запросов к модели",
+                "не известна (цены модели не заданы)"
+                if context.cost_microusd is None
+                else f"${context.cost_microusd / 1_000_000:.4f}",
+            ),
             ("Находок", str(len(entries))),
             ("Без окончательного решения", _undecided(context)),
             (
