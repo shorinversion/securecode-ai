@@ -108,7 +108,8 @@ def test_only_candidates_at_a_confirmed_place_are_folded(
 
     listed, covered = trial_unresolved.unresolved_report(composition)  # type: ignore[arg-type]
 
-    assert covered == 2
+    # Folded candidates stay observable with the finding that covers them.
+    assert [(item.line, item.covered_by) for item in covered] == [(2, "c0"), (4, "c0")]
     assert [(item.cwe_id, item.line) for item in listed] == [("CWE-89", 4), ("CWE-798", 9)]
 
 
@@ -143,8 +144,9 @@ def test_undecided_candidates_carry_their_model_attempts(
 
     assert item.reason == ("Скептик: ответ модели не прошёл схему (попыток: 3, повторы исчерпаны)")
     assert (item.auditor_calls, item.skeptic_attempts, item.retries_exhausted) == (2, 3, True)
-    assert exported["undecided_covered"] == 0
+    assert exported["undecided_covered"] == 0 and exported["covered_candidates"] == []
     assert exported["undecided_candidates"][0] == {
+        "candidate_id": "c0",
         "cwe_id": "CWE-89",
         "path": "sql.py",
         "line": 7,
@@ -154,3 +156,21 @@ def test_undecided_candidates_carry_their_model_attempts(
         "skeptic_attempts": 3,
         "retries_exhausted": True,
     }
+
+
+def test_a_whole_file_finding_does_not_hide_a_key_on_one_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Live 1.2.8 run: the model confirmed CWE-798 for lines 1-21 and hid API_KEY on line 5.
+    monkeypatch.setattr(
+        trial_unresolved, "_candidate_family", lambda candidate, graph: ("", candidate.cwe)
+    )
+    composition = _composition(
+        ("CWE-798", "sql.py", 1, 21, FindingGateState.BLOCKING),
+        ("CWE-798", "sql.py", 5, 5, None),
+    )
+
+    listed, covered = trial_unresolved.unresolved_report(composition)  # type: ignore[arg-type]
+
+    assert [(item.cwe_id, item.line) for item in listed] == [("CWE-798", 5)]
+    assert covered == ()

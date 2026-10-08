@@ -90,8 +90,9 @@ def run_local_product_scan(
         KeyboardInterrupt,
     ):
         raise
-    except Exception:
-        raise LocalProductUnavailableError() from None
+    except Exception as error:
+        # The class name only: an exception message may quote source or paths.
+        raise LocalProductUnavailableError("UNEXPECTED_" + type(error).__name__) from None
 
 
 def run_local_product_repair(
@@ -250,7 +251,7 @@ def _source_free_repair_summary(value: object) -> tuple[bytes, int]:
         sort_keys=True,
     ).encode("ascii")
     if not encoded or len(encoded) > 1_048_576:
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("REPAIR_SUMMARY_INVALID")
     return encoded, exit_code
 
 

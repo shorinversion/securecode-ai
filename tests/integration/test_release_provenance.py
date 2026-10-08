@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 PYPROJECT = """[project]
 name = "securecode-ai-workspace"
-version = "1.2.7"
+version = "1.2.8"
 """
 
 
@@ -65,7 +65,7 @@ def test_provenance_inventory_and_digest(tmp_path: Path) -> None:
     root = _git_repo(tmp_path)
     manifest, checksums = _provenance().build_provenance(root=root)
     assert manifest["schema_version"] == "securecode.release-provenance.v1"
-    assert manifest["project_version"] == "1.2.7"
+    assert manifest["project_version"] == "1.2.8"
     assert manifest["file_count"] == 2
     assert [item["path"] for item in manifest["files"]] == ["app.py", "pyproject.toml"]
     assert manifest["sbom_sha256"] is None

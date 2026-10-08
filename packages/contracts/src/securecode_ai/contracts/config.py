@@ -25,6 +25,21 @@ _CONSUMER_ENDPOINT_SUFFIXES: Final = (
     "gemini.google.com",
     "copilot.microsoft.com",
     "platform.openai.com",
+    # Chat products of model vendors; their API hosts differ (api.deepseek.com, ...).
+    "chat.deepseek.com",
+    "chat.mistral.ai",
+    "chat.qwen.ai",
+    "chat.z.ai",
+    "chatglm.cn",
+    "character.ai",
+    "giga.chat",
+    "grok.com",
+    "kimi.com",
+    "kimi.moonshot.cn",
+    "meta.ai",
+    "poe.com",
+    "www.perplexity.ai",
+    "yiyan.baidu.com",
 )
 _REPOSITORY_TOOLS: Final = frozenset({"list_paths", "lookup_symbol", "read_range", "read_evidence"})
 _ENV_NAME: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")

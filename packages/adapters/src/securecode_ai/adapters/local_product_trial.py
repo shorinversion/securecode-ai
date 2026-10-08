@@ -139,6 +139,13 @@ def operator_endpoint(environment: Mapping[str, str]) -> OperatorEndpoint:
             "SECURECODE_MODEL_BASE_URL must be an https:// URL without credentials, query "
             "or fragment (for example https://api.openai.com/v1)"
         )
+    if parsed.hostname.lower().split(".")[0] == "chat":
+        # chat.<vendor> is the vendor's chat product, never its API (chat.deepseek.com
+        # versus api.deepseek.com); the contract's list cannot name every vendor.
+        raise TrialAnalysisError(
+            "SECURECODE_MODEL_BASE_URL points to a chat web site; use the provider's API "
+            "address (for example https://api.deepseek.com/v1)"
+        )
     model_id = environment.get("SECURECODE_MODEL") or ""
     if not model_id:
         raise TrialAnalysisError("SECURECODE_MODEL is not set (environment or .env)")
@@ -282,6 +289,11 @@ def _require_git_checkout(git: Path, target: str) -> None:
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise TrialAnalysisError("git rev-parse failed") from error
+    if "dubious ownership" in inside.stderr:
+        raise TrialAnalysisError(
+            f"Git refuses the checkout because it belongs to another user: {target}; "
+            "trust it with: git config --global --add safe.directory <path>"
+        )
     if inside.returncode != 0 or not inside.stdout.startswith("true"):
         raise TrialAnalysisError(f"target is not a Git checkout with at least one commit: {target}")
 

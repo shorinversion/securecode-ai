@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Final
 
 from .trial_architect import ProposedFix
+from .trial_groups import finding_groups
 
 OWASP_2021: Final = {
     "A01:2021": "Broken Access Control",
@@ -269,13 +270,15 @@ def _line(location: Mapping[str, object], key: str) -> int:
 def _entries(
     document: Mapping[str, object], sources: Mapping[str, str] | None = None
 ) -> list[_Entry]:
-    groups: dict[tuple[str, str], list[dict[str, object]]] = {}
-    for item in _dicts(document.get("findings")):
+    # One entry per weakness: the same CWE at overlapping lines of one file.
+    findings = _dicts(document.get("findings"))
+    groups: dict[tuple[str, str, str], list[dict[str, object]]] = {}
+    for item, group in zip(findings, finding_groups(findings), strict=True):
         locations = _dicts(item.get("locations"))
         path = str(locations[0].get("path")) if locations else ""
-        groups.setdefault((str(item.get("cwe_id")), path), []).append(item)
+        groups.setdefault((str(item.get("cwe_id")), path, group or ""), []).append(item)
     entries: list[_Entry] = []
-    for (cwe_id, path), items in groups.items():
+    for (cwe_id, path, _group), items in groups.items():
         # The scanner lane carries exact sink lines; model locations are a fallback.
         scanner = [item for item in items if item.get("candidate_origin") == "deterministic"]
         locations = [

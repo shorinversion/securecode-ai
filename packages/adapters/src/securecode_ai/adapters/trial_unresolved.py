@@ -58,6 +58,9 @@ class UnresolvedCandidate:
     skeptic_attempts: int = 0
     # The Skeptic asked again as many times as allowed and still got no valid answer.
     retries_exhausted: bool = False
+    # Candidate id of the confirmed finding this candidate is folded into, if any.
+    covered_by: str = ""
+    candidate_id: str = ""
 
 
 _SKEPTIC_ATTEMPTS: Final = 1 + _MAX_REGENERATIONS
@@ -71,12 +74,13 @@ def unresolved_candidates(composition: ProductAuditComposition) -> tuple[Unresol
 
 def unresolved_report(
     composition: ProductAuditComposition,
-) -> tuple[tuple[UnresolvedCandidate, ...], int]:
-    """Inconclusive candidates and how many were covered by a confirmed finding.
+) -> tuple[tuple[UnresolvedCandidate, ...], tuple[UnresolvedCandidate, ...]]:
+    """Inconclusive candidates, and those covered by a confirmed finding.
 
     Several candidates may describe one weakness (a scanner rule, a second secret rule
     and model Discovery on the same line). When a finding of the same CWE is already
-    confirmed at overlapping lines of the same file, the other candidates add nothing
+    confirmed at overlapping lines of the same file, at least as precisely as the
+    candidate (a whole-function finding hides no single line), the other candidates add nothing
     to check by hand: they are counted, not listed. A candidate elsewhere in the file
     (another hardcoded key ten lines below) stays listed. Candidates at one place with
     one CWE are listed once.
@@ -84,12 +88,12 @@ def unresolved_report(
 
     flow, review = composition.flow, composition.review
     if flow is None or review is None:
-        return (), 0
+        return (), ()
     candidates = {candidate.candidate_id: candidate for candidate in flow.graph.candidates}
     records = {record.evidence_id: record for record in flow.graph.evidence}
     receipts = {receipt.candidate_id: receipt for receipt in flow.investigations}
     auditor_calls, skeptic_attempts = model_attempts(composition)
-    confirmed: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    confirmed: dict[tuple[str, str], list[tuple[int, int, str]]] = {}
     pending: list[
         tuple[ProductCandidateReviewOutcome, DiscoveryCandidate, str, str, tuple[int, int]]
     ] = []
@@ -100,17 +104,24 @@ def unresolved_report(
         cwe_id, path, lines = _place(candidate, flow.graph, records)
         gate = outcome.finding_gate
         if gate is not None and gate.finding_gate_state is FindingGateState.BLOCKING:
-            confirmed.setdefault((cwe_id, path), []).append(lines)
+            confirmed.setdefault((cwe_id, path), []).append((*lines, outcome.candidate_id))
             continue
         if gate is not None and gate.finding_gate_state is FindingGateState.CLEAN:
             continue
         pending.append((outcome, candidate, cwe_id, path, lines))
     result: dict[tuple[str, str, int], UnresolvedCandidate] = {}
-    covered = 0
+    covered: list[UnresolvedCandidate] = []
     for outcome, candidate, cwe_id, path, (line, end) in pending:
-        if any(start <= end and line <= stop for start, stop in confirmed.get((cwe_id, path), ())):
-            covered += 1
-            continue
+        covering = next(
+            (
+                finding
+                for start, stop, finding in confirmed.get((cwe_id, path), ())
+                # The finding must point at the place at least as precisely: a model
+                # finding spanning the whole file does not hide a key on line 5.
+                if start <= end and line <= stop and stop - start <= end - line
+            ),
+            "",
+        )
         attempts = skeptic_attempts.get(outcome.candidate_id, 0)
         skeptic = outcome.skeptic_review
         exhausted = (
@@ -121,23 +132,27 @@ def unresolved_report(
         reason = _reason(receipts.get(outcome.candidate_id), outcome)
         if reason.startswith("Скептик") and attempts > 1:
             reason += f" (попыток: {attempts}" + (", повторы исчерпаны)" if exhausted else ")")
-        result.setdefault(
-            (cwe_id, path, line),
-            UnresolvedCandidate(
-                cwe_id=cwe_id,
-                path=path,
-                line=line,
-                origin="сканер"
-                if candidate.candidate_origin is CandidateOrigin.DETERMINISTIC
-                else "модель",
-                reason=reason,
-                auditor_calls=auditor_calls.get(outcome.candidate_id, 0),
-                skeptic_attempts=attempts,
-                retries_exhausted=exhausted,
-            ),
+        item = UnresolvedCandidate(
+            cwe_id=cwe_id,
+            path=path,
+            line=line,
+            origin="сканер"
+            if candidate.candidate_origin is CandidateOrigin.DETERMINISTIC
+            else "модель",
+            reason=reason,
+            auditor_calls=auditor_calls.get(outcome.candidate_id, 0),
+            skeptic_attempts=attempts,
+            retries_exhausted=exhausted,
+            covered_by=covering,
+            candidate_id=outcome.candidate_id,
         )
+        if covering:
+            # Nothing to check by hand, but its model failures stay observable.
+            covered.append(item)
+            continue
+        result.setdefault((cwe_id, path, line), item)
     ordered = tuple(sorted(result.values(), key=lambda item: (item.path, item.line, item.cwe_id)))
-    return ordered, covered
+    return ordered, tuple(sorted(covered, key=lambda item: (item.path, item.line, item.cwe_id)))
 
 
 def model_attempts(
@@ -240,23 +255,30 @@ def attach_undecided_to_json(rendered: bytes, composition: ProductAuditCompositi
     """Add the candidates left without a final decision to a JSON report.
 
     ``undecided_candidates`` lists them with the reason and the model calls behind it;
-    ``undecided_covered`` counts the ones folded into an already confirmed finding.
+    ``undecided_covered`` counts the ones folded into an already confirmed finding and
+    ``covered_candidates`` lists those with the same fields and ``covered_by`` (the
+    candidate id of the finding), so a model failure behind them stays observable.
     """
 
     listed, covered = unresolved_report(composition)
     document = json.loads(rendered)
-    document["undecided_candidates"] = [
-        {
-            "cwe_id": item.cwe_id,
-            "path": item.path,
-            "line": item.line,
-            "origin": "DETERMINISTIC" if item.origin == "сканер" else "MODEL",
-            "reason": item.reason,
-            "auditor_calls": item.auditor_calls,
-            "skeptic_attempts": item.skeptic_attempts,
-            "retries_exhausted": item.retries_exhausted,
-        }
-        for item in listed
+    document["undecided_candidates"] = [_exported(item) for item in listed]
+    document["undecided_covered"] = len(covered)
+    document["covered_candidates"] = [
+        _exported(item) | {"covered_by": item.covered_by} for item in covered
     ]
-    document["undecided_covered"] = covered
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def _exported(item: UnresolvedCandidate) -> dict[str, object]:
+    return {
+        "candidate_id": item.candidate_id,
+        "cwe_id": item.cwe_id,
+        "path": item.path,
+        "line": item.line,
+        "origin": "DETERMINISTIC" if item.origin == "сканер" else "MODEL",
+        "reason": item.reason,
+        "auditor_calls": item.auditor_calls,
+        "skeptic_attempts": item.skeptic_attempts,
+        "retries_exhausted": item.retries_exhausted,
+    }

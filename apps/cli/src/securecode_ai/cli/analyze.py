@@ -7,8 +7,9 @@ import json
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import TextIO
+from typing import Final, TextIO
 
+from securecode_ai.adapters.local_product_runner_config import LocalProductUnavailableError
 from securecode_ai.adapters.local_product_trial import (
     DEEPSEEK_PRICES_PER_MILLION,
     DEFAULT_LOCAL_MODEL,
@@ -59,6 +60,18 @@ _FORMATS = {
 }
 _EXIT_INDETERMINATE = 3
 _EXIT_CONFIG = 4
+
+
+# What an operator can do about a run that stopped before a report (reason codes of
+# LocalProductUnavailableError).
+_UNAVAILABLE_HINTS: Final = {
+    "NO_SUPPORTED_SOURCE": "the revision has no supported source file (Python); nothing to audit",
+    "GIT_COMMAND_FAILED": (
+        "a Git command on the checkout failed; if the checkout belongs to another user, "
+        "trust it with: git config --global --add safe.directory <path>"
+    ),
+    "PROVIDER_NOT_ADMITTED": "the egress policy did not admit the provider profile",
+}
 
 
 def analyze_parser() -> argparse.ArgumentParser:
@@ -148,6 +161,14 @@ def run_analyze_command(
     except TrialAnalysisError as error:
         stderr.write(f"securecode analyze: {error}\n")
         return _EXIT_CONFIG
+    except LocalProductUnavailableError as error:
+        hint = _UNAVAILABLE_HINTS.get(error.reason)
+        stderr.write(
+            f"securecode analyze: failed (LocalProductUnavailableError: {error.reason})"
+            + (f": {hint}" if hint else "")
+            + "\n"
+        )
+        return _EXIT_CONFIG if error.reason == "NO_SUPPORTED_SOURCE" else _EXIT_INDETERMINATE
     except Exception as error:
         stderr.write(f"securecode analyze: failed ({type(error).__name__})\n")
         return _EXIT_INDETERMINATE
@@ -191,7 +212,7 @@ def run_analyze_command(
             tuple(
                 (item.cwe_id, item.path, item.line, item.origin, item.reason) for item in unresolved
             ),
-            covered,
+            len(covered),
         )
         if output_dir is not None:
             composition = analysis.result.composition
@@ -200,7 +221,9 @@ def run_analyze_command(
                 "report.md": render_trial_report(document, context, fixes, html_format=False),
                 "report.html": render_trial_report(document, context, fixes, html_format=True),
                 "report.json": _machine_json(
-                    attach_fixes_to_json(composition.json_report, fixes, findings), composition
+                    attach_fixes_to_json(composition.json_report, fixes, findings),
+                    composition,
+                    cost,
                 ),
                 "report.sarif": _machine_sarif(
                     attach_fixes_to_sarif(
@@ -226,7 +249,7 @@ def run_analyze_command(
                     "secret; apply it by hand from the report and rotate the secret\n"
                 )
     if arguments.format == "json" and output_dir is None:
-        rendered = _machine_json(rendered, analysis.result.composition)
+        rendered = _machine_json(rendered, analysis.result.composition, cost)
     elif arguments.format == "sarif" and output_dir is None:
         rendered = _machine_sarif(
             rendered,
@@ -303,17 +326,31 @@ def _unique_fixes(fixes: Sequence[ProposedFix]) -> tuple[ProposedFix, ...]:
     return tuple(unique)
 
 
-def _machine_json(rendered: bytes, composition: ProductAuditComposition) -> bytes:
-    return attach_undecided_to_json(
-        attach_decisions_to_json(attach_groups_to_json(rendered), finding_decisions(composition)),
-        composition,
+def _machine_json(
+    rendered: bytes, composition: ProductAuditComposition, cost_microusd: int | None
+) -> bytes:
+    document = json.loads(
+        attach_undecided_to_json(
+            attach_decisions_to_json(
+                attach_groups_to_json(rendered), finding_decisions(composition)
+            ),
+            composition,
+        )
     )
+    # Model calls of the whole run, the Architect included; null when prices are unknown.
+    document["model_cost"] = {
+        "usd": None if cost_microusd is None else cost_microusd / 1_000_000,
+        "known": cost_microusd is not None,
+    }
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def _machine_sarif(
     rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, object]]
 ) -> bytes:
-    return attach_decisions_to_sarif(attach_groups_to_sarif(rendered), json_report, decisions)
+    return attach_decisions_to_sarif(
+        attach_groups_to_sarif(rendered, json_report), json_report, decisions
+    )
 
 
 def _write_patches(
