@@ -1036,3 +1036,37 @@ the cost is reported as unknown and the 20M-token window bounds the run. The Arc
 calls the same endpoint as the rest of the run; `DEEPSEEK_BASE_URL` no longer redirects it
 alone. Loopback servers other than Ollama (vLLM, LM Studio) are not covered yet. The
 protected `securecode scan` path is unchanged: it still needs a reviewed provider bundle.
+
+8 October 2026, addendum after the 1.2.7 E2E series: `chat.deepseek.com` was accepted and
+received requests. The contract's list of chat products now names more vendor chat hosts
+(exact hosts, so `api.perplexity.ai` stays allowed), and an operator endpoint whose host
+starts with `chat.` is refused before any profile is built.
+
+## D-119: Each hard-coded credential is its own weakness group
+
+8 October 2026, after the 1.2.7 E2E series. `weakness_group` (and the SARIF
+`partialFingerprints` entry) meant "count and alert once", but it was keyed by CWE and file,
+so two hard-coded keys of one file became one weakness although each must be rotated. For
+credential CWEs (798, 259, 321) a group is now the CWE at overlapping lines of one file: the
+narrowest cited ranges seed the groups and a wider finding (the whole file cited by the
+model) joins the first group it overlaps without merging two. Code weaknesses keep the CWE
+and file as the group: the model often cites another line of the same flow than the scanner
+(the import line versus the sink), and splitting them would show one injection twice. The SARIF key becomes `securecodeWeakness/v2` because the
+value changed meaning. The Architect still proposes one fix per CWE and file (two patches of
+one file would conflict), so one fix may serve two groups. An undecided candidate is folded
+into a confirmed finding only when that finding points at the place at least as precisely
+(a finding spanning the whole file does not hide a key on one line); folded candidates are
+exported in `covered_candidates` with their model counters.
+
+## D-120: Sealed Git calls carry the operator's safe.directory decision
+
+8 October 2026, after the 1.2.7 E2E series. Product Git calls run with system and global
+configuration disabled, so a checkout owned by another user (a CI container, a mounted
+volume) was refused as dubious ownership even when the operator trusted it, and the run
+stopped with an anonymous `LocalProductUnavailableError`. When the checkout belongs to
+another user, the operator's own Git (with their configuration) decides once; only if it
+accepts the checkout do sealed calls get `safe.directory` for that path, and every other
+configuration value stays excluded. Without that trust the run stops before analysis with a
+message naming `safe.directory`. `LocalProductUnavailableError` now carries a fixed,
+source-free reason code that the CLI prints, and a revision without supported source files
+ends with exit code 4 and `NO_SUPPORTED_SOURCE`.

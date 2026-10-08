@@ -83,24 +83,74 @@ def test_sarif_result_gets_a_standard_fix() -> None:
     assert "fixes" not in other
 
 
+def _grouped(*places: tuple[str, str, int, int]) -> list[str | None]:
+    from securecode_ai.adapters.trial_groups import finding_groups
+
+    return finding_groups(
+        [
+            {
+                "cwe_id": cwe_id,
+                "locations": [{"path": path, "start": {"line": start}, "end": {"line": end}}],
+            }
+            for cwe_id, path, start, end in places
+        ]
+    )
+
+
 def test_findings_of_one_weakness_share_a_group_in_json_and_sarif() -> None:
     from securecode_ai.adapters.trial_fix_export import (
         attach_groups_to_json,
         attach_groups_to_sarif,
-        weakness_group,
     )
+    from securecode_ai.adapters.trial_groups import weakness_group
 
     document = json.loads(attach_groups_to_json(_report()))
     first, second, other = document["findings"]
-    assert first["weakness_group"] == second["weakness_group"] == weakness_group("CWE-89", "app.py")
+    assert (
+        first["weakness_group"] == second["weakness_group"] == weakness_group("CWE-89", "app.py", 0)
+    )
     assert other["weakness_group"] != first["weakness_group"]
 
     location = {"physicalLocation": {"artifactLocation": {"uri": "src/my%20app.py"}}}
     sarif = {"runs": [{"results": [{"ruleId": "CWE-89", "locations": [location]}]}]}
-    (result,) = json.loads(attach_groups_to_sarif(json.dumps(sarif).encode()))["runs"][0]["results"]
-    assert result["partialFingerprints"] == {
-        "securecodeWeakness/v1": weakness_group("CWE-89", "src/my app.py")
+    report = {
+        "findings": [
+            {
+                "cwe_id": "CWE-89",
+                "locations": [{"path": "src/my app.py", "start": {"line": 3}, "end": {"line": 3}}],
+            }
+        ]
     }
+    (result,) = json.loads(
+        attach_groups_to_sarif(json.dumps(sarif).encode(), json.dumps(report).encode())
+    )["runs"][0]["results"]
+    assert result["partialFingerprints"] == {
+        "securecodeWeakness/v2": weakness_group("CWE-89", "src/my app.py", 0)
+    }
+
+
+def test_two_keys_in_one_file_are_two_weaknesses() -> None:
+    # E2E of 1.2.7: two hard-coded credentials on lines 2 and 19 shared one group.
+    first, second, scanner_twin = _grouped(
+        ("CWE-798", "app.py", 2, 2), ("CWE-798", "app.py", 19, 19), ("CWE-798", "app.py", 19, 19)
+    )
+
+    assert first != second and second == scanner_twin
+
+
+def test_a_wide_model_location_joins_one_group_and_never_merges_two() -> None:
+    key_a, key_b, file_wide = _grouped(
+        ("CWE-798", "app.py", 6, 6), ("CWE-798", "app.py", 18, 18), ("CWE-798", "app.py", 1, 21)
+    )
+
+    assert key_a != key_b and file_wide in {key_a, key_b}
+
+
+def test_code_weaknesses_of_one_file_stay_one_group() -> None:
+    # The model may cite the import line of the flow the scanner reports at the sink.
+    model, scanner = _grouped(("CWE-89", "app.py", 1, 1), ("CWE-89", "app.py", 5, 5))
+
+    assert model == scanner
 
 
 def test_gate_decision_is_exported_to_json_and_matching_sarif_results() -> None:
@@ -139,3 +189,20 @@ def test_gate_decision_is_exported_to_json_and_matching_sarif_results() -> None:
     ][0]["results"]
     assert first["properties"]["decision"] == decision
     assert "properties" not in second
+
+
+def test_a_model_finding_citing_source_and_sink_joins_the_scanner_group() -> None:
+    from securecode_ai.adapters.trial_groups import finding_groups
+
+    def finding(*spans: tuple[int, int]) -> dict[str, object]:
+        return {
+            "cwe_id": "CWE-89",
+            "locations": [
+                {"path": "sql.py", "start": {"line": a}, "end": {"line": b}} for a, b in spans
+            ],
+        }
+
+    # Live 1.2.8 run: the model cited the function (1-21) and line 16; the scanner 18 and 20.
+    model, scanner = finding_groups([finding((1, 21), (16, 16)), finding((18, 18), (20, 20))])
+
+    assert model == scanner

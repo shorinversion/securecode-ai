@@ -143,13 +143,20 @@ arguments, missing key, Git older than 2.44 or an existing output path. Validate
 appear in `patch_refs` and `validation_refs` of a JSON finding and in the standard SARIF
 `fixes` property. The scanner and the model may confirm the same weakness: such
 findings share a `weakness_group` in JSON and `partialFingerprints`
-(`securecodeWeakness/v1`) in SARIF, and are counted, fixed and alerted once. The `decision`
+(`securecodeWeakness/v2`) in SARIF, and are counted and alerted once; a group is the CWE in
+one file, and for hard-coded credentials also the line, so two keys on different lines are
+two weaknesses. The `decision`
 block of a finding says who confirmed it: `authority` `MODEL_REVIEW` (Auditor and Skeptic
 agree) or `DETERMINISTIC_DETECTOR` (secret detector, D-117), the `reason`, both model
 verdicts and how many calls they took (`auditor_calls`, `skeptic_attempts`). With exit
 code `3` the report lists the candidates without a final decision and the reason for
 each: they are places to check by hand, not a clean result. JSON has them in
-`undecided_candidates` with the same counters and `retries_exhausted`. The Markdown and HTML reports are in Russian;
+`undecided_candidates` with the same counters and `retries_exhausted`; candidates already
+covered by a confirmed finding at the same place are in `covered_candidates` with
+`covered_by`, and the run cost is `model_cost` (`usd`, `known`). A run that stops without a
+report names a reason code (for example `GIT_COMMAND_FAILED`); a checkout owned by another
+user is audited when Git trusts it (`git config --global --add safe.directory <path>`).
+The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
 
 ### Fix as a pull request

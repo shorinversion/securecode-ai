@@ -27,6 +27,7 @@ from securecode_ai.contracts import (
 from securecode_ai.core.evidence_graph import EvidenceGraph
 
 from .config import ConfigError, EffectiveConfiguration, resolve_configuration
+from .git_trust import operator_safe_directory
 from .local_product_host import (
     LocalProductHost,
 )
@@ -45,7 +46,15 @@ class LocalProductConfigurationError(ValueError):
 
 
 class LocalProductUnavailableError(ValueError):
-    """Closed missing authority or incomplete execution."""
+    """Closed missing authority or incomplete execution.
+
+    ``reason`` is a fixed, source-free code naming the step that failed, so an operator
+    can tell a foreign-owned checkout from a refused provider without a traceback.
+    """
+
+    def __init__(self, reason: str = "UNAVAILABLE") -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class LocalProductCancelledError(ValueError):
@@ -81,7 +90,7 @@ class LocalProductScanResult:
         ):
             raise LocalProductSupersededError()
         if not observed.reporting_allowed:
-            raise LocalProductUnavailableError()
+            raise LocalProductUnavailableError("REPORTING_NOT_ALLOWED")
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +142,7 @@ def _retain_evidence_graph(
         or graph.tenant_id != tenant_id
         or graph.head_sha != head_sha
     ):
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("EVIDENCE_GRAPH_INVALID")
     try:
         graph_bytes = json.dumps(
             graph.canonical_payload,
@@ -156,7 +165,7 @@ def _retain_evidence_graph(
             ),
         )
     except (TypeError, ValueError):
-        raise LocalProductUnavailableError() from None
+        raise LocalProductUnavailableError("EVIDENCE_GRAPH_INVALID") from None
 
 
 class _LiteralLoopbackResolver:
@@ -184,12 +193,12 @@ def _git(
         GIT_CONFIG_NOSYSTEM="1",
         GIT_CONFIG_SYSTEM=os.devnull,
         GIT_CONFIG_GLOBAL=os.devnull,
-        GIT_CONFIG_COUNT="0",
         GIT_NO_REPLACE_OBJECTS="1",
         GIT_TERMINAL_PROMPT="0",
         GIT_OPTIONAL_LOCKS="0",
         GIT_NO_LAZY_FETCH="1",
         GIT_ALLOW_PROTOCOL="",
+        **operator_safe_directory(checkout, executable),
     )
     command = [
         str(executable),
@@ -227,7 +236,7 @@ def _git(
         if process.poll() is None:
             _stop_git_process(process)
     if process.returncode or output is None or len(output) > 65536:
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("GIT_COMMAND_FAILED")
     return output.decode("utf-8").strip()
 
 
@@ -244,7 +253,7 @@ def _stop_git_process(process: subprocess.Popen[bytes]) -> None:
         try:
             process.communicate(timeout=_GIT_EXIT_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
-            raise LocalProductUnavailableError() from None
+            raise LocalProductUnavailableError("GIT_EXIT_TIMEOUT") from None
 
 
 def resolve_local_product_configuration(

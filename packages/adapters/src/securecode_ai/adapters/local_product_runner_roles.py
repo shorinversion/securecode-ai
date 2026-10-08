@@ -20,7 +20,7 @@ def build_role_request(
     prompt: ComponentPin,
 ) -> ModelRequest:
     if type(schema) is not ComponentPin:
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("ROLE_SCHEMA_INVALID")
     data = base.model_dump(mode="json")
     identifier = role.value + "-" + package.candidate_id + "-" + str(attempt)
     data.update(

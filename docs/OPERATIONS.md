@@ -42,8 +42,8 @@ securecode release --config FILE [--publish --authorization FILE]
 pwsh -NoProfile -File deploy/docker/build-images.ps1
 ```
 
-Скрипт собирает `securecode-ai/runtime:1.2.7`, `securecode-ai/server:1.2.7` и
-`securecode-ai/worker:1.2.7` и выводит их неизменяемые идентификаторы. По умолчанию
+Скрипт собирает `securecode-ai/runtime:1.2.8`, `securecode-ai/server:1.2.8` и
+`securecode-ai/worker:1.2.8` и выводит их неизменяемые идентификаторы. По умолчанию
 используется `linux/amd64`; `linux/arm64` задаётся параметром `-Platform`.
 
 ### Control plane
@@ -62,7 +62,7 @@ docker run --rm --name securecode-server --network securecode -p 8443:8080 \
   -e SECURECODE_BOOTSTRAP_ADMIN_TOKEN_FILE=/run/secrets/admin_token \
   -e SECURECODE_BOOTSTRAP_WORKER_TOKEN_FILE=/run/secrets/worker_token \
   -e SECURECODE_BOOTSTRAP_WORKER_REPOSITORIES=repository-1 \
-  securecode-ai/server:1.2.7
+  securecode-ai/server:1.2.8
 ```
 
 Каталог секретов содержит файлы `securecode_tls_cert`, `securecode_tls_key`,
@@ -82,7 +82,7 @@ docker run --rm --name securecode-worker --network securecode \
   -e SECURECODE_WORKER_TOKEN_FILE=/run/secrets/worker_token \
   -e SECURECODE_WORKER_ID=worker-1 \
   -e SECURECODE_WORKER_TARGET=/workspace \
-  securecode-ai/worker:1.2.7
+  securecode-ai/worker:1.2.8
 ```
 
 Переменная `SECURECODE_WORKER_RUN_ID` ограничивает worker одним запуском. Для GitLab

@@ -36,6 +36,7 @@ from securecode_ai.core.reports import (
 from securecode_ai.core.root_cause import RootCauseRecord
 from securecode_ai.core.validation import ValidationLadderResult
 
+from .git_trust import operator_safe_directory
 from .native_sources import NativeSourceCatalogue
 from .product_execution import (
     ProductDeterministicExecution,
@@ -141,10 +142,10 @@ class GitProductAuditStateProbe:
             GIT_CONFIG_NOSYSTEM="1",
             GIT_CONFIG_GLOBAL=os.devnull,
             GIT_CONFIG_SYSTEM=os.devnull,
-            GIT_CONFIG_COUNT="0",
             GIT_NO_REPLACE_OBJECTS="1",
             GIT_TERMINAL_PROMPT="0",
             GIT_OPTIONAL_LOCKS="0",
+            **operator_safe_directory(self._checkout, self._git),
         )
         failed = False
         try:

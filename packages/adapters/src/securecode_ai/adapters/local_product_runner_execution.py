@@ -12,6 +12,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Lock
+from typing import Any
 
 from securecode_ai.contracts import (
     AuditRunOutcome,
@@ -81,7 +82,7 @@ from .local_product_runner_identity import select_run_id, select_run_identity
 from .local_product_runner_roles import build_role_request
 from .model import AuthorizedProviderHarness
 from .native_repository_tools import NATIVE_REPOSITORY_TOOLS_JSON
-from .native_sources import build_native_source_catalogue
+from .native_sources import NativeSourceCatalogue, build_native_source_catalogue
 from .openai_compatible_local import OpenAICompatibleLocalHttpConnector
 from .product_audit import (
     GitProductAuditStateProbe,
@@ -179,7 +180,7 @@ def _run_local_product_scan(
         raise LocalProductConfigurationError()
     # Local execution is deliberately literal loopback, with no DNS authority.
     if local_provider and not ipaddress.ip_address(profile.endpoint.authority).is_loopback:
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("LOCAL_PROVIDER_NOT_LOOPBACK")
     policy_pin = _pin(policy.policy_id, policy.policy_version, policy.canonical_content_hash())
     workflow = build_default_workflow_definition(policy_pin=policy_pin)
     expected = {
@@ -195,7 +196,7 @@ def _run_local_product_scan(
         for key, value in host.artifact_manifest.items()
         if key != "git_executable_sha256"
     } != expected:
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("ARTIFACT_MANIFEST_MISMATCH")
     root = Path(target).absolute()
     if root.is_symlink() or not root.is_dir() or "\x00" in target:
         raise LocalProductConfigurationError()
@@ -381,7 +382,7 @@ def _run_local_product_scan(
             ).result.eligibility
             is not PreflightEligibility.ELIGIBLE
         ):
-            raise LocalProductUnavailableError()
+            raise LocalProductUnavailableError("PROVIDER_NOT_ADMITTED")
         cancellation.checkpoint()
     objects = Path(
         _run_git_command(
@@ -398,7 +399,7 @@ def _run_local_product_scan(
         objects = checkout / objects
     reader = reader_factory(objects_dir=objects.absolute(), git_executable=git)
     content_key = os.urandom(32)
-    catalogue = build_native_source_catalogue(
+    catalogue = _supported_catalogue(
         reader=reader,
         head_sha=head,
         tenant_id=policy.tenant_scope,
@@ -419,7 +420,7 @@ def _run_local_product_scan(
         )
     )
     if started.snapshot is None:
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError("WORKFLOW_START_FAILED")
     latest = [started.snapshot]
     runtime_state_lock = Lock()
 
@@ -442,7 +443,7 @@ def _run_local_product_scan(
                 )
             )
             if observed.snapshot is None:
-                raise LocalProductUnavailableError()
+                raise LocalProductUnavailableError("WORKFLOW_SNAPSHOT_FAILED")
             latest[0] = observed.snapshot
             return observed.snapshot
 
@@ -477,7 +478,7 @@ def _run_local_product_scan(
     def cancel() -> None:
         nonlocal runtime_cancelled
         if not runtime_state_lock.acquire(timeout=_RUNTIME_CANCEL_LOCK_TIMEOUT_SECONDS):
-            raise LocalProductUnavailableError()
+            raise LocalProductUnavailableError("CANCEL_LOCK_TIMEOUT")
         try:
             if runtime_cancelled:
                 return
@@ -497,7 +498,7 @@ def _run_local_product_scan(
                 )
             )
             if cancelled.snapshot is None:
-                raise LocalProductUnavailableError()
+                raise LocalProductUnavailableError("WORKFLOW_CANCEL_FAILED")
             latest[0] = cancelled.snapshot
             runtime_cancelled = True
         finally:
@@ -718,7 +719,7 @@ def _run_local_product_scan(
             raise LocalProductCancelledError()
         if result.code == "PRODUCT_AUDIT_SUPERSEDED":
             raise LocalProductSupersededError()
-        raise LocalProductUnavailableError()
+        raise LocalProductUnavailableError(result.code)
     rendered = render_report(result.report, report_format)
     sarif_rendered = render_report(result.report, ReportFormat.SARIF)
     outcome = LocalProductScanResult(
@@ -750,3 +751,12 @@ def _candidate_claim(graph: EvidenceGraph, candidate_id: str) -> tuple[str, ...]
             except ProductRuleMappingError:
                 return ()
     return ()
+
+
+def _supported_catalogue(**arguments: Any) -> NativeSourceCatalogue:
+    try:
+        return build_native_source_catalogue(**arguments)
+    except ValueError as error:
+        if str(error) == "native source supported scope is empty":
+            raise LocalProductUnavailableError("NO_SUPPORTED_SOURCE") from None
+        raise
