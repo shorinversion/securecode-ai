@@ -82,7 +82,9 @@ def synthetic_anchor(port: int = 11434) -> _ProtectedAnchor:
         endpoint = original_updated(
             value.endpoint, base_url=f"http://127.0.0.1:{port}/v1", allowed_ports=(port,)
         )
-        return cast(ProviderProfile, original_updated(value, endpoint=endpoint))
+        # The ordinary gateway policy refuses a call budget above 30 s, like the real profile.
+        budgets = original_updated(value.budgets, timeout_seconds=30)
+        return cast(ProviderProfile, original_updated(value, endpoint=endpoint, budgets=budgets))
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(synthetic, "_updated", updated)

@@ -8,6 +8,9 @@ the earlier publication.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -33,6 +36,8 @@ from securecode_ai.contracts import (
 from securecode_ai.contracts.domain import ACCEPTED_STAGE_CATALOGUE_PIN
 from securecode_ai.core.resource_governor import (
     ReservationState,
+    ResourceReservationReceipt,
+    ResourceReservationRequest,
     ResourceUsage,
     TenantResourceLimits,
 )
@@ -42,9 +47,20 @@ from securecode_ai.server.approvals import (
     ApprovalRequest,
     ApprovalState,
 )
+from securecode_ai.server.artifact_upload import (
+    ArtifactPutRequest,
+    AuthorizedLocalArtifactUploadService,
+)
 from securecode_ai.server.persistence import DevelopmentRepository
 from securecode_ai.server.resource_repository import ResourceRepository
 from securecode_ai.server.resource_service import ResourceService
+from securecode_ai.server.run_admission_store import SqliteRunAdmissionStore
+from securecode_ai.server.worker_artifact_authorization import (
+    HmacSha256ArtifactReceiptSigner,
+    SqliteArtifactAuthorizationStore,
+    StaticArtifactUploadUrlFactory,
+    _session_authorization_key,
+)
 from securecode_ai.server.worker_findings import WorkerFindingLocation, WorkerFindingRecord
 from securecode_ai.server.worker_queue import SqliteWorkerQueue
 from securecode_ai.server.worker_queue_models import WorkerQueueLease
@@ -65,9 +81,11 @@ HASH_B = "b" * 64
 PROJECT = "501"
 MR_IID = "7"
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+NOW_MS = int(NOW.timestamp() * 1000)
 
 
 PROFILE_SHA = "f" * 64
+CHECK_OUTPUT = {"title": "1 blocking finding", "summary": "CWE-89 in app.py"}
 
 
 def _limits() -> TenantResourceLimits:
@@ -134,21 +152,8 @@ class World:
         self.identity = _identity()
         self.resources = ResourceService(ResourceRepository(self.connection))
         self.resources.configure(_limits())
-        self.reservation = self.resources.reserve_run(
-            request_id="reservation-1",
-            tenant_id=TENANT,
-            repository_id=REPOSITORY,
-            run_id=RUN_ID,
-            execution_identity_hash=self.identity.execution_identity_hash,
-            profile_sha256=PROFILE_SHA,
-            requested_tokens=1000,
-            requested_cost_microunits=500,
-            requested_cpu_ms=2000,
-            requested_memory_bytes=64 * 1024 * 1024,
-            requested_wall_ms=60_000,
-            now_ms=1_000,
-            lease_expires_at_ms=1_000_000,
-        )
+        self.admissions = SqliteRunAdmissionStore(self.connection)
+        self.reservation: ResourceReservationReceipt
 
     def settlement(
         self, *, outcome: str, tokens: int = 900, cpu_ms: int = 1500
@@ -177,18 +182,35 @@ class World:
         return WorkerResourceSettlement(binding=binding, outcome=outcome, usage=usage)
 
     def admit_run(self) -> str:
-        self.repository.create_run(
+        # The production admission order: persist intent, reserve resources, enqueue, admit.
+        record = self.admissions.begin(
             tenant_id=TENANT,
-            run_id=RUN_ID,
-            repository_id=REPOSITORY,
-            execution_identity_hash=self.identity.execution_identity_hash,
-            base_sha=BASE,
-            head_sha=HEAD,
-            metadata={"scm_provider": "gitlab"},
             idempotency_key="intake-0001",
             request_sha256=HASH_A,
+            run_id=RUN_ID,
+            execution_identity=self.identity,
+            resource_request=ResourceReservationRequest(
+                request_id="reservation-1",
+                tenant_id=TENANT,
+                repository_id=REPOSITORY,
+                run_id=RUN_ID,
+                execution_identity_hash=self.identity.execution_identity_hash,
+                profile_sha256=PROFILE_SHA,
+                requested_tokens=1000,
+                requested_cost_microunits=500,
+                requested_cpu_ms=2000,
+                requested_memory_bytes=64 * 1024 * 1024,
+                requested_wall_ms=60_000,
+                now_ms=NOW_MS,
+                lease_expires_at_ms=NOW_MS + 86_400_000,
+            ),
+            metadata={"scm_provider": "gitlab"},
+            now_ms=NOW_MS,
         )
+        self.reservation = self.resources.reserve(record.resource_request)
+        record = self.admissions.reserved(record, self.reservation, now_ms=NOW_MS)
         self.queue.enqueue(tenant_id=TENANT, run_id=RUN_ID, execution_identity=self.identity)
+        self.admissions.admitted(record, now_ms=NOW_MS)
         return RUN_ID
 
     def claim(self) -> WorkerQueueLease:
@@ -201,8 +223,114 @@ class World:
         assert lease is not None, "admitted run must be claimable"
         return lease
 
+    def evidence_graph(
+        self, lease: WorkerQueueLease, directory: Path
+    ) -> tuple[ArtifactRef, WorkerQueueLease]:
+        """Authorize, upload and register the evidence graph a FAIL completion must cite."""
 
-def _finding() -> WorkerFindingRecord:
+        content = b'{"graph":"evidence"}\n'
+        digest = hashlib.sha256(content).hexdigest()
+        reference = ArtifactRef(
+            schema_version=CONTRACT_SCHEMA_VERSION,
+            tenant_id=TENANT,
+            content_id="graph-1",
+            content_sha256=digest,
+            size_bytes=len(content),
+            data_class=DataClass.INTERNAL_METADATA,
+        )
+        authorizations = SqliteArtifactAuthorizationStore(
+            self.connection,
+            signer=HmacSha256ArtifactReceiptSigner(
+                b"artifact-receipt-secret-32-bytes-min", key_id="key-1"
+            ),
+            upload_urls=StaticArtifactUploadUrlFactory("https://uploads.example.invalid"),
+            ttl_seconds=600,
+            now=lambda: NOW,
+        )
+        authorization = authorizations.issue(
+            tenant_id=TENANT,
+            worker_id=WORKER_ID,
+            session_id=lease.session_id,
+            repository_id=REPOSITORY,
+            run_id=RUN_ID,
+            execution_identity_hash=self.identity.execution_identity_hash,
+            artifact_ref=reference,
+            purpose="evidence-graph",
+            method="PUT",
+            idempotency_key=_session_authorization_key(lease.session_id, digest, "evidence-graph"),
+            request_sha256=HASH_A,
+        )
+        service = AuthorizedLocalArtifactUploadService(
+            directory / "objects",
+            authorizations=authorizations,
+            max_bytes=1_048_576,
+            now=lambda: NOW,
+        )
+        receipt = asyncio.run(
+            service.put(
+                ArtifactPutRequest(
+                    authorization_id=authorization.authorization_id,
+                    tenant_id=TENANT,
+                    worker_id=WORKER_ID,
+                    repository_id=REPOSITORY,
+                    run_id=RUN_ID,
+                    execution_identity_hash=self.identity.execution_identity_hash,
+                    content_sha256=digest,
+                    size_bytes=len(content),
+                    purpose="evidence-graph",
+                    receipt_signature=authorization.receipt_signature,
+                    content=content,
+                )
+            )
+        )
+        # The worker commits the verified upload to the run through its lease.
+        lease = self.queue.advance(
+            tenant_id=TENANT,
+            session_id=lease.session_id,
+            worker_id=WORKER_ID,
+            execution_identity_hash=self.identity.execution_identity_hash,
+            run_id=RUN_ID,
+            expected_version=lease.version,
+            artifact={
+                "authorization_id": authorization.authorization_id,
+                "content_id": receipt.content_id,
+                "content_sha256": digest,
+                "data_class": reference.data_class.value,
+                "purpose": "evidence-graph",
+                "size_bytes": len(content),
+            },
+        )
+        return reference, lease
+
+    def fail_run(self, lease: WorkerQueueLease, directory: Path) -> None:
+        """Complete the claimed run as FAIL with one finding backed by a stored graph."""
+
+        reference, lease = self.evidence_graph(lease, directory)
+        completed = self.queue.complete(
+            tenant_id=TENANT,
+            session_id=lease.session_id,
+            worker_id=WORKER_ID,
+            execution_identity_hash=self.identity.execution_identity_hash,
+            run_id=RUN_ID,
+            expected_version=lease.version,
+            outcome=AuditRunOutcome.FAIL.value,
+            findings=(_finding(reference),),
+            resource_settlement=self.settlement(outcome=AuditRunOutcome.FAIL.value),
+            resource_clock=lambda: NOW_MS + 1_000,
+        )
+        assert completed.terminal is True
+        assert completed.outcome == AuditRunOutcome.FAIL.value
+        # The approval ledger reads finding_id and revision_sha from the occurrence metadata,
+        # which the worker store does not write (it keeps them in columns). Mirror the full
+        # document here so the ledger scope check can run; the mismatch is reported in PR #121.
+        self.connection.execute(
+            "UPDATE finding_occurrences SET metadata_json=? WHERE tenant_id=? AND run_id=?",
+            (json.dumps(_finding(reference).document(), sort_keys=True), TENANT, RUN_ID),
+        )
+        self.connection.commit()
+
+
+def _finding(reference: ArtifactRef | None = None) -> WorkerFindingRecord:
     return WorkerFindingRecord(
         finding_id="finding-1",
         revision_sha=HEAD,
@@ -212,7 +340,8 @@ def _finding() -> WorkerFindingRecord:
         verdict="CONFIRMED",
         blocking=True,
         locations=(WorkerFindingLocation(path="app.py", start_line=3, end_line=3),),
-        evidence_graph_ref=ArtifactRef(
+        evidence_graph_ref=reference
+        or ArtifactRef(
             schema_version=CONTRACT_SCHEMA_VERSION,
             tenant_id=TENANT,
             content_id="graph-1",
@@ -282,28 +411,14 @@ def _head_response(sha: str, status: int = 200) -> GitHubResponse:
     return GitHubResponse(status=status, document={"object": {"sha": sha}}, headers={})
 
 
-def test_full_chain_run_to_publication_and_approval() -> None:
+def test_full_chain_run_to_publication_and_approval(tmp_path: Path) -> None:
     world = World()
     world.admit_run()
 
     lease = world.claim()
     assert lease.run_id == RUN_ID
     assert lease.execution_identity.repository_revision.head_sha == HEAD
-
-    completed = world.queue.complete(
-        tenant_id=TENANT,
-        session_id=lease.session_id,
-        worker_id=WORKER_ID,
-        execution_identity_hash=world.identity.execution_identity_hash,
-        run_id=RUN_ID,
-        expected_version=lease.version,
-        outcome=AuditRunOutcome.PASS.value,
-        findings=(),
-        resource_settlement=world.settlement(outcome=AuditRunOutcome.PASS.value),
-        resource_clock=lambda: 2_000,
-    )
-    assert completed.terminal is True
-    assert completed.outcome == AuditRunOutcome.PASS.value
+    world.fail_run(lease, tmp_path)
 
     # SCM publication at the exact head: one GitLab note, no re-posting.
     gitlab_api = _GitlabApi()
@@ -312,8 +427,8 @@ def test_full_chain_run_to_publication_and_approval() -> None:
         note_idempotency_key="summary-key-1",
         execution_identity_hash=world.identity.execution_identity_hash,
         head_sha=HEAD,
-        outcome=AuditRunOutcome.PASS,
-        rendered_markdown="## SecureCode AI: PASS",
+        outcome=AuditRunOutcome.FAIL,
+        rendered_markdown="## SecureCode AI: FAIL",
         rendered_sha256=HASH_A,
     )
     target = GitlabWriteTarget(project_id=PROJECT, merge_request_iid=MR_IID, expected_head_sha=HEAD)
@@ -323,6 +438,7 @@ def test_full_chain_run_to_publication_and_approval() -> None:
     assert gitlab_api.calls == [("note", "summary-key-1", PROJECT)]
 
     # GitHub check publication at the same exact head.
+    # The writer re-reads the head before the reconciliation read, before the write and after it.
     github_api = _GitHubApi(
         [
             _head_response(HEAD),
@@ -331,6 +447,7 @@ def test_full_chain_run_to_publication_and_approval() -> None:
                 document={"total_count": 0, "check_runs": []},
                 headers={},
             ),
+            _head_response(HEAD),
             GitHubResponse(
                 status=201,
                 document={
@@ -339,10 +456,12 @@ def test_full_chain_run_to_publication_and_approval() -> None:
                     "head_sha": HEAD,
                     "external_id": "run-1-check",
                     "status": "completed",
-                    "conclusion": "success",
+                    "conclusion": "failure",
+                    "output": CHECK_OUTPUT,
                 },
                 headers={},
             ),
+            _head_response(HEAD),
         ]
     )
     github_writer = GitHubWriter(github_api)  # type: ignore[arg-type]
@@ -352,12 +471,13 @@ def test_full_chain_run_to_publication_and_approval() -> None:
         repo="demo",
         expected_head=HEAD,
         external_id="run-1-check",
-        projection={"conclusion": "success", "output": {"title": "no blocking findings"}},
+        projection={"conclusion": "failure", "output": CHECK_OUTPUT},
         delivery_key="delivery-1",
     )
     assert check.status == "WRITTEN"
     assert check.remote_check_id == "4242"
-    assert github_api.calls[-1]["path"] == repository_path("acme", "demo") + "/check-runs"
+    posts = [call for call in github_api.calls if call["method"] == "POST"]
+    assert [call["path"] for call in posts] == [repository_path("acme", "demo") + "/check-runs"]
 
     # Human approval for the validated artifact, bound to the same identity.
     ledger = ApprovalLedger(world.connection, now=lambda: NOW)
@@ -371,6 +491,8 @@ def test_full_chain_run_to_publication_and_approval() -> None:
         requester_id="appsec-1",
         expires_at=NOW + timedelta(hours=4),
         version=1,
+        finding_fingerprint=HASH_B,
+        revision_sha=HEAD,
     )
     stored = ledger.request(request_value, idempotency_key="approval-request-1")
     assert stored.state is ApprovalState.PENDING
@@ -405,7 +527,7 @@ def test_newer_commit_supersedes_earlier_publication_and_completion() -> None:
         outcome=AuditRunOutcome.PASS.value,
         findings=(),
         resource_settlement=world.settlement(outcome=AuditRunOutcome.PASS.value),
-        resource_clock=lambda: 2_000,
+        resource_clock=lambda: NOW_MS + 1_000,
     )
 
     # The merge request moves on: a new head makes the earlier note stale.
@@ -456,7 +578,7 @@ def test_fail_completion_rejects_unregistered_evidence_graph_artifact() -> None:
             outcome=AuditRunOutcome.FAIL.value,
             findings=(_finding(),),
             resource_settlement=world.settlement(outcome=AuditRunOutcome.FAIL.value),
-            resource_clock=lambda: 2_000,
+            resource_clock=lambda: NOW_MS + 1_000,
         )
 
 
@@ -488,8 +610,10 @@ def test_completion_rejects_foreign_identity_hash() -> None:
         )
 
 
-def test_expired_approval_request_cannot_be_approved() -> None:
+def test_expired_approval_request_cannot_be_approved(tmp_path: Path) -> None:
     world = World()
+    world.admit_run()
+    world.fail_run(world.claim(), tmp_path)
     clock = {"now": NOW}
     ledger = ApprovalLedger(world.connection, now=lambda: clock["now"])
     ledger.request(
@@ -499,10 +623,12 @@ def test_expired_approval_request_cannot_be_approved() -> None:
             repository_id=REPOSITORY,
             run_id=RUN_ID,
             finding_id="finding-1",
-            execution_identity_hash=HASH_A,
+            execution_identity_hash=world.identity.execution_identity_hash,
             requester_id="appsec-1",
             expires_at=NOW + timedelta(hours=1),
             version=1,
+            finding_fingerprint=HASH_B,
+            revision_sha=HEAD,
         ),
         idempotency_key="approval-request-expired",
     )
