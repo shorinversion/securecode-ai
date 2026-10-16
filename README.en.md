@@ -153,7 +153,14 @@ code `3` the report lists the candidates without a final decision and the reason
 each: they are places to check by hand, not a clean result. JSON has them in
 `undecided_candidates` with the same counters and `retries_exhausted`; candidates already
 covered by a confirmed finding at the same place are in `covered_candidates` with
-`covered_by`, and the run cost is `model_cost` (`usd`, `known`). A run that stops without a
+`covered_by`, and the run cost is `model_cost` (`usd`, `known`). When a stage does not
+complete, the report names the cause by code; JSON has it in `coverage_diagnostics`
+(`deterministic.reasons`: `OBSTACLE:…`, `SCAN_INCOMPLETE`, `RECEIPT_NOT_SUCCEEDED:…`,
+`BINDING_MISMATCH:…`, `EXCEPTION:…`, never a path or source). `SECURECODE_TRACE=<file>`
+appends a JSONL trace of the stages (statuses, exception types, durations; no source,
+prompt or path), and `SECURECODE_SCAN_BUDGET_SECONDS` (60..600) sets the time for all
+scanner processes: by default two seconds per file, between one and ten minutes (D-121).
+A run that stops without a
 report names a reason code (for example `GIT_COMMAND_FAILED`); a checkout owned by another
 user is audited when Git trusts it (`git config --global --add safe.directory <path>`).
 The Markdown and HTML reports are in Russian;

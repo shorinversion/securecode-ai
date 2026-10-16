@@ -34,6 +34,8 @@ from securecode_ai.core.scanning import (
     raw_signal_payload_bytes,
 )
 
+from .trace import trace_event
+
 _POLL_SECONDS = 0.05
 _TEARDOWN_SECONDS = 0.2
 
@@ -217,8 +219,14 @@ def run_scanner_plugin(
         _terminate_bounded(process)
         _close_quietly(parent)
 
-    elapsed_ns, receipt, failure_code = received
+    elapsed_ns, receipt, failure_code, detail = received
     if failure_code is not None:
+        trace_event(
+            "scanner_worker_failed",
+            code=failure_code.value,
+            error=detail,
+            seconds=elapsed_ns / 1_000_000_000,
+        )
         status = (
             ScannerRunStatus.TIMEOUT
             if failure_code is ScannerFailureCode.TIME_BUDGET_EXCEEDED
@@ -309,8 +317,14 @@ def _scanner_worker_main(
                     for signal in output.signals
                 ],
             }
-    except BaseException:
-        receipt = {"request_id": request.request_id, "status": "CRASHED"}
+    except BaseException as error:
+        # Only the exception type crosses: its message may quote source text.
+        name = type(error).__name__
+        receipt = {
+            "request_id": request.request_id,
+            "status": "CRASHED",
+            "error": name if name.isidentifier() and name.isascii() else "?",
+        }
     try:
         payload = json.dumps(
             receipt, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":")
@@ -343,31 +357,45 @@ def _receive_worker_receipt(
     clock_ns: Callable[[], int],
     logical_started_ns: int,
     physical_started_ns: int,
-) -> tuple[int, dict[str, object] | None, ScannerFailureCode | None]:
+) -> tuple[int, dict[str, object] | None, ScannerFailureCode | None, str | None]:
     while True:
         elapsed_ns = _elapsed_ns(clock_ns, logical_started_ns, physical_started_ns)
         if elapsed_ns is None:
-            return 0, None, ScannerFailureCode.ISOLATION_REQUIRED
+            return 0, None, ScannerFailureCode.ISOLATION_REQUIRED, None
         if elapsed_ns > budget.max_elapsed_ns:
-            return elapsed_ns, None, ScannerFailureCode.TIME_BUDGET_EXCEEDED
+            return elapsed_ns, None, ScannerFailureCode.TIME_BUDGET_EXCEEDED, None
         remaining_seconds = (budget.max_elapsed_ns - elapsed_ns) / 1_000_000_000
         try:
             if connection.poll(min(_POLL_SECONDS, remaining_seconds)):
                 payload = connection.recv_bytes(maxlength=budget.max_transport_bytes)
                 receipt = json.loads(payload.decode("ascii"))
                 if type(receipt) is not dict:
-                    return elapsed_ns, None, None
+                    return elapsed_ns, None, None, None
                 if receipt.get("status") == "CRASHED":
-                    return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED
-                return elapsed_ns, receipt, None
+                    error = receipt.get("error")
+                    return (
+                        elapsed_ns,
+                        None,
+                        ScannerFailureCode.PLUGIN_CRASHED,
+                        error if type(error) is str and error.isidentifier() else None,
+                    )
+                return elapsed_ns, receipt, None, None
         except EOFError:
-            return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED
+            return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED, "EOF"
         except OSError:
-            return elapsed_ns, None, ScannerFailureCode.OUTPUT_BUDGET_EXCEEDED
+            return elapsed_ns, None, ScannerFailureCode.OUTPUT_BUDGET_EXCEEDED, None
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
-            return elapsed_ns, None, None
+            return elapsed_ns, None, None, None
         if not process.is_alive():
-            return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED
+            # The worker may have sent its receipt between the poll and this check; a
+            # receipt still in the pipe is read before the run counts as a crash.
+            try:
+                pending = connection.poll(0)
+            except OSError:
+                pending = False
+            if pending:
+                continue
+            return elapsed_ns, None, ScannerFailureCode.PLUGIN_CRASHED, "EXITED"
 
 
 def _validate_receipt(

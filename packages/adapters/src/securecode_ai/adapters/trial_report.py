@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from .coverage_causes import gap_detail
 from .trial_architect import ProposedFix
 from .trial_groups import finding_groups
 
@@ -173,6 +174,8 @@ class TrialReportContext:
     unresolved: tuple[tuple[str, str, int, str, str], ...] = ()
     # Undecided candidates of a weakness that another finding already confirmed.
     covered_unresolved: int = 0
+    # Why the deterministic stage did not complete (fixed codes), when it did not.
+    deterministic_reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,7 +225,7 @@ def render_trial_report(
         for number, entry in enumerate(entries, start=1)
     )
     outcome = str(document.get("outcome"))
-    gaps = _coverage_gaps(document)
+    gaps = _coverage_gaps(document, context.deterministic_reasons)
     verdict = _OUTCOMES.get(outcome, outcome)
     if outcome == "INDETERMINATE":
         verdict += (
@@ -384,16 +387,31 @@ def report_paths(document: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(sorted({entry.path for entry in _entries(document)}))
 
 
-def _coverage_gaps(document: Mapping[str, object]) -> tuple[str, ...]:
+def _coverage_gaps(
+    document: Mapping[str, object], deterministic_reasons: tuple[str, ...] = ()
+) -> tuple[str, ...]:
     manifest = document.get("coverage_manifest")
     units = _dicts(manifest.get("units")) if isinstance(manifest, dict) else []
     counts: dict[str, int] = {}
+    skipped: dict[str, str] = {}
     for unit in units:
-        if unit.get("required") and unit.get("coverage_status") == "FAILED":
-            stage = str(unit.get("stage_id"))
-            label = _STAGES.get(stage, stage)
+        if not unit.get("required"):
+            continue
+        stage = str(unit.get("stage_id"))
+        label = _STAGES.get(stage, stage)
+        status = unit.get("coverage_status")
+        if status == "FAILED":
             counts[label] = counts.get(label, 0) + 1
-    return tuple(f"{label}: не завершена ({count})" for label, count in counts.items())
+        elif status == "SKIPPED":
+            skipped[label] = (
+                gap_detail(unit.get("reason_code"), deterministic_reasons)
+                if stage == "deterministic_analysis"
+                else str(unit.get("reason_code"))
+            )
+    return (
+        *(f"{label}: не завершена ({count})" for label, count in counts.items()),
+        *(f"{label}: не завершена, причина {detail}" for label, detail in skipped.items()),
+    )
 
 
 _HEADER: Final = (

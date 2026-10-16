@@ -168,6 +168,13 @@ Together, корпоративный шлюз. Необязательные на
 `undecided_candidates` с теми же счётчиками и признаком `retries_exhausted`; кандидаты,
 которые уже покрыты подтверждённой находкой того же места, — в `covered_candidates` с
 полем `covered_by`. Стоимость прогона — в `model_cost` (`usd`, `known`).
+Если этап не завершён, отчёт называет причину кодом; в JSON она лежит в
+`coverage_diagnostics` (`deterministic.reasons`: `OBSTACLE:…`, `SCAN_INCOMPLETE`,
+`RECEIPT_NOT_SUCCEEDED:…`, `BINDING_MISMATCH:…`, `EXCEPTION:…`; в них нет путей и
+исходников). `SECURECODE_TRACE=файл` дописывает JSONL-трассу этапов (статусы,
+типы исключений, длительности; без исходников, промптов и путей),
+`SECURECODE_SCAN_BUDGET_SECONDS` (60..600) задаёт время на все процессы сканеров: по
+умолчанию две секунды на файл, но не меньше минуты и не больше десяти (D-121).
 
 Пример фрагмента отчёта:
 

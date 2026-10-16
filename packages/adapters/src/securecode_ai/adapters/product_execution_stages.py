@@ -176,15 +176,31 @@ class ProductDeterministicExecution:
     dependencies: ProductDependencyStageResult | None
     scan: ProductDeterministicScanResult
     obstacles: tuple[str, ...]
+    # (obstacle, exception label) of each child that raised; diagnostics only, not evidence.
+    obstacle_errors: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_complete(self) -> bool:
+        return not self.incompleteness_reasons()
+
+    def incompleteness_reasons(self) -> tuple[str, ...]:
+        """Fixed, source-free reasons why this execution cannot back a PASS; empty if it can.
+
+        ``OBSTACLE:<id>`` and ``SCAN_INCOMPLETE`` name a child that did not finish,
+        ``RECEIPT_NOT_SUCCEEDED:<status>:<code>`` a scanner worker that did not return a
+        result, ``BINDING_MISMATCH:<what>`` an inconsistency between the retained facts,
+        and ``EXCEPTION:<type>`` an unexpected error while checking them.
+        """
+
         try:
             if self.obstacles or not self.scan.is_complete:
-                return False
+                return (
+                    *(f"OBSTACLE:{item}" for item in self.obstacles),
+                    *(() if self.scan.is_complete else ("SCAN_INCOMPLETE",)),
+                )
             program_graph = self.scan.program_graph
             if self.scan.repository_id != self.repository_id:
-                return False
+                return ("BINDING_MISMATCH:scan_repository",)
             if self.catalogue.indexes:
                 if (
                     type(program_graph) is not ProgramGraph
@@ -205,7 +221,7 @@ class ProductDeterministicExecution:
                         }
                     )
                 ):
-                    return False
+                    return ("BINDING_MISMATCH:program_graph",)
             elif (
                 program_graph is not None
                 or self.scan.repository_id != self.repository_id
@@ -217,7 +233,7 @@ class ProductDeterministicExecution:
                 or self.scan.graph.evidence
                 or self.scan.graph.edges
             ):
-                return False
+                return ("BINDING_MISMATCH:empty_catalogue",)
             self.catalogue.repository_view()
             self.scan.repository_view(self.catalogue)
             producer = first_party_scanner_producer()
@@ -237,13 +253,15 @@ class ProductDeterministicExecution:
             if self.scan.source_bindings != expected_bindings or len(self.scan.receipts) != len(
                 expected_bindings
             ):
-                return False
+                return ("BINDING_MISMATCH:scanner_source_bindings",)
             for binding, receipt in zip(expected_bindings, self.scan.receipts, strict=True):
                 receipt.__post_init__()
+                if receipt.status is not ScannerRunStatus.SUCCEEDED:
+                    code = receipt.failure_code.value if receipt.failure_code else "NONE"
+                    return (f"RECEIPT_NOT_SUCCEEDED:{receipt.status.value}:{code}",)
                 if (
                     receipt.request_id != binding.request_id
                     or receipt.scanner.producer != producer
-                    or receipt.status is not ScannerRunStatus.SUCCEEDED
                     or receipt.isolation is not ScannerIsolationMode.APPROVED_ISOLATED_WORKER
                     or receipt.input_bytes != binding.size_bytes
                     or any(
@@ -254,11 +272,11 @@ class ProductDeterministicExecution:
                         for signal in receipt.signals
                     )
                 ):
-                    return False
+                    return ("BINDING_MISMATCH:scanner_receipt",)
             if not scanner_facts_match_receipts(
                 self.catalogue, self.scan, repository_id=self.repository_id
             ):
-                return False
+                return ("BINDING_MISMATCH:scanner_facts",)
             snapshot = self.catalogue.snapshot
             files = tuple(
                 RepositoryFile(f.path, len(f.content), f.content_sha256) for f in snapshot.files
@@ -277,9 +295,9 @@ class ProductDeterministicExecution:
                 for index in self.catalogue.indexes
             }
             if discovered_language_files != indexed_language_files:
-                return False
+                return ("BINDING_MISMATCH:language_inventory",)
             if not self.catalogue.indexes and discovery.languages:
-                return False
+                return ("BINDING_MISMATCH:language_inventory",)
             python = any(entry.language is LanguageId.PYTHON for entry in discovery.languages)
             manifests = discovery.dependency_manifests
             expected_ids = tuple(
@@ -297,11 +315,11 @@ class ProductDeterministicExecution:
                 or self.discovery_sha256 != discovery.manifest_sha256
                 or self.selected_child_ids != expected_ids
             ):
-                return False
+                return ("BINDING_MISMATCH:child_selection",)
             expected = {}
             if python:
                 if program_graph is None:
-                    return False
+                    return ("BINDING_MISMATCH:program_graph",)
                 expected["python_parse_symbols"] = tuple(
                     index.index_sha256
                     for index in self.catalogue.indexes
@@ -331,7 +349,7 @@ class ProductDeterministicExecution:
                         for f in snapshot.files
                     )
                 ):
-                    return False
+                    return ("BINDING_MISMATCH:secret_stage",)
                 for secret_result in secrets.results:
                     secret_result.__post_init__()
                 material = [
@@ -345,7 +363,7 @@ class ProductDeterministicExecution:
                     json.dumps(material, separators=(",", ":")).encode()
                 ).hexdigest()
                 if secrets.output_sha256 != digest:
-                    return False
+                    return ("BINDING_MISMATCH:secret_digest",)
                 expected["secret_scan"] = (
                     digest,
                     *_program_graph_language_bindings(self.catalogue, program_graph),
@@ -365,7 +383,7 @@ class ProductDeterministicExecution:
                     or dependencies.manifest_bindings != bindings
                     or len(dependencies.results) != len(scanned)
                 ):
-                    return False
+                    return ("BINDING_MISMATCH:dependency_stage",)
                 metadata = {f.path: f for f in files}
                 for manifest, result in zip(scanned, dependencies.results, strict=True):
                     result.__post_init__()
@@ -380,7 +398,7 @@ class ProductDeterministicExecution:
                         result.manifest_scan_sha256 != parsed.manifest_scan_sha256
                         or result.coordinates != parsed.dependencies
                     ):
-                        return False
+                        return ("BINDING_MISMATCH:dependency_manifest",)
                 material = [
                     "product-dependency-stage-v1",
                     self.repository_id,
@@ -401,13 +419,15 @@ class ProductDeterministicExecution:
                     json.dumps(material, separators=(",", ":")).encode()
                 ).hexdigest()
                 if dependencies.output_sha256 != digest:
-                    return False
+                    return ("BINDING_MISMATCH:dependency_digest",)
                 expected["dependency_scan"] = (digest,)
-            return self.child_output_hashes == tuple(
+            if self.child_output_hashes == tuple(
                 (stage, expected[stage]) for stage in expected_ids
-            ) and all(hashes for hashes in expected.values())
-        except Exception:
-            return False
+            ) and all(hashes for hashes in expected.values()):
+                return ()
+            return ("BINDING_MISMATCH:child_outputs",)
+        except Exception as error:
+            return (f"EXCEPTION:{type(error).__name__}",)
 
 
 def _program_graph_language_bindings(

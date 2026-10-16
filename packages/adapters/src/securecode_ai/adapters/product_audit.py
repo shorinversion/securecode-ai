@@ -100,6 +100,7 @@ from .product_scan import (
 )
 from .product_scanner import build_product_auditor_tools
 from .secret_detection import SecretFingerprintKey
+from .trace import exception_label, trace_event
 
 for _product_audit_type in (
     GitProductAuditStateProbe,
@@ -656,5 +657,6 @@ def execute_product_audit(
         return compose_product_audit(flow, review, host=finalized)
     except _AuditObstacle as error:
         return ProductAuditObstacle(error.code, error.detail)
-    except Exception:
+    except Exception as error:
+        trace_event("audit_failed", error=exception_label(error))
         return ProductAuditObstacle("PRODUCT_EXECUTION_FAILED", "product execution failed")

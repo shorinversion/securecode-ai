@@ -50,6 +50,7 @@ from .product_execution_stages import (
 from .product_scanner import first_party_scanner_producer, scanner_facts_match_receipts
 from .product_scanner_evidence import _scanner_graph_from_signals
 from .secret_detection import SecretCandidate, SecretScanResult
+from .trace import trace_event
 
 
 def child_fact_catalogue(
@@ -441,7 +442,10 @@ def model_facing_execution(
         )
     except (TypeError, ValueError):
         return execution
-    return model if model.is_complete else execution
+    if model.is_complete:
+        return model
+    trace_event("masked_view_unverified", reasons=model.incompleteness_reasons())
+    return execution
 
 
 def masked_product_sources(execution: ProductDeterministicExecution) -> dict[str, str]:

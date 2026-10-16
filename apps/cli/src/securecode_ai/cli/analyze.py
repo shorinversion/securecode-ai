@@ -9,6 +9,10 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Final, TextIO
 
+from securecode_ai.adapters.coverage_causes import (
+    attach_diagnostics_to_json,
+    deterministic_reasons,
+)
 from securecode_ai.adapters.local_product_runner_config import LocalProductUnavailableError
 from securecode_ai.adapters.local_product_trial import (
     DEEPSEEK_PRICES_PER_MILLION,
@@ -213,6 +217,7 @@ def run_analyze_command(
                 (item.cwe_id, item.path, item.line, item.origin, item.reason) for item in unresolved
             ),
             len(covered),
+            deterministic_reasons(analysis.result.composition),
         )
         if output_dir is not None:
             composition = analysis.result.composition
@@ -330,9 +335,12 @@ def _machine_json(
     rendered: bytes, composition: ProductAuditComposition, cost_microusd: int | None
 ) -> bytes:
     document = json.loads(
-        attach_undecided_to_json(
-            attach_decisions_to_json(
-                attach_groups_to_json(rendered), finding_decisions(composition)
+        attach_diagnostics_to_json(
+            attach_undecided_to_json(
+                attach_decisions_to_json(
+                    attach_groups_to_json(rendered), finding_decisions(composition)
+                ),
+                composition,
             ),
             composition,
         )
@@ -412,7 +420,9 @@ def _summary(analysis: TrialAnalysis, cost_microusd: int | None) -> str:
     except Exception:
         pass
     outcome = {0: "PASS", 2: "FAIL"}.get(analysis.result.exit_code, "INDETERMINATE")
-    return (
+    reasons = deterministic_reasons(analysis.result.composition)
+    incomplete = f"deterministic stage incomplete: {', '.join(reasons)}\n" if reasons else ""
+    return incomplete + (
         f"trial analysis: outcome={outcome} findings={findings} "
         f"provider={analysis.provider} model={analysis.model_id} "
         + (

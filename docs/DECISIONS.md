@@ -1070,3 +1070,43 @@ configuration value stays excluded. Without that trust the run stops before anal
 message naming `safe.directory`. `LocalProductUnavailableError` now carries a fixed,
 source-free reason code that the CLI prints, and a revision without supported source files
 ends with exit code 4 and `NO_SUPPORTED_SOURCE`.
+
+
+## D-121: Name the cause of an incomplete stage; scale the scanner budget with the file count
+
+16 October 2026. `DETERMINISTIC_CHILD_EXECUTION_INCOMPLETE` appeared sporadically and the
+report only said that the deterministic stage did not complete. The cause stayed in the
+process: `ProductDeterministicExecution.is_complete` swallowed every exception, the child
+obstacles were not exported, and a SKIPPED unit was not counted as a gap. Now
+`incompleteness_reasons()` returns fixed codes (`OBSTACLE:<id>`, `SCAN_INCOMPLETE`,
+`RECEIPT_NOT_SUCCEEDED:<status>:<code>`, `BINDING_MISMATCH:<what>`, `EXCEPTION:<type>`);
+`is_complete` is "no reasons". The reasons and the exception types of failed children
+(`obstacle_errors`) go to the JSON report as `coverage_diagnostics`, the readable report
+names a skipped required stage with its reason, and `analyze` prints one line to stderr.
+`CoverageUnit` is a frozen contract and gets no new field; nothing is suffixed to a
+`reason_code`. A scanner worker that crashes reports the exception **type** only: its message
+may quote source text. `SECURECODE_TRACE=<file>` appends a JSONL trace (kind, time, stage,
+status, exception type, counts, durations); a value that is not a short scalar is dropped,
+so no path, source or prompt can enter it.
+
+Measured on the owner's Windows machine, 16 October 2026, deterministic stage only
+(`execute_deterministic_children`, real spawn workers and real OSV):
+
+| Corpus | Runs | Result |
+| --- | --- | --- |
+| one Python file (`tmix`) | 10 | 10 complete, 1.7 s |
+| one Python file and a `requirements.txt` (OSV on the network) | 10 | 10 complete, 2.4 s |
+| 60 small Python files, old fixed 60 s budget | 2 | 2 `OBSTACLE:PRODUCT_STATIC_EXECUTION_FAILED,SCAN_INCOMPLETE`: the budget ended after 49-50 files |
+| 60 small Python files, scaled budget (120 s) | 2 | 2 complete, 77 s |
+
+The cause that could be reproduced is the scanner time budget: every file starts its own
+spawned process (about 1.25 s per file on Windows) and all files shared a fixed 60 s, so a
+repository over roughly 45 files was always incomplete, and a slower machine failed earlier.
+The budget is now `max(60, 2 * files)` seconds, at most 600 s (`SECURECODE_SCAN_BUDGET_SECONDS`
+pins it); one file keeps its 60 s ceiling. The small-corpus flakes of the E2E series
+(`tm1`..`tm15`) were not reproduced in 20 runs; the trace and the reasons are in place to
+catch them. A race in the worker receipt was closed on the way: a receipt sent just before the
+worker exited was counted as `PLUGIN_CRASHED` (the pipe is polled once more after the exit).
+An unreachable advisory service stays an obstacle (`PRODUCT_DEPENDENCY_EXECUTION_FAILED`,
+error `DependencyScanError/SCANNER_FAILURE`) and still blocks PASS: dependencies that were
+not checked must not read as a clean result.
