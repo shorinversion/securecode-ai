@@ -1,0 +1,48 @@
+{
+  "differences": {
+    "consensus+gpt-oss-120b+deepseek - gpt-oss-120b": {
+      "difference": 0.0183,
+      "high": 0.036,
+      "low": 0.0017,
+      "reps": 2000
+    },
+    "consensus+gpt-oss-120b+luna - gpt-oss-120b": {
+      "difference": 0.0375,
+      "high": 0.0558,
+      "low": 0.0198,
+      "reps": 2000
+    },
+    "consensus+qwen-local+luna - luna": {
+      "difference": -0.4083,
+      "high": -0.3533,
+      "low": -0.4598,
+      "reps": 2000
+    },
+    "consensus+qwen-local+luna - securecode": {
+      "difference": 0.1096,
+      "high": 0.1424,
+      "low": 0.08,
+      "reps": 2000
+    },
+    "verified+qwen-local - bandit": {
+      "difference": 0.0632,
+      "high": 0.1089,
+      "low": 0.0207,
+      "reps": 2000
+    },
+    "verified+qwen-local - securecode": {
+      "difference": 0.0204,
+      "high": 0.0408,
+      "low": 0.0,
+      "reps": 2000
+    },
+    "verified+qwen-local - semgrep": {
+      "difference": 0.0713,
+      "high": 0.117,
+      "low": 0.0302,
+      "reps": 2000
+    }
+  },
+  "reps": 2000,
+  "seed": 0
+}

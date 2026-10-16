@@ -32,6 +32,18 @@
   у них нет, все числа пересчитаны по уже сохранённым ответам моделей, без новых запросов.
   Модели Qwen без режима размышления называют какую-либо CWE почти в каждом кейсе, их
   оценка близка к нулю.
+- **Локальная модель.** Qwen 2.5 Coder 7B (Q4_K_M, Ollama на локальной машине, без сети и
+  расходов) — именно она работает в режиме `--provider local`. На тех же 1230 кейсах одна
+  модель без сканеров даёт −0,03 (TPR 6,0%, precision 30,0%): как и остальные Qwen, она
+  называет CWE почти в каждом файле. Проверка находок сканеров даёт 0,23 (TPR 29,2%,
+  precision 70,6%) против 0,21 у сканеров без модели. Разница с одними сканерами +0,020,
+  95% ДИ [+0,000; +0,041]: нижняя граница на нуле, то есть выигрыш скромный и на грани
+  значимости. Зато она надёжно лучше Semgrep (+0,071, ДИ [+0,030; +0,117]) и Bandit (+0,063,
+  ДИ [+0,021; +0,109]). Согласие локальной проверки с Luna даёт 0,32 (precision 84,2%), то
+  есть второй сильный голос тянет оценку вверх, но потолок задаёт слабая модель: до 0,84
+  связки gpt-oss-120b и Luna далеко. Интервалы считает `scripts/owasp_bootstrap.py`
+  (2000 перевыборок внутри категорий и классов «уязвима / безопасна», парные для двух
+  конфигураций) по сохранённым ответам, без новых запросов.
 - **Неудачная попытка улучшить Аудитора.** Отдельный прогон gpt-oss-120b с переписанным
   промптом Аудитора: подсказки как нейтральные кандидаты, без CWE, которые сканер ставит
   больше чем в половине файлов, «уязвимость считается и без недоверенных данных», самый
@@ -246,15 +258,19 @@ Bootstrap по парам, 5000 итераций, 95% доверительный
 | SecureCode: сканеры + проверка DeepSeek Flash | 0,50 | 82,7% | 59,7% |
 | SecureCode: сканеры ∪ DeepSeek Flash | 0,45 | 96,0% | 57,8% |
 | Только модель: DeepSeek Flash | 0,39 | 81,2% | 53,8% |
+| SecureCode: согласие (локальная Qwen 2.5 Coder 7B, Luna) | 0,32 | 30,5% | 84,2% |
 | SecureCode: сканеры ∪ Qwen 3.8 27B | 0,24 | 62,6% | 48,7% |
+| SecureCode: локальная Qwen 2.5 Coder 7B проверяет сканеры | 0,23 | 29,2% | 70,6% |
 | SecureCode: только сканеры | 0,21 | 26,3% | 70,4% |
 | Bandit 1.9.4 | 0,16 | 39,6% | 87,8% |
 | Semgrep 1.177.0 | 0,16 | 32,1% | 57,8% |
 | Только модель: Qwen 3.8 27B | 0,15 | 50,0% | 44,8% |
 | SecureCode: сканеры ∪ Qwen 3.6 FP8 | 0,11 | 90,3% | 43,3% |
+| SecureCode: сканеры ∪ Qwen 2.5 Coder 7B (локально) | 0,11 | 30,8% | 55,4% |
 | SecureCode: сканеры ∪ Qwen 3.6 35B-A3B | 0,10 | 90,3% | 43,3% |
 | Только модель: Qwen 3.6 FP8 | 0,05 | 77,0% | 40,1% |
 | Только модель: Qwen 3.6 35B-A3B | 0,05 | 78,3% | 40,5% |
+| Только модель: Qwen 2.5 Coder 7B (локально) | -0,03 | 6,0% | 30,0% |
 
 | Категория | SecureCode: согласие трёх проверок (gpt-oss-120b, Luna) | SecureCode: сканеры + проверка gpt-oss-120b | Только модель: gpt-oss-120b | SecureCode: сканеры + проверка DeepSeek Flash | Только модель: DeepSeek Flash | SecureCode: только сканеры | Semgrep 1.177.0 | Bandit 1.9.4 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -293,15 +309,19 @@ Bootstrap по парам, 5000 итераций, 95% доверительный
 | SecureCode: сканеры + проверка DeepSeek Flash | 0,50 | 85,7% | 68,7% |
 | SecureCode: сканеры ∪ DeepSeek Flash | 0,45 | 92,5% | 65,4% |
 | Только модель: DeepSeek Flash | 0,39 | 85,7% | 63,7% |
+| SecureCode: согласие (локальная Qwen 2.5 Coder 7B, Luna) | 0,32 | 36,8% | 87,5% |
 | SecureCode: сканеры ∪ Qwen 3.8 27B | 0,25 | 64,7% | 60,6% |
+| SecureCode: локальная Qwen 2.5 Coder 7B проверяет сканеры | 0,22 | 36,8% | 69,0% |
 | SecureCode: только сканеры | 0,20 | 29,3% | 69,6% |
 | Bandit 1.9.4 | 0,16 | 30,1% | 65,6% |
 | Semgrep 1.177.0 | 0,16 | 46,6% | 57,4% |
 | Только модель: Qwen 3.8 27B | 0,14 | 51,9% | 58,0% |
 | SecureCode: сканеры ∪ Qwen 3.6 35B-A3B | 0,10 | 90,2% | 51,5% |
 | SecureCode: сканеры ∪ Qwen 3.6 FP8 | 0,09 | 90,2% | 51,1% |
+| SecureCode: сканеры ∪ Qwen 2.5 Coder 7B (локально) | 0,08 | 36,8% | 54,4% |
 | Только модель: Qwen 3.6 35B-A3B | 0,03 | 81,2% | 49,5% |
 | Только модель: Qwen 3.6 FP8 | 0,01 | 80,5% | 48,9% |
+| Только модель: Qwen 2.5 Coder 7B (локально) | -0,04 | 12,0% | 40,0% |
 
 | Категория | SecureCode: согласие трёх проверок (gpt-oss-120b, Luna) | SecureCode: сканеры + проверка gpt-oss-120b | Только модель: gpt-oss-120b | SecureCode: сканеры + проверка DeepSeek Flash | Только модель: DeepSeek Flash | Только модель: GLM-5.3 | SecureCode: только сканеры | Semgrep 1.177.0 | Bandit 1.9.4 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -332,7 +352,21 @@ uv run python -m scripts.benchmark_v2 run --tool semgrep --manifest ... --databa
 uv run python -m scripts.benchmark_v2 aggregate --manifest ... --predictions predictions \
   --output report/benchmark-v2
 uv run python -m scripts.owasp_benchmark_python --benchmark BenchmarkPython \
-  --semgrep-config semgrep-rules --output report/benchmark-v2/owasp-python.json \
-  --models gpt-oss-120b luna deepseek --verified-models gpt-oss-120b luna deepseek \
-  --consensus gpt-oss-120b luna --consensus gpt-oss-120b deepseek
+  --semgrep-config semgrep-rules \
+  --output report/benchmark-v2/owasp-python-results.json \
+  --models gpt-oss-120b luna deepseek gemma-4-31b gpt-oss-20b qwen3.8-27b qwen3.6-35b \
+  qwen3.6-fp8 qwen-local --sampled-models glm \
+  --verified-models gpt-oss-120b luna deepseek qwen-local \
+  --consensus gpt-oss-120b luna --consensus gpt-oss-120b deepseek \
+  --consensus qwen-local luna
+uv run python -m scripts.owasp_bootstrap --output report/benchmark-v2/owasp-bootstrap.json \
+  --pair consensus+gpt-oss-120b+luna gpt-oss-120b \
+  --pair consensus+gpt-oss-120b+deepseek gpt-oss-120b \
+  --pair verified+qwen-local securecode --pair verified+qwen-local semgrep \
+  --pair verified+qwen-local bandit --pair consensus+qwen-local+luna securecode
 ```
+
+Каждый ответ модели хранится в `report/benchmark-v2/cache/` (по файлу на конфигурацию,
+плюс `scanners.json` с находками сканеров и `cases.json` с разметкой): с этим каталогом
+команда пересчитывает все оценки без сети и без корпуса. Локальная модель
+(`qwen-local`) запускается через Ollama: `ollama pull qwen2.5-coder:7b-instruct-q4_K_M`.
