@@ -178,7 +178,10 @@ def _document() -> dict[str, object]:
 def test_only_confirmed_findings_go_to_the_architect() -> None:
     (finding,) = findings_from_report(_document())
 
-    assert finding == FixFinding("finding-1", "CWE-89", "app.py", 5, 5, "model_native")
+    assert finding.weakness_group.startswith("weakness-")
+    assert finding == FixFinding(
+        "finding-1", "CWE-89", "app.py", 5, 5, "model_native", finding.weakness_group
+    )
     assert report_paths(_document()) == ("app.py",)
 
 
@@ -379,3 +382,110 @@ def test_report_counts_undecided_duplicates_of_confirmed_weaknesses() -> None:
 
     assert "Без окончательного решения:** 0 (ещё 2 — повторные кандидаты" in markdown
     assert "## Кандидаты без окончательного решения" not in markdown
+
+
+_KEYS = (
+    "import os\n"
+    "\n"
+    'KEY_A = "demo-value-a"\n'
+    'KEY_B = "demo-value-b"\n'
+    "\n"
+    "\n"
+    "def use():\n"
+    "    return KEY_A, KEY_B\n"
+)
+
+
+def _credential(finding_id: str, line: int) -> dict[str, object]:
+    return {
+        "finding_id": finding_id,
+        "cwe_id": "CWE-798",
+        "verdict": "CONFIRMED",
+        "candidate_origin": "deterministic",
+        "locations": [{"path": "app.py", "start": {"line": line}, "end": {"line": line}}],
+    }
+
+
+def _two_credentials() -> tuple[FixFinding, FixFinding]:
+    first, second = findings_from_report(
+        {"findings": [_credential("key-a", 3), _credential("key-b", 4)]}
+    )
+    return first, second
+
+
+def test_two_credentials_of_one_file_are_two_fix_targets() -> None:
+    first, second = _two_credentials()
+
+    assert (first.finding_id, second.finding_id) == ("key-a", "key-b")
+    assert first.weakness_group and first.weakness_group != second.weakness_group
+
+
+def test_same_code_weakness_confirmed_twice_still_gets_one_fix() -> None:
+    document = {
+        "findings": [
+            {**_credential("model", 5), "cwe_id": "CWE-89", "candidate_origin": "model_native"},
+            {**_credential("scanner", 7), "cwe_id": "CWE-89"},
+        ]
+    }
+
+    (finding,) = findings_from_report(document)
+
+    assert finding.finding_id == "scanner"
+
+
+def test_second_fix_of_a_file_is_built_on_the_patched_text() -> None:
+    first, second = _two_credentials()
+    prompts: list[dict[str, object]] = []
+    answers = [
+        _answer(
+            3,
+            3,
+            'KEY_A = os.environ.get("KEY_A")\nif not KEY_A:\n    raise RuntimeError("KEY_A unset")',
+        ),
+        None,
+    ]
+
+    def complete(_system: str, user: str) -> str:
+        prompts.append(json.loads(user))
+        answer = answers[len(prompts) - 1]
+        # The first fix added two lines, so the second credential moved from line 4 to 6.
+        return answer or _answer(6, 6, 'KEY_B = os.environ.get("KEY_B")')
+
+    fixes = propose_fixes(
+        [first, second], complete, read_source=lambda _path: _KEYS, apply_check=_applies
+    )
+
+    assert [fix.status for fix in fixes] == ["VALIDATED", "VALIDATED"]
+    assert prompts[1]["finding"] == {"cwe": "CWE-798", "path": "app.py", "lines": [6, 6]}
+    assert "if not KEY_A:" in str(prompts[1]["untrusted_file_content_with_line_numbers"])
+    assert fixes[0].includes == () and fixes[1].includes == ("key-a",)
+    assert fixes[0].weakness_group != fixes[1].weakness_group
+    # Each diff applies to the original file; the second holds both fixes.
+    assert 'KEY_A = os.environ.get("KEY_A")' in fixes[1].diff
+    assert 'KEY_B = os.environ.get("KEY_B")' in fixes[1].diff
+    assert 'KEY_B = os.environ.get("KEY_B")' not in fixes[0].diff
+
+
+def test_a_rejected_second_fix_leaves_the_first_in_place() -> None:
+    first, second = _two_credentials()
+    answers = iter(
+        [
+            _answer(3, 3, 'KEY_A = os.environ["KEY_A"]'),
+            _answer(4, 4, "KEY_B = ("),
+            _answer(4, 4, 'KEY_B = os.environ["KEY_B"]'),
+        ]
+    )
+    third = FixFinding("key-c", "CWE-798", "app.py", 4, 4, "deterministic", "other-group")
+
+    fixes = propose_fixes(
+        [first, second, third],
+        lambda _system, _user: next(answers),
+        read_source=lambda _path: _KEYS,
+        apply_check=_applies,
+    )
+
+    assert [fix.status for fix in fixes] == ["VALIDATED", "NOT_VALIDATED", "VALIDATED"]
+    assert "syntax:failed" in fixes[1].checks
+    # The failed proposal was not applied: the third fix includes only the first.
+    assert fixes[2].includes == ("key-a",)
+    assert 'KEY_B = os.environ["KEY_B"]' in fixes[2].diff and "KEY_B = (" not in fixes[2].diff

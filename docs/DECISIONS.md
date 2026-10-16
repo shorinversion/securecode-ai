@@ -1110,3 +1110,23 @@ worker exited was counted as `PLUGIN_CRASHED` (the pipe is polled once more afte
 An unreachable advisory service stays an obstacle (`PRODUCT_DEPENDENCY_EXECUTION_FAILED`,
 error `DependencyScanError/SCANNER_FAILURE`) and still blocks PASS: dependencies that were
 not checked must not read as a clean result.
+
+
+## D-122: One Architect fix per weakness group, built one on the other
+
+16 October 2026. D-119 left one caveat: the Architect proposed one fix per CWE and file, so
+one fix could serve two credential groups, and the JSON and SARIF exports copied that fix
+onto both. Two keys of one file are two weaknesses to rotate, so each now has its own fix.
+`findings_from_report` merges by `weakness_group` (for a code weakness this is still the CWE
+and the file, so nothing changes there; the scanner lane still carries the precise lines).
+Fixes of one file are made one after another: the next request is built on the text patched
+by the validated fixes before it, with the finding's lines moved to the new numbering, and
+is validated on top of it (`git apply --check`, parse, rescan), so two fixes never overlap
+and never rest on lines that moved. A fix that does not validate is not applied and the
+later fixes build on the last validated state. The diff of a fix is taken against the
+original file and holds the earlier fixes of that file too (`ProposedFix.includes` names
+them), so every `.diff` applies to the repository as it is; `--patch-dir` adds
+`patch-<file>.diff` with the final state of a file that has several fixes. JSON and SARIF
+attach a fix by weakness group instead of CWE and file, so a fix never lands on a finding of
+another group. `max_findings=10` now counts groups. A second fix that fails validation keeps
+the status `NOT_VALIDATED` with its checks (more informative than a bare `NO_FIX`).

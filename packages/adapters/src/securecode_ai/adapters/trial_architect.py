@@ -21,7 +21,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Final
 from urllib.parse import urlsplit
@@ -31,6 +31,7 @@ from securecode_ai.core.scanning import ScannerRequest
 
 from .openai_compatible_remote import token_limit_field
 from .product_scanner import FirstPartyStaticWorker
+from .trial_groups import finding_groups
 
 _MAX_FILE_BYTES: Final = 262_144
 _MAX_EDITS: Final = 4
@@ -82,6 +83,8 @@ class FixFinding:
     start_line: int
     end_line: int
     origin: str
+    # The weakness group of the finding (see ``trial_groups``); one fix serves one group.
+    weakness_group: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +94,11 @@ class ProposedFix:
     status: str  # VALIDATED, NOT_VALIDATED or NO_FIX
     checks: tuple[str, ...]
     explanation: str
+    # Applies to the original file: it contains the fixes listed in ``includes`` as well.
     diff: str
+    weakness_group: str = ""
+    # Findings whose validated fixes of the same file this diff builds on, in order.
+    includes: tuple[str, ...] = ()
 
 
 Complete = Callable[[str, str], str]
@@ -117,31 +124,50 @@ def propose_fixes(
     language: str = "Russian",
     max_findings: int = 10,
 ) -> tuple[ProposedFix, ...]:
-    """Ask the model for fixes of confirmed findings and validate every proposal."""
+    """Ask the model for a fix per weakness group and validate every proposal.
+
+    The fixes of one file are made one after another: after a fix is validated, the next
+    request is built on the patched text (the finding's lines are moved to match) and is
+    validated on top of it, so two fixes never overlap or rest on lines that moved. The
+    diff of a fix is taken against the original file and holds the earlier fixes too
+    (``includes`` names them). A fix that does not validate is not applied; the fixes
+    after it build on the last validated state.
+    """
 
     check = git_apply_check if apply_check is None else apply_check
     fixes: list[ProposedFix] = []
+    originals: dict[str, str] = {}
+    states: dict[str, str] = {}
+    applied: dict[str, list[str]] = {}
     for finding in findings[:max_findings]:
-        try:
-            source = read_source(finding.path)
-        except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
-            fixes.append(_no_fix(finding, "source unavailable"))
-            continue
+        if finding.path not in originals:
+            try:
+                originals[finding.path] = read_source(finding.path)
+            except (OSError, ValueError, UnicodeError, subprocess.SubprocessError):
+                fixes.append(_no_fix(finding, "source unavailable"))
+                continue
+        original = originals[finding.path]
+        current = states.get(finding.path, original)
+        moved = _moved(finding, original, current)
         try:
             answer = complete(
                 ARCHITECT_INSTRUCTIONS + f" Write the explanation in {language}.",
-                _prompt(finding, source),
+                _prompt(moved, current),
             )
-            explanation, edits = _parse_answer(answer, source, finding)
+            explanation, edits = _parse_answer(answer, current, moved)
         except (OSError, ValueError, urllib.error.URLError, TimeoutError) as error:
             fixes.append(_no_fix(finding, str(error)[:160] or type(error).__name__))
             continue
-        patched = _apply_edits(source, edits)
-        diff = _unified_diff(finding.path, source, patched)
-        if not diff:
+        patched = _apply_edits(current, edits)
+        step = _unified_diff(finding.path, current, patched)
+        if not step:
             fixes.append(_no_fix(finding, "the proposal changes nothing"))
             continue
-        checks, valid = _validate(finding, source, patched, diff, check)
+        checks, valid = _validate(moved, current, patched, step, check)
+        earlier = tuple(applied.get(finding.path, ()))
+        if valid:
+            states[finding.path] = patched
+            applied.setdefault(finding.path, []).append(finding.finding_id)
         fixes.append(
             ProposedFix(
                 finding.finding_id,
@@ -149,10 +175,35 @@ def propose_fixes(
                 "VALIDATED" if valid else "NOT_VALIDATED",
                 checks,
                 explanation,
-                diff,
+                _unified_diff(finding.path, original, patched),
+                finding.weakness_group,
+                earlier,
             )
         )
     return tuple(fixes)
+
+
+def _moved(finding: FixFinding, original: str, current: str) -> FixFinding:
+    """The finding with its lines mapped from the original file to the patched one."""
+
+    if original == current:
+        return finding
+    before, after = original.splitlines(), current.splitlines()
+    blocks = difflib.SequenceMatcher(None, before, after, autojunk=False).get_opcodes()
+
+    def line(number: int, *, last: bool) -> int:
+        index = number - 1
+        for tag, i1, i2, j1, j2 in blocks:
+            if i1 <= index < i2:
+                if tag == "equal":
+                    return j1 + (index - i1) + 1
+                return max(j1 + 1, j2) if last else j1 + 1
+        return max(1, len(after))
+
+    start = line(finding.start_line, last=False)
+    return replace(
+        finding, start_line=start, end_line=max(start, line(finding.end_line, last=True))
+    )
 
 
 def openai_compatible_complete(
@@ -200,7 +251,9 @@ def openai_compatible_complete(
 
 
 def _no_fix(finding: FixFinding, reason: str) -> ProposedFix:
-    return ProposedFix(finding.finding_id, finding.path, "NO_FIX", (reason,), "", "")
+    return ProposedFix(
+        finding.finding_id, finding.path, "NO_FIX", (reason,), "", "", finding.weakness_group
+    )
 
 
 def _revision_file(repository: Path, head_sha: str, path: str) -> str:
@@ -472,17 +525,19 @@ def _signals(path: str, source: str) -> frozenset[tuple[str, int]]:
 
 
 def findings_from_report(document: Mapping[str, object]) -> tuple[FixFinding, ...]:
-    """Confirmed findings of a canonical JSON report, one per weakness.
+    """Confirmed findings of a canonical JSON report, one per weakness group.
 
-    The scanner lane and model Discovery may both confirm the same weakness; findings
-    with the same CWE in the same file get a single fix.
+    The scanner lane and model Discovery may both confirm the same weakness; they share a
+    group and get a single fix (the scanner lane carries the precise lines). Two hard-coded
+    credentials of one file are two groups and get two fixes.
     """
 
-    result: list[FixFinding] = []
     findings = document.get("findings")
     if not isinstance(findings, list):
         return ()
-    for item in findings:
+    groups = finding_groups(findings)
+    result: list[FixFinding] = []
+    for item, group in zip(findings, groups, strict=True):
         if not isinstance(item, dict) or item.get("verdict") != "CONFIRMED":
             continue
         locations = [value for value in item.get("locations", []) if isinstance(value, dict)]
@@ -497,10 +552,15 @@ def findings_from_report(document: Mapping[str, object]) -> tuple[FixFinding, ..
                 int(narrow["start"]["line"]),
                 int(narrow["end"]["line"]),
                 str(item.get("candidate_origin", "")),
+                group or "",
             )
         )
-    # One fix per weakness in a file; the scanner lane carries the precise lines.
     merged: dict[tuple[str, str], FixFinding] = {}
     for finding in sorted(result, key=lambda item: item.origin != "deterministic"):
-        merged.setdefault((finding.cwe_id, finding.path), finding)
+        key = (
+            (finding.weakness_group, "")
+            if finding.weakness_group
+            else (finding.cwe_id, finding.path)
+        )
+        merged.setdefault(key, finding)
     return tuple(merged.values())
