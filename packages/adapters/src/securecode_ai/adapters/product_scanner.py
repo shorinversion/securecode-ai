@@ -60,6 +60,7 @@ from .product_scanner_worker_common import FirstPartyStaticWorker as _FirstParty
 from .program_graph import build_program_graph
 from .repository_view import SealedRepositoryView
 from .scanner_plugin import ScannerPluginBinding, register_scanner_worker, run_scanner_plugin
+from .trace import trace_event
 
 _FIRST_PARTY_SCANNER_SOURCES = SCANNER_SOURCE_NAMES
 
@@ -186,18 +187,55 @@ class ProductDeterministicScanResult:
         return SealedRepositoryView(catalogue.indexes, evidence=(*native, *self.source_aliases))
 
 
+_SCAN_BUDGET_FLOOR_SECONDS = 60
+_SCAN_BUDGET_CEILING_SECONDS = 600
+_FILE_BUDGET_NS = 60_000_000_000
+_budget_override_seconds: int | None = None
+
+
+def configure_scan_budget(seconds: int | None) -> None:
+    """Pin the whole-scan budget (60..600 s) instead of deriving it from the file count."""
+
+    global _budget_override_seconds
+    if seconds is not None and (
+        type(seconds) is not int
+        or not _SCAN_BUDGET_FLOOR_SECONDS <= seconds <= _SCAN_BUDGET_CEILING_SECONDS
+    ):
+        raise ValueError("scan budget is outside 60..600 seconds")
+    _budget_override_seconds = seconds
+
+
+def scan_budget_ns(file_count: int) -> int:
+    """Time for all scanner workers of one run: every file starts its own process.
+
+    Spawning a worker costs about a second on Windows, so a fixed minute ran out on larger
+    repositories and left the deterministic stage incomplete. The default is two seconds
+    per file between a minute and ten minutes; ``configure_scan_budget`` pins it.
+    """
+
+    seconds = (
+        _budget_override_seconds
+        if _budget_override_seconds is not None
+        else min(_SCAN_BUDGET_CEILING_SECONDS, max(_SCAN_BUDGET_FLOOR_SECONDS, 2 * file_count))
+    )
+    return seconds * 1_000_000_000
+
+
 def scan_product_sources(
     catalogue: NativeSourceCatalogue,
     *,
     tenant_id: str,
     repository_id: str | None = None,
-    total_budget_ns: int = 60_000_000_000,
+    total_budget_ns: int | None = None,
 ) -> ProductDeterministicScanResult:
-    if (
-        type(catalogue) is not NativeSourceCatalogue
-        or (repository_id is not None and (type(repository_id) is not str or not repository_id))
-        or type(total_budget_ns) is not int
-        or not (0 < total_budget_ns <= 60_000_000_000)
+    if type(catalogue) is not NativeSourceCatalogue or (
+        repository_id is not None and (type(repository_id) is not str or not repository_id)
+    ):
+        raise ValueError("product scanner request is invalid")
+    if total_budget_ns is None:
+        total_budget_ns = scan_budget_ns(len(catalogue.indexes))
+    if type(total_budget_ns) is not int or not (
+        0 < total_budget_ns <= _SCAN_BUDGET_CEILING_SECONDS * 1_000_000_000
     ):
         raise ValueError("product scanner request is invalid")
     index_repository_ids = {index.repository_id for index in catalogue.indexes}
@@ -221,7 +259,7 @@ def scan_product_sources(
     target = ScannerWorkerTarget(__name__, "create_first_party_static_worker")
     register_scanner_worker(target, create_first_party_static_worker)
     binding = ScannerPluginBinding(ScannerIdentity(producer), target)
-    receipts = []
+    receipts: list[ScannerExecution] = []
     source_bindings = []
     signals: list[RawSignal] = []
     complete = language_inventory_bound
@@ -229,6 +267,12 @@ def scan_product_sources(
         remaining = total_budget_ns - (monotonic_ns() - started)
         if remaining <= 0:
             complete = False
+            trace_event(
+                "scan_budget_exhausted",
+                scanned=len(receipts),
+                of=len(catalogue.indexes),
+                budget_seconds=total_budget_ns // 1_000_000_000,
+            )
             break
         request = ScannerRequest(
             request_id="static-" + hashlib.sha256(index.path.encode()).hexdigest(),
@@ -239,9 +283,17 @@ def scan_product_sources(
             source=index.source,
         )
         receipt = run_scanner_plugin(
-            binding, request, budget=ScannerBudget(max_elapsed_ns=remaining)
+            binding, request, budget=ScannerBudget(max_elapsed_ns=min(remaining, _FILE_BUDGET_NS))
         )
         receipts.append(receipt)
+        trace_event(
+            "scanner_receipt",
+            file=len(receipts),
+            of=len(catalogue.indexes),
+            status=receipt.status.value,
+            failure=receipt.failure_code.value if receipt.failure_code else None,
+            seconds=receipt.elapsed_ns / 1_000_000_000,
+        )
         source_bindings.append(
             ProductScannerSourceBinding(
                 request.request_id,

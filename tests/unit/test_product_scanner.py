@@ -154,7 +154,7 @@ def test_worker_fault_is_incomplete_not_completed_zero(
     assert not result.is_complete and result.receipts[0].status is ScannerRunStatus.CRASHED
 
 
-@pytest.mark.parametrize("budget", [True, 0, -1, 60_000_000_001])
+@pytest.mark.parametrize("budget", [True, 0, -1, 600_000_000_001])
 def test_invalid_global_budget_rejects_before_workers(budget: int) -> None:
     reader, head, _ = repository(*SOURCES[0])
     with pytest.raises(ValueError, match="request"):
@@ -337,3 +337,24 @@ def test_auditor_rejects_unadmitted_scanner_alias_before_tool_dispatch(
             budget=RepositoryToolBudget(8, 65536, 65536),
             deterministic=result,
         )
+
+
+@pytest.mark.parametrize(
+    ("files", "seconds"), [(0, 60), (1, 60), (30, 60), (31, 62), (100, 200), (400, 600)]
+)
+def test_scan_budget_follows_the_file_count_between_a_minute_and_ten(
+    files: int, seconds: int
+) -> None:
+    assert product_scanner.scan_budget_ns(files) == seconds * 1_000_000_000
+
+
+def test_scan_budget_can_be_pinned_and_is_bounded() -> None:
+    try:
+        product_scanner.configure_scan_budget(300)
+        assert product_scanner.scan_budget_ns(1) == 300_000_000_000
+        for bad in (59, 601, True):
+            with pytest.raises(ValueError, match=r"60..600"):
+                product_scanner.configure_scan_budget(bad)
+    finally:
+        product_scanner.configure_scan_budget(None)
+    assert product_scanner.scan_budget_ns(1) == 60_000_000_000

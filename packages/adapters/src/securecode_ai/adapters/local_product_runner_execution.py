@@ -105,11 +105,13 @@ from .product_runtime import (
     ProductAuditorInvoker,
     ProductDiscoveryBackend,
 )
+from .product_runtime_contracts import ProductDiscoveryInvocationObservation
 from .product_scan import ProductCandidateFlow
 from .product_skeptic import PRODUCT_SKEPTIC_PROMPT_PIN, SKEPTIC_WIRE_PIN, ProductSkepticReviewPort
 from .remote_provider_budget import RemoteProviderCostReceipt
 from .runtime import LocalWorkflowRuntime
 from .secret_detection import SecretFingerprintKey
+from .trace import trace_event
 
 _RUNTIME_CANCEL_LOCK_TIMEOUT_SECONDS = 5.0
 
@@ -570,6 +572,23 @@ def _run_local_product_scan(
     )
     observations: list[ProductAuditorInvocationObservation] = []
 
+    def observe_auditor(observation: ProductAuditorInvocationObservation) -> None:
+        observations.append(observation)
+        trace_event(
+            "auditor_attempt",
+            status=observation.model_call_status_before_collection.value,
+            schema_valid=observation.schema_valid_result_before_collection,
+        )
+
+    def observe_discovery(observation: ProductDiscoveryInvocationObservation) -> None:
+        trace_event(
+            "discovery_attempt",
+            status=observation.model_call_status_before_collection.value,
+            schema_valid=observation.schema_valid_result_before_collection,
+            refusal=observation.schema_refusal_category.value,
+            repository_reads=len(observation.repository_view_call_hashes),
+        )
+
     def auditor_factory(
         graph: EvidenceGraph, tools: RepositoryToolSession
     ) -> ProductAuditorInvoker:
@@ -587,7 +606,7 @@ def _run_local_product_scan(
                 ModelPurpose.CANDIDATE_INVESTIGATION,
                 PRODUCT_AUDITOR_PROMPT_PIN,
             ),
-            observer=observations.append,
+            observer=observe_auditor,
             claim_for=lambda package: _candidate_claim(graph, package.candidate_id),
         )
 
@@ -623,7 +642,7 @@ def _run_local_product_scan(
                 PRODUCT_SKEPTIC_PROMPT_PIN,
             ),
             claim_for=lambda snapshot: _candidate_claim(flow.graph, snapshot.candidate_id),
-            observer=lambda candidate_id, status: skeptic_attempts.append((candidate_id, status)),
+            observer=observe_skeptic,
         )
         return run_product_candidate_review(
             flow,
@@ -636,6 +655,10 @@ def _run_local_product_scan(
 
     retained_graph: list[bytes] = []
     skeptic_attempts: list[tuple[str, ModelCallStatus]] = []
+
+    def observe_skeptic(candidate_id: str, status: ModelCallStatus) -> None:
+        skeptic_attempts.append((candidate_id, status))
+        trace_event("skeptic_attempt", status=status.value)
 
     def finalize_host(
         flow: ProductCandidateFlow, review: ProductReviewResult, bound: ProductAuditHostInputs
@@ -701,6 +724,7 @@ def _run_local_product_scan(
             catalogue=catalogue.anchors,
             rule_ids=frozenset(_RULES),
             content_key=content_key,
+            observer=observe_discovery,
         ),
         auditor_factory=auditor_factory,
         review_factory=review_factory,
@@ -715,6 +739,7 @@ def _run_local_product_scan(
     )
     cancellation.checkpoint()
     if isinstance(result, ProductAuditObstacle):
+        trace_event("audit_obstacle", code=result.code)
         if result.code == "PRODUCT_AUDIT_CANCELLED":
             raise LocalProductCancelledError()
         if result.code == "PRODUCT_AUDIT_SUPERSEDED":

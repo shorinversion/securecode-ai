@@ -7,6 +7,7 @@ publication authority. Child results alone cannot authorize a product PASS.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from time import monotonic
 from typing import Protocol
 
 from securecode_ai.core import RepositoryFile
@@ -33,6 +34,7 @@ from .product_scanner import (
     scan_product_sources,
 )
 from .secret_detection import SecretFingerprintKey
+from .trace import exception_label, trace_event
 
 
 class _SecretStageExecutor(Protocol):
@@ -93,6 +95,14 @@ def execute_deterministic_children(
     )
     outputs: dict[str, tuple[str, ...]] = {}
     obstacles = []
+    errors: list[tuple[str, str]] = []
+    trace_event(
+        "children_selected",
+        selected=selected,
+        files=len(catalogue.snapshot.files),
+        indexed=len(catalogue.indexes),
+    )
+    started = monotonic()
     if has_python:
         outputs["python_parse_symbols"] = tuple(
             index.index_sha256
@@ -105,7 +115,8 @@ def execute_deterministic_children(
             tenant_id=tenant_id,
             repository_id=repository_id,
         )
-    except Exception:
+    except Exception as error:
+        errors.append(("PRODUCT_STATIC_EXECUTION_FAILED", exception_label(error)))
         # Preserve the independent model-native lane when the deterministic
         # worker fails before returning a typed result.  An empty graph is an
         # explicit failed child, never a successful zero finding observation.
@@ -125,6 +136,13 @@ def execute_deterministic_children(
             program_graph=None,
             repository_id=repository_id,
         )
+    trace_event(
+        "child_stage",
+        stage="scan",
+        complete=scan.is_complete,
+        receipts=len(scan.receipts),
+        seconds=monotonic() - started,
+    )
     if not scan.is_complete:
         obstacles.append("PRODUCT_STATIC_EXECUTION_FAILED")
     secrets = None
@@ -144,8 +162,12 @@ def execute_deterministic_children(
                     else ()
                 ),
             )
-        except Exception:
+        except Exception as error:
             obstacles.append("PRODUCT_SECRET_EXECUTION_FAILED")
+            errors.append(("PRODUCT_SECRET_EXECUTION_FAILED", exception_label(error)))
+            trace_event(
+                "child_stage", stage="secrets", complete=False, error=exception_label(error)
+            )
     dependencies = None
     if has_manifest:
         try:
@@ -153,8 +175,12 @@ def execute_deterministic_children(
                 reader=reader, head_sha=head_sha, repository_id=repository_id, scanner=scanner
             )
             outputs["dependency_scan"] = (dependencies.output_sha256,)
-        except Exception:
+        except Exception as error:
             obstacles.append("PRODUCT_DEPENDENCY_EXECUTION_FAILED")
+            errors.append(("PRODUCT_DEPENDENCY_EXECUTION_FAILED", exception_label(error)))
+            trace_event(
+                "child_stage", stage="dependencies", complete=False, error=exception_label(error)
+            )
     if has_python and scan.is_complete and scan.program_graph is not None:
         outputs["cwe89_scan"] = (
             scan.graph.graph_sha256,
@@ -171,6 +197,7 @@ def execute_deterministic_children(
         dependencies,
         scan,
         tuple(obstacles),
+        tuple(errors),
     )
 
 

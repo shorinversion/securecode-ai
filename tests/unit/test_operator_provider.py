@@ -228,7 +228,11 @@ def test_unpriced_run_reports_an_unknown_cost() -> None:
     analysis = SimpleNamespace(
         provider="openai-compatible",
         model_id="vendor/model-small",
-        result=SimpleNamespace(sarif_rendered=b'{"runs":[{"results":[]}]}', exit_code=0),
+        result=SimpleNamespace(
+            sarif_rendered=b'{"runs":[{"results":[]}]}',
+            exit_code=0,
+            composition=SimpleNamespace(host_inputs=None),
+        ),
     )
 
     summary = _summary(analysis, None)  # type: ignore[arg-type]

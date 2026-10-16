@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import json
 from collections.abc import Callable
 from pathlib import Path
+from time import monotonic_ns
 
 import pytest
+from securecode_ai.adapters import scanner_plugin
 from securecode_ai.adapters.scanner_plugin import (
     ScannerPluginBinding,
     register_scanner_worker,
     run_scanner_plugin,
 )
+from securecode_ai.adapters.trace import configure_trace
 from securecode_ai.contracts import (
     CONTRACT_SCHEMA_VERSION,
     ArtifactRef,
@@ -250,3 +254,83 @@ def test_plugin_port_has_no_path_shell_network_or_filesystem_arguments() -> None
         "file",
         "source",
     }
+
+
+def test_crash_trace_names_the_exception_type_but_never_its_message(tmp_path: Path) -> None:
+    trace = tmp_path / "trace.jsonl"
+    configure_trace(str(trace))
+    try:
+        run_scanner_plugin(_binding("_CrashingPlugin"), _request())
+    finally:
+        configure_trace(None)
+
+    text = trace.read_text(encoding="utf-8")
+    event = json.loads(text.splitlines()[-1])
+    assert event["kind"] == "scanner_worker_failed"
+    assert event["code"] == "PLUGIN_CRASHED" and event["error"] == "RuntimeError"
+    assert "PRIVATE_SCANNER_CRASH_CANARY" not in text
+
+
+class _Pipe:
+    """A receiving end whose first poll sees nothing and whose second sees the receipt."""
+
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
+        self.polls = 0
+
+    def poll(self, timeout: float = 0.0) -> bool:
+        self.polls += 1
+        return self.polls >= 2
+
+    def recv_bytes(self, maxlength: int | None = None) -> bytes:
+        return self.payload
+
+    def send_bytes(self, buf: bytes) -> None:
+        raise AssertionError
+
+    def close(self) -> None:
+        return None
+
+
+class _ExitedProcess:
+    def start(self) -> None:
+        return None
+
+    def is_alive(self) -> bool:
+        return False
+
+    def terminate(self) -> None:
+        return None
+
+    def join(self, timeout: float | None = None) -> None:
+        return None
+
+    def kill(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def test_a_receipt_sent_just_before_the_worker_exits_is_not_a_crash() -> None:
+    payload = json.dumps({"request_id": "r", "status": "COMPLETED", "signals": []}).encode()
+
+    elapsed, receipt, failure, detail = scanner_plugin._receive_worker_receipt(
+        _Pipe(payload), _ExitedProcess(), ScannerBudget(), lambda: 0, 0, monotonic_ns()
+    )
+
+    assert failure is None and detail is None
+    assert receipt == {"request_id": "r", "status": "COMPLETED", "signals": []}
+    assert elapsed >= 0
+
+
+def test_a_worker_that_exited_without_a_receipt_is_a_crash() -> None:
+    class Silent(_Pipe):
+        def poll(self, timeout: float = 0.0) -> bool:
+            return False
+
+    _, receipt, failure, detail = scanner_plugin._receive_worker_receipt(
+        Silent(b""), _ExitedProcess(), ScannerBudget(), lambda: 0, 0, monotonic_ns()
+    )
+
+    assert receipt is None and failure is ScannerFailureCode.PLUGIN_CRASHED and detail == "EXITED"

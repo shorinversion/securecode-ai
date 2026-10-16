@@ -132,6 +132,10 @@ def test_missing_dependency_port_blocks_composite_but_retains_successful_facts()
     assert "dependency_scan" in result.selected_child_ids
     assert not result.is_complete
     assert "PRODUCT_DEPENDENCY_EXECUTION_FAILED" in result.obstacles
+    assert result.incompleteness_reasons() == ("OBSTACLE:PRODUCT_DEPENDENCY_EXECUTION_FAILED",)
+    assert [obstacle for obstacle, _ in result.obstacle_errors] == [
+        "PRODUCT_DEPENDENCY_EXECUTION_FAILED"
+    ]
     assert result.secrets is not None
     assert result.secrets.results
     assert result.scan.receipts
@@ -146,12 +150,23 @@ def test_secret_failure_blocks_composite(monkeypatch: pytest.MonkeyPatch) -> Non
     assert not result.is_complete
     assert result.obstacles == ("PRODUCT_SECRET_EXECUTION_FAILED",)
     assert "private-source-marker" not in repr(result.obstacles)
+    # The cause is the exception type only, never its message.
+    assert result.obstacle_errors == (("PRODUCT_SECRET_EXECUTION_FAILED", "RuntimeError"),)
+    assert result.incompleteness_reasons() == ("OBSTACLE:PRODUCT_SECRET_EXECUTION_FAILED",)
+    assert "private-source-marker" not in repr(result.obstacle_errors)
 
 
 @pytest.mark.parametrize(
-    "mutation", ["missing-secret", "wrong-head", "wrong-inventory", "omit-child", "substitute-hash"]
+    ("mutation", "reason"),
+    [
+        ("missing-secret", "BINDING_MISMATCH:secret_stage"),
+        ("wrong-head", "BINDING_MISMATCH:secret_stage"),
+        ("wrong-inventory", "BINDING_MISMATCH:child_selection"),
+        ("omit-child", "BINDING_MISMATCH:child_selection"),
+        ("substitute-hash", "BINDING_MISMATCH:child_outputs"),
+    ],
 )
-def test_substituted_execution_cannot_claim_complete(mutation: str) -> None:
+def test_substituted_execution_cannot_claim_complete(mutation: str, reason: str) -> None:
     from dataclasses import replace
 
     result = execute()
@@ -176,6 +191,49 @@ def test_substituted_execution_cannot_claim_complete(mutation: str) -> None:
             ),
         )
     assert not changed.is_complete
+    assert changed.incompleteness_reasons() == (reason,)
+
+
+def test_a_scanner_worker_that_did_not_succeed_is_named_by_status_and_code() -> None:
+    from dataclasses import replace
+
+    from securecode_ai.core.scanning import ScannerFailureCode, ScannerRunStatus
+
+    result = execute()
+    receipt = replace(
+        result.scan.receipts[0],
+        status=ScannerRunStatus.CRASHED,
+        failure_code=ScannerFailureCode.PLUGIN_CRASHED,
+    )
+    changed = replace(result, scan=replace(result.scan, receipts=(receipt,)))
+
+    assert changed.incompleteness_reasons() == ("RECEIPT_NOT_SUCCEEDED:CRASHED:PLUGIN_CRASHED",)
+
+
+def test_an_incomplete_scan_is_named_next_to_its_obstacle() -> None:
+    from dataclasses import replace
+
+    result = execute()
+    changed = replace(
+        result,
+        obstacles=("PRODUCT_STATIC_EXECUTION_FAILED",),
+        scan=replace(result.scan, is_complete=False),
+    )
+
+    assert changed.incompleteness_reasons() == (
+        "OBSTACLE:PRODUCT_STATIC_EXECUTION_FAILED",
+        "SCAN_INCOMPLETE",
+    )
+
+
+def test_an_unexpected_error_while_checking_is_reported_by_type() -> None:
+    from dataclasses import replace
+
+    result = execute()
+    broken = replace(result, scan=replace(result.scan, source_bindings=None))  # type: ignore[arg-type]
+
+    assert broken.incompleteness_reasons()[0].startswith(("EXCEPTION:", "BINDING_MISMATCH:"))
+    assert not broken.is_complete
 
 
 def test_secret_child_fact_is_retained_and_dc4_cannot_reach_model() -> None:

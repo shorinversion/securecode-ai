@@ -58,8 +58,10 @@ from .openai_compatible_remote import (
 )
 from .product_provider_runtime import ApprovedPublicResolver, ProductProviderRuntime
 from .product_runtime import PRODUCT_AUDITOR_PROMPT_PIN, PRODUCT_DISCOVERY_PROMPT_PIN
+from .product_scanner import configure_scan_budget
 from .product_skeptic import PRODUCT_SKEPTIC_PROMPT_PIN, SKEPTIC_WIRE_PIN
 from .remote_provider_budget import InMemoryRemoteProviderBudget, RemoteProviderSpendPolicy
+from .trace import configure_trace, exception_label, trace_event
 
 TRIAL_TENANT: Final = "local-trial"
 DEEPSEEK_CONSENT_REF: Final = "consent://project-owner/deepseek-private-source/2026-09-27"
@@ -206,8 +208,45 @@ def run_trial_analysis(
     environment: Mapping[str, str],
     max_cost_microusd: int = 1_000_000,
 ) -> TrialAnalysis:
-    """Run the full product pipeline on ``target`` with an in-memory trial authority."""
+    """Run the full product pipeline on ``target`` with an in-memory trial authority.
 
+    ``SECURECODE_TRACE=<file>`` appends a JSONL trace of the stages (no source, no prompts);
+    ``SECURECODE_SCAN_BUDGET_SECONDS`` (60..600) pins the time for all scanner workers.
+    """
+
+    budget = _positive(environment, "SECURECODE_SCAN_BUDGET_SECONDS", 0)
+    if budget and not 60 <= budget <= 600:
+        raise TrialAnalysisError("SECURECODE_SCAN_BUDGET_SECONDS must be 60..600")
+    configure_scan_budget(budget or None)
+    configure_trace(environment.get("SECURECODE_TRACE") or None)
+    trace_event("run_start", provider=provider)
+    try:
+        analysis = _run_trial_analysis(
+            target,
+            provider=provider,
+            report_format=report_format,
+            environment=environment,
+            max_cost_microusd=max_cost_microusd,
+        )
+    except BaseException as error:
+        trace_event("run_end", error=exception_label(error))
+        raise
+    else:
+        trace_event("run_end", exit_code=analysis.result.exit_code)
+    finally:
+        configure_scan_budget(None)
+        configure_trace(None)
+    return analysis
+
+
+def _run_trial_analysis(
+    target: str,
+    *,
+    provider: str,
+    report_format: ReportFormat,
+    environment: Mapping[str, str],
+    max_cost_microusd: int,
+) -> TrialAnalysis:
     git = shutil.which("git")
     if git is None:
         raise TrialAnalysisError("git is required")
