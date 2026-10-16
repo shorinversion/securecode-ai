@@ -301,6 +301,21 @@ Luna и третьей модели (DeepSeek, Gemma 4 или gpt-oss-20b) да�
 ответам моделей, без новых запросов. Модели Qwen без режима размышления
 называют какую-либо CWE почти в каждом кейсе, их оценка близка к
 нулю.</li>
+<li><strong>Локальная модель.</strong> Qwen 2.5 Coder 7B (Q4_K_M, Ollama
+на локальной машине, без сети и расходов) — именно она работает в режиме
+<code>--provider local</code>. На тех же 1230 кейсах одна модель без
+сканеров даёт −0,03 (TPR 6,0%, precision 30,0%): как и остальные Qwen,
+она называет CWE почти в каждом файле. Проверка находок сканеров даёт
+0,23 (TPR 29,2%, precision 70,6%) против 0,21 у сканеров без модели.
+Разница с одними сканерами +0,020, 95% ДИ [+0,000; +0,041]: нижняя
+граница на нуле, то есть выигрыш скромный и на грани значимости. Зато
+она надёжно лучше Semgrep (+0,071, ДИ [+0,030; +0,117]) и Bandit
+(+0,063, ДИ [+0,021; +0,109]). Согласие локальной проверки с Luna даёт
+0,32 (precision 84,2%), то есть второй сильный голос тянет оценку вверх,
+но потолок задаёт слабая модель: до 0,84 связки gpt-oss-120b и Luna
+далеко. Интервалы считает <code>scripts/owasp_bootstrap.py</code> (2000
+перевыборок внутри категорий и классов «уязвима / безопасна», парные для
+двух конфигураций) по сохранённым ответам, без новых запросов.</li>
 <li><strong>Неудачная попытка улучшить Аудитора.</strong> Отдельный
 прогон gpt-oss-120b с переписанным промптом Аудитора: подсказки как
 нейтральные кандидаты, без CWE, которые сканер ставит больше чем в
@@ -1555,10 +1570,22 @@ Flash)</td>
 <td style="text-align: right;">53,8%</td>
 </tr>
 <tr>
+<td>SecureCode: согласие (локальная Qwen 2.5 Coder 7B, Luna)</td>
+<td style="text-align: right;">0,32</td>
+<td style="text-align: right;">30,5%</td>
+<td style="text-align: right;">84,2%</td>
+</tr>
+<tr>
 <td>SecureCode: сканеры ∪ Qwen 3.8 27B</td>
 <td style="text-align: right;">0,24</td>
 <td style="text-align: right;">62,6%</td>
 <td style="text-align: right;">48,7%</td>
+</tr>
+<tr>
+<td>SecureCode: локальная Qwen 2.5 Coder 7B проверяет сканеры</td>
+<td style="text-align: right;">0,23</td>
+<td style="text-align: right;">29,2%</td>
+<td style="text-align: right;">70,6%</td>
 </tr>
 <tr>
 <td>SecureCode: только сканеры</td>
@@ -1591,6 +1618,12 @@ Flash)</td>
 <td style="text-align: right;">43,3%</td>
 </tr>
 <tr>
+<td>SecureCode: сканеры ∪ Qwen 2.5 Coder 7B (локально)</td>
+<td style="text-align: right;">0,11</td>
+<td style="text-align: right;">30,8%</td>
+<td style="text-align: right;">55,4%</td>
+</tr>
+<tr>
 <td>SecureCode: сканеры ∪ Qwen 3.6 35B-A3B</td>
 <td style="text-align: right;">0,10</td>
 <td style="text-align: right;">90,3%</td>
@@ -1607,6 +1640,12 @@ Flash)</td>
 <td style="text-align: right;">0,05</td>
 <td style="text-align: right;">78,3%</td>
 <td style="text-align: right;">40,5%</td>
+</tr>
+<tr>
+<td>Только модель: Qwen 2.5 Coder 7B (локально)</td>
+<td style="text-align: right;">-0,03</td>
+<td style="text-align: right;">6,0%</td>
+<td style="text-align: right;">30,0%</td>
 </tr>
 </tbody>
 </table>
@@ -1913,10 +1952,22 @@ Flash)</td>
 <td style="text-align: right;">63,7%</td>
 </tr>
 <tr>
+<td>SecureCode: согласие (локальная Qwen 2.5 Coder 7B, Luna)</td>
+<td style="text-align: right;">0,32</td>
+<td style="text-align: right;">36,8%</td>
+<td style="text-align: right;">87,5%</td>
+</tr>
+<tr>
 <td>SecureCode: сканеры ∪ Qwen 3.8 27B</td>
 <td style="text-align: right;">0,25</td>
 <td style="text-align: right;">64,7%</td>
 <td style="text-align: right;">60,6%</td>
+</tr>
+<tr>
+<td>SecureCode: локальная Qwen 2.5 Coder 7B проверяет сканеры</td>
+<td style="text-align: right;">0,22</td>
+<td style="text-align: right;">36,8%</td>
+<td style="text-align: right;">69,0%</td>
 </tr>
 <tr>
 <td>SecureCode: только сканеры</td>
@@ -1955,6 +2006,12 @@ Flash)</td>
 <td style="text-align: right;">51,1%</td>
 </tr>
 <tr>
+<td>SecureCode: сканеры ∪ Qwen 2.5 Coder 7B (локально)</td>
+<td style="text-align: right;">0,08</td>
+<td style="text-align: right;">36,8%</td>
+<td style="text-align: right;">54,4%</td>
+</tr>
+<tr>
 <td>Только модель: Qwen 3.6 35B-A3B</td>
 <td style="text-align: right;">0,03</td>
 <td style="text-align: right;">81,2%</td>
@@ -1965,6 +2022,12 @@ Flash)</td>
 <td style="text-align: right;">0,01</td>
 <td style="text-align: right;">80,5%</td>
 <td style="text-align: right;">48,9%</td>
+</tr>
+<tr>
+<td>Только модель: Qwen 2.5 Coder 7B (локально)</td>
+<td style="text-align: right;">-0,04</td>
+<td style="text-align: right;">12,0%</td>
+<td style="text-align: right;">40,0%</td>
 </tr>
 </tbody>
 </table>
@@ -2180,8 +2243,24 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python <span class="at">-m</span> scripts.benchmark_v2 aggregate <span class="at">--manifest</span> ... <span class="at">--predictions</span> predictions <span class="dt">\</span></span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output</span> report/benchmark-v2</span>
 <span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python <span class="at">-m</span> scripts.owasp_benchmark_python <span class="at">--benchmark</span> BenchmarkPython <span class="dt">\</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">--semgrep-config</span> semgrep-rules <span class="at">--output</span> report/benchmark-v2/owasp-python.json <span class="dt">\</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">--models</span> gpt-oss-120b luna deepseek <span class="at">--verified-models</span> gpt-oss-120b luna deepseek <span class="dt">\</span></span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">--consensus</span> gpt-oss-120b luna <span class="at">--consensus</span> gpt-oss-120b deepseek</span></code></pre></div>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">--semgrep-config</span> semgrep-rules <span class="dt">\</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output</span> report/benchmark-v2/owasp-python-results.json <span class="dt">\</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">--models</span> gpt-oss-120b luna deepseek gemma-4-31b gpt-oss-20b qwen3.8-27b qwen3.6-35b <span class="dt">\</span></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  qwen3.6-fp8 qwen-local <span class="at">--sampled-models</span> glm <span class="dt">\</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>  <span class="at">--verified-models</span> gpt-oss-120b luna deepseek qwen-local <span class="dt">\</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>  <span class="at">--consensus</span> gpt-oss-120b luna <span class="at">--consensus</span> gpt-oss-120b deepseek <span class="dt">\</span></span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>  <span class="at">--consensus</span> qwen-local luna</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a><span class="ex">uv</span> run python <span class="at">-m</span> scripts.owasp_bootstrap <span class="at">--output</span> report/benchmark-v2/owasp-bootstrap.json <span class="dt">\</span></span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  <span class="at">--pair</span> consensus+gpt-oss-120b+luna gpt-oss-120b <span class="dt">\</span></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>  <span class="at">--pair</span> consensus+gpt-oss-120b+deepseek gpt-oss-120b <span class="dt">\</span></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>  <span class="at">--pair</span> verified+qwen-local securecode <span class="at">--pair</span> verified+qwen-local semgrep <span class="dt">\</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>  <span class="at">--pair</span> verified+qwen-local bandit <span class="at">--pair</span> consensus+qwen-local+luna securecode</span></code></pre></div>
+<p>Каждый ответ модели хранится в
+<code>report/benchmark-v2/cache/</code> (по файлу на конфигурацию, плюс
+<code>scanners.json</code> с находками сканеров и
+<code>cases.json</code> с разметкой): с этим каталогом команда
+пересчитывает все оценки без сети и без корпуса. Локальная модель
+(<code>qwen-local</code>) запускается через Ollama:
+<code>ollama pull qwen2.5-coder:7b-instruct-q4_K_M</code>.</p>
 </body>
 </html>

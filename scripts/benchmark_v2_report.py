@@ -19,6 +19,7 @@ _MODELS: Final = {
     "gpt-oss-120b": "gpt-oss-120b",
     "gpt-oss-20b": "gpt-oss-20b",
     "gemma-4-31b": "Gemma 4 31B",
+    "qwen-local": "Qwen 2.5 Coder 7B (локально)",
 }
 # SecureCode configurations first, then the baselines: open analyzers and models alone.
 NAMES: Final = {
@@ -31,6 +32,8 @@ NAMES: Final = {
         f"verified+{key}": f"SecureCode: сканеры + проверка {name}" for key, name in _MODELS.items()
     },
     **{f"securecode+{key}": f"SecureCode: сканеры ∪ {name}" for key, name in _MODELS.items()},
+    "verified+qwen-local": "SecureCode: локальная Qwen 2.5 Coder 7B проверяет сканеры",
+    "consensus+qwen-local+luna": "SecureCode: согласие (локальная Qwen 2.5 Coder 7B, Luna)",
     "securecode+semgrep": "Сканеры SecureCode ∪ Semgrep",
     "securecode": "SecureCode: только сканеры",
     "semgrep": "Semgrep 1.177.0",
@@ -193,10 +196,24 @@ def render(cvefixes: Mapping[str, Any], owasp: Mapping[str, Any] | None, summary
         "uv run python -m scripts.benchmark_v2 aggregate --manifest ... --predictions predictions \\",
         "  --output report/benchmark-v2",
         "uv run python -m scripts.owasp_benchmark_python --benchmark BenchmarkPython \\",
-        "  --semgrep-config semgrep-rules --output report/benchmark-v2/owasp-python.json \\",
-        "  --models gpt-oss-120b luna deepseek --verified-models gpt-oss-120b luna deepseek \\",
-        "  --consensus gpt-oss-120b luna --consensus gpt-oss-120b deepseek",
+        "  --semgrep-config semgrep-rules \\",
+        "  --output report/benchmark-v2/owasp-python-results.json \\",
+        "  --models gpt-oss-120b luna deepseek gemma-4-31b gpt-oss-20b qwen3.8-27b qwen3.6-35b \\",
+        "  qwen3.6-fp8 qwen-local --sampled-models glm \\",
+        "  --verified-models gpt-oss-120b luna deepseek qwen-local \\",
+        "  --consensus gpt-oss-120b luna --consensus gpt-oss-120b deepseek \\",
+        "  --consensus qwen-local luna",
+        "uv run python -m scripts.owasp_bootstrap --output report/benchmark-v2/owasp-bootstrap.json \\",
+        "  --pair consensus+gpt-oss-120b+luna gpt-oss-120b \\",
+        "  --pair consensus+gpt-oss-120b+deepseek gpt-oss-120b \\",
+        "  --pair verified+qwen-local securecode --pair verified+qwen-local semgrep \\",
+        "  --pair verified+qwen-local bandit --pair consensus+qwen-local+luna securecode",
         "```",
+        "",
+        "Каждый ответ модели хранится в `report/benchmark-v2/cache/` (по файлу на конфигурацию,",
+        "плюс `scanners.json` с находками сканеров и `cases.json` с разметкой): с этим каталогом",
+        "команда пересчитывает все оценки без сети и без корпуса. Локальная модель",
+        "(`qwen-local`) запускается через Ollama: `ollama pull qwen2.5-coder:7b-instruct-q4_K_M`.",
         "",
     ]
     return "\n".join(out)

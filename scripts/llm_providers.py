@@ -29,6 +29,8 @@ class Provider:
     currency: str = "USD"
     max_parallel: int = 8
     requests_per_minute: int | None = None
+    # A local server ignores the key; this placeholder stands in when the variable is unset.
+    default_key: str | None = None
 
 
 PROVIDERS: Final[dict[str, Provider]] = {
@@ -60,6 +62,20 @@ PROVIDERS: Final[dict[str, Provider]] = {
         {"reasoning_effort": "low", "max_tokens": 4096},
     ),
 }
+
+# Local Qwen 2.5 Coder 7B served by Ollama on the benchmark machine: free, resumable,
+# and the model SecureCode runs with ``--provider local``.
+PROVIDERS["qwen-local"] = Provider(
+    "Qwen 2.5 Coder 7B Q4_K_M (Ollama)",
+    "http://127.0.0.1:11434/v1",
+    "OLLAMA_KEY",
+    "qwen2.5-coder:7b-instruct-q4_K_M",
+    0,
+    0,
+    {"temperature": 0, "max_tokens": 256},
+    max_parallel=2,
+    default_key="ollama",
+)
 
 # Open-weight models usually deployed locally, served by neuraldeep.ru over the same API.
 # Prices are in rubles (micro-RUB per million tokens); "-noreason" variants answer directly.
@@ -149,7 +165,7 @@ def complete_json(
 ) -> tuple[dict[str, Any], int]:
     """Send one JSON-mode prompt; return the parsed object and its cost in micro-USD."""
 
-    key = os.environ.get(provider.key_variable)
+    key = os.environ.get(provider.key_variable) or provider.default_key
     if not key:
         raise ValueError(f"{provider.key_variable} is not set")
     payload = {

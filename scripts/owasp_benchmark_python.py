@@ -17,7 +17,7 @@ import json
 import re
 import subprocess
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Final
@@ -57,6 +57,15 @@ def load_cases(root: Path) -> list[Case]:
         name, category, truth, cwe = line.split(",")[:4]
         cases.append((name, category, truth.strip() == "true", int(cwe)))
     return cases
+
+
+def load_cases_file(path: Path) -> list[Case]:
+    """Read the ground truth saved next to the answer cache: ``[name, category, vulnerable, CWE]``."""
+
+    return [
+        (str(name), str(category), bool(vulnerable), int(cwe))
+        for name, category, vulnerable, cwe in json.loads(path.read_text(encoding="utf-8"))
+    ]
 
 
 def _cwes(text: str) -> set[int]:
@@ -302,6 +311,38 @@ def _cached(path: Path, compute: Any) -> tuple[dict[str, set[int]], int]:
     return found, cost
 
 
+def _scanners(
+    cases: Sequence[Case],
+    cache: Path,
+    root: Callable[[], Path],
+    semgrep_config: Path | None,
+) -> dict[str, dict[str, set[int]]]:
+    """Per-case CWEs of the three scanners: read from ``scanners.json`` or run and save them."""
+
+    path = cache / "scanners.json"
+    if path.is_file():
+        document = json.loads(path.read_text(encoding="utf-8"))
+        return {
+            tool: {name: set(values) for name, values in document[tool].items()}
+            for tool in ("securecode", "semgrep", "bandit")
+        }
+    if semgrep_config is None:
+        raise SystemExit("--semgrep-config is needed: the cache holds no scanners.json")
+    found = {
+        "securecode": securecode(root(), cases),
+        "semgrep": semgrep(root(), cases, semgrep_config),
+        "bandit": bandit(root(), cases),
+    }
+    path.write_text(
+        json.dumps(
+            {tool: {k: sorted(v) for k, v in values.items()} for tool, values in found.items()}
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return found
+
+
 def score(cases: Sequence[Case], found: dict[str, set[int]]) -> dict[str, Any]:
     per_category: dict[str, dict[str, Any]] = {}
     tp_all = fp_all = positives = 0
@@ -335,9 +376,22 @@ def score(cases: Sequence[Case], found: dict[str, set[int]]) -> dict[str, Any]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--benchmark", required=True, type=Path)
-    parser.add_argument("--semgrep-config", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--benchmark",
+        type=Path,
+        help="BenchmarkPython checkout; optional when every answer is already in the cache",
+    )
+    parser.add_argument(
+        "--semgrep-config",
+        type=Path,
+        help="Semgrep rules; optional when the cache holds scanners.json",
+    )
+    parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="results file; the answer cache is the 'cache' directory next to it",
+    )
     parser.add_argument(
         "--models", nargs="*", default=[], help="models scored on every case (deepseek, luna, glm)"
     )
@@ -370,19 +424,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     from scripts.llm_providers import load_dotenv
 
     load_dotenv()
-    root = arguments.benchmark
-    cases = load_cases(root)
     cache = arguments.output.parent / "cache"
     cache.mkdir(parents=True, exist_ok=True)
-    found: dict[str, dict[str, set[int]]] = {
-        "securecode": securecode(root, cases),
-        "semgrep": semgrep(root, cases, arguments.semgrep_config),
-        "bandit": bandit(root, cases),
-    }
+    benchmark: Path | None = arguments.benchmark
+
+    def root() -> Path:
+        if benchmark is None:
+            parser.error("--benchmark is needed: the cache does not hold this answer")
+        return benchmark
+
+    if benchmark is not None:
+        cases = load_cases(benchmark)
+        if not (cache / "cases.json").is_file():
+            (cache / "cases.json").write_text(
+                json.dumps([list(case) for case in cases], separators=(",", ":")),
+                encoding="utf-8",
+                newline="\n",
+            )
+    else:
+        cases = load_cases_file(cache / "cases.json")
+    found = _scanners(cases, cache, root, arguments.semgrep_config)
     costs: dict[str, int] = {}
     for model in arguments.models:
         found[model], costs[model] = _cached(
-            cache / f"{model}.json", lambda model=model: llm(model, root, cases)
+            cache / f"{model}.json", lambda model=model: llm(model, root(), cases)
         )
         found[f"securecode+{model}"] = {
             name: found["securecode"][name] | found[model].get(name, set()) for name, *_ in cases
@@ -390,14 +455,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     for model in arguments.verified_models:
         found[f"verified+{model}"], costs[f"verified+{model}"] = _cached(
             cache / f"{model}-verified.json",
-            lambda model=model: llm(model, root, cases, found["securecode"]),
+            lambda model=model: llm(model, root(), cases, found["securecode"]),
         )
     for model in arguments.auditor_models:
         found[f"auditor+{model}"], costs[f"auditor+{model}"] = _cached(
             cache / f"{model}-auditor.json",
             lambda model=model: llm(
                 model,
-                root,
+                root(),
                 cases,
                 informative_hints(found["securecode"]),
                 auditor=True,
@@ -418,7 +483,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     sampled: dict[str, dict[str, set[int]]] = {}
     for model in arguments.sampled_models:
         sampled[model], costs[model] = _cached(
-            cache / f"{model}-sample.json", lambda model=model: llm(model, root, sample)
+            cache / f"{model}-sample.json", lambda model=model: llm(model, root(), sample)
         )
     result: dict[str, Any] = {
         "cases": len(cases),
