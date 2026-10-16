@@ -20,6 +20,11 @@ from securecode_ai.contracts import (
     RunExecutionIdentity,
 )
 from securecode_ai.contracts.domain import ACCEPTED_STAGE_CATALOGUE_PIN
+from securecode_ai.core.resource_governor import (
+    ResourceReservationRequest,
+    TenantResourceLimits,
+)
+from securecode_ai.server.artifact_tenant_namespace import artifact_tenant_path_component
 from securecode_ai.server.artifact_upload import (
     ArtifactPutRequest,
     ArtifactUploadReceipt,
@@ -27,12 +32,16 @@ from securecode_ai.server.artifact_upload import (
     AuthorizedLocalArtifactUploadService,
 )
 from securecode_ai.server.persistence import DevelopmentRepository
+from securecode_ai.server.resource_repository import ResourceRepository
+from securecode_ai.server.resource_service import ResourceService
+from securecode_ai.server.run_admission_store import SqliteRunAdmissionStore
 from securecode_ai.server.worker_artifact_authorization import (
     ArtifactAuthorizationDenied,
     ArtifactUploadAuthorization,
     HmacSha256ArtifactReceiptSigner,
     SqliteArtifactAuthorizationStore,
     StaticArtifactUploadUrlFactory,
+    _session_authorization_key,
 )
 from securecode_ai.server.worker_queue import SqliteWorkerQueue
 from securecode_ai.server.worker_queue_models import WorkerQueueLease
@@ -48,6 +57,8 @@ HASH_A = "a" * 64
 SECRET = b"artifact-receipt-secret-32-bytes-min"
 PURPOSE = "evidence-graph"
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
+PROFILE_SHA = "f" * 64
+ADMISSION_MS = int(NOW.timestamp() * 1000)
 CONTENT = b'{"graph":"evidence"}\n'
 
 
@@ -95,6 +106,23 @@ class World:
         self.connection = sqlite3.connect(":memory:")
         self.connection.row_factory = sqlite3.Row
         self.repository = DevelopmentRepository(self.connection)
+        self.admissions = SqliteRunAdmissionStore(self.connection)
+        self.resources = ResourceService(ResourceRepository(self.connection))
+        self.resources.configure(
+            TenantResourceLimits(
+                tenant_id=TENANT,
+                profile_id="profile-1",
+                profile_sha256=PROFILE_SHA,
+                max_concurrent_runs=4,
+                max_admissions_per_window=100,
+                admission_window_ms=60_000,
+                max_tokens_per_window=1_000_000,
+                max_cost_microunits_per_window=1_000_000,
+                max_cpu_ms_per_run=60_000,
+                max_memory_bytes_per_run=512 * 1024 * 1024,
+                max_wall_ms_per_run=600_000,
+            )
+        )
         self.identity = _identity()
         self.clock = {"now": NOW}
         self.queue = SqliteWorkerQueue(
@@ -119,18 +147,36 @@ class World:
         self.lease: WorkerQueueLease | None = None
 
     def start_run(self) -> None:
-        self.repository.create_run(
+        # The production admission order: persist intent, reserve resources, enqueue, admit.
+        record = self.admissions.begin(
             tenant_id=TENANT,
-            run_id=RUN_ID,
-            repository_id=REPOSITORY,
-            execution_identity_hash=self.identity.execution_identity_hash,
-            base_sha=BASE,
-            head_sha=HEAD,
-            metadata={"scm_provider": "gitlab"},
             idempotency_key="intake-0001",
             request_sha256=HASH_A,
+            run_id=RUN_ID,
+            execution_identity=self.identity,
+            resource_request=ResourceReservationRequest(
+                request_id="intake-0001",
+                tenant_id=TENANT,
+                repository_id=REPOSITORY,
+                run_id=RUN_ID,
+                execution_identity_hash=self.identity.execution_identity_hash,
+                profile_sha256=PROFILE_SHA,
+                requested_tokens=1_000,
+                requested_cost_microunits=500,
+                requested_cpu_ms=2_000,
+                requested_memory_bytes=64 * 1024 * 1024,
+                requested_wall_ms=60_000,
+                now_ms=ADMISSION_MS,
+                lease_expires_at_ms=ADMISSION_MS + 86_400_000,
+            ),
+            metadata={"scm_provider": "gitlab"},
+            now_ms=ADMISSION_MS,
+        )
+        record = self.admissions.reserved(
+            record, self.resources.reserve(record.resource_request), now_ms=ADMISSION_MS
         )
         self.queue.enqueue(tenant_id=TENANT, run_id=RUN_ID, execution_identity=self.identity)
+        self.admissions.admitted(record, now_ms=ADMISSION_MS)
         lease = self.queue.claim(
             tenant_id=TENANT,
             worker_id=WORKER_ID,
@@ -148,12 +194,16 @@ class World:
         purpose: str = PURPOSE,
         tenant_id: str = TENANT,
         worker_id: str = WORKER_ID,
-        idempotency_key: str = "upload-0001",
+        idempotency_key: str | None = None,
     ) -> ArtifactUploadAuthorization:
+        session_id = self.lease.session_id if self.lease is not None else "session-unleased"
+        digest = content_sha256 or self.content_sha256
+        # The store accepts only the key derived from the session, the digest and the purpose.
+        key = idempotency_key or _session_authorization_key(session_id, digest, purpose)
         return self.authorizations.issue(
             tenant_id=tenant_id,
             worker_id=worker_id,
-            session_id=self.lease.session_id if self.lease is not None else "session-unleased",
+            session_id=session_id,
             repository_id=REPOSITORY,
             run_id=RUN_ID,
             execution_identity_hash=self.identity.execution_identity_hash,
@@ -161,13 +211,13 @@ class World:
                 schema_version=CONTRACT_SCHEMA_VERSION,
                 tenant_id=tenant_id,
                 content_id="graph-1",
-                content_sha256=content_sha256 or self.content_sha256,
+                content_sha256=digest,
                 size_bytes=size_bytes if size_bytes is not None else len(self.content),
                 data_class=DataClass.INTERNAL_METADATA,
             ),
             purpose=purpose,
             method="PUT",
-            idempotency_key=idempotency_key,
+            idempotency_key=key,
             request_sha256=HASH_A,
         )
 
@@ -178,6 +228,7 @@ class World:
             "authorization_id": authorization.authorization_id,
             "tenant_id": authorization.tenant_id,
             "worker_id": authorization.worker_id,
+            "repository_id": REPOSITORY,
             "run_id": authorization.run_id,
             "execution_identity_hash": authorization.execution_identity_hash,
             "content_sha256": authorization.content_sha256,
@@ -232,7 +283,7 @@ def test_authorization_rejects_unknown_purpose(tmp_path: Path) -> None:
 def test_authorization_accepts_every_worker_published_purpose(tmp_path: Path, purpose: str) -> None:
     world = _world(tmp_path)
 
-    authorization = world.authorize(purpose=purpose, idempotency_key=f"upload-{purpose}")
+    authorization = world.authorize(purpose=purpose)
 
     assert authorization.purpose == purpose
 
@@ -240,8 +291,8 @@ def test_authorization_accepts_every_worker_published_purpose(tmp_path: Path, pu
 def test_sarif_authorization_is_idempotent_for_retries(tmp_path: Path) -> None:
     world = _world(tmp_path)
 
-    first = world.authorize(purpose="sarif-report", idempotency_key="sarif-retry")
-    replay = world.authorize(purpose="sarif-report", idempotency_key="sarif-retry")
+    first = world.authorize(purpose="sarif-report")
+    replay = world.authorize(purpose="sarif-report")
 
     assert replay.authorization_id == first.authorization_id
     assert replay.receipt_signature == first.receipt_signature
@@ -294,7 +345,9 @@ def test_upload_stores_exact_bytes_and_returns_source_free_receipt(tmp_path: Pat
     assert isinstance(document["stored_at"], str)
 
     # Content is committed atomically under the content-addressed object key.
-    object_root = tmp_path / "objects" / pathlib.Path(receipt.object_key)
+    # The tenant directory is the encoded namespace, not the raw tenant identifier.
+    _, shard, digest = pathlib.PurePosixPath(receipt.object_key).parts
+    object_root = tmp_path / "objects" / artifact_tenant_path_component(TENANT) / shard / digest
     payload = object_root / "payload"
     assert payload.is_file()
     assert payload.read_bytes() == world.content

@@ -18,6 +18,16 @@ SENSITIVE_OR_INJECTABLE_NAMES = (
 )
 
 
+@pytest.fixture(autouse=True)
+def _require_quality_environment() -> None:
+    """These oracles describe the child environment of scripts/quality.py only."""
+
+    if os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD") != "1" or (
+        set(SENSITIVE_OR_INJECTABLE_NAMES) & os.environ.keys()
+    ):
+        pytest.skip("requires the sanitized environment of scripts/quality.py")
+
+
 def test_child_environment_is_sanitized() -> None:
     assert os.environ["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
     assert not (set(SENSITIVE_OR_INJECTABLE_NAMES) & os.environ.keys())

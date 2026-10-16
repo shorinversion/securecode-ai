@@ -140,6 +140,28 @@ def git_repository(tmp_path: Path, *, source: bytes = SOURCE, manifest: bool = F
     return checkout
 
 
+def _osv_stub(mode: str) -> str:
+    """Child-side source of an offline OSV scanner: ``clean``, ``vulnerable`` or ``unavailable``."""
+
+    return (
+        " import securecode_ai.adapters.local_product_runner_execution as execution\n"
+        " from securecode_ai.adapters.dependency_scanning import (\n"
+        "  OsvAdvisoryRecord, OsvBatchResponse, OsvPackageResult)\n"
+        " class StubOsv:\n"
+        "  scanner_id = 'osv.dev'\n"
+        "  scanner_version = 'v1'\n"
+        "  def __init__(self, **kwargs): pass\n"
+        "  def query_batch(self, request):\n"
+        f"   mode = {mode!r}\n"
+        "   if mode == 'unavailable':\n"
+        "    raise OSError\n"
+        "   found = (OsvAdvisoryRecord('GHSA-9WX4-H78V-VM56'),) if mode == 'vulnerable' else ()\n"
+        "   return OsvBatchResponse(\n"
+        "    tuple(OsvPackageResult(purl, found) for purl in request.purls))\n"
+        " execution.BoundedOsvScanner = StubOsv\n"
+    )
+
+
 def installed_child(
     tmp_path: Path,
     checkout: Path,
@@ -149,6 +171,7 @@ def installed_child(
     output: Path | None = None,
     extra: tuple[str, ...] = (),
     mutation: str = "",
+    dependency_advisories: str = "clean",
 ) -> subprocess.CompletedProcess[str]:
     root = Path(__file__).resolve().parents[2]
     launcher = tmp_path / "installed_plumbing_child.py"
@@ -161,7 +184,23 @@ def installed_child(
         " from tests.unit.test_local_product_host import synthetic_anchor\n"
         " from securecode_ai.adapters import local_product_host as host\n"
         f" anchor = synthetic_anchor({port})\n"
-        f" {mutation or 'pass'}\n"
+        # A developer machine's Git is user-owned; the administrator-only ACL proof of the
+        # fixed Git binary is exercised by the unit tests of the host module.
+        " if sys.platform == 'win32':\n"
+        "  host._assert_windows_key_protected = lambda *args, **kwargs: None\n"
+        # The scripted peer listens on the profile port and plays the approved gateway, so the
+        # child must not start a second gateway on it (as the repair path does for a running one).
+        " import securecode_ai.cli.application as application\n"
+        " from securecode_ai.cli import scan\n"
+        " application.execute_installed_product_scan = lambda arguments, *, environment: (\n"
+        "  scan._execute_installed_product_scan(\n"
+        "   arguments,\n"
+        "   environment=environment,\n"
+        "   host=scan.load_installed_product_host(),\n"
+        "   gateway_already_running=True,\n"
+        "  )\n"
+        " )\n" + _osv_stub(dependency_advisories) + f" {mutation or 'pass'}\n"
+        # Dependency advisories come from a stub, so no test depends on the network.
         " host._read_platform_anchor = lambda: anchor\n"
         " from securecode_ai.cli.application import main\n"
         " raise SystemExit(main())\n",
@@ -391,13 +430,30 @@ def test_zero_scanner_still_invokes_mandatory_discovery(tmp_path: Path, failure:
     with scripted_peer(zero=True, failure=failure) as (port, roles, _received):
         result = installed_child(tmp_path, checkout, port)
     assert roles == ["discovery"]
-    assert result.returncode == 3, result.stdout + result.stderr
+    # A refused Discovery leaves the run undecided; a Discovery that read the code and found
+    # nothing completes the coverage, so the run passes.
+    assert result.returncode == (3 if failure else 0), result.stdout + result.stderr
+    if not failure:
+        document = json.loads(result.stdout)
+        assert document["outcome"] == "PASS" and document["coverage_manifest"]["coverage_complete"]
 
 
-def test_manifest_without_production_adapter_is_non_pass(tmp_path: Path) -> None:
+def test_vulnerable_manifest_dependency_fails_the_run(tmp_path: Path) -> None:
     checkout = git_repository(tmp_path, source=b"answer = 42\n", manifest=True)
     with scripted_peer(zero=True) as (port, roles, _received):
-        result = installed_child(tmp_path, checkout, port)
+        result = installed_child(tmp_path, checkout, port, dependency_advisories="vulnerable")
+    document = json.loads(result.stdout)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert document["outcome"] == "FAIL"
+    assert document["coverage_manifest"]["coverage_complete"]
+    assert [item["cwe_id"] for item in document["findings"]] == ["CWE-937"]
+    assert roles[0] == "discovery" and set(roles) == {"discovery", "auditor", "skeptic"}
+
+
+def test_manifest_with_unreachable_advisory_service_is_non_pass(tmp_path: Path) -> None:
+    checkout = git_repository(tmp_path, source=b"answer = 42\n", manifest=True)
+    with scripted_peer(zero=True) as (port, roles, _received):
+        result = installed_child(tmp_path, checkout, port, dependency_advisories="unavailable")
     document = json.loads(result.stdout)
     assert result.returncode == 3, result.stdout + result.stderr
     assert roles == ["discovery"]
@@ -461,13 +517,16 @@ def test_installed_admission_selection_negatives_send_zero_provider_bytes(
     assert roles == []
 
 
-def test_secret_path_never_crosses_actual_installed_provider_boundary(tmp_path: Path) -> None:
+def test_secret_value_never_crosses_actual_installed_provider_boundary(tmp_path: Path) -> None:
     canary = b"development-" + b"credential-example"
     checkout = git_repository(tmp_path, source=b'password = "' + canary + b'"\nexecute(value)\n')
     with scripted_peer() as (port, roles, received):
         result = installed_child(tmp_path, checkout, port)
-    assert result.returncode == 3, result.stdout + result.stderr
-    assert roles == []
+    document = json.loads(result.stdout)
+    # D-116: the file is read with the secret value masked, so the model still sees the code.
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert roles and roles[0] == "discovery"
+    assert "CWE-798" in {item["cwe_id"] for item in document["findings"]}
     assert canary.decode() not in json.dumps(received) + result.stdout + result.stderr
 
 

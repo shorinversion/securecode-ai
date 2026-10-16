@@ -21,7 +21,7 @@ STAGE_TIMEOUT_SECONDS: Final = 360
 # Windows refuses to spawn a process whose command line exceeds 32767
 # characters; batches stay well below that while the file set is unchanged.
 MAX_ARGUMENT_BYTES: Final = 24_000
-UNIT_STAGE_TIMEOUT_SECONDS: Final = 900
+UNIT_STAGE_TIMEOUT_SECONDS: Final = 1500
 GIT_TIMEOUT_SECONDS: Final = 30
 SAFE_PARENT_VARIABLES: Final = (
     "COMSPEC",
@@ -124,6 +124,10 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 # The reviewer demo is exercised end to end with fake model runtimes.
                 "tests/integration/test_p917_real_local_demo.py",
                 "tests/integration/test_trial_architect_git.py",
+                # Connected-path and installed-CLI proofs drift silently unless CI runs them.
+                "tests/integration/test_artifact_upload.py",
+                "tests/integration/test_enterprise_end_to_end.py",
+                "tests/integration/test_local_product_cli.py",
             ),
             executes_repository_code=True,
             timeout_seconds=UNIT_STAGE_TIMEOUT_SECONDS,

@@ -12,8 +12,9 @@
 - Демо Аудитор → Архитектор `COMPLETED` на локальной Qwen и на DeepSeek. Бенчмарк на
   600 кейсах: hybrid на уровне Semgrep по recall, превосходство не доказано.
 - После v1: пять серверных исправлений из [BRANCH_RECOVERY.md](BRANCH_RECOVERY.md),
-  22 устаревших теста `tests/integration/test_artifact_upload.py`, проверка
-  `quickstart.py --up` на Linux, новый скринкаст, точность детекторов (precision
+  устаревшие интеграционные тесты (`test_artifact_upload.py`,
+  `test_enterprise_end_to_end.py`, `test_local_product_cli.py`) исправлены и входят в
+  `scripts/quality.py`, проверка `quickstart.py --up` на Linux, новый скринкаст, точность детекторов (precision
   около 50%), оценка полного агентного конвейера на корпусе.
 
 ## История до v1.0.0
