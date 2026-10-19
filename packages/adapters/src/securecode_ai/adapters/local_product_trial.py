@@ -10,8 +10,10 @@ Providers:
 
 * ``deepseek`` (default): the owner-authorized DeepSeek profile with reasoning enabled and an
   in-memory spend cap.  Retention and training terms are not verified.
-* ``local``: Ollama on 127.0.0.1:11434 through the approved loopback gateway.  Small local
-  models often fail the strict Auditor/Skeptic protocol, which ends as ``INDETERMINATE``.
+* ``local``: Ollama on 127.0.0.1:11434 through the approved loopback gateway.  Its window is
+  small, so the default ``verify`` mode makes Discovery read the windows that fit (scanner
+  hits first) instead of the whole repository (D-123).  Small local models can still fail
+  the strict Auditor/Skeptic protocol, which ends as ``INDETERMINATE``.
 * ``openai-compatible``: any HTTPS endpoint with the OpenAI Chat Completions API, named by
   the operator with ``SECURECODE_MODEL_BASE_URL``, ``SECURECODE_MODEL`` and
   ``SECURECODE_MODEL_API_KEY`` (D-118).  Its data terms are not verified; secrets are
@@ -48,7 +50,12 @@ from .config import (
     resolve_environment_credential,
 )
 from .local_product_host_host import LocalProductHost
-from .local_product_runner_config import LocalProductScanResult, resolve_local_product_configuration
+from .local_product_runner_config import (
+    LocalProductConfigurationError,
+    LocalProductScanOptions,
+    LocalProductScanResult,
+    resolve_local_product_configuration,
+)
 from .local_product_runner_execution import _run_local_product_scan
 from .local_provider_gateway_server import _running_approved_gateway
 from .openai_compatible_remote import (
@@ -207,11 +214,16 @@ def run_trial_analysis(
     report_format: ReportFormat,
     environment: Mapping[str, str],
     max_cost_microusd: int = 1_000_000,
+    mode: str | None = None,
 ) -> TrialAnalysis:
     """Run the full product pipeline on ``target`` with an in-memory trial authority.
 
     ``SECURECODE_TRACE=<file>`` appends a JSONL trace of the stages (no source, no prompts);
     ``SECURECODE_SCAN_BUDGET_SECONDS`` (60..600) pins the time for all scanner workers.
+    ``mode`` is ``full`` (Discovery reads every window) or ``verify`` (Discovery reads the
+    windows that fit the budget, scanner hits first); it defaults to ``verify`` for the
+    local provider, whose small context cannot hold a whole repository, and ``full``
+    otherwise. ``SECURECODE_LOCAL_*`` variables size the local model window (D-123).
     """
 
     budget = _positive(environment, "SECURECODE_SCAN_BUDGET_SECONDS", 0)
@@ -227,6 +239,7 @@ def run_trial_analysis(
             report_format=report_format,
             environment=environment,
             max_cost_microusd=max_cost_microusd,
+            mode=mode,
         )
     except BaseException as error:
         trace_event("run_end", error=exception_label(error))
@@ -246,7 +259,12 @@ def _run_trial_analysis(
     report_format: ReportFormat,
     environment: Mapping[str, str],
     max_cost_microusd: int,
+    mode: str | None,
 ) -> TrialAnalysis:
+    selected = mode or ("verify" if provider == "local" else "full")
+    if selected not in {"full", "verify"}:
+        raise TrialAnalysisError("mode must be full or verify")
+    options = _local_options(environment, selected)
     git = shutil.which("git")
     if git is None:
         raise TrialAnalysisError("git is required")
@@ -267,6 +285,7 @@ def _run_trial_analysis(
                 provider_runtime=runtime,
                 cost_observer=lambda receipt: costs.append(receipt.cost_microunits),
                 authority_loader=lambda: host,
+                options=options,
             )
         finally:
             runtime.close()
@@ -288,6 +307,7 @@ def _run_trial_analysis(
                 provider_runtime=runtime,
                 cost_observer=lambda receipt: costs.append(receipt.cost_microunits),
                 authority_loader=lambda: host,
+                options=options,
             )
         finally:
             runtime.close()
@@ -300,7 +320,7 @@ def _run_trial_analysis(
         _require_git_version(git_path)
         _require_git_checkout(git_path, target)
         version, digest = _ollama_identity(model_id)
-        profile = _local_profile(model_id, digest)
+        profile = _local_profile(model_id, digest, options, _local_timeout(environment))
         host = _host(profile, _policy(profile, "private_model_zdr", approval=False))
         configuration = resolve_local_product_configuration(host)
         with _running_approved_gateway(host.profile, version):
@@ -311,6 +331,7 @@ def _run_trial_analysis(
                 configuration,
                 git_verifier=lambda _digest: git_path,
                 authority_loader=lambda: host,
+                options=options,
             )
         return TrialAnalysis(provider, model_id, result, 0)
     raise TrialAnalysisError("provider must be deepseek, openai-compatible or local")
@@ -368,13 +389,61 @@ def _base_profile() -> dict[str, object]:
     return _fixture("provider-fixtures/valid.local-openai-compatible.json")
 
 
-def _local_profile(model_id: str, digest: str) -> ProviderProfile:
+def _local_timeout(environment: Mapping[str, str]) -> int:
+    """Seconds per local model call: the loopback gateway admits at most 30."""
+
+    seconds = _positive(environment, "SECURECODE_LOCAL_TIMEOUT_SECONDS", 30)
+    if not 1 <= seconds <= 30:
+        raise TrialAnalysisError("SECURECODE_LOCAL_TIMEOUT_SECONDS must be 1..30")
+    return seconds
+
+
+def _local_options(environment: Mapping[str, str], mode: str) -> LocalProductScanOptions:
+    """The local model window from ``SECURECODE_LOCAL_*`` and the Discovery seed of the mode."""
+
+    defaults = LocalProductScanOptions()
+    try:
+        return LocalProductScanOptions(
+            discovery_seed="scanner" if mode == "verify" else "full",
+            local_max_input_tokens=_positive(
+                environment, "SECURECODE_LOCAL_CONTEXT_TOKENS", defaults.local_max_input_tokens
+            ),
+            local_max_output_tokens=_positive(
+                environment, "SECURECODE_LOCAL_MAX_OUTPUT_TOKENS", defaults.local_max_output_tokens
+            ),
+            local_max_context_bytes=_positive(
+                environment, "SECURECODE_LOCAL_CONTEXT_BYTES", defaults.local_max_context_bytes
+            ),
+            local_max_repository_calls=_positive(
+                environment,
+                "SECURECODE_LOCAL_REPOSITORY_CALLS",
+                defaults.local_max_repository_calls,
+            ),
+        )
+    except LocalProductConfigurationError:
+        raise TrialAnalysisError(
+            "SECURECODE_LOCAL_CONTEXT_TOKENS must be 2048..32768, "
+            "SECURECODE_LOCAL_MAX_OUTPUT_TOKENS 256..4096, SECURECODE_LOCAL_CONTEXT_BYTES "
+            "1..8 times the context tokens and SECURECODE_LOCAL_REPOSITORY_CALLS 1..64"
+        ) from None
+
+
+def _local_profile(
+    model_id: str,
+    digest: str,
+    options: LocalProductScanOptions | None = None,
+    timeout_seconds: int = 30,
+) -> ProviderProfile:
+    window = LocalProductScanOptions() if options is None else options
     data = _base_profile()
     data.update(model_id=model_id, model_snapshot="sha256:" + digest)
     budgets = data["budgets"]
     endpoint = data["endpoint"]
     assert isinstance(budgets, dict) and isinstance(endpoint, dict)
-    budgets["timeout_seconds"] = 30  # The loopback gateway admits at most 30 s.
+    budgets["timeout_seconds"] = timeout_seconds
+    budgets["max_total_tokens"] = max(
+        32768, window.local_max_input_tokens + window.local_max_output_tokens
+    )
     endpoint.update(base_url=f"http://127.0.0.1:{_GATEWAY_PORT}/v1", allowed_ports=[_GATEWAY_PORT])
     return parse_provider_profile(json.dumps(data).encode("utf-8"))
 

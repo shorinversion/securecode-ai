@@ -260,3 +260,91 @@ def test_target_must_be_a_git_checkout_with_a_commit(
             trial._require_git_checkout(Path("git"), str(tmp_path))
     with pytest.raises(trial.TrialAnalysisError, match="not a directory"):
         trial._require_git_checkout(Path("git"), str(tmp_path / "missing"))
+
+
+def test_local_window_variables_default_to_the_fixed_small_model_window() -> None:
+    from securecode_ai.adapters.local_product_trial import _local_options
+
+    options = _local_options({}, "verify")
+
+    assert options.discovery_seed == "scanner"
+    assert (options.local_max_input_tokens, options.local_max_output_tokens) == (8192, 2048)
+    assert (options.local_max_context_bytes, options.local_max_repository_calls) == (65536, 16)
+    assert _local_options({}, "full").discovery_seed == "full"
+
+
+def test_local_window_variables_are_read_and_bounded() -> None:
+    from securecode_ai.adapters.local_product_trial import (
+        TrialAnalysisError,
+        _local_options,
+        _local_timeout,
+    )
+
+    options = _local_options(
+        {
+            "SECURECODE_LOCAL_CONTEXT_TOKENS": "16384",
+            "SECURECODE_LOCAL_MAX_OUTPUT_TOKENS": "1024",
+            "SECURECODE_LOCAL_CONTEXT_BYTES": "100000",
+            "SECURECODE_LOCAL_REPOSITORY_CALLS": "32",
+        },
+        "full",
+    )
+    assert (options.local_max_input_tokens, options.local_max_output_tokens) == (16384, 1024)
+    assert (options.local_max_context_bytes, options.local_max_repository_calls) == (100000, 32)
+    for name, value in (
+        ("SECURECODE_LOCAL_CONTEXT_TOKENS", "1024"),
+        ("SECURECODE_LOCAL_CONTEXT_TOKENS", "40000"),
+        ("SECURECODE_LOCAL_MAX_OUTPUT_TOKENS", "100"),
+        ("SECURECODE_LOCAL_MAX_OUTPUT_TOKENS", "5000"),
+        ("SECURECODE_LOCAL_CONTEXT_BYTES", "70000"),
+        ("SECURECODE_LOCAL_REPOSITORY_CALLS", "65"),
+        ("SECURECODE_LOCAL_REPOSITORY_CALLS", "0"),
+        ("SECURECODE_LOCAL_REPOSITORY_CALLS", "many"),
+    ):
+        with pytest.raises(TrialAnalysisError, match=r"SECURECODE_LOCAL|whole number"):
+            _local_options({name: value}, "full")
+    assert _local_timeout({}) == 30
+    assert _local_timeout({"SECURECODE_LOCAL_TIMEOUT_SECONDS": "5"}) == 5
+    for bad in ("0", "31"):
+        with pytest.raises(TrialAnalysisError, match=r"1..30"):
+            _local_timeout({"SECURECODE_LOCAL_TIMEOUT_SECONDS": bad})
+
+
+def test_local_profile_carries_the_window_and_timeout() -> None:
+    from securecode_ai.adapters.local_product_runner_config import LocalProductScanOptions
+    from securecode_ai.adapters.local_product_trial import _local_profile
+
+    profile = _local_profile(
+        "qwen2.5-coder:7b-instruct-q4_K_M",
+        "a" * 64,
+        LocalProductScanOptions(local_max_input_tokens=32768, local_max_output_tokens=4096),
+        12,
+    )
+
+    assert profile.budgets.timeout_seconds == 12
+    assert profile.budgets.max_total_tokens == 32768 + 4096
+
+
+def test_analyze_mode_flag_takes_full_or_verify() -> None:
+    from securecode_ai.cli.analyze import analyze_parser
+
+    parser = analyze_parser()
+
+    assert parser.parse_args(["repo"]).mode is None
+    assert parser.parse_args(["repo", "--mode", "verify"]).mode == "verify"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["repo", "--mode", "fast"])
+
+
+def test_unknown_mode_is_refused_before_any_work(tmp_path: Path) -> None:
+    from securecode_ai.adapters.local_product_trial import TrialAnalysisError, run_trial_analysis
+    from securecode_ai.core.reports import ReportFormat
+
+    with pytest.raises(TrialAnalysisError, match="mode must be"):
+        run_trial_analysis(
+            str(tmp_path),
+            provider="local",
+            report_format=ReportFormat.JSON,
+            environment={},
+            mode="fast",
+        )

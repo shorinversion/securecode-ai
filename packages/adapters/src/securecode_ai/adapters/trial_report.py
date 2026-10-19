@@ -176,6 +176,8 @@ class TrialReportContext:
     covered_unresolved: int = 0
     # Why the deterministic stage did not complete (fixed codes), when it did not.
     deterministic_reasons: tuple[str, ...] = ()
+    # (windows Discovery read, windows of the revision) when it read a seed only.
+    discovery_seed: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +246,17 @@ def render_trial_report(
                 "не известна (цены модели не заданы)"
                 if context.cost_microusd is None
                 else f"${context.cost_microusd / 1_000_000:.4f}",
+            ),
+            *(
+                (
+                    (
+                        "Поиск",
+                        f"окна со сработками сканеров ({context.discovery_seed[0]} из "
+                        f"{context.discovery_seed[1]})",
+                    ),
+                )
+                if context.discovery_seed is not None
+                else ()
             ),
             ("Находок", str(len(entries))),
             ("Без окончательного решения", _undecided(context)),

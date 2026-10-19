@@ -94,6 +94,7 @@ from .product_execution import (
     restricted_product_source_paths,
 )
 from .product_review import ProductReviewResult
+from .product_runtime_seed import SeedBudget, select_discovery_seed
 from .product_scan import (
     ProductCandidateFlow,
     run_product_candidate_flow,
@@ -593,6 +594,21 @@ def execute_product_audit(
             deterministic_scan=execution.scan,
             deterministic_execution=execution,
         )
+        if host.discovery_seed == "scanner":
+            seed = select_discovery_seed(
+                model_catalogue.anchors,
+                scan_graph=execution.scan.graph,
+                budget=SeedBudget(
+                    request.budget.max_repository_calls,
+                    min(request.budget.max_context_bytes, request.budget.max_input_tokens) // 2,
+                ),
+            )
+            with_seed = getattr(model_backend, "with_seed", None)
+            if not callable(with_seed):
+                raise ValueError("discovery backend cannot take a seed")
+            model_backend = with_seed(seed)
+            bound = replace(bound, discovery_seed_evidence_ids=tuple(sorted(seed)))
+            trace_event("discovery_seed", windows=len(seed), of=len(model_catalogue.anchors))
         children = child_fact_catalogue(execution, tenant_id=request.tenant_id)
         artifacts = dict(children.artifacts)
         retained = tuple(
@@ -629,6 +645,11 @@ def execute_product_audit(
                 "PRODUCT_EXECUTION_COMPOSITION_FAILED", "candidate union unavailable"
             )
         discovery_receipt = flow.discovery.receipt
+        trace_event(
+            "discovery_result",
+            status=discovery_receipt.model_call_status.value,
+            schema_valid=discovery_receipt.schema_valid_result,
+        )
         if (
             discovery_receipt.receipt_id != model_plan.receipt_id
             or discovery_receipt.scope_sha256 != model_plan.scope_sha256

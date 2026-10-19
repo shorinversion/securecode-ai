@@ -182,6 +182,11 @@ def _validate_host(
         or any(type(item) is not ProductAuditFindingMetadata for item in host.finding_metadata)
         or any(type(item) is not ComponentPin for item in host.report_tools)
         or host.completed_at < host.created_at
+        or host.discovery_seed not in {"full", "scanner"}
+        or type(host.discovery_seed_evidence_ids) is not tuple
+        or (host.discovery_seed == "full") != (not host.discovery_seed_evidence_ids)
+        or not set(host.discovery_seed_evidence_ids)
+        <= {anchor.evidence_id for anchor in host.source_catalogue.anchors}
     ):
         raise ValueError
     request = ModelRequest.model_validate_json(host.discovery_request.model_dump_json())

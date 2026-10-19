@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001 - the reports under test are written in Russian
 """The reports name why a stage did not complete, with fixed codes only."""
 
 from __future__ import annotations
@@ -141,3 +142,49 @@ def test_gap_detail_prefers_reasons_only_for_the_incomplete_execution_code() -> 
     )
     assert gap_detail("OTHER", ("A",)) == "OTHER"
     assert gap_detail("DETERMINISTIC_CHILD_EXECUTION_INCOMPLETE", ("A", "B")) == "A; B"
+
+
+def test_discovery_mode_counts_the_seed_or_all_windows() -> None:
+    from securecode_ai.adapters.coverage_causes import discovery_mode
+
+    anchors = tuple(range(40))
+
+    def composition(seed: str, ids: tuple[str, ...]) -> Any:
+        host = SimpleNamespace(
+            discovery_seed=seed,
+            discovery_seed_evidence_ids=ids,
+            source_catalogue=SimpleNamespace(anchors=anchors),
+        )
+        return SimpleNamespace(host_inputs=host)
+
+    assert discovery_mode(composition("scanner", ("a", "b", "c"))) == {
+        "discovery_seed": "scanner",
+        "seed_windows": 3,
+        "total_windows": 40,
+    }
+    assert discovery_mode(composition("full", ())) == {
+        "discovery_seed": "full",
+        "seed_windows": 40,
+        "total_windows": 40,
+    }
+
+
+def test_readable_report_says_how_many_windows_discovery_read() -> None:
+    from pathlib import Path
+
+    from securecode_ai.adapters.trial_report import TrialReportContext, render_trial_report
+
+    document: dict[str, object] = {"outcome": "PASS", "findings": [], **_manifest()}
+    shown = TrialReportContext(
+        Path("repo"), "a" * 40, "local", "qwen", 0, {}, discovery_seed=(3, 40)
+    )
+    plain = TrialReportContext(Path("repo"), "a" * 40, "local", "qwen", 0, {})
+
+    assert (
+        "окна со сработками сканеров (3 из 40)"
+        in render_trial_report(document, shown, (), html_format=False).decode()
+    )
+    assert (
+        "окна со сработками"
+        not in render_trial_report(document, plain, (), html_format=False).decode()
+    )

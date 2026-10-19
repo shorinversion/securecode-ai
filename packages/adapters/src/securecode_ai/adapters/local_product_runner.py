@@ -26,6 +26,7 @@ from .local_product_runner_config import (
     LocalProductCancelledError,
     LocalProductConfigurationError,
     LocalProductRepairResult,
+    LocalProductScanOptions,
     LocalProductScanResult,
     LocalProductSupersededError,
     LocalProductUnavailableError,
@@ -45,6 +46,7 @@ for _local_product_type in (
     LocalProductCancelledError,
     LocalProductSupersededError,
     LocalProductRepairResult,
+    LocalProductScanOptions,
     LocalProductScanResult,
 ):
     _local_product_type.__module__ = __name__
@@ -65,6 +67,7 @@ def run_local_product_scan(
     cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
     dependency_scanner: ApprovedOsvScanner | None = None,
     provider_runtime: ProductProviderRuntime | None = None,
+    options: LocalProductScanOptions | None = None,
 ) -> LocalProductScanResult:
     """Execute the installed actual Core composition on one immutable HEAD."""
     try:
@@ -81,6 +84,7 @@ def run_local_product_scan(
             cost_observer=cost_observer,
             dependency_scanner=dependency_scanner,
             provider_runtime=provider_runtime,
+            options=options,
         )
     except (
         LocalProductConfigurationError,
@@ -156,6 +160,7 @@ def _run_local_product_scan(
     cost_observer: Callable[[RemoteProviderCostReceipt], None] | None = None,
     dependency_scanner: ApprovedOsvScanner | None = None,
     provider_runtime: ProductProviderRuntime | None = None,
+    options: LocalProductScanOptions | None = None,
 ) -> LocalProductScanResult:
     return _execution_module._run_local_product_scan(
         host,
@@ -170,6 +175,7 @@ def _run_local_product_scan(
         cost_observer=cost_observer,
         dependency_scanner=dependency_scanner,
         provider_runtime=provider_runtime,
+        options=options,
         git_verifier=verify_local_git_executable,
         git_command=_git,
         reader_factory=OfflineGitObjectReader,
@@ -180,6 +186,7 @@ __all__ = [
     "LocalProductCancelledError",
     "LocalProductConfigurationError",
     "LocalProductRepairResult",
+    "LocalProductScanOptions",
     "LocalProductScanResult",
     "LocalProductSupersededError",
     "LocalProductUnavailableError",

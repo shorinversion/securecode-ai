@@ -121,6 +121,7 @@ every finding and Architect fixes.
 | `--output FILE` | Write the report to a file |
 | `--output-dir DIR` | Save `report.md`, `report.html`, `report.json` and `report.sarif` from one run |
 | `--patch-dir DIR` | Save validated fixes as `.diff` files: one per fix (each diff applies to the original file) and `patch-<file>.diff` with every fix of a file when there are several |
+| `--mode full\|verify` | `full`: Discovery reads every window of the repository; `verify`: only the windows that fit the model budget, scanner hits first (n of m windows are named in the report and in the JSON `mode`). Default `verify` for `--provider local`, `full` otherwise. Local model window: `SECURECODE_LOCAL_CONTEXT_TOKENS` (2048..32768, default 8192), `SECURECODE_LOCAL_MAX_OUTPUT_TOKENS` (256..4096, 2048), `SECURECODE_LOCAL_CONTEXT_BYTES` (up to 8x the window, 65536), `SECURECODE_LOCAL_REPOSITORY_CALLS` (1..64, 16), `SECURECODE_LOCAL_TIMEOUT_SECONDS` (1..30, 30); start Ollama with `OLLAMA_CONTEXT_LENGTH` at least the window (D-123) |
 | `--no-fix` | Do not request fixes. Otherwise the Architect proposes up to 10 fixes per run, one per weakness group: two keys in one file get two fixes, built one on the other |
 | `--max-cost-usd N` | API spend cap per run (default 1.0); each call reserves its maximum cost first, about $0.04, so a cap below $0.20 can stop the review |
 
