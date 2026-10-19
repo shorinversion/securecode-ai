@@ -584,6 +584,7 @@ def execute_product_audit(
             content_key=content_key,
             fingerprint_key=fingerprint_key,
             scanner=dependency_scanner,
+            paths=host.scope_paths,
         )
         # Every model-facing step reads files with detected secrets masked (D-116).
         execution = model_facing_execution(execution, content_key=content_key)

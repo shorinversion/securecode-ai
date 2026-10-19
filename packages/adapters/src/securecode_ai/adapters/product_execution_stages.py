@@ -57,6 +57,7 @@ def execute_secret_stage(
     head_sha: str,
     repository_id: str,
     fingerprint_key: SecretFingerprintKey,
+    paths: frozenset[str] | None = None,
 ) -> ProductSecretStageResult:
     """Verify Git closure and actually scan every admitted file.
 
@@ -64,7 +65,7 @@ def execute_secret_stage(
     Scanning all files covers credentials outside language-specific source files.
     The host-owned reader is subject to the snapshot adapter's bounded budgets.
     """
-    snapshot = materialize_git_snapshot(reader, head_sha)
+    snapshot = materialize_git_snapshot(reader, head_sha, paths=paths)
     results = tuple(
         scan_secrets(
             repository_id=repository_id,
@@ -104,13 +105,14 @@ def execute_dependency_stage(
     head_sha: str,
     repository_id: str,
     scanner: ApprovedOsvScanner | None,
+    paths: frozenset[str] | None = None,
 ) -> ProductDependencyStageResult:
     """Discover supported manifests independently and execute their approved port.
 
     Unsupported selected formats and port failures cannot become empty results.
     No repository-provided ignore policy or scanner identity is consumed.
     """
-    snapshot = materialize_git_snapshot(reader, head_sha)
+    snapshot = materialize_git_snapshot(reader, head_sha, paths=paths)
     files = tuple(RepositoryFile(f.path, len(f.content), f.content_sha256) for f in snapshot.files)
     inventory = RepositoryInventory(
         files, sum(f.size_bytes for f in files), repository_tree_sha256(files)

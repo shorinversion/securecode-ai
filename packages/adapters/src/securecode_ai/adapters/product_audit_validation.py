@@ -185,6 +185,10 @@ def _validate_host(
         or host.discovery_seed not in {"full", "scanner"}
         or type(host.discovery_seed_evidence_ids) is not tuple
         or (host.discovery_seed == "full") != (not host.discovery_seed_evidence_ids)
+        or (
+            host.scope_paths is not None
+            and not {item.path for item in host.source_catalogue.snapshot.files} <= host.scope_paths
+        )
         or not set(host.discovery_seed_evidence_ids)
         <= {anchor.evidence_id for anchor in host.source_catalogue.anchors}
     ):

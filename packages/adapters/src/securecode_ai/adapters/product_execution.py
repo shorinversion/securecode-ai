@@ -42,6 +42,7 @@ def execute_deterministic_children(
     content_key: bytes,
     fingerprint_key: SecretFingerprintKey,
     scanner: ApprovedOsvScanner | None,
+    paths: frozenset[str] | None = None,
 ) -> ProductDeterministicExecution:
     """Run deterministic children through the facade-owned stage bindings."""
 
@@ -54,6 +55,7 @@ def execute_deterministic_children(
         fingerprint_key=fingerprint_key,
         scanner=scanner,
         secret_stage=execute_secret_stage,
+        paths=paths,
     )
 
 

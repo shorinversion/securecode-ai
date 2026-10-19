@@ -67,6 +67,7 @@ from .local_product_runner_config import (
     LocalProductConfigurationError,
     LocalProductScanOptions,
     LocalProductScanResult,
+    LocalProductScanScope,
     LocalProductSupersededError,
     LocalProductUnavailableError,
     _hash,
@@ -81,6 +82,7 @@ from .local_product_runner_execution_family import _candidate_family
 from .local_product_runner_execution_types import _GitCommand, _ReaderFactory
 from .local_product_runner_identity import select_run_id, select_run_identity
 from .local_product_runner_roles import build_role_request
+from .local_product_scope import changed_paths_since
 from .model import AuthorizedProviderHarness
 from .native_repository_tools import NATIVE_REPOSITORY_TOOLS_JSON
 from .native_sources import NativeSourceCatalogue, build_native_source_catalogue
@@ -153,6 +155,9 @@ def _run_local_product_scan(
     options: LocalProductScanOptions | None = None,
 ) -> LocalProductScanResult:
     scan_options = LocalProductScanOptions() if options is None else options
+    if scan_options.base is not None and execution_identity is not None:
+        # A connected job names its own revision and scope; --base is a local-run choice.
+        raise LocalProductConfigurationError()
     cancellation = LocalProductCancellationGuard(cancelled)
     cancellation.checkpoint()
     selected_runtime = provider_runtime
@@ -227,9 +232,19 @@ def _run_local_product_scan(
         "HEAD",
         cancellation=cancellation,
     )
+    scope: LocalProductScanScope | None = None
+    if scan_options.base is not None:
+        scope = changed_paths_since(
+            lambda *arguments: _run_git_command(
+                git_command, checkout, git, *arguments, cancellation=cancellation
+            ),
+            scan_options.base,
+            head,
+        )
+    scope_paths = None if scope is None else frozenset(scope.changed_paths)
     local_repository_id = "local-" + hashlib.sha256(str(checkout).encode()).hexdigest()[:32]
     scm_provider = "git"
-    base_sha = None
+    base_sha = None if scope is None else scope.base_sha
     repository_id = local_repository_id
     if execution_identity is not None:
         supplied_revision = execution_identity.repository_revision
@@ -295,8 +310,24 @@ def _run_local_product_scan(
         max_context_bytes=scan_options.local_max_context_bytes if local_provider else max_input,
         timeout_ms=profile.budgets.timeout_seconds * 1000,
     )
-    scope_pin = _pin(
-        "whole-revision-scope", "1.0.0", _hash(identity.repository_revision.model_dump(mode="json"))
+    scope_pin = (
+        _pin(
+            "whole-revision-scope",
+            "1.0.0",
+            _hash(identity.repository_revision.model_dump(mode="json")),
+        )
+        if scope is None
+        else _pin(
+            "changed-files-scope",
+            "1.0.0",
+            _hash(
+                [
+                    identity.repository_revision.model_dump(mode="json"),
+                    scope.merge_base_sha,
+                    scope.changed_paths,
+                ]
+            ),
+        )
     )
     request = ModelRequest(
         schema_version="0.2.0",
@@ -410,7 +441,12 @@ def _run_local_product_scan(
         tenant_id=policy.tenant_scope,
         repository_id=repository_id,
         content_key=content_key,
+        paths=scope_paths,
     )
+    if scope is not None:
+        scope = replace(
+            scope, scanned_paths=tuple(sorted(item.path for item in catalogue.snapshot.files))
+        )
     cancellation.checkpoint()
     runtime = LocalWorkflowRuntime(registry=WorkflowDefinitionRegistry((workflow,)))
     started = runtime.start(
@@ -708,6 +744,7 @@ def _run_local_product_scan(
         completed_at=now,
         state_probe=probe,
         discovery_seed=scan_options.discovery_seed,
+        scope_paths=scope_paths,
     )
     cancellation.checkpoint()
     selected_dependency_scanner = dependency_scanner
@@ -765,6 +802,7 @@ def _run_local_product_scan(
         sum(item.input_tokens + item.output_tokens for item in model_usage),
         0,
         cancel,
+        scope,
     )
     outcome.require_publication()
     return outcome

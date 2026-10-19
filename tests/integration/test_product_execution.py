@@ -92,6 +92,7 @@ def execute(
     extra: dict[str, bytes] | None = None,
     scanner: ApprovedOsvScanner | None = None,
     path: str = "a.py",
+    paths: frozenset[str] | None = None,
 ) -> ProductDeterministicExecution:
     reader = Objects()
     entries = {path: source}
@@ -114,6 +115,7 @@ def execute(
         content_key=b"c" * 32,
         fingerprint_key=SecretFingerprintKey("fixture", b"k" * 32),
         scanner=scanner,
+        paths=paths,
     )
 
 
@@ -125,6 +127,31 @@ def test_python_without_manifest_executes_all_selected_children() -> None:
     assert result.secrets.results
     assert result.scan.receipts
     assert not result.scan.graph.candidates
+
+
+def test_scoped_execution_covers_only_the_named_files_and_skips_unchanged_manifests() -> None:
+    result = execute(
+        manifest=True,
+        extra={"b.py": b"other = 1\n", "docs.md": b"text\n"},
+        paths=frozenset({"a.py"}),
+    )
+
+    assert result.is_complete, result.incompleteness_reasons()
+    assert [item.path for item in result.catalogue.snapshot.files] == ["a.py"]
+    assert "dependency_scan" not in result.selected_child_ids
+    assert result.dependencies is None and result.obstacles == ()
+    assert result.secrets is not None
+    assert [item.path for item in result.secrets.results] == ["a.py"]
+    assert [index.path for index in result.catalogue.indexes] == ["a.py"]
+    assert len(result.scan.receipts) == 1
+
+
+def test_scoped_execution_still_checks_a_changed_manifest() -> None:
+    result = execute(manifest=True, paths=frozenset({"a.py", "requirements.txt"}))
+
+    # No advisory port was given: the manifest in scope is executed and reported as an obstacle.
+    assert "dependency_scan" in result.selected_child_ids
+    assert result.obstacles == ("PRODUCT_DEPENDENCY_EXECUTION_FAILED",)
 
 
 def test_missing_dependency_port_blocks_composite_but_retains_successful_facts() -> None:

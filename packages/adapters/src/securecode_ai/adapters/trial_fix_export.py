@@ -15,6 +15,7 @@ import re
 from collections.abc import Mapping, Sequence
 from urllib.parse import quote, unquote
 
+from .local_product_runner_config import LocalProductScanScope
 from .trial_architect import FixFinding, ProposedFix
 from .trial_groups import WEAKNESS_FINGERPRINT, finding_groups
 
@@ -168,6 +169,46 @@ def attach_fixes_to_sarif(
                         ],
                     }
                 )
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def scope_document(scope: LocalProductScanScope | None) -> dict[str, object]:
+    """What the run audited: the whole revision, or the files changed since a base."""
+
+    if scope is None:
+        return {
+            "kind": "whole_revision",
+            "note": "every supported file of the revision was audited",
+        }
+    return {
+        "kind": "changed_since_base",
+        "base_rev": scope.base_rev,
+        "base_sha": scope.base_sha,
+        "merge_base_sha": scope.merge_base_sha,
+        "changed_paths": list(scope.changed_paths),
+        "scanned_paths": list(scope.scanned_paths),
+        "note": (
+            "only the files changed since the merge base were audited; flows into unchanged "
+            "files and dependency manifests that did not change were not re-checked"
+        ),
+    }
+
+
+def attach_scope_to_json(rendered: bytes, scope: LocalProductScanScope | None) -> bytes:
+    """Add ``scope`` to the JSON report."""
+
+    document = json.loads(rendered)
+    document["scope"] = scope_document(scope)
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def attach_scope_to_sarif(rendered: bytes, scope: LocalProductScanScope | None) -> bytes:
+    """Add ``securecode_scope`` to the properties of the first SARIF run."""
+
+    document = json.loads(rendered)
+    runs = document.get("runs", [])
+    if runs:
+        runs[0].setdefault("properties", {})["securecode_scope"] = scope_document(scope)
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 

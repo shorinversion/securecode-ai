@@ -348,3 +348,20 @@ def test_unknown_mode_is_refused_before_any_work(tmp_path: Path) -> None:
             environment={},
             mode="fast",
         )
+
+
+def test_analyze_base_flag_is_parsed_and_a_hostile_base_is_refused(tmp_path: Path) -> None:
+    from securecode_ai.adapters.local_product_trial import TrialAnalysisError, run_trial_analysis
+    from securecode_ai.cli.analyze import analyze_parser
+    from securecode_ai.core.reports import ReportFormat
+
+    assert analyze_parser().parse_args(["repo"]).base is None
+    assert analyze_parser().parse_args(["repo", "--base", "origin/main"]).base == "origin/main"
+    with pytest.raises(TrialAnalysisError, match="--base"):
+        run_trial_analysis(
+            str(tmp_path),
+            provider="local",
+            report_format=ReportFormat.JSON,
+            environment={},
+            base="--upload-pack=x",
+        )

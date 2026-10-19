@@ -45,6 +45,7 @@ class _SecretStageExecutor(Protocol):
         head_sha: str,
         repository_id: str,
         fingerprint_key: SecretFingerprintKey,
+        paths: frozenset[str] | None = None,
     ) -> ProductSecretStageResult: ...
 
 
@@ -58,6 +59,7 @@ def execute_deterministic_children(
     fingerprint_key: SecretFingerprintKey,
     scanner: ApprovedOsvScanner | None,
     secret_stage: _SecretStageExecutor = execute_secret_stage,
+    paths: frozenset[str] | None = None,
 ) -> ProductDeterministicExecution:
     """Execute inherited scan obligations selected from immutable discovery.
 
@@ -72,6 +74,7 @@ def execute_deterministic_children(
         tenant_id=tenant_id,
         repository_id=repository_id,
         content_key=content_key,
+        paths=paths,
     )
     files = tuple(
         RepositoryFile(f.path, len(f.content), f.content_sha256) for f in catalogue.snapshot.files
@@ -153,6 +156,7 @@ def execute_deterministic_children(
                 head_sha=head_sha,
                 repository_id=repository_id,
                 fingerprint_key=fingerprint_key,
+                paths=paths,
             )
             outputs["secret_scan"] = (
                 secrets.output_sha256,
@@ -172,7 +176,11 @@ def execute_deterministic_children(
     if has_manifest:
         try:
             dependencies = execute_dependency_stage(
-                reader=reader, head_sha=head_sha, repository_id=repository_id, scanner=scanner
+                reader=reader,
+                head_sha=head_sha,
+                repository_id=repository_id,
+                scanner=scanner,
+                paths=paths,
             )
             outputs["dependency_scan"] = (dependencies.output_sha256,)
         except Exception as error:

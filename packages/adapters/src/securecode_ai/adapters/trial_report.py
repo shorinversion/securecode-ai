@@ -178,6 +178,8 @@ class TrialReportContext:
     deterministic_reasons: tuple[str, ...] = ()
     # (windows Discovery read, windows of the revision) when it read a seed only.
     discovery_seed: tuple[int, int] | None = None
+    # (changed files audited, short base commit) of an incremental run.
+    scope: tuple[int, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,6 +248,16 @@ def render_trial_report(
                 "не известна (цены модели не заданы)"
                 if context.cost_microusd is None
                 else f"${context.cost_microusd / 1_000_000:.4f}",
+            ),
+            *(
+                (
+                    (
+                        "Область",
+                        f"{context.scope[0]} изменённых файлов с {context.scope[1]}",
+                    ),
+                )
+                if context.scope is not None
+                else ()
             ),
             *(
                 (

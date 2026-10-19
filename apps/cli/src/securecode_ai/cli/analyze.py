@@ -14,7 +14,10 @@ from securecode_ai.adapters.coverage_causes import (
     deterministic_reasons,
     discovery_mode,
 )
-from securecode_ai.adapters.local_product_runner_config import LocalProductUnavailableError
+from securecode_ai.adapters.local_product_runner_config import (
+    LocalProductScanScope,
+    LocalProductUnavailableError,
+)
 from securecode_ai.adapters.local_product_trial import (
     DEEPSEEK_PRICES_PER_MILLION,
     DEFAULT_LOCAL_MODEL,
@@ -44,6 +47,8 @@ from securecode_ai.adapters.trial_fix_export import (
     attach_fixes_to_sarif,
     attach_groups_to_json,
     attach_groups_to_sarif,
+    attach_scope_to_sarif,
+    scope_document,
 )
 from securecode_ai.adapters.trial_report import (
     TrialReportContext,
@@ -70,13 +75,31 @@ _EXIT_CONFIG = 4
 # What an operator can do about a run that stopped before a report (reason codes of
 # LocalProductUnavailableError).
 _UNAVAILABLE_HINTS: Final = {
-    "NO_SUPPORTED_SOURCE": "the revision has no supported source file (Python); nothing to audit",
+    "NO_SUPPORTED_SOURCE": (
+        "the revision (or, with --base, the changed files) has no supported source file "
+        "(Python); nothing to audit"
+    ),
     "GIT_COMMAND_FAILED": (
         "a Git command on the checkout failed; if the checkout belongs to another user, "
         "trust it with: git config --global --add safe.directory <path>"
     ),
     "PROVIDER_NOT_ADMITTED": "the egress policy did not admit the provider profile",
+    "BASE_REVISION_INVALID": "--base does not name a commit of this checkout",
+    "BASE_NOT_RELATED": "--base shares no history with HEAD",
+    "BASE_CONTAINS_HEAD": "HEAD is already contained in --base: nothing changed to audit",
+    "BASE_DIFF_TOO_LARGE": "the list of files changed since --base is too large (or Git failed)",
+    "NO_CHANGED_FILES": "no readable file changed since --base",
 }
+_CONFIG_REASONS: Final = frozenset(
+    {
+        "NO_SUPPORTED_SOURCE",
+        "BASE_REVISION_INVALID",
+        "BASE_NOT_RELATED",
+        "BASE_CONTAINS_HEAD",
+        "BASE_DIFF_TOO_LARGE",
+        "NO_CHANGED_FILES",
+    }
+)
 
 
 def analyze_parser() -> argparse.ArgumentParser:
@@ -133,6 +156,15 @@ def analyze_parser() -> argparse.ArgumentParser:
             "finish (default for --provider local; full otherwise)"
         ),
     )
+    parser.add_argument(
+        "--base",
+        metavar="REV",
+        help=(
+            "audit only the files changed since the merge base of REV and HEAD (for a pull "
+            "request: --base origin/main); flows into unchanged files and manifests that did "
+            "not change are not re-checked"
+        ),
+    )
     parser.add_argument("--no-fix", action="store_true", help="do not ask the Architect for fixes")
     parser.add_argument(
         "--patch-dir", help="write validated fixes as .diff files into this new directory"
@@ -172,6 +204,7 @@ def run_analyze_command(
             environment=values,
             max_cost_microusd=max(1, int(arguments.max_cost_usd * 1_000_000)),
             mode=arguments.mode,
+            base=arguments.base,
         )
     except TrialAnalysisError as error:
         stderr.write(f"securecode analyze: {error}\n")
@@ -183,7 +216,7 @@ def run_analyze_command(
             + (f": {hint}" if hint else "")
             + "\n"
         )
-        return _EXIT_CONFIG if error.reason == "NO_SUPPORTED_SOURCE" else _EXIT_INDETERMINATE
+        return _EXIT_CONFIG if error.reason in _CONFIG_REASONS else _EXIT_INDETERMINATE
     except Exception as error:
         stderr.write(f"securecode analyze: failed ({type(error).__name__})\n")
         return _EXIT_INDETERMINATE
@@ -230,6 +263,7 @@ def run_analyze_command(
             len(covered),
             deterministic_reasons(analysis.result.composition),
             _seed_windows(analysis),
+            _scope_line(analysis),
         )
         if output_dir is not None:
             composition = analysis.result.composition
@@ -241,6 +275,7 @@ def run_analyze_command(
                     attach_fixes_to_json(composition.json_report, fixes, findings),
                     composition,
                     cost,
+                    analysis.result.scope,
                 ),
                 "report.sarif": _machine_sarif(
                     attach_fixes_to_sarif(
@@ -251,6 +286,7 @@ def run_analyze_command(
                     ),
                     composition.json_report,
                     decisions,
+                    analysis.result.scope,
                 ),
             }
         elif readable:
@@ -271,12 +307,13 @@ def run_analyze_command(
                     "secret; apply it by hand from the report and rotate the secret\n"
                 )
     if arguments.format == "json" and output_dir is None:
-        rendered = _machine_json(rendered, analysis.result.composition, cost)
+        rendered = _machine_json(rendered, analysis.result.composition, cost, analysis.result.scope)
     elif arguments.format == "sarif" and output_dir is None:
         rendered = _machine_sarif(
             rendered,
             analysis.result.composition.json_report,
             finding_decisions(analysis.result.composition),
+            analysis.result.scope,
         )
     if output_dir is not None:
         output_dir.mkdir(parents=True)
@@ -349,7 +386,10 @@ def _unique_fixes(fixes: Sequence[ProposedFix]) -> tuple[ProposedFix, ...]:
 
 
 def _machine_json(
-    rendered: bytes, composition: ProductAuditComposition, cost_microusd: int | None
+    rendered: bytes,
+    composition: ProductAuditComposition,
+    cost_microusd: int | None,
+    scope: LocalProductScanScope | None = None,
 ) -> bytes:
     document = json.loads(
         attach_diagnostics_to_json(
@@ -364,6 +404,7 @@ def _machine_json(
     )
     # Model calls of the whole run, the Architect included; null when prices are unknown.
     document["mode"] = discovery_mode(composition)
+    document["scope"] = scope_document(scope)
     document["model_cost"] = {
         "usd": None if cost_microusd is None else cost_microusd / 1_000_000,
         "known": cost_microusd is not None,
@@ -372,10 +413,16 @@ def _machine_json(
 
 
 def _machine_sarif(
-    rendered: bytes, json_report: bytes, decisions: Mapping[str, Mapping[str, object]]
+    rendered: bytes,
+    json_report: bytes,
+    decisions: Mapping[str, Mapping[str, object]],
+    scope: LocalProductScanScope | None = None,
 ) -> bytes:
-    return attach_decisions_to_sarif(
-        attach_groups_to_sarif(rendered, json_report), json_report, decisions
+    return attach_scope_to_sarif(
+        attach_decisions_to_sarif(
+            attach_groups_to_sarif(rendered, json_report), json_report, decisions
+        ),
+        scope,
     )
 
 
@@ -435,6 +482,11 @@ def _secret_safe_reader(
         return read(path)
 
     return masked_read
+
+
+def _scope_line(analysis: TrialAnalysis) -> tuple[int, str] | None:
+    scope = analysis.result.scope
+    return None if scope is None else (len(scope.scanned_paths), scope.base_sha[:12])
 
 
 def _seed_windows(analysis: TrialAnalysis) -> tuple[int, int] | None:

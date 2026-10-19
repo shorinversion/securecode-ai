@@ -1159,3 +1159,34 @@ would change the stage obligations of the scenario (`SCENARIO_ATOMIC_REQUIRED_ST
 therefore the catalogue pin and schemas. The limit stays visible: a PASS in `verify` mode
 means "no confirmed finding and the models found nothing in the windows they read", and the
 report says how many windows that was.
+
+
+## D-124: An incremental run audits the files changed since a base revision
+
+16 October 2026. Every run audited the whole revision, which is too slow and too noisy for a
+pull request. `securecode analyze --base REV` limits the run to the files changed between
+the merge base of `REV` and HEAD (`git diff --name-only --no-renames -z`). The name is
+validated before any Git call (letters, digits and `. _ / ~ ^ @ { } -`, at most 256, not
+starting with a dash), resolved with `rev-parse --verify --end-of-options`, and Git runs
+through the sealed helper. A base that does not resolve, shares no history, already contains
+HEAD, or leaves no readable changed file stops the run with a fixed reason code and exit
+code 4 (`BASE_REVISION_INVALID`, `BASE_NOT_RELATED`, `BASE_CONTAINS_HEAD`,
+`BASE_DIFF_TOO_LARGE`, `NO_CHANGED_FILES`); if no changed file is supported source the
+existing `NO_SUPPORTED_SOURCE` applies. `--base` is refused together with a connected job's
+own execution identity.
+
+The scope is applied where the files enter: `materialize_git_snapshot(paths=...)` reads
+only the trees on the way to the named files and keeps `tree_oid` of the whole commit, and
+the catalogue, the secret stage and the dependency stage all receive the same `paths`, so the
+snapshot equality checks of the audit stay true. `ProductAuditHostInputs.scope_paths` carries
+it and the audit composition checks that no file outside it was read. The model request
+names the scope `changed-files-scope` (hash of the revision, the merge base and the changed
+paths) instead of `whole-revision-scope`, and `RepositoryRevision.base_sha` is the resolved
+base commit.
+
+The limits are part of the result, not hidden: a flow from a changed file into an unchanged
+one is not followed, and a dependency manifest is audited only if it changed (an unchanged
+`requirements.txt` is "not re-checked", also when its lock file changed without the
+manifest). The JSON report carries `scope` (`kind` `changed_since_base` or `whole_revision`,
+the base, the merge base, the changed and the scanned paths, a note), SARIF carries the same
+under `runs[0].properties.securecode_scope`, and the readable report has a line "Область".

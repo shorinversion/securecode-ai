@@ -11,6 +11,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import re
 import subprocess
 from collections.abc import Callable, Mapping
 from contextlib import suppress
@@ -39,6 +40,7 @@ from .product_audit import (
 _CREATE_NO_WINDOW: Final[int] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _GIT_EXIT_TIMEOUT_SECONDS: Final[float] = 2.0
 _MAX_REPAIR_SUMMARY_BYTES: Final[int] = 1_048_576
+_BASE: Final = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/~^@{}-]{0,255}\Z")
 
 
 class LocalProductConfigurationError(ValueError):
@@ -66,6 +68,22 @@ class LocalProductSupersededError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class LocalProductScanScope:
+    """What an incremental run audited: the files changed since the merge base (D-124).
+
+    ``changed_paths`` come from the diff; ``scanned_paths`` are those of them that exist at
+    HEAD and entered the snapshot. Files outside the scope are neither scanned nor read by a
+    model, and flows from the changed files into unchanged ones are not followed.
+    """
+
+    base_rev: str
+    base_sha: str
+    merge_base_sha: str
+    changed_paths: tuple[str, ...]
+    scanned_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class LocalProductScanOptions:
     """Operator choices for a run on the local provider (D-123).
 
@@ -79,10 +97,16 @@ class LocalProductScanOptions:
     local_max_output_tokens: int = 2048
     local_max_context_bytes: int = 65536
     local_max_repository_calls: int = 16
+    # Audit only the files changed since this revision (see ``LocalProductScanScope``).
+    base: str | None = None
 
     def __post_init__(self) -> None:
         if (
             self.discovery_seed not in {"full", "scanner"}
+            or (
+                self.base is not None
+                and (type(self.base) is not str or _BASE.fullmatch(self.base) is None)
+            )
             or type(self.local_max_input_tokens) is not int
             or type(self.local_max_output_tokens) is not int
             or type(self.local_max_context_bytes) is not int
@@ -106,6 +130,7 @@ class LocalProductScanResult:
     model_tokens: int
     model_cost_microunits: int
     cancel: Callable[[], None]
+    scope: LocalProductScanScope | None = None
 
     def require_publication(self) -> None:
         observed = self.state_probe.observe(
