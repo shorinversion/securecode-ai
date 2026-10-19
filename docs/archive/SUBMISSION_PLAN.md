@@ -1,7 +1,7 @@
 # SecureCode AI — защита 27 сентября 2026
 
 Плановая версия: `1.0`, 5 сентября 2026. Изменение: `CR-046 / D-044`.
-Канонический реестр задач и статусов: [PLAN.md](PLAN.md).
+Канонический реестр задач и статусов: [PLAN.md](../PLAN.md).
 
 ## Цель и подтверждённые условия
 
@@ -148,7 +148,7 @@ effective от одного изменения документации.
 `01a07049-3886-7a52-bc78-e53900cc816f`. Координатор продукта продолжает P2.5
 и следующие этапы по собственному assignment ID. Передача ownership должна
 быть явной. Один writer на путь; правила моделей и ответов определены в
-[DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md).
+[DEVELOPMENT_WORKFLOW.md](../DEVELOPMENT_WORKFLOW.md).
 
 Readiness record допускает `NOT_READY | READY_FOR_SUBMISSION`; начальное
 состояние — **NOT_READY**. Это не product scan outcome и не G0–G9 decision.

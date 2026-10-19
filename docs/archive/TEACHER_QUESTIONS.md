@@ -70,10 +70,10 @@ M-A2026 READY_FOR_SUBMISSION или final submission. [Рабочий кален
 
 Вместо общего описания дать четыре коротких артефакта:
 
-1. release scope и `DEMO-CWE89-001` из [PRODUCT.md](PRODUCT.md);
-2. workflow/evidence graph из [ARCHITECTURE.md](ARCHITECTURE.md);
-3. `SC-*` contracts из [specs](../specs/README.md);
-4. G0 risk/evidence packet из [artifacts/gates/G0](../artifacts/gates/G0/checklist.md).
+1. release scope и `DEMO-CWE89-001` из [PRODUCT.md](../PRODUCT.md);
+2. workflow/evidence graph из [ARCHITECTURE.md](../ARCHITECTURE.md);
+3. `SC-*` contracts из [specs](../../specs/README.md);
+4. G0 risk/evidence packet из [artifacts/gates/G0](../../artifacts/gates/G0/checklist.md).
 
 Попросить подтвердить assumptions письменно. Любой ответ, меняющий язык,
 reference SCM, egress, public contract или gate, оформляется как CR/ADR; устная

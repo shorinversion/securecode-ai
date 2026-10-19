@@ -11,7 +11,7 @@
   на 3.12–3.14, gate). Процесс — agile PR-workflow ([D-114](DECISIONS.md)).
 - Демо Аудитор → Архитектор `COMPLETED` на локальной Qwen и на DeepSeek. Бенчмарк на
   600 кейсах: hybrid на уровне Semgrep по recall, превосходство не доказано.
-- После v1: пять серверных исправлений из [BRANCH_RECOVERY.md](BRANCH_RECOVERY.md),
+- После v1: пять серверных исправлений из [BRANCH_RECOVERY.md](archive/BRANCH_RECOVERY.md),
   устаревшие интеграционные тесты (`test_artifact_upload.py`,
   `test_enterprise_end_to_end.py`, `test_local_product_cli.py`) исправлены и входят в
   `scripts/quality.py`, проверка `quickstart.py --up` на Linux, новый скринкаст, точность детекторов (precision
@@ -21,7 +21,7 @@
 
 - Работа отправлена через форму курса. UI подтвердил «На проверке» и кнопку
   «Редактировать». Передан коммит de6eabe через публичный source.zip с проверенным
-  SHA-256. GitHub main опубликована с тем же SHA и назначена default branch. См. docs/SUBMISSION_RECEIPT.json.
+  SHA-256. GitHub main опубликована с тем же SHA и назначена default branch. См. docs/archive/SUBMISSION_RECEIPT.json.
 
 
 - Доступ к встроенному браузеру восстановлен. Страница задания и пустая форма
@@ -78,8 +78,8 @@
   календарь и ранняя diagnostic evaluation; exact reviews/handoff фиксируются
   в development-run CR-046. Первое демо P9.17 — 16 сентября (сценарий
   15-го 18:00), feedback 17–18-го; встреча с преподавателем ещё не назначена.
-  [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
-  [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
+  [SUBMISSION_PLAN.md](archive/SUBMISSION_PLAN.md),
+  [DEVELOPMENT_EVALUATION.md](archive/DEVELOPMENT_EVALUATION.md). G0–G9 и frozen specs
   не меняются; M-A2026 не означает beta/v1/PROJECT CLOSED.
 - `P9.17` current real-local run used Ollama `0.34.4` and Qwen
   `qwen2.5-coder:7b-instruct-q4_K_M`, quantization `Q4_K_M`, digest
@@ -544,7 +544,7 @@ metric loopholes. Главный агент сводит corrections и повт
    candidate. P3 начинается только после effective G2 GO.
 2. После G2 без паузы реализовать demo-critical P3 code-first по той же
    consolidated gate cadence; параллельно готовить P9.12 и development corpus.
-   Календарь следующих этапов — SUBMISSION_PLAN.md.
+   Календарь следующих этапов — archive/SUBMISSION_PLAN.md.
 3. После G2 дать Luna medium writer lease на безопасные
    ненормативные translation batches; immutable/spec/gate evidence не переводить
    без отдельного change control.
