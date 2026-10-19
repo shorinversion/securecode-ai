@@ -28,7 +28,7 @@ import re
 import shutil
 import subprocess
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 from urllib.parse import urlsplit
@@ -57,6 +57,7 @@ from .local_product_runner_config import (
     resolve_local_product_configuration,
 )
 from .local_product_runner_execution import _run_local_product_scan
+from .local_product_scope import valid_base
 from .local_provider_gateway_server import _running_approved_gateway
 from .openai_compatible_remote import (
     OPENAI_REASONING_EFFORTS,
@@ -215,6 +216,7 @@ def run_trial_analysis(
     environment: Mapping[str, str],
     max_cost_microusd: int = 1_000_000,
     mode: str | None = None,
+    base: str | None = None,
 ) -> TrialAnalysis:
     """Run the full product pipeline on ``target`` with an in-memory trial authority.
 
@@ -240,6 +242,7 @@ def run_trial_analysis(
             environment=environment,
             max_cost_microusd=max_cost_microusd,
             mode=mode,
+            base=base,
         )
     except BaseException as error:
         trace_event("run_end", error=exception_label(error))
@@ -260,11 +263,17 @@ def _run_trial_analysis(
     environment: Mapping[str, str],
     max_cost_microusd: int,
     mode: str | None,
+    base: str | None,
 ) -> TrialAnalysis:
     selected = mode or ("verify" if provider == "local" else "full")
     if selected not in {"full", "verify"}:
         raise TrialAnalysisError("mode must be full or verify")
-    options = _local_options(environment, selected)
+    if base is not None and not valid_base(base):
+        raise TrialAnalysisError(
+            "--base must be a revision name: letters, digits and . _ / ~ ^ @ { } -, "
+            "starting with a letter or digit"
+        )
+    options = replace(_local_options(environment, selected), base=base)
     git = shutil.which("git")
     if git is None:
         raise TrialAnalysisError("git is required")

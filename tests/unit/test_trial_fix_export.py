@@ -275,3 +275,32 @@ def test_sarif_fix_lands_only_on_the_result_of_its_group() -> None:
 
     first, second = document["runs"][0]["results"]
     assert "fixes" not in first and len(second["fixes"]) == 1
+
+
+def _scope() -> object:
+    from securecode_ai.adapters.local_product_runner_config import LocalProductScanScope
+
+    return LocalProductScanScope("origin/main", "b" * 40, "c" * 40, ("a.py", "gone.py"), ("a.py",))
+
+
+def test_scope_is_exported_to_json_and_sarif() -> None:
+    from securecode_ai.adapters.trial_fix_export import attach_scope_to_json, attach_scope_to_sarif
+
+    scope = _scope()
+    report = json.loads(attach_scope_to_json(b'{"findings": []}', scope))  # type: ignore[arg-type]
+    sarif = json.loads(attach_scope_to_sarif(b'{"runs": [{"results": []}]}', scope))  # type: ignore[arg-type]
+
+    assert report["scope"]["kind"] == "changed_since_base"
+    assert report["scope"]["changed_paths"] == ["a.py", "gone.py"]
+    assert report["scope"]["scanned_paths"] == ["a.py"]
+    assert report["scope"]["base_sha"] == "b" * 40 and "unchanged" in report["scope"]["note"]
+    assert sarif["runs"][0]["properties"]["securecode_scope"] == report["scope"]
+
+
+def test_a_whole_revision_run_says_so() -> None:
+    from securecode_ai.adapters.trial_fix_export import attach_scope_to_json
+
+    report = json.loads(attach_scope_to_json(b'{"findings": []}', None))
+
+    assert report["scope"]["kind"] == "whole_revision"
+    assert "base_sha" not in report["scope"]

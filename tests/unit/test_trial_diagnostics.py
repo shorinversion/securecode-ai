@@ -130,3 +130,22 @@ def test_machine_json_carries_the_model_cost() -> None:
     assert known["model_cost"] == {"usd": 0.0125, "known": True}
     assert unknown["model_cost"] == {"usd": None, "known": False}
     assert known["covered_candidates"] == [] and known["undecided_covered"] == 0
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "BASE_REVISION_INVALID",
+        "BASE_NOT_RELATED",
+        "BASE_CONTAINS_HEAD",
+        "BASE_DIFF_TOO_LARGE",
+        "NO_CHANGED_FILES",
+    ],
+)
+def test_a_base_that_leaves_nothing_to_audit_is_a_configuration_stop(
+    monkeypatch: pytest.MonkeyPatch, reason: str
+) -> None:
+    code, message = _run(monkeypatch, LocalProductUnavailableError(reason))
+
+    assert code == 4
+    assert reason in message and "--base" in message

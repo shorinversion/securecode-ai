@@ -688,3 +688,79 @@ def test_scanner_seed_keeps_a_confirmed_finding_a_fail(
     assert result.exit_code == 2  # type: ignore[attr-defined]
     document = json.loads(result.composition.json_report)  # type: ignore[attr-defined]
     assert document["outcome"] == "FAIL" and document["findings"][0]["cwe_id"] == "CWE-89"
+
+
+def _commit_file(checkout: Path, name: str, content: bytes, message: str) -> str:
+    (checkout / name).write_bytes(content)
+    identity = ("-c", "user.name=Test", "-c", "user.email=test@example.invalid")
+    for command in (
+        ("add", name),
+        (*identity, "-c", "commit.gpgsign=false", "commit", "-m", message),
+    ):
+        subprocess.run(["git", "-C", str(checkout), *command], capture_output=True, check=True)
+    return subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+
+
+def test_base_scope_scans_only_changed_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from securecode_ai.adapters.local_product_runner import LocalProductScanOptions
+
+    checkout = git_repository(tmp_path, source=b"answer = 42\n")
+    first = subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"],
+        capture_output=True,
+        check=True,
+        text=True,
+    ).stdout.strip()
+    _commit_file(checkout, "b.py", SOURCE, "add the vulnerable file")
+
+    result, roles, received = _direct_scan(
+        monkeypatch, checkout, LocalProductScanOptions(base="HEAD~1")
+    )
+
+    scope = result.scope  # type: ignore[attr-defined]
+    assert result.exit_code == 2  # type: ignore[attr-defined]
+    assert scope.base_rev == "HEAD~1" and scope.base_sha == first == scope.merge_base_sha
+    assert scope.changed_paths == ("b.py",) and scope.scanned_paths == ("b.py",)
+    document = json.loads(result.composition.json_report)  # type: ignore[attr-defined]
+    assert document["repository_revision"]["base_sha"] == first
+    assert document["findings"][0]["cwe_id"] == "CWE-89"
+    assert {item["locations"][0]["path"] for item in document["findings"]} == {"b.py"}
+    discovery = cast(
+        Any,
+        next(
+            item for item in received if cast(Any, item)["trusted_controls"]["role"] == "discovery"
+        ),
+    )
+    assert {item["location"]["path"] for item in discovery["untrusted_source_locations"]} == {
+        "b.py"
+    }
+    assert roles[0] == "discovery"
+
+
+def test_base_at_or_after_head_and_hostile_bases_stop_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from securecode_ai.adapters.local_product_runner import (
+        LocalProductConfigurationError,
+        LocalProductScanOptions,
+        LocalProductUnavailableError,
+    )
+
+    checkout = git_repository(tmp_path, source=b"answer = 42\n")
+    _commit_file(checkout, "b.py", b"value = 1\n", "second")
+    for base, reason in (
+        ("HEAD", "BASE_CONTAINS_HEAD"),
+        ("no-such-branch", "BASE_REVISION_INVALID"),
+    ):
+        with pytest.raises(LocalProductUnavailableError) as error:
+            _direct_scan(monkeypatch, checkout, LocalProductScanOptions(base=base))
+        assert error.value.reason == reason
+    with pytest.raises(LocalProductConfigurationError):
+        LocalProductScanOptions(base="--upload-pack=x")

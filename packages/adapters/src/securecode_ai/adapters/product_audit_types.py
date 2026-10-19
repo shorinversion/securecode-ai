@@ -226,6 +226,8 @@ class ProductAuditHostInputs:
     # (the windows the host selected to fit a small local model, D-123).
     discovery_seed: str = "full"
     discovery_seed_evidence_ids: tuple[str, ...] = ()
+    # Files of an incremental run (``--base``): every snapshot of the run is cut to them.
+    scope_paths: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)

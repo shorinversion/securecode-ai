@@ -241,6 +241,7 @@ def build_native_source_catalogue(
     window_lines: int = 100,
     max_anchors: int = 4096,
     data_class: DataClass = DataClass.CONFIDENTIAL_SOURCE,
+    paths: frozenset[str] | None = None,
 ) -> NativeSourceCatalogue:
     """Reject incomplete intake; never consult scanner findings or mutable checkout.
 
@@ -264,7 +265,7 @@ def build_native_source_catalogue(
     ):
         raise ValueError("native source intake configuration is invalid")
     identifier = HmacContentIdentifier(content_key)
-    snapshot = materialize_git_snapshot(reader, head_sha)
+    snapshot = materialize_git_snapshot(reader, head_sha, paths=paths)
     indexes: list[SymbolIndex] = []
     anchors: list[DiscoveryEvidence] = []
     for file in snapshot.files:

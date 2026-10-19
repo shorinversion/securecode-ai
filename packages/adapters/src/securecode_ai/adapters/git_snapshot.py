@@ -171,14 +171,32 @@ def materialize_git_snapshot(
     max_file_bytes: int = 1024 * 1024,
     max_total_bytes: int = 64 * 1024 * 1024,
     max_depth: int = 32,
+    paths: frozenset[str] | None = None,
 ) -> GitRevisionSnapshot:
     """Recompute every object identity and reject incomplete or unsupported trees.
 
     Returned bytes are commit contents, including binary files. Parsing and ignore
     policy happen later, and cannot silently change this snapshot's source identity.
+
+    With ``paths`` only those files are materialized and only the trees on the way to them
+    are read; ``tree_oid`` stays the root tree of the whole commit, so a scoped snapshot is
+    still bound to the commit. Every consumer of one run must pass the same ``paths``.
     """
     if type(head_sha) is not str or _OID.fullmatch(head_sha) is None:
         raise ValueError("Git revision is invalid")
+    wanted_directories: frozenset[str] = frozenset()
+    if paths is not None:
+        if (
+            type(paths) is not frozenset
+            or not paths
+            or any(type(item) is not str or not item or item.endswith("/") for item in paths)
+        ):
+            raise ValueError("Git snapshot paths are invalid")
+        wanted_directories = frozenset(
+            "/".join(parts[:count]) + "/"
+            for parts in (item.split("/") for item in paths)
+            for count in range(1, len(parts))
+        )
     limits = (max_files, max_file_bytes, max_total_bytes, max_depth)
     ceilings = (4096, 16 * 1024 * 1024, 64 * 1024 * 1024, 64)
     if any(
@@ -238,12 +256,16 @@ def materialize_git_snapshot(
             except UnicodeError:
                 raise ValueError("Git tree path encoding is invalid") from None
             path = prefix + name
-            ReadRangeArguments(TOOL_ARGUMENT_SCHEMA_VERSION, head_sha, path, 1, 1)
             if name in names:
                 raise ValueError("Git tree path is ambiguous")
             names.add(name)
             child_oid = tree[terminator + 1 : terminator + 21].hex()
             cursor = terminator + 21
+            if paths is not None and (
+                path + "/" not in wanted_directories if mode == b"40000" else path not in paths
+            ):
+                continue
+            ReadRangeArguments(TOOL_ARGUMENT_SCHEMA_VERSION, head_sha, path, 1, 1)
             if mode == b"40000":
                 walk(child_oid, path + "/", depth + 1)
             elif mode in (b"100644", b"100755"):

@@ -91,3 +91,87 @@ def test_nested_binary_snapshot_and_file_budget() -> None:
     assert snapshot.files[0].content == bytes(range(256))
     with pytest.raises(ValueError, match="file budget"):
         materialize_git_snapshot(reader, head, max_files=1)
+
+
+class LoggedObjects(Objects):
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[tuple[str, str]] = []
+
+    def read(self, kind: str, oid: str, *, max_bytes: int) -> bytes:
+        self.reads.append((kind, oid))
+        return super().read(kind, oid, max_bytes=max_bytes)
+
+
+def _nested() -> tuple[LoggedObjects, str, dict[str, str]]:
+    """a.py, docs/readme.md, src/app.py, src/lib/util.py and an untouched vendor/ tree."""
+
+    reader = LoggedObjects()
+    blobs = {
+        path: reader.add("blob", path.encode())
+        for path in ("a.py", "docs/readme.md", "src/app.py", "src/lib/util.py", "vendor/x.py")
+    }
+
+    def tree(*entries: tuple[str, str, str]) -> str:
+        return reader.add(
+            "tree",
+            b"".join(
+                mode.encode() + b" " + name.encode() + b"\0" + bytes.fromhex(oid)
+                for mode, name, oid in entries
+            ),
+        )
+
+    lib = tree(("100644", "util.py", blobs["src/lib/util.py"]))
+    src = tree(("100644", "app.py", blobs["src/app.py"]), ("40000", "lib", lib))
+    docs = tree(("100644", "readme.md", blobs["docs/readme.md"]))
+    vendor = tree(("100644", "x.py", blobs["vendor/x.py"]))
+    root = tree(
+        ("100644", "a.py", blobs["a.py"]),
+        ("40000", "docs", docs),
+        ("40000", "src", src),
+        ("40000", "vendor", vendor),
+    )
+    head = reader.add("commit", f"tree {root}\n\nmessage".encode())
+    return reader, head, blobs
+
+
+def test_scoped_snapshot_holds_only_the_named_files_and_reads_only_their_trees() -> None:
+    reader, head, blobs = _nested()
+    full = materialize_git_snapshot(reader, head)
+    reader.reads.clear()
+
+    scoped = materialize_git_snapshot(
+        reader, head, paths=frozenset({"src/lib/util.py", "a.py", "missing.py"})
+    )
+
+    assert [item.path for item in scoped.files] == ["a.py", "src/lib/util.py"]
+    assert scoped.tree_oid == full.tree_oid and scoped.head_sha == full.head_sha
+    kinds = [kind for kind, _ in reader.reads]
+    # The commit, the root, src and lib trees and two blobs: docs/ and vendor/ stay unread.
+    assert kinds.count("tree") == 3 and kinds.count("blob") == 2
+    assert ("blob", blobs["vendor/x.py"]) not in reader.reads
+    assert ("blob", blobs["docs/readme.md"]) not in reader.reads
+
+
+def test_scoped_snapshot_ignores_entries_outside_the_scope() -> None:
+    reader = Objects()
+    blob = reader.add("blob", b"x")
+    tree = reader.add(
+        "tree",
+        b"120000 link\0" + bytes(20) + b"100644 a.py\0" + bytes.fromhex(blob),
+    )
+    head = reader.add("commit", f"tree {tree}\n\nmessage".encode())
+
+    with pytest.raises(ValueError, match="unsupported entry"):
+        materialize_git_snapshot(reader, head)
+    scoped = materialize_git_snapshot(reader, head, paths=frozenset({"a.py"}))
+
+    assert [item.path for item in scoped.files] == ["a.py"]
+
+
+@pytest.mark.parametrize("paths", [frozenset(), frozenset({""}), frozenset({"dir/"}), {"a.py"}])
+def test_invalid_scope_is_refused(paths: object) -> None:
+    reader, head, _ = _repository()
+
+    with pytest.raises(ValueError, match="paths"):
+        materialize_git_snapshot(reader, head, paths=paths)  # type: ignore[arg-type]
