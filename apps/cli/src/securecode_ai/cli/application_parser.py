@@ -17,6 +17,7 @@ COMMAND_DESCRIPTIONS: Final = MappingProxyType(
     {
         "doctor": "validate foundation configuration without source or network access",
         "analyze": "trial audit of one checkout with the full agent pipeline (no host approval)",
+        "publish": "post an analyze JSON report into a GitHub pull request",
         "scan": "audit one local checkout",
         "fix": "propose a bounded repair for one local checkout",
         "validate": "validate one retained repair artifact in isolation",
@@ -68,6 +69,10 @@ def _command_help(command: str) -> str:
         from .analyze import analyze_parser
 
         return analyze_parser().format_help()
+    if command == "publish":
+        from .publish import publish_parser
+
+        return publish_parser().format_help()
     parser = argparse.ArgumentParser(prog=f"securecode {command}", description=description)
     if command in {"scan", "fix", "validate", "approve"}:
         parser.add_argument("target", help="absolute or relative checkout path")

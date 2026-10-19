@@ -1,0 +1,116 @@
+name: SecureCode AI pull request audit
+description: >-
+  Audit the files a pull request changes with SecureCode AI, upload the SARIF report to code
+  scanning and post the findings as pull request comments. Every third-party action is pinned
+  to a commit SHA.
+author: SecureCode AI
+
+inputs:
+  version:
+    description: Tag or commit of shorinversion/securecode-ai to install (pin a release tag).
+    required: true
+  provider:
+    description: Model provider of the audit (openai-compatible, deepseek or local).
+    default: openai-compatible
+  model-base-url:
+    description: HTTPS base URL of an OpenAI-compatible API (provider openai-compatible).
+    default: ""
+  model:
+    description: Model name sent to that API.
+    default: ""
+  model-api-key:
+    description: API key of that service; pass it from a repository secret.
+    default: ""
+  base:
+    description: Revision the pull request is compared with; defaults to the pull request base commit.
+    default: ""
+  baseline:
+    description: Path of a securecode-baseline/v1 file in the repository (optional).
+    default: ""
+  max-cost-usd:
+    description: Spend cap for one run in USD.
+    default: "1.0"
+  github-token:
+    description: Token that posts the comments (pull-requests write); usually github.token.
+    default: ""
+  upload-sarif:
+    description: Upload report.sarif to GitHub code scanning (needs security-events write).
+    default: "true"
+  publish:
+    description: Post the summary and inline comments to the pull request.
+    default: "true"
+
+outputs:
+  exit-code:
+    description: "Exit code of the audit: 0 pass, 2 confirmed finding, 3 indeterminate, 4 configuration error."
+    value: ${{ steps.analyze.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out the pull request with its history
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Check out SecureCode AI
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        repository: shorinversion/securecode-ai
+        ref: ${{ inputs.version }}
+        path: .securecode-ai
+        persist-credentials: false
+    - name: Select Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: "3.13"
+        check-latest: false
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        version: "0.12.0"
+        enable-cache: false
+    - name: Install SecureCode AI
+      shell: bash
+      working-directory: .securecode-ai
+      run: uv sync --locked
+    - name: Audit the changed files
+      id: analyze
+      shell: bash
+      env:
+        SECURECODE_MODEL_BASE_URL: ${{ inputs.model-base-url }}
+        SECURECODE_MODEL: ${{ inputs.model }}
+        SECURECODE_MODEL_API_KEY: ${{ inputs.model-api-key }}
+        PROVIDER: ${{ inputs.provider }}
+        BASE: ${{ inputs.base || github.event.pull_request.base.sha }}
+        BASELINE: ${{ inputs.baseline }}
+        MAX_COST: ${{ inputs.max-cost-usd }}
+      run: |
+        set +e
+        arguments=(analyze "$GITHUB_WORKSPACE" --provider "$PROVIDER" --output-dir "$RUNNER_TEMP/securecode-out" --max-cost-usd "$MAX_COST")
+        if [ -n "$BASE" ]; then arguments+=(--base "$BASE"); fi
+        if [ -n "$BASELINE" ]; then arguments+=(--baseline "$GITHUB_WORKSPACE/$BASELINE"); fi
+        uv run --project .securecode-ai securecode "${arguments[@]}"
+        echo "exit-code=$?" >> "$GITHUB_OUTPUT"
+    - name: Upload SARIF to code scanning
+      if: ${{ always() && inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+      with:
+        sarif_file: ${{ runner.temp }}/securecode-out/report.sarif
+        category: securecode-ai
+    - name: Comment on the pull request
+      if: ${{ always() && inputs.publish == 'true' && github.event.pull_request.number != '' }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        uv run --project .securecode-ai securecode publish github \
+          --report "$RUNNER_TEMP/securecode-out/report.json" \
+          --repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER"
+    - name: Fail the job like the audit
+      if: ${{ always() }}
+      shell: bash
+      env:
+        AUDIT_EXIT: ${{ steps.analyze.outputs.exit-code }}
+      run: exit "${AUDIT_EXIT:-4}"

@@ -172,6 +172,12 @@ def main(
         return run_analyze_command(
             stripped, stdout=output, stderr=errors, environment=selected_environment
         )
+    if stripped and stripped[0] == "publish":
+        from .publish import run_publish_command
+
+        return run_publish_command(
+            stripped, stdout=output, stderr=errors, environment=selected_environment
+        )
     if stripped and stripped[0] in _CONNECTED_COMMAND_HANDLERS:
         return _CONNECTED_COMMAND_HANDLERS[stripped[0]](
             stripped,

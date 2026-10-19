@@ -128,6 +128,7 @@ def _stages(targets: tuple[str, ...]) -> tuple[QualityStage, ...]:
                 "tests/integration/test_artifact_upload.py",
                 "tests/integration/test_enterprise_end_to_end.py",
                 "tests/integration/test_local_product_cli.py",
+                "tests/integration/test_publish_github_http.py",
             ),
             executes_repository_code=True,
             timeout_seconds=UNIT_STAGE_TIMEOUT_SECONDS,
