@@ -2,7 +2,9 @@
 
 The canonical report is built before the Architect runs, so its ``patch_refs`` and
 ``validation_refs`` are empty. This module fills them for every finding a fix covers
-(same CWE and file) and adds standard SARIF ``fixes`` to the matching results.
+(the same weakness group: ``trial_groups``) and adds standard SARIF ``fixes`` to the
+matching results. A fix never lands on a finding of another group, so two credentials of
+one file keep their own fixes.
 """
 
 from __future__ import annotations
@@ -31,6 +33,16 @@ def _targets(
     return targets
 
 
+def _covers(
+    fix: ProposedFix, group: str | None, cwe_id: object, paths: set[object], target: tuple[str, str]
+) -> bool:
+    """Whether ``fix`` belongs to a finding: same group, or CWE and file without a group."""
+
+    if fix.weakness_group:
+        return group == fix.weakness_group
+    return cwe_id == target[0] and target[1] in paths
+
+
 def _validation(fix: ProposedFix) -> dict[str, object]:
     return {"status": fix.status, "checks": list(fix.checks)}
 
@@ -54,7 +66,8 @@ def attach_fixes_to_json(
     if not targets:
         return rendered
     document = json.loads(rendered)
-    for item in document.get("findings", []):
+    items = document.get("findings", [])
+    for item, group in zip(items, finding_groups(items), strict=True):
         if not isinstance(item, dict):
             continue
         paths = {
@@ -63,7 +76,7 @@ def attach_fixes_to_json(
             if isinstance(location, Mapping)
         }
         for cwe_id, path, fix in targets:
-            if item.get("cwe_id") == cwe_id and path in paths:
+            if _covers(fix, group, item.get("cwe_id"), paths, (cwe_id, path)):
                 item["validation_refs"] = [*item.get("validation_refs", []), _validation(fix)]
                 if fix.status == "VALIDATED" and fix.diff:
                     item["patch_refs"] = [*item.get("patch_refs", []), _patch(fix)]
@@ -107,16 +120,33 @@ def _replacements(diff: str) -> list[dict[str, object]]:
 
 
 def attach_fixes_to_sarif(
-    rendered: bytes, fixes: Sequence[ProposedFix], findings: Sequence[FixFinding]
+    rendered: bytes,
+    fixes: Sequence[ProposedFix],
+    findings: Sequence[FixFinding],
+    json_report: bytes | None = None,
 ) -> bytes:
-    """Add SARIF ``fixes`` to results whose rule and file match a validated fix."""
+    """Add SARIF ``fixes`` to results whose weakness group matches a validated fix.
+
+    SARIF results are rendered from the findings of the JSON report in the same order, so
+    ``json_report`` gives each result its group; without it the rule and the file decide.
+    """
 
     targets = [target for target in _targets(fixes, findings) if target[2].status == "VALIDATED"]
     if not targets:
         return rendered
+    report = (
+        [item for item in json.loads(json_report).get("findings", []) if isinstance(item, dict)]
+        if json_report is not None
+        else []
+    )
+    report_groups = finding_groups(report)
     document = json.loads(rendered)
     for run in document.get("runs", []):
-        for result in run.get("results", []):
+        results = run.get("results", [])
+        groups: list[str | None] = (
+            report_groups if len(results) == len(report_groups) else [None] * len(results)
+        )
+        for result, group in zip(results, groups, strict=True):
             uris = {
                 location.get("physicalLocation", {}).get("artifactLocation", {}).get("uri")
                 for location in result.get("locations", [])
@@ -124,6 +154,8 @@ def attach_fixes_to_sarif(
             for cwe_id, path, fix in targets:
                 uri = quote(path, safe="/-._~")
                 if result.get("ruleId") != cwe_id or uri not in uris:
+                    continue
+                if fix.weakness_group and group != fix.weakness_group:
                     continue
                 replacements = _replacements(fix.diff)
                 if not replacements:

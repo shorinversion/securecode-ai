@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 
 from securecode_ai.adapters.trial_architect import FixFinding, ProposedFix
-from securecode_ai.adapters.trial_fix_export import attach_fixes_to_json, attach_fixes_to_sarif
+from securecode_ai.adapters.trial_fix_export import (
+    attach_fixes_to_json,
+    attach_fixes_to_sarif,
+    attach_groups_to_json,
+)
 
 _DIFF = (
     "--- a/app.py\n"
@@ -206,3 +210,68 @@ def test_a_model_finding_citing_source_and_sink_joins_the_scanner_group() -> Non
     model, scanner = finding_groups([finding((1, 21), (16, 16)), finding((18, 18), (20, 20))])
 
     assert model == scanner
+
+
+def _credential_report() -> bytes:
+    findings = []
+    for finding_id, line in (("key-a", 3), ("key-b", 4)):
+        location = {"path": "app.py", "start": {"line": line}, "end": {"line": line}}
+        findings.append(
+            {
+                "finding_id": finding_id,
+                "cwe_id": "CWE-798",
+                "locations": [location],
+                "patch_refs": [],
+                "validation_refs": [],
+            }
+        )
+    return json.dumps({"findings": findings}).encode()
+
+
+def _credential_fix(finding_id: str, group: str, diff: str) -> ProposedFix:
+    return ProposedFix(
+        finding_id, "app.py", "VALIDATED", ("apply:ok",), "Move the key.", diff, group
+    )
+
+
+def test_a_fix_is_not_copied_onto_a_finding_of_another_group() -> None:
+    report = _credential_report()
+    groups = [
+        item["weakness_group"] for item in json.loads(attach_groups_to_json(report))["findings"]
+    ]
+    findings = [
+        FixFinding("key-a", "CWE-798", "app.py", 3, 3, "deterministic", groups[0]),
+        FixFinding("key-b", "CWE-798", "app.py", 4, 4, "deterministic", groups[1]),
+    ]
+    fixes = [
+        _credential_fix("key-a", groups[0], _DIFF + "# a\n"),
+        _credential_fix("key-b", groups[1], _DIFF + "# b\n"),
+    ]
+
+    first, second = json.loads(attach_fixes_to_json(report, fixes, findings))["findings"]
+
+    assert [patch["diff"] for patch in first["patch_refs"]] == [fixes[0].diff]
+    assert [patch["diff"] for patch in second["patch_refs"]] == [fixes[1].diff]
+
+
+def test_sarif_fix_lands_only_on_the_result_of_its_group() -> None:
+    report = _credential_report()
+    groups = [
+        item["weakness_group"] for item in json.loads(attach_groups_to_json(report))["findings"]
+    ]
+    findings = [FixFinding("key-b", "CWE-798", "app.py", 4, 4, "deterministic", groups[1])]
+    results = [
+        {
+            "ruleId": "CWE-798",
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": "app.py"}}}],
+        }
+        for _ in range(2)
+    ]
+    sarif = json.dumps({"runs": [{"results": results}]}).encode()
+
+    document = json.loads(
+        attach_fixes_to_sarif(sarif, [_credential_fix("key-b", groups[1], _DIFF)], findings, report)
+    )
+
+    first, second = document["runs"][0]["results"]
+    assert "fixes" not in first and len(second["fixes"]) == 1

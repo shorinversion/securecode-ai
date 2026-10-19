@@ -120,8 +120,8 @@ every finding and Architect fixes.
 | `--format markdown\|html\|json\|sarif` | Report format |
 | `--output FILE` | Write the report to a file |
 | `--output-dir DIR` | Save `report.md`, `report.html`, `report.json` and `report.sarif` from one run |
-| `--patch-dir DIR` | Save validated fixes as `.diff` files |
-| `--no-fix` | Do not request fixes |
+| `--patch-dir DIR` | Save validated fixes as `.diff` files: one per fix (each diff applies to the original file) and `patch-<file>.diff` with every fix of a file when there are several |
+| `--no-fix` | Do not request fixes. Otherwise the Architect proposes up to 10 fixes per run, one per weakness group: two keys in one file get two fixes, built one on the other |
 | `--max-cost-usd N` | API spend cap per run (default 1.0); each call reserves its maximum cost first, about $0.04, so a cap below $0.20 can stop the review |
 
 With `--provider openai-compatible` the endpoint, model and key come from the environment

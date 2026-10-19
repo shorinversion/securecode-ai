@@ -232,7 +232,10 @@ def run_analyze_command(
                 ),
                 "report.sarif": _machine_sarif(
                     attach_fixes_to_sarif(
-                        render_report(composition.report, ReportFormat.SARIF), fixes, findings
+                        render_report(composition.report, ReportFormat.SARIF),
+                        fixes,
+                        findings,
+                        composition.json_report,
                     ),
                     composition.json_report,
                     decisions,
@@ -245,7 +248,9 @@ def run_analyze_command(
         elif arguments.format == "json":
             rendered = attach_fixes_to_json(rendered, fixes, findings)
         elif arguments.format == "sarif":
-            rendered = attach_fixes_to_sarif(rendered, fixes, findings)
+            rendered = attach_fixes_to_sarif(
+                rendered, fixes, findings, analysis.result.composition.json_report
+            )
         if patch_dir is not None:
             skipped = _write_patches(patch_dir, fixes, raw_source)
             for path in skipped:
@@ -371,6 +376,7 @@ def _write_patches(
     """
     directory.mkdir(parents=True)
     skipped: list[str] = []
+    written: dict[str, list[ProposedFix]] = {}
     for index, fix in enumerate(fixes, start=1):
         if fix.status != "VALIDATED":
             continue
@@ -383,6 +389,12 @@ def _write_patches(
             continue
         name = f"{index:02d}-" + fix.path.replace("/", "_") + ".diff"
         (directory / name).write_text(fix.diff, encoding="utf-8", newline="\n")
+        written.setdefault(fix.path, []).append(fix)
+    # Several fixes of one file build on each other: the last diff holds them all.
+    for file_path, group in written.items():
+        if len(group) > 1:
+            name = "patch-" + file_path.replace("/", "_") + ".diff"
+            (directory / name).write_text(group[-1].diff, encoding="utf-8", newline="\n")
     return tuple(skipped)
 
 
