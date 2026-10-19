@@ -19,3 +19,24 @@ SecureCode это значит: разбить большой файл по фу
 (`scripts/run_pipeline_benchmark.py`) покажет, что на файлах больше ~64 КБ
 заметно чаще бывают `TRUNCATED`, `BUDGET_EXHAUSTED`, деградация или пропуски
 по сравнению с мелкими.
+
+## Кандидаты на удаление после v1.3
+
+Измерение `scripts/analyze_import_trace.py` (отчёт: [report/analyze-import-trace.md](../report/analyze-import-trace.md)):
+из 588 модулей `securecode_ai` (265 785 строк) реальный прогон `securecode analyze --provider
+local` загружает 327 (167 989 строк); ещё 205 (82 636 строк) нужны серверу, воркеру или другим
+командам CLI. **56 модулей (15 160 строк, 5,7%) не нужны продукту** и импортируются только
+скриптами и тестами: утилиты бенчмарков, оценочной лаборатории, продвижения и релиза
+(`core.evaluation_lab`, `core.promotion_*`, `core.release_benchmark`, `adapters.public_core_*`,
+`adapters.scm_artifacts`, `adapters.local_repair_oci_*` и др.). Три из них не покрыты тестами
+вообще (0%): `local_repair_oci_broker`, `local_repair_oci_child`, `local_repair_oci_commands`
+(1 700 строк).
+
+Самые большие: `local_repair_oci_broker` (767 строк), `local_repair_oci_child` (687),
+`scm_artifacts` (676), `core.promotion_decision` (599), `public_core_execution` (525),
+`product_conformance` (509).
+
+Это список для решения, а не для автоматического удаления: скрипты, которые их используют,
+тоже могут оказаться ненужными (это вторая очередь), а в артефактах сдачи
+(`report/m-a2026`) могут быть зафиксированы хэши файлов. Когда вернуться: перед следующим крупным рефакторингом
+`adapters/` или если время `scripts/quality.py` снова станет проблемой.
