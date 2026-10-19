@@ -5,7 +5,7 @@
 CR-046 добавляет к release roadmap невыпускную контрольную точку
 `M-A2026 — Academic Submission Snapshot` к 27 сентября 2026: локальная CLI,
 настоящая квантованная модель, Python/JS/TS/Go, evidence/patch validation,
-эксперименты и полный учебный комплект. [Календарь и приёмка](SUBMISSION_PLAN.md).
+эксперименты и полный учебный комплект. [Календарь и приёмка](archive/SUBMISSION_PLAN.md).
 Она не заменяет beta, enterprise v1.0 или G7/G9; таблица продуктовых версий ниже
 сохраняет прежний смысл, а её oracles позднее проверяются на актуальном release.
 

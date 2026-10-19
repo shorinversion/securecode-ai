@@ -3,8 +3,8 @@
 Версия протокола: `development-1.0-candidate`, 5 сентября 2026, `CR-046`.
 Владелец реализации: `P7.17`; итоговое включение: `P9.16 / M-A2026`.
 Это supplemental development study. Frozen
-[protocol](../specs/evaluation/protocol.md),
-[metrics](../specs/evaluation/metrics.yaml), datasets и thresholds не меняются.
+[protocol](../../specs/evaluation/protocol.md),
+[metrics](../../specs/evaluation/metrics.yaml), datasets и thresholds не меняются.
 Результаты не являются подтверждающим benchmark, calibration, G7/G9 evidence
 или разрешением production blocking.
 

@@ -701,8 +701,8 @@
   criterion, evaluator or normative baseline mutation. Changed operational
   dependencies and added task acceptance are tracked in PLAN; their future
   packets/completion catalog admission still need the applicable protected route.
-- Scope: [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md),
-  [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md) and linked operational
+- Scope: [SUBMISSION_PLAN.md](archive/SUBMISSION_PLAN.md),
+  [DEVELOPMENT_EVALUATION.md](archive/DEVELOPMENT_EVALUATION.md) and linked operational
   docs. Product code, PROJECT_BRIEF.md, specs and historical gate evidence remain
   intact. Publishing/submitting to people is not performed by this decision.
 

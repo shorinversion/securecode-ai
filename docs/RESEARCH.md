@@ -259,12 +259,12 @@ suggested fix»:
 
 Импортированный отчёт о методологии глубокого исследования сохранён отдельно:
 
-- [исходная hash-verified копия](research/deep-research-methodology-2026-08-12.md);
-- [impact review](research/IMPACT.md);
-- [project-specific protocol](research/PROTOCOL.md);
-- [claim/evidence ledger](research/CLAIMS.md);
-- [search log](research/search-log.csv) и
-  [amendments](research/AMENDMENTS.md).
+- [исходная hash-verified копия](archive/research/deep-research-methodology-2026-08-12.md);
+- [impact review](archive/research/IMPACT.md);
+- [project-specific protocol](archive/research/PROTOCOL.md);
+- [claim/evidence ledger](archive/research/CLAIMS.md);
+- [search log](archive/research/search-log.csv) и
+  [amendments](archive/research/AMENDMENTS.md).
 
 Главный эффект: действует research evidence gate `D-014`. LLM-generated report
 является candidate map, пока material claim не получил разрешимый
@@ -353,7 +353,7 @@ feasibility `dspy.RLM` для обхода OWASP DVSA, но сам сообща�
 скриншотные F1 claims не являются benchmark evidence SecureCode AI.
 
 Подробный проектный разбор, safety profile и staged ablation plan сохранены в
-[RLM/DSPy/SkillOpt research note](research/RLM_DSPY_SKILLOPT.md). Эти методы
+[RLM/DSPy/SkillOpt research note](archive/research/RLM_DSPY_SKILLOPT.md). Эти методы
 приняты в ограниченный offline scope `CR-016` и `P7.12–P7.16`, а не
 обязательными runtime dependencies.
 

@@ -149,7 +149,7 @@ LLM-generated benchmark cases допустимы как кандидаты по�
 root-cause review, generator provenance, fixed seed/hash и lineage-grouped
 split. Они не являются самостоятельным ground truth.
 
-Подробности: [RLM/DSPy/SkillOpt research note](research/RLM_DSPY_SKILLOPT.md) и
+Подробности: [RLM/DSPy/SkillOpt research note](archive/research/RLM_DSPY_SKILLOPT.md) и
 [evaluation protocol](../specs/evaluation/protocol.md).
 
 ## 8. Два разных мультиагентных уровня

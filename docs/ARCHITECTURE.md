@@ -3,7 +3,7 @@
 CR-046 / D-044: к 27 сентября 2026 приоритетен академический снимок общего
 Core с реальной локальной моделью и Python/JS/TS/Go. Connected архитектура ниже
 сохраняется для дальнейших releases; M-A2026 не объявляет её реализованной.
-Порядок работ и evidence определены в [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md).
+Порядок работ и evidence определены в [SUBMISSION_PLAN.md](archive/SUBMISSION_PLAN.md).
 
 ## 1. Архитектурная формула
 
@@ -334,7 +334,7 @@ retention_policy
 второе ядро ради demo. Новые внутренние защитные механизмы должны иметь
 достижимый threat scenario и проверяемый эффект. Изменение существующих
 границ защиты требует собственного reviewed scope. Ранние сравнения
-EvidenceGraph/Skeptic описаны в [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md).
+EvidenceGraph/Skeptic описаны в [DEVELOPMENT_EVALUATION.md](archive/DEVELOPMENT_EVALUATION.md).
 
 ```text
 Domain nodes and typed state

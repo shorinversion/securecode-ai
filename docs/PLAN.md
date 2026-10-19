@@ -6,6 +6,10 @@
 Current phase: `P2 - Deterministic analysis and reporting` - authorized to start.
 Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G2`.
 
+> Статус с 2026-09-29: план завершён на уровне v1; текущая работа идёт через pull request
+> и [CHANGELOG](../CHANGELOG.md), см. [DEVELOPMENT_WORKFLOW.md](DEVELOPMENT_WORKFLOW.md).
+> Документы времени сдачи лежат в [archive/](archive/README.md).
+
 Этот файл является каноническим планом проекта от исходной постановки до
 релиза и закрытия. Он задаёт порядок работ, зависимости, проверяемые результаты
 и условия перехода между фазами. История изменений хранится в
@@ -21,14 +25,14 @@ Current gate: `G1 - Foundation Ready` - effective `GO`; next enforced gate is `G
   25-го репетиция, 26-го резерв. Время 23:59 из исходного задания не считается
   временем защиты. Слот/загрузка и instructor reference/индивидуальное разрешение
   ещё нужны.
-- [SUBMISSION_PLAN.md](SUBMISSION_PLAN.md) задаёт календарь и дополнительный
+- [SUBMISSION_PLAN.md](archive/SUBMISSION_PLAN.md) задаёт календарь и дополнительный
   `M-A2026 — Academic Submission Snapshot`: G2 → G3 → G4 → ранняя поддержка
   Python/JS/TS/Go → проверенные эксперименты и комплект сдачи.
 - M-A2026 не меняет frozen baseline, release ladder или G0–G9 и не закрывает
   enterprise v1.0. Все соответствующие G7/G9 oracles позднее проверяются на
   актуальном release candidate. Необходимые академические работы выполняются
   раньше backend/второй SCM; оставшийся enterprise scope сохраняется.
-- [DEVELOPMENT_EVALUATION.md](DEVELOPMENT_EVALUATION.md) добавляет раннее
+- [DEVELOPMENT_EVALUATION.md](archive/DEVELOPMENT_EVALUATION.md) добавляет раннее
   диагностическое сравнение и сквозную development-метрику; frozen metrics,
   locked tests, calibration и blocking policy остаются прежними.
 - Текущая работа соответствует `P9.15 / CR-046 / D-044`. Документационный
@@ -115,7 +119,7 @@ M-A2026 имеет собственный полный учебный компл
 строятся control plane и SCM-интеграции.
 
 Рабочий календарь до подтверждённой даты 27 сентября 2026 приведён в
-[SUBMISSION_PLAN.md](SUBMISSION_PLAN.md). Это целевой прогноз с резервом,
+[SUBMISSION_PLAN.md](archive/SUBMISSION_PLAN.md). Это целевой прогноз с резервом,
 ежедневной сверкой фактической скорости и явными незакрытыми административными
 вопросами. Дата не разрешает обход acceptance или удаление обязательного языка.
 

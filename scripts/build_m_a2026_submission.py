@@ -787,10 +787,16 @@ The submission notebook was executed with the locked project interpreter. It run
 """  # noqa: RUF001
 
 
+# Evidence whose file moved after the delivery: the manifest keeps the delivered key.
+MOVED_EVIDENCE = {"docs/TEACHER_QUESTIONS.md": "docs/archive/TEACHER_QUESTIONS.md"}
+
+
 def _evidence(root: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for relative in EVIDENCE_PATHS:
         path = root / relative
+        if not path.is_file() and relative in MOVED_EVIDENCE:
+            path = root / MOVED_EVIDENCE[relative]
         if not path.is_file():
             raise SubmissionError("required evidence is unavailable")
         result[relative] = _sha(_read(path))
