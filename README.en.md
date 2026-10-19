@@ -170,6 +170,22 @@ user is audited when Git trusts it (`git config --global --add safe.directory <p
 The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
 
+### Pull request comments
+
+```bash
+securecode analyze . --base origin/main --format json --output report.json
+securecode publish github --report report.json --repo OWNER/NAME --pr 7
+```
+
+`publish github` keeps one summary comment (updated in place by a marker) and one inline
+comment per new confirmed weakness; when the validated fix is a single hunk next to the line,
+the comment carries a `suggestion` block. Findings a baseline knows are only counted in the
+summary. The token comes from the variable of `--token-env` (default `GITHUB_TOKEN`) and is
+never printed; `--dry-run` shows the comment bodies without a network or a token. GitHub
+refuses a comment on a line outside the pull-request diff; that finding stays in the summary.
+A ready Actions template (`--base`, SARIF and comments; every action pinned by SHA) is
+`integrations/github/action.yml`, with an example in `integrations/github/README.md` (D-126).
+
 ### Baseline for CI
 
 Accept the weaknesses you have and catch only new ones, without touching the code:

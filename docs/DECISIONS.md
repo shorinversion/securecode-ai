@@ -1214,3 +1214,26 @@ JSON (`suppressed: {reason, since}`), get a SARIF `suppressions` entry of kind `
 and the readable report lists them in a collapsed section; the Architect is not asked to fix
 them. Findings are matched by group only: a baseline never hides a new weakness in a file,
 because a new weakness is a new group.
+
+
+## D-126: Findings go to a pull request from the CLI, with the client of the GitHub App
+
+16 October 2026. Comments in a pull request existed only on the server (the GitHub App
+adapter). A CI job that runs `securecode analyze` could upload SARIF but not comment.
+`securecode publish github` posts from the JSON report of `analyze`: it reuses the bounded
+REST client of the adapter (`GitHubApi`: no redirects, response limit, fixed headers) with the
+token of the job, and the same marker convention (`securecode-ai-summary` for the summary
+comment, `securecode-ai-inline:<id>` for a line comment, where the id is the weakness group so
+a rerun finds its comment although finding ids change). The summary is created or updated in
+place; an inline comment that exists is not posted again. The App publisher itself is not used:
+it is bound to installation identity, annotation receipts and repeated head reads of a server
+run, none of which a CLI job has.
+
+A comment carries the CWE, the severity, the OWASP category, a fixed sentence and, if the
+fix is a validated single hunk within 60 lines of the comment, a `suggestion` block with that
+hunk's new text (the lines the reviewer already sees in the diff); no model output and no
+other source. A finding the baseline knows is only counted. A line outside the diff (HTTP 422)
+is reported and skipped; any other API error stops with `GITHUB_API_FAILED (<code>)`, never a
+response body or the token. The live behaviour on a real pull request is exercised only by an
+owner decision; the code is covered by a dry run and by a loopback server that speaks the
+REST API.

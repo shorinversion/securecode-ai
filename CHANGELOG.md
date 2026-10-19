@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-10-16: `securecode publish github` публикует отчёт `analyze` в pull request
+  (D-126): сводный комментарий с маркером и комментарии к строкам по группам слабостей, с
+  блоком `suggestion` для проверенного исправления из одного hunk; `--dry-run` печатает
+  тела без сети. Шаблон `integrations/github/action.yml` (composite: `--base`, SARIF,
+  комментарии, действия закреплены по SHA).
 - 2026-10-16: baseline известных находок (D-125): `analyze --baseline FILE` не считает
   подтверждённую слабость из файла (ключ — `weakness_group`) причиной кода `2`,
   `--write-baseline FILE` создаёт файл. Итог для CI — `effective_outcome`, `outcome`
