@@ -180,6 +180,10 @@ class TrialReportContext:
     discovery_seed: tuple[int, int] | None = None
     # (changed files audited, short base commit) of an incremental run.
     scope: tuple[int, str] | None = None
+    # Findings a baseline marks as known: (CWE, path, line, reason, since).
+    known: tuple[tuple[str, str, int, str, str], ...] = ()
+    # The outcome after the baseline (PASS, FAIL or INDETERMINATE), when one was applied.
+    effective_outcome: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +212,7 @@ class _Report:
     sections: tuple[_Section, ...]
     gaps: tuple[str, ...]
     unresolved: tuple[tuple[str, str, int, str, str], ...] = ()
+    known: tuple[tuple[str, str, int, str, str], ...] = ()
 
 
 def render_trial_report(
@@ -228,7 +233,7 @@ def render_trial_report(
         )
         for number, entry in enumerate(entries, start=1)
     )
-    outcome = str(document.get("outcome"))
+    outcome = context.effective_outcome or str(document.get("outcome"))
     gaps = _coverage_gaps(document, context.deterministic_reasons)
     verdict = _OUTCOMES.get(outcome, outcome)
     if outcome == "INDETERMINATE":
@@ -280,6 +285,7 @@ def render_trial_report(
         sections=sections,
         gaps=gaps,
         unresolved=context.unresolved,
+        known=context.known,
     )
     text = _html(report) if html_format else _markdown(report)
     return text.encode("utf-8")
@@ -448,6 +454,14 @@ _HEADER: Final = (
     "Источник",
     "Исправление",
 )
+_KNOWN: Final = {
+    "accepted": "принято командой",
+    "false_positive": "ложное срабатывание",
+}
+_KNOWN_NOTE: Final = (
+    "Эти слабости перечислены в файле baseline и не влияют на код возврата. Они не "
+    "исправлены: уберите запись из файла, когда слабость будет устранена."
+)
 _UNRESOLVED_NOTE: Final = (
     "Это не подтверждённые уязвимости и не безопасный код: модели не вынесли решение. "
     "Проверьте эти места вручную; код возврата 3 не означает, что уязвимостей нет."
@@ -520,6 +534,17 @@ def _markdown(report: _Report) -> str:
             cells = (str(number), _cwe(cwe_id), f"{path}:{line}", origin, reason)
             out.append("| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |")
         out += ["", _UNRESOLVED_NOTE, ""]
+    if report.known:
+        out += [
+            f"<details><summary>Известные находки ({len(report.known)})</summary>",
+            "",
+            "| № | Уязвимость | Место | Причина | С даты |",
+            "|---|---|---|---|---|",
+        ]
+        for number, (cwe_id, path, line, reason, since) in enumerate(report.known, 1):
+            cells = (str(number), _cwe(cwe_id), f"{path}:{line}", _KNOWN.get(reason, reason), since)
+            out.append("| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |")
+        out += ["", _KNOWN_NOTE, "", "</details>", ""]
     if report.gaps:
         out += ["## Неполная проверка", ""]
         out += [f"- {item}" for item in report.gaps]
@@ -618,6 +643,16 @@ def _html(report: _Report) -> str:
             cells = (str(number), _cwe(cwe_id), f"{path}:{line}", origin, reason)
             out.append("<tr>" + "".join(f"<td>{e(cell)}</td>" for cell in cells) + "</tr>")
         out.append(f"</table><p>{e(_UNRESOLVED_NOTE)}</p>")
+    if report.known:
+        out.append(
+            f"<details><summary>Известные находки ({len(report.known)})</summary><table><tr>"
+        )
+        out += [f"<th>{e(cell)}</th>" for cell in ("№", "Уязвимость", "Место", "Причина", "С даты")]
+        out.append("</tr>")
+        for number, (cwe_id, path, line, reason, since) in enumerate(report.known, 1):
+            cells = (str(number), _cwe(cwe_id), f"{path}:{line}", _KNOWN.get(reason, reason), since)
+            out.append("<tr>" + "".join(f"<td>{e(cell)}</td>" for cell in cells) + "</tr>")
+        out.append(f"</table><p>{e(_KNOWN_NOTE)}</p></details>")
     if report.gaps:
         out.append("<h2>Неполная проверка</h2><ul>")
         out += [f"<li>{e(item)}</li>" for item in report.gaps]

@@ -1190,3 +1190,27 @@ one is not followed, and a dependency manifest is audited only if it changed (an
 manifest). The JSON report carries `scope` (`kind` `changed_since_base` or `whole_revision`,
 the base, the merge base, the changed and the scanned paths, a note), SARIF carries the same
 under `runs[0].properties.securecode_scope`, and the readable report has a line "Область".
+
+
+## D-125: A baseline of known findings is applied after the audit, by weakness group
+
+16 October 2026. A team that adopts the tool has findings it will not fix at once, and every
+run failed on them. `securecode analyze --baseline FILE` reads a `securecode-baseline/v1`
+file; `--write-baseline FILE` writes one from the run. An entry names a `weakness_group`
+with a reason (`accepted` or `false_positive`) and an optional expiry; an expired entry is
+ignored and named in the summary.
+
+The key is the weakness group (D-119), because it is already the unit that is counted and
+alerted once: for a code weakness it is the CWE and the file, so it survives edits around
+the code, and for a hard-coded credential it includes the line, so moving a key is a new
+finding (the key must be rotated anyway). The baseline is applied after the audit, in
+`analyze`, and not in the core: `AuditRun` forces FAIL when blocking findings exist, and a
+suppression must not make the core's decision depend on a team's file. So `outcome` in the
+JSON stays what the models and detectors decided and `effective_outcome` is the result for a
+CI. The exit code is 2 only when a confirmed weakness is not in the file; if every confirmed
+weakness is known the run exits 0 when all stages completed and no candidate is undecided,
+and 3 otherwise (a FAIL used to hide those gaps). Suppressed findings keep all fields in the
+JSON (`suppressed: {reason, since}`), get a SARIF `suppressions` entry of kind `external`,
+and the readable report lists them in a collapsed section; the Architect is not asked to fix
+them. Findings are matched by group only: a baseline never hides a new weakness in a file,
+because a new weakness is a new group.

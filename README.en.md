@@ -121,6 +121,8 @@ every finding and Architect fixes.
 | `--output FILE` | Write the report to a file |
 | `--output-dir DIR` | Save `report.md`, `report.html`, `report.json` and `report.sarif` from one run |
 | `--base REV` | Audit only the files changed since the merge base of `REV` and `HEAD` (for a pull request: `--base origin/main`; needs a full fetch, not a shallow clone). Flows into unchanged files and dependency manifests that did not change are not re-checked; the scope is in the JSON (`scope`), SARIF (`properties.securecode_scope`) and the "Область" line of the report (D-124) |
+| `--baseline FILE` | File of known findings (`securecode-baseline/v1`, see "Baseline for CI"): a confirmed weakness listed there is shown as known and does not give exit code `2` |
+| `--write-baseline FILE` | Write every confirmed weakness of this run into a new file |
 | `--patch-dir DIR` | Save validated fixes as `.diff` files: one per fix (each diff applies to the original file) and `patch-<file>.diff` with every fix of a file when there are several |
 | `--mode full\|verify` | `full`: Discovery reads every window of the repository; `verify`: only the windows that fit the model budget, scanner hits first (n of m windows are named in the report and in the JSON `mode`). Default `verify` for `--provider local`, `full` otherwise. Local model window: `SECURECODE_LOCAL_CONTEXT_TOKENS` (2048..32768, default 8192), `SECURECODE_LOCAL_MAX_OUTPUT_TOKENS` (256..4096, 2048), `SECURECODE_LOCAL_CONTEXT_BYTES` (up to 8x the window, 65536), `SECURECODE_LOCAL_REPOSITORY_CALLS` (1..64, 16), `SECURECODE_LOCAL_TIMEOUT_SECONDS` (1..30, 30); start Ollama with `OLLAMA_CONTEXT_LENGTH` at least the window (D-123) |
 | `--no-fix` | Do not request fixes. Otherwise the Architect proposes up to 10 fixes per run, one per weakness group: two keys in one file get two fixes, built one on the other |
@@ -167,6 +169,26 @@ report names a reason code (for example `GIT_COMMAND_FAILED`); a checkout owned 
 user is audited when Git trusts it (`git config --global --add safe.directory <path>`).
 The Markdown and HTML reports are in Russian;
 JSON and SARIF are language-neutral.
+
+### Baseline for CI
+
+Accept the weaknesses you have and catch only new ones, without touching the code:
+
+```bash
+securecode analyze . --write-baseline .securecode-baseline.json   # once; commit the file
+securecode analyze . --baseline .securecode-baseline.json          # in CI: exit 2 only for a new weakness
+```
+
+The file is JSON `{"schema": "securecode-baseline/v1", "created", "head_sha",
+"weaknesses": [...]}`; an entry has `weakness_group` (from the report), `cwe_id`, `path`,
+`reason` (`accepted` or `false_positive`) and `expires` (a date or `null`). The key is
+`weakness_group`: it does not move with edits around the code, except for hard-coded
+secrets, whose group includes the line (D-125). Known findings stay in the JSON with a
+`suppressed` field, get SARIF `suppressions` and go to a collapsed "Known findings (N)"
+section; the core `outcome` is unchanged and the result for a CI is `effective_outcome`. An
+entry past its `expires` is ignored (a warning in the summary). When everything confirmed is
+known, the run exits `0` if every stage completed and no candidate is undecided, else `3`. An
+invalid file is exit code `4`, before the first model call.
 
 ### Fix as a pull request
 

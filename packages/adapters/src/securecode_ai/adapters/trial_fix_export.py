@@ -194,6 +194,69 @@ def scope_document(scope: LocalProductScanScope | None) -> dict[str, object]:
     }
 
 
+def attach_baseline_to_json(
+    rendered: bytes,
+    suppressed: Mapping[str, tuple[str, str]],
+    *,
+    effective_outcome: str,
+    expired: Sequence[tuple[str, str]],
+    new_weaknesses: int,
+    known_findings: int,
+) -> bytes:
+    """Mark findings a baseline knows and add ``effective_outcome``.
+
+    ``outcome`` stays the decision of the audit core; ``effective_outcome`` is what the
+    run reports to a CI after the baseline. A suppressed finding keeps all its fields.
+    """
+
+    document = json.loads(rendered)
+    findings = document.get("findings", [])
+    for item, group in zip(findings, finding_groups(findings), strict=True):
+        if isinstance(item, dict) and group is not None and group in suppressed:
+            reason, since = suppressed[group]
+            item["suppressed"] = {"reason": reason, "since": since}
+    document["effective_outcome"] = effective_outcome
+    document["baseline"] = {
+        "known_findings": known_findings,
+        "new_weaknesses": new_weaknesses,
+        "expired_entries": [{"cwe_id": cwe_id, "path": path} for cwe_id, path in expired],
+    }
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def attach_baseline_to_sarif(
+    rendered: bytes, json_report: bytes, suppressed: Mapping[str, tuple[str, str]]
+) -> bytes:
+    """Add a standard SARIF ``suppressions`` entry to the results of known findings.
+
+    SARIF results are rendered from the findings of the JSON report in the same order.
+    """
+
+    findings = [
+        item for item in json.loads(json_report).get("findings", []) if isinstance(item, dict)
+    ]
+    groups = finding_groups(findings)
+    document = json.loads(rendered)
+    for run in document.get("runs", []):
+        results = run.get("results", [])
+        if len(results) != len(findings):
+            continue
+        for result, finding, group in zip(results, findings, groups, strict=True):
+            if (
+                group is not None
+                and group in suppressed
+                and result.get("ruleId") == finding.get("cwe_id")
+            ):
+                reason, since = suppressed[group]
+                result.setdefault("suppressions", []).append(
+                    {
+                        "kind": "external",
+                        "justification": f"baseline: {reason} (since {since})",
+                    }
+                )
+    return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
 def attach_scope_to_json(rendered: bytes, scope: LocalProductScanScope | None) -> bytes:
     """Add ``scope`` to the JSON report."""
 

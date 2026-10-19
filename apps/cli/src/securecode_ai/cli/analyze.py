@@ -6,6 +6,8 @@ import argparse
 import json
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final, TextIO
 
@@ -40,7 +42,17 @@ from securecode_ai.adapters.trial_architect import (
     openai_compatible_complete,
     propose_fixes,
 )
+from securecode_ai.adapters.trial_baseline import (
+    BaselineApplication,
+    BaselineError,
+    apply_baseline,
+    baseline_document,
+    effective_exit,
+    load_baseline,
+)
 from securecode_ai.adapters.trial_fix_export import (
+    attach_baseline_to_json,
+    attach_baseline_to_sarif,
     attach_decisions_to_json,
     attach_decisions_to_sarif,
     attach_fixes_to_json,
@@ -50,6 +62,7 @@ from securecode_ai.adapters.trial_fix_export import (
     attach_scope_to_sarif,
     scope_document,
 )
+from securecode_ai.adapters.trial_groups import finding_groups
 from securecode_ai.adapters.trial_report import (
     TrialReportContext,
     render_trial_report,
@@ -165,6 +178,20 @@ def analyze_parser() -> argparse.ArgumentParser:
             "not change are not re-checked"
         ),
     )
+    parser.add_argument(
+        "--baseline",
+        metavar="FILE",
+        help=(
+            "known findings (securecode-baseline/v1): a confirmed weakness listed there is "
+            "reported as known and does not fail the run; exit code 2 needs a weakness the "
+            "file does not list"
+        ),
+    )
+    parser.add_argument(
+        "--write-baseline",
+        metavar="FILE",
+        help="write every confirmed weakness of this run into a new baseline file",
+    )
     parser.add_argument("--no-fix", action="store_true", help="do not ask the Architect for fixes")
     parser.add_argument(
         "--patch-dir", help="write validated fixes as .diff files into this new directory"
@@ -195,6 +222,17 @@ def run_analyze_command(
     if patch_dir is not None and patch_dir.exists():
         stderr.write(f"patch directory already exists: {patch_dir}\n")
         return _EXIT_CONFIG
+    write_baseline = Path(arguments.write_baseline) if arguments.write_baseline else None
+    if write_baseline is not None and write_baseline.exists():
+        stderr.write(f"baseline file already exists: {write_baseline}\n")
+        return _EXIT_CONFIG
+    baseline = None
+    if arguments.baseline:
+        try:
+            baseline = load_baseline(Path(arguments.baseline))
+        except BaselineError as error:
+            stderr.write(f"securecode analyze: {error}\n")
+            return _EXIT_CONFIG
     values = _with_dotenv(environment)
     try:
         analysis = run_trial_analysis(
@@ -222,10 +260,25 @@ def run_analyze_command(
         return _EXIT_INDETERMINATE
     rendered = analysis.result.rendered
     cost = analysis.cost_microusd
+    core_document = json.loads(analysis.result.composition.json_report)
+    exit_code = int(analysis.result.exit_code)
+    state: _BaselineState | None = None
+    if baseline is not None:
+        unresolved_now, _covered = unresolved_report(analysis.result.composition)
+        application = apply_baseline(
+            core_document.get("findings", []), baseline, now=datetime.now(UTC)
+        )
+        exit_code = effective_exit(
+            exit_code,
+            application,
+            complete=bool(core_document.get("coverage_manifest", {}).get("coverage_complete")),
+            undecided=len(unresolved_now),
+        )
+        state = _BaselineState(application, {0: "PASS", 2: "FAIL"}.get(exit_code, "INDETERMINATE"))
     readable = arguments.format in {"markdown", "html"}
     reports: dict[str, bytes] = {}
     if readable or output_dir is not None or patch_dir is not None or not arguments.no_fix:
-        document = json.loads(analysis.result.composition.json_report)
+        document = _without_known(core_document, state)
         revision = document.get("repository_revision", {})
         head_sha = str(revision.get("head_sha", "")) if isinstance(revision, dict) else ""
         repository = Path(arguments.target).resolve()
@@ -264,6 +317,8 @@ def run_analyze_command(
             deterministic_reasons(analysis.result.composition),
             _seed_windows(analysis),
             _scope_line(analysis),
+            _known_rows(core_document, state),
+            None if state is None else state.effective_outcome,
         )
         if output_dir is not None:
             composition = analysis.result.composition
@@ -276,6 +331,7 @@ def run_analyze_command(
                     composition,
                     cost,
                     analysis.result.scope,
+                    state,
                 ),
                 "report.sarif": _machine_sarif(
                     attach_fixes_to_sarif(
@@ -287,6 +343,7 @@ def run_analyze_command(
                     composition.json_report,
                     decisions,
                     analysis.result.scope,
+                    state,
                 ),
             }
         elif readable:
@@ -307,13 +364,16 @@ def run_analyze_command(
                     "secret; apply it by hand from the report and rotate the secret\n"
                 )
     if arguments.format == "json" and output_dir is None:
-        rendered = _machine_json(rendered, analysis.result.composition, cost, analysis.result.scope)
+        rendered = _machine_json(
+            rendered, analysis.result.composition, cost, analysis.result.scope, state
+        )
     elif arguments.format == "sarif" and output_dir is None:
         rendered = _machine_sarif(
             rendered,
             analysis.result.composition.json_report,
             finding_decisions(analysis.result.composition),
             analysis.result.scope,
+            state,
         )
     if output_dir is not None:
         output_dir.mkdir(parents=True)
@@ -327,8 +387,19 @@ def run_analyze_command(
     else:
         with output.open("xb") as handle:
             handle.write(rendered)
-    stderr.write(_summary(analysis, cost))
-    return int(analysis.result.exit_code)
+    if write_baseline is not None:
+        revision = core_document.get("repository_revision", {})
+        with write_baseline.open("xb") as handle:
+            handle.write(
+                baseline_document(
+                    core_document.get("findings", []),
+                    str(revision.get("head_sha", "")) if isinstance(revision, dict) else "",
+                    now=datetime.now(UTC),
+                )
+            )
+        stderr.write(f"baseline written to {write_baseline}\n")
+    stderr.write(_summary(analysis, cost, exit_code, state))
+    return exit_code
 
 
 def _architect(provider: str, values: Mapping[str, str], usage: list[tuple[int, int]]) -> Complete:
@@ -390,6 +461,7 @@ def _machine_json(
     composition: ProductAuditComposition,
     cost_microusd: int | None,
     scope: LocalProductScanScope | None = None,
+    state: _BaselineState | None = None,
 ) -> bytes:
     document = json.loads(
         attach_diagnostics_to_json(
@@ -404,6 +476,17 @@ def _machine_json(
     )
     # Model calls of the whole run, the Architect included; null when prices are unknown.
     document["mode"] = discovery_mode(composition)
+    if state is not None:
+        document = json.loads(
+            attach_baseline_to_json(
+                json.dumps(document).encode("utf-8"),
+                state.application.suppressed,
+                effective_outcome=state.effective_outcome,
+                expired=[(entry.cwe_id, entry.path) for entry in state.application.expired],
+                new_weaknesses=len(state.application.new_groups),
+                known_findings=len(state.application.suppressed),
+            )
+        )
     document["scope"] = scope_document(scope)
     document["model_cost"] = {
         "usd": None if cost_microusd is None else cost_microusd / 1_000_000,
@@ -417,13 +500,14 @@ def _machine_sarif(
     json_report: bytes,
     decisions: Mapping[str, Mapping[str, object]],
     scope: LocalProductScanScope | None = None,
+    state: _BaselineState | None = None,
 ) -> bytes:
-    return attach_scope_to_sarif(
-        attach_decisions_to_sarif(
-            attach_groups_to_sarif(rendered, json_report), json_report, decisions
-        ),
-        scope,
+    marked = attach_decisions_to_sarif(
+        attach_groups_to_sarif(rendered, json_report), json_report, decisions
     )
+    if state is not None:
+        marked = attach_baseline_to_sarif(marked, json_report, state.application.suppressed)
+    return attach_scope_to_sarif(marked, scope)
 
 
 def _write_patches(
@@ -484,6 +568,53 @@ def _secret_safe_reader(
     return masked_read
 
 
+@dataclass(frozen=True, slots=True)
+class _BaselineState:
+    application: BaselineApplication
+    effective_outcome: str
+
+
+def _without_known(document: dict[str, object], state: _BaselineState | None) -> dict[str, object]:
+    """The report document without the findings a baseline knows (they get their own section)."""
+
+    if state is None or not state.application.suppressed:
+        return document
+    findings = document.get("findings", [])
+    assert isinstance(findings, list)
+    groups = finding_groups(findings)
+    kept = [
+        item
+        for item, group in zip(findings, groups, strict=True)
+        if group not in state.application.suppressed
+    ]
+    return {**document, "findings": kept}
+
+
+def _known_rows(
+    document: dict[str, object], state: _BaselineState | None
+) -> tuple[tuple[str, str, int, str, str], ...]:
+    if state is None:
+        return ()
+    findings = document.get("findings", [])
+    assert isinstance(findings, list)
+    rows: dict[str, tuple[str, str, int, str, str]] = {}
+    for item, group in zip(findings, finding_groups(findings), strict=True):
+        if group is None or group not in state.application.suppressed or group in rows:
+            continue
+        locations = [value for value in item.get("locations", []) if isinstance(value, dict)]
+        first = locations[0] if locations else {}
+        reason, since = state.application.suppressed[group]
+        line = first.get("start", {}).get("line", 1) if isinstance(first.get("start"), dict) else 1
+        rows[group] = (
+            str(item.get("cwe_id")),
+            str(first.get("path", "")),
+            line if isinstance(line, int) else 1,
+            reason,
+            since[:10],
+        )
+    return tuple(rows.values())
+
+
 def _scope_line(analysis: TrialAnalysis) -> tuple[int, str] | None:
     scope = analysis.result.scope
     return None if scope is None else (len(scope.scanned_paths), scope.base_sha[:12])
@@ -497,14 +628,20 @@ def _seed_windows(analysis: TrialAnalysis) -> tuple[int, int] | None:
     return (seed, total) if isinstance(seed, int) and isinstance(total, int) else None
 
 
-def _summary(analysis: TrialAnalysis, cost_microusd: int | None) -> str:
+def _summary(
+    analysis: TrialAnalysis,
+    cost_microusd: int | None,
+    exit_code: int | None = None,
+    state: _BaselineState | None = None,
+) -> str:
     findings = "?"
     try:
         document = json.loads(analysis.result.sarif_rendered)
         findings = str(len(document["runs"][0].get("results", [])))
     except Exception:
         pass
-    outcome = {0: "PASS", 2: "FAIL"}.get(analysis.result.exit_code, "INDETERMINATE")
+    shown_exit = analysis.result.exit_code if exit_code is None else exit_code
+    outcome = {0: "PASS", 2: "FAIL"}.get(shown_exit, "INDETERMINATE")
     reasons = deterministic_reasons(analysis.result.composition)
     seed = _seed_windows(analysis)
     incomplete = (f"deterministic stage incomplete: {', '.join(reasons)}\n" if reasons else "") + (
@@ -512,6 +649,12 @@ def _summary(analysis: TrialAnalysis, cost_microusd: int | None) -> str:
         if seed is not None
         else ""
     )
+    if state is not None:
+        incomplete += (
+            f"baseline: {len(state.application.suppressed)} known weakness group(s) not counted, "
+            f"{len(state.application.new_groups)} new, "
+            f"{len(state.application.expired)} expired entr(y/ies) ignored{chr(10)}"
+        )
     return incomplete + (
         f"trial analysis: outcome={outcome} findings={findings} "
         f"provider={analysis.provider} model={analysis.model_id} "

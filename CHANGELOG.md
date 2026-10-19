@@ -24,6 +24,11 @@ Changelog отвечает на вопрос «что и когда измени
 
 ### Added
 
+- 2026-10-16: baseline известных находок (D-125): `analyze --baseline FILE` не считает
+  подтверждённую слабость из файла (ключ — `weakness_group`) причиной кода `2`,
+  `--write-baseline FILE` создаёт файл. Итог для CI — `effective_outcome`, `outcome`
+  ядра не меняется; известные находки получают `suppressed` в JSON, `suppressions` в
+  SARIF и свёрнутый раздел в отчёте.
 - 2026-10-16: `securecode analyze --base REV` проверяет только файлы, изменённые с
   точки слияния `REV` и `HEAD` (D-124). Область указана в JSON (`scope`), SARIF
   (`securecode_scope`) и отчёте; потоки в неизменённые файлы и неизменённые манифесты
