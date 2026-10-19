@@ -48,6 +48,21 @@ def coverage_diagnostics(composition: ProductAuditComposition) -> dict[str, obje
     return diagnostics
 
 
+def discovery_mode(composition: ProductAuditComposition) -> dict[str, object]:
+    """How much of the revision Discovery read: all windows, or the seed that fit the budget."""
+
+    host = composition.host_inputs
+    if host is None:
+        return {"discovery_seed": "full", "seed_windows": 0, "total_windows": 0}
+    total = len(host.source_catalogue.anchors)
+    seed = host.discovery_seed
+    return {
+        "discovery_seed": seed,
+        "seed_windows": len(host.discovery_seed_evidence_ids) if seed == "scanner" else total,
+        "total_windows": total,
+    }
+
+
 def attach_diagnostics_to_json(rendered: bytes, composition: ProductAuditComposition) -> bytes:
     """Add ``coverage_diagnostics`` to a JSON report when something explains a gap."""
 
@@ -85,5 +100,6 @@ __all__ = [
     "attach_diagnostics_to_json",
     "coverage_diagnostics",
     "deterministic_reasons",
+    "discovery_mode",
     "gap_detail",
 ]

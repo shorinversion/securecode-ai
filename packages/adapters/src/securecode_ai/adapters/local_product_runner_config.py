@@ -66,6 +66,36 @@ class LocalProductSupersededError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class LocalProductScanOptions:
+    """Operator choices for a run on the local provider (D-123).
+
+    ``discovery_seed`` is ``full`` (Discovery reads every window) or ``scanner`` (it reads
+    the windows that fit the budget, scanner hits first). The ``local_*`` numbers replace
+    the fixed 8K/2K window of a small local model; a remote provider ignores them.
+    """
+
+    discovery_seed: str = "full"
+    local_max_input_tokens: int = 8192
+    local_max_output_tokens: int = 2048
+    local_max_context_bytes: int = 65536
+    local_max_repository_calls: int = 16
+
+    def __post_init__(self) -> None:
+        if (
+            self.discovery_seed not in {"full", "scanner"}
+            or type(self.local_max_input_tokens) is not int
+            or type(self.local_max_output_tokens) is not int
+            or type(self.local_max_context_bytes) is not int
+            or type(self.local_max_repository_calls) is not int
+            or not 2048 <= self.local_max_input_tokens <= 32768
+            or not 256 <= self.local_max_output_tokens <= 4096
+            or not 1 <= self.local_max_context_bytes <= 8 * self.local_max_input_tokens
+            or not 1 <= self.local_max_repository_calls <= 64
+        ):
+            raise LocalProductConfigurationError()
+
+
+@dataclass(frozen=True, slots=True)
 class LocalProductScanResult:
     composition: ProductAuditComposition
     rendered: bytes

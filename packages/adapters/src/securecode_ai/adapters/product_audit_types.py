@@ -222,6 +222,10 @@ class ProductAuditHostInputs:
     # (candidate id, model call status) of every Skeptic attempt, retries included;
     # report metadata only, never an input of a decision.
     skeptic_attempts: tuple[tuple[str, ModelCallStatus], ...] = ()
+    # "full": Discovery reads every window; "scanner": only ``discovery_seed_evidence_ids``
+    # (the windows the host selected to fit a small local model, D-123).
+    discovery_seed: str = "full"
+    discovery_seed_evidence_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

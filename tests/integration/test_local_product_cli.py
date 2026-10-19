@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from securecode_ai.adapters.local_product_host_primitives import _ProtectedAnchor
@@ -571,3 +572,119 @@ def test_installed_scan_missing_host_admission_is_closed_product_error(tmp_path:
     assert result.returncode == parsed.exit_code == 3
     assert parsed.error.error_code is CliErrorCode.ANALYSIS_INDETERMINATE
     assert "product_outcome" not in document
+
+
+def _wide_repository(tmp_path: Path, *, vulnerable: bool, files: int = 4) -> Path:
+    """A checkout of about forty source windows: too many for one small-model request."""
+
+    checkout = tmp_path / "wide"
+    checkout.mkdir()
+    if vulnerable:
+        (checkout / "app.py").write_bytes(SOURCE)
+    for index in range(files):
+        body = "".join(f"def f{index}_{n}(x):\n    return x + {n}\n\n" for n in range(240))
+        (checkout / f"mod{index:02d}.py").write_text(body, encoding="utf-8", newline="\n")
+    identity = ("-c", "user.name=Test", "-c", "user.email=test@example.invalid")
+    for command in (
+        ("init",),
+        ("add", "."),
+        (*identity, "-c", "commit.gpgsign=false", "commit", "-m", "wide fixture"),
+    ):
+        subprocess.run(["git", "-C", str(checkout), *command], capture_output=True, check=True)
+    return checkout
+
+
+def _direct_scan(
+    monkeypatch: pytest.MonkeyPatch,
+    checkout: Path,
+    options: object,
+    *,
+    verdict: str = "CONFIRMED",
+    zero: bool = False,
+) -> tuple[object, list[str], list[object]]:
+    from securecode_ai.adapters import local_product_host as host_module
+    from securecode_ai.adapters import local_product_runner as runner
+    from securecode_ai.core.reports import ReportFormat
+
+    with scripted_peer(verdict=verdict, zero=zero) as (port, roles, received):
+        anchor = synthetic_anchor(port)
+        monkeypatch.setattr(host_module, "_read_platform_anchor", lambda: anchor)
+        host = host_module.load_local_product_host()
+        result = runner._run_local_product_scan(
+            host,
+            str(checkout),
+            ReportFormat.JSON,
+            runner.resolve_local_product_configuration(host),
+            options=options,  # type: ignore[arg-type]
+        )
+    return result, roles, received
+
+
+def _unit_status(result: object, stage: str) -> tuple[str, object]:
+    document = json.loads(result.composition.json_report)  # type: ignore[attr-defined]
+    (unit,) = [item for item in document["coverage_manifest"]["units"] if item["stage_id"] == stage]
+    return unit["coverage_status"], unit.get("reason_code")
+
+
+def test_full_discovery_of_a_wide_repository_exhausts_the_small_model_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from securecode_ai.adapters.local_product_runner import LocalProductScanOptions
+
+    checkout = _wide_repository(tmp_path, vulnerable=False)
+
+    result, roles, _ = _direct_scan(monkeypatch, checkout, LocalProductScanOptions())
+
+    # The root of the INDETERMINATE local runs: forty windows exceed 16 reads.
+    assert result.exit_code == 3  # type: ignore[attr-defined]
+    assert roles == []
+    assert _unit_status(result, "model_native_discovery") == (
+        "FAILED",
+        "MODEL_DISCOVERY_NON_SUCCESS",
+    )
+
+
+def test_scanner_seed_lets_a_small_model_decide_a_wide_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from securecode_ai.adapters.local_product_runner import LocalProductScanOptions
+
+    checkout = _wide_repository(tmp_path, vulnerable=True)
+
+    result, roles, received = _direct_scan(
+        monkeypatch,
+        checkout,
+        LocalProductScanOptions(discovery_seed="scanner"),
+        verdict="REJECTED_WITH_EVIDENCE",
+    )
+
+    document = json.loads(result.composition.json_report)  # type: ignore[attr-defined]
+    assert result.exit_code == 0  # type: ignore[attr-defined]
+    assert document["outcome"] == "PASS" and document["coverage_manifest"]["coverage_complete"]
+    discovery = next(
+        item for item in received if cast(Any, item)["trusted_controls"]["role"] == "discovery"
+    )
+    discovery = cast(Any, discovery)
+    paths = {item["location"]["path"] for item in discovery["untrusted_source_locations"]}
+    assert len(discovery["untrusted_source_locations"]) <= 16
+    assert "app.py" in paths  # the window the scanner cited is always read
+    host = result.composition.host_inputs  # type: ignore[attr-defined]
+    assert host.discovery_seed == "scanner"
+    assert 0 < len(host.discovery_seed_evidence_ids) < len(host.source_catalogue.anchors)
+    assert roles[0] == "discovery"
+
+
+def test_scanner_seed_keeps_a_confirmed_finding_a_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from securecode_ai.adapters.local_product_runner import LocalProductScanOptions
+
+    checkout = _wide_repository(tmp_path, vulnerable=True)
+
+    result, _roles, _ = _direct_scan(
+        monkeypatch, checkout, LocalProductScanOptions(discovery_seed="scanner")
+    )
+
+    assert result.exit_code == 2  # type: ignore[attr-defined]
+    document = json.loads(result.composition.json_report)  # type: ignore[attr-defined]
+    assert document["outcome"] == "FAIL" and document["findings"][0]["cwe_id"] == "CWE-89"

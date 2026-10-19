@@ -213,6 +213,27 @@ class ProductDiscoveryBackend(_ProductDiscoveryNativeCycle):
         clone._native_results = {}
         return clone
 
+    def with_seed(self, evidence_ids: frozenset[str]) -> ProductDiscoveryBackend:
+        """Return a backend that reads only the windows ``evidence_ids`` (order kept).
+
+        An empty set or an id the backend does not know is refused: Discovery must keep at
+        least one real window, and a seed cannot name evidence the host did not select.
+        """
+
+        known = {item.evidence_id for item in self._catalogue}
+        if type(evidence_ids) is not frozenset or not evidence_ids or not evidence_ids <= known:
+            raise ValueError("discovery seed is invalid")
+        catalogue = tuple(item for item in self._catalogue if item.evidence_id in evidence_ids)
+        if len(catalogue) == len(self._catalogue):
+            return self
+        clone = object.__new__(ProductDiscoveryBackend)
+        for name in self.__slots__:
+            object.__setattr__(clone, name, getattr(self, name))
+        clone._catalogue = catalogue
+        clone._native_lock = threading.Lock()
+        clone._native_results = {}
+        return clone
+
     def discover(
         self, *, request: ModelRequest, tools: RepositoryToolSession
     ) -> ModelNativeDiscoveryPayload:

@@ -65,6 +65,7 @@ from .local_product_runner_cancellation import LocalProductCancellationGuard
 from .local_product_runner_config import (
     LocalProductCancelledError,
     LocalProductConfigurationError,
+    LocalProductScanOptions,
     LocalProductScanResult,
     LocalProductSupersededError,
     LocalProductUnavailableError,
@@ -149,7 +150,9 @@ def _run_local_product_scan(
     reader_factory: _ReaderFactory = OfflineGitObjectReader,
     provider_runtime: ProductProviderRuntime | None = None,
     authority_loader: Callable[[], LocalProductHost] | None = None,
+    options: LocalProductScanOptions | None = None,
 ) -> LocalProductScanResult:
+    scan_options = LocalProductScanOptions() if options is None else options
     cancellation = LocalProductCancellationGuard(cancelled)
     cancellation.checkpoint()
     selected_runtime = provider_runtime
@@ -273,12 +276,12 @@ def _run_local_product_scan(
     # its reasoning trace and the whole bounded repository view: its connector counts
     # UTF-8 bytes plus protocol framing as tokens.
     max_output = min(
-        2048 if local_provider else 65536,
+        scan_options.local_max_output_tokens if local_provider else 65536,
         profile.capabilities.max_output_tokens,
         profile.budgets.max_total_tokens // 2,
     )
     max_input = min(
-        8192 if local_provider else 983040,
+        scan_options.local_max_input_tokens if local_provider else 983040,
         profile.capabilities.max_context_tokens,
         profile.budgets.max_total_tokens - max_output,
     )
@@ -286,10 +289,10 @@ def _run_local_product_scan(
         schema_version="0.2.0",
         max_input_tokens=max_input,
         max_output_tokens=max_output,
-        max_repository_calls=16 if local_provider else 64,
+        max_repository_calls=scan_options.local_max_repository_calls if local_provider else 64,
         # The bounded view is JSON-escaped with its instructions and anchors, so a remote
         # context gets the whole input window: a 17 KB file can frame into 110 KB.
-        max_context_bytes=65536 if local_provider else max_input,
+        max_context_bytes=scan_options.local_max_context_bytes if local_provider else max_input,
         timeout_ms=profile.budgets.timeout_seconds * 1000,
     )
     scope_pin = _pin(
@@ -704,6 +707,7 @@ def _run_local_product_scan(
         created_at=now,
         completed_at=now,
         state_probe=probe,
+        discovery_seed=scan_options.discovery_seed,
     )
     cancellation.checkpoint()
     selected_dependency_scanner = dependency_scanner

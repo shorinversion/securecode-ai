@@ -1130,3 +1130,32 @@ them), so every `.diff` applies to the repository as it is; `--patch-dir` adds
 attach a fix by weakness group instead of CWE and file, so a fix never lands on a finding of
 another group. `max_findings=10` now counts groups. A second fix that fails validation keeps
 the status `NOT_VALIDATED` with its checks (more informative than a bare `NO_FIX`).
+
+
+## D-123: A small local model reads the Discovery windows that fit, not the whole revision
+
+16 October 2026. On any repository of more than about 1600 lines the local provider ended
+`INDETERMINATE`: Discovery reads every 100-line window of the revision in one request, the
+local call budget is 16 repository reads and an 8K window, so the request overflowed
+(`BUDGET_EXHAUSTED`, unit `model_native_discovery` FAILED) before the model was called. FAIL
+(exit 2) does not depend on Discovery, but PASS needs full coverage, so a local run could
+never end in PASS.
+
+Chosen design: Discovery stays mandatory and real, and the host gives it a seed. In the
+`verify` mode (default for `--provider local`) the windows that overlap a place the
+deterministic scan cited are read first, then the others in path order, until the call and
+byte budgets (half of the context) are used; at least one window is always read. The seed is
+bound to the run (`ProductAuditHostInputs.discovery_seed` and
+`discovery_seed_evidence_ids`, validated by the audit composition), printed in the summary
+and the readable report ("Поиск: окна со сработками сканеров (n из m)") and exported in the
+JSON as `mode`. The stage catalogue, contracts, prompt pins and workflow hash do not change.
+The window size and call budget of the local model are operator options
+(`SECURECODE_LOCAL_*`, bounded; the gateway still caps a call at 30 s).
+
+Rejected alternatives: a fictitious SUCCEEDED Discovery receipt would break the
+`CoverageUnit` invariant (a completed model stage needs a real receipt and a schema-valid
+output) and claim a reading that did not happen; marking Discovery SKIPPED by the operator
+would change the stage obligations of the scenario (`SCENARIO_ATOMIC_REQUIRED_STAGE_IDS`) and
+therefore the catalogue pin and schemas. The limit stays visible: a PASS in `verify` mode
+means "no confirmed finding and the models found nothing in the windows they read", and the
+report says how many windows that was.

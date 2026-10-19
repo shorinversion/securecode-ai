@@ -12,6 +12,7 @@ from typing import Final, TextIO
 from securecode_ai.adapters.coverage_causes import (
     attach_diagnostics_to_json,
     deterministic_reasons,
+    discovery_mode,
 )
 from securecode_ai.adapters.local_product_runner_config import LocalProductUnavailableError
 from securecode_ai.adapters.local_product_trial import (
@@ -123,6 +124,15 @@ def analyze_parser() -> argparse.ArgumentParser:
             "with SECURECODE_MODEL_PRICE_INPUT and SECURECODE_MODEL_PRICE_OUTPUT"
         ),
     )
+    parser.add_argument(
+        "--mode",
+        choices=("full", "verify"),
+        help=(
+            "full: Discovery reads every window of the revision; verify: it reads the "
+            "windows that fit the model budget, scanner hits first, so a small model can "
+            "finish (default for --provider local; full otherwise)"
+        ),
+    )
     parser.add_argument("--no-fix", action="store_true", help="do not ask the Architect for fixes")
     parser.add_argument(
         "--patch-dir", help="write validated fixes as .diff files into this new directory"
@@ -161,6 +171,7 @@ def run_analyze_command(
             report_format=_FORMATS[arguments.format],
             environment=values,
             max_cost_microusd=max(1, int(arguments.max_cost_usd * 1_000_000)),
+            mode=arguments.mode,
         )
     except TrialAnalysisError as error:
         stderr.write(f"securecode analyze: {error}\n")
@@ -218,6 +229,7 @@ def run_analyze_command(
             ),
             len(covered),
             deterministic_reasons(analysis.result.composition),
+            _seed_windows(analysis),
         )
         if output_dir is not None:
             composition = analysis.result.composition
@@ -351,6 +363,7 @@ def _machine_json(
         )
     )
     # Model calls of the whole run, the Architect included; null when prices are unknown.
+    document["mode"] = discovery_mode(composition)
     document["model_cost"] = {
         "usd": None if cost_microusd is None else cost_microusd / 1_000_000,
         "known": cost_microusd is not None,
@@ -424,6 +437,14 @@ def _secret_safe_reader(
     return masked_read
 
 
+def _seed_windows(analysis: TrialAnalysis) -> tuple[int, int] | None:
+    mode = discovery_mode(analysis.result.composition)
+    if mode["discovery_seed"] != "scanner":
+        return None
+    seed, total = mode["seed_windows"], mode["total_windows"]
+    return (seed, total) if isinstance(seed, int) and isinstance(total, int) else None
+
+
 def _summary(analysis: TrialAnalysis, cost_microusd: int | None) -> str:
     findings = "?"
     try:
@@ -433,7 +454,12 @@ def _summary(analysis: TrialAnalysis, cost_microusd: int | None) -> str:
         pass
     outcome = {0: "PASS", 2: "FAIL"}.get(analysis.result.exit_code, "INDETERMINATE")
     reasons = deterministic_reasons(analysis.result.composition)
-    incomplete = f"deterministic stage incomplete: {', '.join(reasons)}\n" if reasons else ""
+    seed = _seed_windows(analysis)
+    incomplete = (f"deterministic stage incomplete: {', '.join(reasons)}\n" if reasons else "") + (
+        f"mode=verify: Discovery read {seed[0]} of {seed[1]} source windows\n"
+        if seed is not None
+        else ""
+    )
     return incomplete + (
         f"trial analysis: outcome={outcome} findings={findings} "
         f"provider={analysis.provider} model={analysis.model_id} "
