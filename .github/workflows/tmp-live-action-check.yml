@@ -1,0 +1,32 @@
+name: tmp live action check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: tmp-live-action-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # check out the pull request
+      pull-requests: write # the action posts the summary and inline comments
+      security-events: write # the action uploads the SARIF report
+    steps:
+      - name: Checkout candidate revision
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Run the composite action
+        uses: ./integrations/github
+        with:
+          version: v1.3.0
+          provider: local
+          github-token: ${{ github.token }}
